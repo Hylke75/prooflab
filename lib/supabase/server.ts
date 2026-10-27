@@ -2,11 +2,12 @@ import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
+import type { Database } from "@/lib/database.types";
 
 // Every query runs with the signed-in user's JWT, so row level security always applies.
 export async function supabaseServer() {
   const cookieStore = await cookies();
-  return createServerClient(env.supabaseUrl, env.supabaseKey, {
+  return createServerClient<Database>(env.supabaseUrl, env.supabaseKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -24,7 +25,7 @@ export async function supabaseServer() {
 
 // Anonymous client for public test pages; only the public RPCs are granted to anon.
 export function supabaseAnon() {
-  return createServerClient(env.supabaseUrl, env.supabaseKey, {
+  return createServerClient<Database>(env.supabaseUrl, env.supabaseKey, {
     cookies: { getAll: () => [], setAll: () => {} },
   });
 }
