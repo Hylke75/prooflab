@@ -138,3 +138,26 @@ describe("cookieless tracking", () => {
     expect(assignVariant("ffffffff", 3)).toBe(0xffffffff % 3);
   });
 });
+
+import { dossierLabel } from "@/lib/domain/dossier-label";
+
+describe("dossier labels", () => {
+  const claims = [
+    { status: "verified", domain: "cbs.nl", sourceType: "official_statistic" },
+    { status: "estimate", domain: "a.nl", sourceType: "news" },
+    { status: "estimate", domain: "a.nl", sourceType: "company_page" },
+  ];
+  const base = { claims, competitorKinds: ["direct", "indirect", "status_quo"], sizingComputed: true, behaviourCards: [] };
+  it("stays at exploration when independent sources are missing", () => {
+    expect(dossierLabel({ ...base, claims: claims.slice(1) }).label).toBe("Verkenning");
+  });
+  it("reaches a substantiated market picture, then behaviour evidence", () => {
+    expect(dossierLabel(base).label).toBe("Onderbouwd marktbeeld");
+    expect(dossierLabel({ ...base, behaviourCards: [{ verdict: "inconclusive", channels: ["linkedin"], endedOn: "2026-10-01" }] }).label).toBe("Eerste gedragsbewijs");
+  });
+  it("requires two passes in different periods or channels for repeated evidence", () => {
+    const one = { verdict: "pass", channels: ["linkedin"], endedOn: "2026-09-01" };
+    expect(dossierLabel({ ...base, behaviourCards: [one, { ...one }] }).label).toBe("Eerste gedragsbewijs");
+    expect(dossierLabel({ ...base, behaviourCards: [one, { ...one, channels: ["meta_ads"] }] }).label).toBe("Herhaald marktgedragsbewijs");
+  });
+});

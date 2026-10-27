@@ -22,7 +22,7 @@ export function SizingPanel({ scenarios, claims, actions, canWrite }: { scenario
   const [values, setValues] = useState<Record<string, Record<string, { value: number; claim: string }>>>(() =>
     Object.fromEntries(sorted.map((s) => [s.id, Object.fromEntries(s.factors.map((f) => [f.key, { value: f.value, claim: f.claim_id ?? "" }]))])),
   );
-  const current = scenario ? values[scenario.id] : {};
+  const current = useMemo(() => (scenario ? values[scenario.id] : {}), [scenario, values]);
   const result = useMemo(() => {
     if (!scenario) return null;
     return computeSizing(
@@ -35,7 +35,7 @@ export function SizingPanel({ scenarios, claims, actions, canWrite }: { scenario
     );
   }, [scenario, current, claims]);
 
-  if (!scenario || !result) return <div className="empty-state"><p>Geen scenario's gevonden.</p></div>;
+  if (!scenario || !result) return <div className="empty-state"><p>Geen scenario&apos;s gevonden.</p></div>;
   const set = (key: string, patch: Partial<{ value: number; claim: string }>) =>
     setValues((v) => ({ ...v, [scenario.id]: { ...v[scenario.id], [key]: { ...v[scenario.id][key], ...patch } } }));
 
