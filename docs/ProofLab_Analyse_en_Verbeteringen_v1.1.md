@@ -451,3 +451,12 @@ Zonder een sleutel werkt het betreffende onderdeel in de eerlijke handmatige mod
 ### 11.4 Realistische verwachting
 
 "Volledig werkend" volgens v1.0 plus deze verbeteringen is een groot product: in omvang vergelijkbaar met enkele maanden werk voor een klein team. Ik bouw het fase voor fase in deze repository; elke fase levert een draaiende, geteste app op en wordt bijgehouden in `IMPLEMENTATION_STATUS.md`. Er komen geen knoppen die alleen op papier werken.
+
+### 11.5 Besluiten over de methode (27 oktober 2026)
+
+| Vraag | Besluit |
+|---|---|
+| Rol van de klant | **De klant beslist mee:** read-only voor het werk, maar neemt deel aan de besluitsessies en bevestigt het eindbesluit in de app (rol `client_decider`, vervangt `client_viewer`). |
+| Experimentencatalogus | **±40 zelf beschreven methodes met metadata; 7–9 volledig uitvoerbaar**, de rest als begeleide handmatige template. |
+| Aannamekaart | **Belangrijk × bewijs**; de bewijsas wordt berekend uit gekoppelde observaties. Afwijking van de mock-up, vastgelegd in `DESIGN_DIFF_LOG.md`. |
+| Ritmes | **Wekelijkse leersessie + besluitsessie met de klant**, met agenda en besluitvoorstel uit de app en **import van Fathom-notulen** (gekoppeld aan besluiten). |
