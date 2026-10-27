@@ -278,6 +278,43 @@ In plaats van fase 2 volledig af te bouwen voordat experimenten bestaan, eerst e
 
 ---
 
+## 9a. Genomen beslissingen (27 oktober 2026)
+
+| Vraag | Besluit |
+|---|---|
+| Doelgroep v1 | Eigen tool + uitgenodigde gebruikers (multi-tenant schema, geen publieke registratie of facturering) |
+| Bouwvolgorde | **Originele fasering v1.0** (fase 0 → 6); de walking-skeleton-aanbeveling uit §8 is dus niet overgenomen |
+| Infrastructuur | Supabase-project `prooflab` (EU, eu-west-1) + Vercel |
+| Zoekprovider | Claude API-webzoeken + CBS/Eurostat |
+
+---
+
+## 9b. Aanvullend onderzoek (27 oktober 2026)
+
+### Concurrentie: scherper dan v1.0 aanneemt
+
+- **[Rapidly](https://www.exponentially.com/rapidly)** doet al bijna de hele lus: een Lean Canvas, de risicovolste aanname als meetbare hypothese, een *onderzochte* slaagdrempel (voorbeeld: 15% koopt binnen 30 dagen), een voorstel voor de kleinste test, een landingspagina met **terugbetaalbare aanbetaling**, en besluiten (stoppen, bijsturen, financieren) in een portfolio. Er is ook een MCP-koppeling voor AI-agents. Prijs: **US$20 per gebruiker per maand**. ProofLab wint dus niet op "de lus bestaat". Het moet winnen op diepte en betrouwbaarheid van het onderzoek, op de uitvoering, of op een niche.
+- **AI-validators** ([IdeaProof](https://ideaproof.io/features), ValidatorAI; ca. $0–99) leveren direct marktanalyse en een score van 0–100. Ze noemen "source-linked evidence", maar beschrijven geen bronverificatie en bevatten geen experimenten. Dat bevestigt het gat waar ProofLab in wil zitten: controleerbaar bewijs.
+- **AI-gemodereerde klantinterviews** zijn in 2026 een eigen categorie met meer dan twintig aanbieders ([vergelijking](https://usercall.co/post/best-ai-moderated-interview-software-in-2026-tools-tradeoffs-and-what-to-look-for)), bijvoorbeeld Listen Labs, Koji, Outset en GetWhy (Kopenhagen). Echte respondenten, een AI-interviewer, ca. $30–60 per interview ([overzicht](https://www.userintuition.ai/posts/best-idea-validation-platforms/)). Dit is de belangrijkste nieuwe mogelijkheid voor stap 3 en 8: ofwel zelf bouwen, ofwel koppelen.
+- **Strategyzer** verkoopt zijn Innovation Platform vooral via training en licenties (44 experimenten), niet als zelfstandige AI-tool.
+
+### Gat in v1.0: waar komen de testbezoekers vandaan?
+
+Een landingpage- of pre-ordertest is waardeloos zonder relevant verkeer. Het ontwerp beschrijft de pagina en de meting, maar niet de **werving**. Mogelijke bronnen: eigen netwerk en LinkedIn (gratis, maar met een vertekende steekproef), betaalde advertenties (Meta, LinkedIn, Google; kost geld en vraagt goedkeuring), outreach naar een zelf samengestelde lijst (AVG en spamregels), of panels. De Test Card moet een verplicht veld **wervingskanaal + verwacht bereik** krijgen. De hypothesebouwer moet waarschuwen als het verwachte bereik de `min_sample` niet haalt.
+
+### Juridische punten bevestigd
+
+- **AI-verordening art. 50** (transparantie) is niet uitgesteld door het Digital Omnibus (Verordening (EU) 2026/1744) en geldt sinds 2 augustus 2026. Alleen de verplichtingen voor hoog-risicosystemen zijn verschoven naar december 2027 en augustus 2028 ([overzicht](https://www.aiacto.eu/en/blog/digital-omnibus-ai-act-report-2027)).
+- **Analytics zonder toestemming:** volgens secundaire bronnen accepteert de AP analytics zonder toestemming als die first-party en geanonimiseerd is: geen delen met derden, geen profilering, geen cross-site tracking ([toelichting](https://clickport.io/blog/privacy-analytics-netherlands)). Dit ondersteunt de cookieloze meting uit §5.1. De officiële AP-tekst moet nog worden gecontroleerd.
+- **Fake door:** er is geen specifieke ACM-regel gevonden. De ACM handhaaft wel actief op misleidende online praktijken, zoals nepkortingen ([2023](https://www.dutchnews.nl/2023/11/consumer-watchdog-is-going-after-fake-webshop-discounts/)) en de boete van €270.000 voor House of Tickets (mei 2026). De eerlijke vervolgpagina uit §5.2 blijft dus verplicht.
+
+### Techniek bevestigd
+
+- **Claude-webzoeken:** $10 per 1.000 zoekopdrachten plus tokenkosten. Web fetch heeft geen extra tarief, alleen tokens ([prijzen](https://docs.claude.com/ja/docs/about-claude/pricing)). Een diep onderzoek van ca. 50–150 zoekopdrachten kost dus $0,50–1,50 aan zoekkosten. De tokenkosten voor het lezen van bronnen zijn waarschijnlijk groter. Een budgetlimiet per run blijft nodig.
+- **CBS StatLine:** de huidige tabel *Vestigingen van bedrijven; bedrijfstak, regio* (81578NED, SBI 2008) is bruikbaar voor bottom-up TAM in B2B ([CBS](https://www.cbs.nl/nl-nl/cijfers/detail/81578NED)). Let op: CBS stapt over op **SBI 2025**, dus tabel-ID's en codes kunnen veranderen. Leg daarom per factor tabel-ID, peiljaar en SBI-versie vast.
+
+---
+
 ## 10. Wijzigingen samengevat (changelog v1.0 → v1.1)
 
 - Benchmark: generieke deep research als belangrijkste substituut toegevoegd.
