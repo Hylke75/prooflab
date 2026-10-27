@@ -1,7 +1,7 @@
 # ProofLab — analyse van het ontwerp v1.0 en voorgestelde verbeteringen (v1.1)
 
 **Datum:** 27 oktober 2026
-**Basis:** `ProofLab_Functioneel_Ontwerp_v1.md` (versie 1.0)
+**Basis:** `docs/FUNCTIONEEL_ONTWERP.md` (versie 1.0), `CLAUDE.md` en `design/REFERENCE_MOCKUPS.html` (handoffpakket)
 **Doel:** gaten, tegenstrijdigheden en risico's in het ontwerp benoemen en oplossen *voordat* er code wordt geschreven. Waar dit document afwijkt van v1.0, geldt dit document zodra de opdrachtgever akkoord geeft.
 
 ---
@@ -388,3 +388,66 @@ De app toont per sprint wat achterloopt, bijvoorbeeld "werving haalt de min_samp
 - Jobsysteem, zoekprovider, citaatverificatie, AI-evaluatieset, PDF-aanpak, i18n en transcriptie expliciet gemaakt.
 - Koraal niet als tekstkleur; semantische tokens voor latere dark mode.
 - Bouwvolgorde: eerst een dunne kernlus, daarna diepte.
+
+---
+
+## 11. Verbeteringen op basis van *Testing Business Ideas* en de mock-ups
+
+Het boek (Bland & Osterwalder, Wiley/Strategyzer) is de methodische basis van ProofLab. Het ontwerp v1.0 neemt de Test Card, het idee van bewijskracht en experimenten over, maar laat een aantal kernonderdelen van de methode liggen. Hieronder staan de gaten en de voorstellen. **Rechten:** we gebruiken de methode, maar schrijven alle teksten, kaarten en beschrijvingen zelf. Geen overgenomen boektekst, afbeeldingen, kaartontwerpen of exacte beoordelingen; geen suggestie van een officiële band met Strategyzer (zie v1.0 §18.7).
+
+### 11.1 Methode-onderdelen die ontbreken of anders moeten
+
+| # | Onderdeel in de methode | Status in v1.0 / mock-up | Voorstel voor ProofLab |
+|---|---|---|---|
+| 1 | **Team vóór het idee**: een multidisciplinair team, met benodigde vaardigheden per experiment | Ontbreekt | Een stap *Team & opdracht* in de intake: wie zit in het traject (consultant, klantstakeholders), welke vaardigheden zijn er (ontwerp, techniek, marketing, sales, data, juridisch, financieel). De experimentaanbeveler filtert op wat het team kan uitvoeren of meldt "vraagt vaardigheid X". |
+| 2 | **Ontwerplus** (bedenken → businessprototype → beoordelen) vóór de **testlus** (hypothese → experiment → leren → besluiten) | Negen lineaire stappen | De stappenbalk toont twee lussen. Na elk besluit "Bijsturen" springt de app terug naar de ontwerplus (model/propositie aanpassen) en worden de geraakte aannames opnieuw beoordeeld. |
+| 3 | **Waardepropositie** (klanttaken, pijnen, winsten ↔ producten, pijnverzachters, winstmakers) naast het **businessmodel** | Alleen JTBD en een eenvoudig model; de mock-up heeft géén modelscherm | Een scherm *Propositie & model* met twee eigen canvasweergaven (zelf vormgegeven), elk blok gelabeld als `bronondersteund` of `aangenomen`, en aannames die direct uit de blokken worden afgeleid. |
+| 4 | **Aannamekaart: belangrijk × hoeveel bewijs** | Het ontwerp en de mock-up gebruiken *impact × onzekerheid* (een gok) | De horizontale as wordt **berekend uit gekoppeld bewijs** (aantal en sterkte), niet geschat. Zo verschuift een aanname automatisch naar "veel bewijs" zodra een test iets oplevert. Dat is precies wat ProofLab onderscheidt. Belangrijkheid blijft een menselijke inschatting. |
+| 5 | **Hypothesekwaliteit**: toetsbaar, precies (wie, wat, wanneer) en enkelvoudig (één ding) | Wel velden, geen kwaliteitscheck | Een hypothesecoach controleert de drie criteria live en stelt splitsing voor als er twee beweringen in één zin staan. |
+| 6 | **Test Card** met vier delen: geloof, test, meting, criterium; plus kosten, betrouwbaarheid en tijd | De mock-up vraagt "Wat geloof je / Succesdrempel / Looptijd / Voor wie" | De volledige kaart in eigen woorden: *Wij denken dat… / Dat toetsen we door… / We meten… / Het klopt als…* + faal- en onbeslist-criterium, noemer, min. n, wervingskanalen, kosten, eigenaar. |
+| 7 | **Learning Card**: verwachting, observatie, geleerd, actie | Wel in het ontwerp, niet in de mock-up | Het bewijsscherm krijgt per experiment een Learning Card: *We dachten… / We zagen… / Daaruit leren we… / Daarom gaan we…*, met betrouwbaarheid van de data en de benodigde actie. |
+| 8 | **Bewijssterkte langs vier dimensies**: mening ↔ feit, zeggen ↔ doen, labo ↔ echte wereld, kleine ↔ grote inzet | Alleen een indeling op type | Elke observatie krijgt deze vier kenmerken; de sterkte wordt **daaruit berekend** en is zichtbaar als uitleg ("sterk: echte betaling in een echte context"). Synthetisch en AI blijft nul. |
+| 9 | **Twee soorten experimenten: ontdekken** (snel, goedkoop, zwakker) **en valideren** (sterker, duurder) | Zeven tests zonder fase | Elk experiment in de catalogus is *ontdekken* of *valideren*. De aanbeveler waarschuwt bij valideren zonder ontdekkingsbewijs ("eerst begrijpen, dan bewijzen") en stelt na een positief resultaat een sterkere vervolgtest voor. |
+| 10 | **Experimentbibliotheek** met per test: kosten, voorbereidingstijd, looptijd, bewijssterkte, benodigde vaardigheden, geschikt voor D/F/V | Zeven uitgewerkte tests | Een **eigen beschreven catalogus van ±40 generieke methodes** (interview, enquête, zoektrendanalyse, landingspagina, concierge, LOI, mock sale enz.: generieke methodenamen, eigen teksten) met deze metadata. Zeven tot negen zijn volledig **uitvoerbaar** in de app; de rest is een begeleide **handmatige** template met observatieformulier. |
+| 11 | **Experimentreeksen**: logische opeenvolging per type bedrijf | Ontbreekt | Sjablonen per branche (MKB, events/MICE, media/cultuur) en per type (B2B-dienst, B2C-product, platform) met een aanbevolen volgorde. |
+| 12 | **Besluiten: doorgaan, bijsturen of stoppen** | De mock-up kent vier opties zonder **stoppen** of **doorgaan** | De keuzes worden: *Doorgaan · Bijsturen · Opnieuw testen · Parkeren · Stoppen*. Stoppen is een volwaardige, gewaardeerde uitkomst ("je bespaart de klant geld"). |
+| 13 | **Managen in ritmes**: wekelijkse planning, korte standup, wekelijks leren, regelmatig besluiten met stakeholders | Ontbreekt | Past perfect bij de sprint: de app maakt per week een **leersessie** en een **besluitsessie met de klant**, met een agenda, de Learning Cards en een besluitvoorstel. Een notulenimport (bijv. Fathom of Teams) koppelt afspraken aan besluiten. |
+| 14 | **Experiment-Kanban**: backlog → voorbereiden → loopt → leren | Genoemd, niet ontworpen | Een kanban per traject met de statussen uit §3.3. |
+| 15 | **Valkuilen** van de methode: tijdgebrek, analyseverlamming, onvergelijkbare data, zwakke data, bevestigingsbias, te weinig experimenten, niet bijsturen, **testen uitbesteden** | Deels in de rode vlaggen | Een **automatische valkuilcheck** per traject: geen test gestart na X dagen; alleen onderzoek, geen experimenten; metrics die niet vergelijkbaar zijn; alleen "zeggen"-data; alleen positieve citaten; één experiment per kritieke aanname; Learning Card zonder besluit; klant niet bij leer- of besluitsessie. |
+
+**Belangrijk inzicht voor het consultancymodel:** de methode waarschuwt expliciet tegen *het uitbesteden van testen*, omdat het leren dan bij de buitenstaander blijft. Als de klant alleen meekijkt, loopt ProofLab precies in die valkuil. Daarom stellen we voor: de klant blijft read-only voor het werk, maar **neemt deel aan de besluitsessies en bevestigt het eindbesluit** (een lichte uitbreiding van de rol `client_viewer`).
+
+### 11.2 Verbeteringen aan de mock-ups
+
+| Scherm | Bevinding | Voorstel |
+|---|---|---|
+| Algemeen | Geen klant- of trajectcontext ("voor wie werk ik nu?") | Een trajectkiezer in de topbar: *Klant · Idee · Sprintweek 2 van 5*, plus een indicator "volgende besluitsessie". |
+| Algemeen | Schermen ontbreken: inloggen, propositie/model, hypotheses, bronnenbibliotheek, portfolio, sprintplanning, instellingen, **publieke testpagina**, **AI-interview voor respondenten**, klantweergave | Ontwerpen in dezelfde stijl. De publieke pagina's (test en interview) krijgen een **merkneutrale** variant. |
+| Dashboard | KPI's gaan over aantallen | In productie: *Kritieke aannames met sterk bewijs*, *Lopende experimenten (dag X van Y)*, *Openstaande besluiten*. Dat zijn bewijsmetrics, geen activiteitsmetrics (v1.0 §14.4). |
+| Marktverkenning | Een sterk scherm; mist status en kosten van de onderzoeksrun | Een runkaart met echte stappen (gevonden bronnen, gecontroleerde citaten, kosten tot nu toe, budget) en een *verschil sinds de vorige run*. |
+| Aannames | Assen *effect × onzekerheid*; prioriteitsnummers in brede grijze balken (oogt als een layoutfout) | Assen *belangrijk × bewijs* (§11.1-4); compacte nummerbadges. |
+| Experimenten | De Test Card is te mager (zie §11.1-6); maar drie testtypes | De volledige kaart, met een "meer experimenten"-knop naar de catalogus. Start = **Ter review**, pas daarna "Publiceer" (akkoord). |
+| Bewijs & besluit | Geen **Stoppen** of **Doorgaan**; geen Learning Card | Zie §11.1-7 en -12; plus de nieuwe positie op de aannamekaart ("deze aanname schuift naar…"). |
+| Rapport | Mist bronvoetnoten, methode, beperkingen, tegenbewijs en een bijlage met ruwe data | Rapportstructuur volgens v1.0 §4.4; ProofLab-cover met "opgesteld door Link & Lead voor [klant]". |
+| Techniek | Google Fonts via de CDN | Zelf hosten via `next/font` (AVG). |
+| Toegankelijkheid | Koraal en lichtgrijze teksten (`--muted` #747d8e op crème ≈ 3,9:1) | `--muted` haalt AA niet voor kleine tekst; donkerder variant voor tekst kleiner dan 18px (in `DESIGN_DIFF_LOG.md` als onderbouwde afwijking). |
+
+### 11.3 Wat "volledig werkend" vraagt: benodigde accounts en sleutels
+
+| Onderdeel | Nodig | Status |
+|---|---|---|
+| Database, auth, opslag | Supabase | ✅ project `prooflab` (eu-west-1) |
+| AI + webzoeken | Anthropic API-sleutel | ⏳ door jou aan te leveren |
+| Hosting app en testpagina's | Vercel-project + domein(en), bijv. `app.prooflab.nl` en een apart testdomein | ⏳ domein kiezen na de merkcheck |
+| Achtergrondjobs (onderzoek, interviews, verversing) | Inngest of Trigger.dev (gratis tier volstaat in het begin) | ⏳ keuze |
+| E-mail (uitnodigingen, inlog, meldingen) | Transactionele mailprovider, bijv. Resend, met een geverifieerd domein | ⏳ |
+| Outreach | Verzenden vanuit je eigen mailbox na akkoord (Gmail/Outlook-koppeling) | ⏳ |
+| Advertenties | Meta Business-account + app; LinkedIn Advertising API-aanvraag | ⏳ LinkedIn nu aanvragen |
+| Marktdata | CBS/Eurostat (gratis); KVK API (abonnement, optioneel) | — |
+| Betalingen (later) | Stripe | Fase 6 |
+
+Zonder een sleutel werkt het betreffende onderdeel in de eerlijke handmatige modus (v1.0 §18.2); de rest van de app blijft volledig bruikbaar.
+
+### 11.4 Realistische verwachting
+
+"Volledig werkend" volgens v1.0 plus deze verbeteringen is een groot product: in omvang vergelijkbaar met enkele maanden werk voor een klein team. Ik bouw het fase voor fase in deze repository; elke fase levert een draaiende, geteste app op en wordt bijgehouden in `IMPLEMENTATION_STATUS.md`. Er komen geen knoppen die alleen op papier werken.
