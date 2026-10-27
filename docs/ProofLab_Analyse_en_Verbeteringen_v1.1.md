@@ -345,6 +345,31 @@ Een landingpage- of pre-ordertest is waardeloos zonder relevant verkeer. Het ont
 5. Werving gaat via dezelfde kanalen als het testverkeer (netwerk, advertenties, outreach), met een screener vooraf op segment en rol, zodat niet-doelgroep-respondenten niet meetellen.
 6. Synthese per interview **en** over interviews heen (themamatrix), met elke conclusie terug te leiden naar letterlijke fragmenten.
 
+### Klanten, trajectvorm en taal
+
+| Vraag | Antwoord | Gevolg |
+|---|---|---|
+| Klanttypes | MKB/ondernemers, events/MICE en venues, media/cultuur/publiek | Drie **branchesjablonen** met passende aannames, bronnen en experimenten (zie hieronder). Dit is ook de "vergelijkingstest" uit §16 van v1.0: de begeleiding mag niet hardcoded zijn op één branche. |
+| Trajectvorm | **Vaste validatiesprint van 4–6 weken** | Een sjabloon `ValidatieSprint` met een weekplanning, mijlpalen en een vaste rapportdatum (zie hieronder). |
+| Taal | **Alleen Nederlands** | Geen i18n-framework in v1; teksten wel centraal in `lib/copy/`, zodat vertalen later mogelijk blijft. Bronnen mogen meertalig zijn. |
+
+**Sprintsjabloon (voorstel, aan te passen per klant):**
+
+| Week | Fase | Mijlpaal | Klant ziet |
+|---|---|---|---|
+| 1 | Intake + marktverkenning | Idee-Brief bevestigd; marktdossier v1 | Brief en eerste marktbeeld |
+| 2 | Klant en model, aannames | Top 3 risicovolle aannames; hypotheses vergrendeld | Risicokaart en testplan |
+| 3–4 (–5) | Tests live (2–3 parallel) | Werving gestart; tussenstand (zonder verdict) | Voortgang zonder voorlopige conclusies |
+| laatste | Analyse en besluit | Learning Cards; beslisrapport | Eindrapport en besluitadvies |
+
+De app toont per sprint wat achterloopt, bijvoorbeeld "werving haalt de min_sample niet vóór de einddatum". Dan kun je bijsturen met extra budget, een extra kanaal of een langere looptijd, met een changelog.
+
+**Branchesjablonen: wat verschilt:**
+
+- **MKB/ondernemers:** het klassieke koopgedrag. Sterkste bewijs is een betaling of aanbetaling; TAM via CBS-vestigingen of huishoudens.
+- **Events/MICE/venues:** een B2B-DMU (eventmanager, inkoop, directie) en sterk seizoensgebonden. Signalen zijn offerteaanvragen, optieboekingen en LOI's. Let op: leadtijden van maanden passen slecht in een sprint van 4–6 weken, dus test eerder met *aanvragen* dan met *boekingen*.
+- **Media/cultuur/publiek:** er is vaak **geen betaling**. "Levensvatbaarheid" gaat dan over subsidie, leden, donaties, bereik of deelname. De bewijstypologie krijgt daarom naast `verified_transaction` ook `verified_commitment` (lidmaatschap, inschrijving, toegezegde subsidie of partnerbijdrage). Het businessmodel krijgt een variant voor de publieke en non-profitsector (publieke waarde, financiers, doelgroepbereik).
+
 ---
 
 ## 10. Wijzigingen samengevat (changelog v1.0 → v1.1)
