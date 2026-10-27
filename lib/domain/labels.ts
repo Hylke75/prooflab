@@ -159,3 +159,17 @@ export const STEPS = [
   { key: "test", label: "Testen", path: "/experiments" },
   { key: "decide", label: "Besluiten", path: "/evidence" },
 ] as const;
+
+// Shown after every call-to-action on a public test page; cannot be removed (fake-door rule).
+export const HONEST_REVEAL =
+  "Dit aanbod is nog in ontwikkeling. Je hebt niets gekocht of besteld en er is niets afgerekend. Met je klik help je onderzoeken of hier behoefte aan is.";
+
+export const NEUTRAL_INTERVIEW_GUIDE = [
+  "Kun je vertellen over de laatste keer dat je hiermee te maken had?",
+  "Wat deed je toen precies, stap voor stap?",
+  "Wat was daar lastig of kostte veel tijd?",
+  "Hoe los je dat nu op? Wat gebruik je daarvoor?",
+  "Wat kost je dat nu, in tijd of geld?",
+  "Wie is er nog meer bij betrokken als je hierover beslist?",
+  "Wanneer heb je voor het laatst naar een betere oplossing gezocht? Wat heb je gevonden?",
+];
