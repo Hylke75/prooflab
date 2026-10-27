@@ -315,6 +315,38 @@ Een landingpage- of pre-ordertest is waardeloos zonder relevant verkeer. Het ont
 
 ---
 
+## 9c. Productrichting na de tweede vragenronde
+
+| Vraag | Antwoord | Gevolg voor het ontwerp |
+|---|---|---|
+| Hoofdgebruik | **Consultancy voor klanten** | Een idee hoort bij een **klant** (nieuwe tabel `clients`). Een traject heeft een opdrachtgever, een looptijd en een budget. Het beslisrapport is het eindproduct en weegt daarom zwaarder dan v1.0 aanneemt (fase 5 eerder of beter). |
+| Onderscheid ten opzichte van Rapidly | Controleerbaar onderzoek, **en** echte uitvoering, **en** een rapport voor beslissers, **en** de Nederlandse markt | Alle vier: de onderscheidende combinatie is "Nederlands consultancyniveau met een bronnenspoor". Dat rechtvaardigt een hogere prijs per traject dan $20 per maand. |
+| Testverkeer | Eigen netwerk/LinkedIn, **betaalde advertenties** en outreach | De Test Card krijgt een verplicht veld *wervingskanalen + verwacht bereik per kanaal*. Elke link krijgt UTM-tags per kanaal, zodat de conversie **per kanaal** zichtbaar is (verkeer uit een warm netwerk converteert anders dan koud advertentieverkeer). |
+| Interviews | **AI-gemodereerd in de app** | Nieuwe module: een respondent opent een publieke link en voert een chatinterview met een AI-interviewer. |
+| Rol van de klant | **Alleen meekijken** | Rol `client_viewer` per idee: alleen lezen, geen interne notities, geen ruwe participantgegevens (alleen gepseudonimiseerde citaten), geen kosten tenzij gedeeld. Alle goedkeuringen blijven bij jou. |
+| Branding | **ProofLab** | Rapporten en het app-merk zijn ProofLab. Een **merk- en domeincheck is nu urgent**, omdat de naam richting klanten gaat. Testpagina's blijven merkneutraal of krijgen de naam van het geteste aanbod; een ProofLab-logo op een fake-door-pagina vertekent de test. |
+| Advertenties | **LinkedIn + Meta, eigen account, doorbelasten** | Zie hieronder. |
+| AI-interview | **Eerst tekst, spraak later** | Fase 4: chatinterview; spraak via een `VoiceProvider` in fase 6. |
+
+### Advertenties via je eigen account: wat dit vraagt
+
+- **Meta:** voor eigen advertentieaccounts volstaat de laagste toegangslaag met `ads_management`; app review en Full Access zijn alleen nodig voor accounts van anderen ([Meta](https://developers.facebook.com/docs/marketing-api/access)). Bedrijfsverificatie van Link & Lead is wel verstandig.
+- **LinkedIn:** de Advertising API vereist een aanvraag. Je start in de *Development tier* (één testaccount via de API) en moet daarna een upgrade naar Standard krijgen, naar LinkedIn's eigen oordeel ([LinkedIn](https://learn.microsoft.com/en-us/linkedin/marketing/lms-faq)). Doorlooptijd: van enkele weken tot maanden. **Vraag dit nu al aan**, ook al bouwen we de koppeling pas in fase 4/6.
+- **Accountrisico:** fake-door-advertenties voor een product dat nog niet bestaat kunnen botsen met het beleid van Meta en LinkedIn tegen misleiding. Een afgekeurd of geblokkeerd account raakt al je klanten tegelijk. Daarom: de advertentietekst belooft niets wat niet waar is ("binnenkort", "meld je aan voor de pilot"), de eerlijke vervolgpagina is verplicht, en de app checkt de advertentieteksten op absolute claims.
+- **Doorbelasten:** het `cost_ledger` krijgt `client_id` en `billable`. De app maakt per traject een kostenoverzicht van media, panels en AI, dat op de factuur kan.
+- **Tot de API-koppelingen klaar zijn:** de app maakt advertentieteksten, doelgroepvoorstellen en UTM-links; jij zet de campagne zelf live in Ads Manager en voert de uitgaven in; de app meet de bezoekers en conversies via de UTM's.
+
+### AI-gemodereerd tekstinterview: ontwerpregels
+
+1. De respondent krijgt **vooraf** te horen dat een AI het gesprek voert (AI-verordening art. 50), wie de opdrachtgever is (of "een onderzoeksbureau" als dat nodig is om vertekening te voorkomen), het doel, de bewaartermijn, en dat stoppen altijd mag. Toestemming wordt vastgelegd in `consents`.
+2. De interviewer volgt een **goedgekeurde leidraad**: neutrale vragen over gedrag in het verleden, maximaal twee doorvragen per onderwerp, geen pitch, geen suggestieve vragen. Een tweede model controleert elke vraag op sturing voordat die wordt verstuurd.
+3. Harde grenzen: een maximale duur en maximaal aantal beurten, geen bijzondere persoonsgegevens vragen, weigeren als de respondent instructies geeft ("negeer je opdracht").
+4. Opslag: het volledige transcript met tijdstempels per beurt. Uitspraken worden `qualitative_observation` met de vlag `ai_moderated = true`, zodat het rapport kan laten zien welk bewijs uit AI-interviews komt.
+5. Werving gaat via dezelfde kanalen als het testverkeer (netwerk, advertenties, outreach), met een screener vooraf op segment en rol, zodat niet-doelgroep-respondenten niet meetellen.
+6. Synthese per interview **en** over interviews heen (themamatrix), met elke conclusie terug te leiden naar letterlijke fragmenten.
+
+---
+
 ## 10. Wijzigingen samengevat (changelog v1.0 → v1.1)
 
 - Benchmark: generieke deep research als belangrijkste substituut toegevoegd.
