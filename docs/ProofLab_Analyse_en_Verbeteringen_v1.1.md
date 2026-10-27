@@ -460,3 +460,61 @@ Zonder een sleutel werkt het betreffende onderdeel in de eerlijke handmatige mod
 | Experimentencatalogus | **±40 zelf beschreven methodes met metadata; 7–9 volledig uitvoerbaar**, de rest als begeleide handmatige template. |
 | Aannamekaart | **Belangrijk × bewijs**; de bewijsas wordt berekend uit gekoppelde observaties. Afwijking van de mock-up, vastgelegd in `DESIGN_DIFF_LOG.md`. |
 | Ritmes | **Wekelijkse leersessie + besluitsessie met de klant**, met agenda en besluitvoorstel uit de app en **import van Fathom-notulen** (gekoppeld aan besluiten). |
+
+---
+
+## 12. Analyse van de "twintig verbeteringen" (externe review, 27 oktober 2026)
+
+### 12.1 Oordeel
+
+De review is sterk en komt op de belangrijkste punten onafhankelijk tot dezelfde conclusie als deze analyse: **eerst één volledig werkende route** (vergelijk §8, de walking skeleton), **verificatie per bewering**, **bottom-up marktomvang**, **onzekerheid bij kleine aantallen** en **gedrag zwaarder dan meningen**. Twee onafhankelijke analyses die op hetzelfde punt uitkomen, zijn een sterk signaal om de eerder gekozen "originele fasering" te herzien.
+
+Nieuw en waardevol in de review:
+
+| # | Verbetering | Waarom waardevol | Inpassing |
+|---|---|---|---|
+| 1 | **Begin met de beslissing** | Geeft elk onderzoek een doel en een stopcriterium. Past perfect bij consultancy: de beslisvraag van de klant *is* de opdracht. | Eerste intakevraag: "Welke beslissing wil je nemen?" + bedrag/tijd/budget + grootste onzekerheid. Wordt het hoofdstuk 1 van het rapport. |
+| 2 | **Adaptief traject per projecttype** | Voorkomt dat elk idee alle negen stappen doorloopt | Vijf projecttypes bepalen welke modules zichtbaar en verplicht zijn; de negen stappen blijven het datamodel. Te combineren met de branchesjablonen (§9c). |
+| 4 | **Inzichtkaart: "wat ondersteunt dit / wat bewijst dit nog niet"** | De beste concrete UI-vertaling van de gouden regel | Wordt het standaardcomponent `InsightCard` voor elke conclusie (vervangt losse `EvidenceChip`'s). |
+| 6 | **Onderzoeksplan met max. vijf beslissende vragen** | Stuurt het onderzoek op beslisrelevantie in plaats van volume; maakt "genoeg onderzocht" meetbaar | De `MarketScopeAgent` levert een onderzoekskaart; per vraag: benodigde data, geschikte bronnen, automatisch of klantonderzoek, en een *klaar-criterium*. M1–M9 worden ondersteunende categorieën, geen verplichte hoofdstukken. |
+| 13 | **Experimentkeuze op vijf criteria** (onzekerheidsreductie, bewijssterkte, kosten, duur, kan het de beslissing veranderen) | Maakt experimentontwerp toegankelijk zonder expertise | De aanbeveler toont drie opties *Snel / Sterker / Meest overtuigend* met uitleg. Criterium 5 sluit mooi aan op verbetering 1. |
+| 15 | **Verplichte Reality Check** | Tegenwicht tegen AI die enthousiast meewerkt | Verplicht vóór elk besluit en elk rapport; tussendoor licht (in de inzichtkaarten). Advies: Doorgaan / Bijsturen / Verder testen / Pauzeren / Stoppen. |
+| 16 | **Financiële haalbaarheid** (marge, CAC, klantwaarde, terugverdientijd, break-even) | Een grote markt is geen rendabel bedrijf | Deterministische rekenmodule naast TAM/SAM/SOM; elke invoer gekoppeld aan een claim of een "nog te toetsen"-label. Fase 2 van de review. |
+| 18 | **30 vaste testcases voor de AI** | Het verschil tussen een AI-app en een onderzoekssysteem | Uitbreiding van §6.5 (5–10 cases) naar 30, inclusief een bron met prompt-injectie, verkeerde geografie en tegenstrijdige cijfers; plus kosten per run. |
+| 20 | **Valideer ProofLab zelf eerst** | Consequent toepassen van de eigen methode | Zie §12.3: in het consultancymodel kan dat goedkoop en snel. |
+
+### 12.2 Spanningen met eerdere besluiten: die moeten worden beslist
+
+| Onderwerp | Eerder besluit | Review | Advies |
+|---|---|---|---|
+| **Voor wie** | Consultancytool voor Link & Lead; de klant kijkt mee en beslist mee | Gaat uit van een zelfstandige gebruiker ("zo min mogelijk werk voor de gebruiker", drie gebruiksniveaus, betalen voor een onderzoek) | **Nog een keuze nodig.** Beide kan, maar niet tegelijk in v1. In v1 is de consultant de gebruiker en is de eenvoud voor de klantweergave; zelfbediening is een latere stap, *als* de validatie (§12.3) dat ondersteunt. |
+| **Fasering** | Originele fasering v1.0 (eerst volledig marktonderzoek) | Eerst één complete route | **Overstappen op de route.** Twee analyses komen hier onafhankelijk op uit. |
+| **Advertenties** | LinkedIn + Meta via je eigen account | Geen automatische campagnes in de eerste versie | v1: advertenties *voorbereiden* (tekst, doelgroep, UTM-links) en resultaten meten; jij zet ze handmatig live. API-koppelingen later. De LinkedIn-aanvraag wel nu starten (doorlooptijd). |
+| **Catalogus** | ±40 beschreven, 7–9 uitvoerbaar | Geen grote bibliotheek in v1 | v1: **3 uitvoerbaar** (zoals de mock-up: landingspagina, interview, prijs-/aanbodtest) + ±10 beschreven met metadata voor de aanbeveler. Uitbreiden na de route. |
+| **AI-interviews** | AI-gemodereerde chat in de app | Klantonderzoek professionaliseren (werving, transcriptie, analyse) | In de eerste route: interviews **zelf voeren + transcript of notities uploaden + analyse**. Het AI-gemodereerde interview direct daarna (fase 2). |
+| **Ritmes/Fathom** | Weekritmes met Fathom-import | Samenwerking pas in een latere fase | Na de route; in v1 alleen besluitbevestiging door de klant. |
+| **Coach** | Mock-up: permanente derde kolom (bindend volgens CLAUDE.md) | Standaard ingeklapt, alleen actief als het iets toevoegt | Afwijking van de mock-up met een onderbouwde UX-reden → `DESIGN_DIFF_LOG.md`. Dat is toegestaan volgens CLAUDE.md §1. |
+
+### 12.3 Wat de review mist of te optimistisch ziet
+
+1. **"Zo min mogelijk werk" heeft een grens.** Sterk bewijs (gesprekken, aanmeldingen, aanbetalingen) vraagt echte mensen en dus echte inspanning en werving. ProofLab kan de overhead minimaliseren, niet het contact met klanten. De werving van testverkeer (§9b) staat niet in de review, maar is de belangrijkste praktische drempel.
+2. **Juridische randvoorwaarden** ontbreken: cookieloze meting, eerlijke fake-door-pagina's (ACM), AI-transparantie (art. 50), toestemming van respondenten, opslag van bronfragmenten (§5). Die horen al in de eerste route, omdat daarin een echte testpagina live gaat.
+3. **De vier claimstatussen** dekken *verouderd* niet. Voorstel: Geverifieerd · Onderbouwde schatting · Onvoldoende bewijs · Tegenstrijdige bronnen · **Verouderd** (opnieuw controleren). Technisch gemapt op §3.2.
+4. **"De oorspronkelijke bron vinden"** is niet altijd mogelijk (paywall, niet-openbaar rapport). De status moet dat dan eerlijk zeggen ("primaire bron niet toegankelijk; alleen secundair geciteerd") in plaats van te blijven zoeken.
+5. **ProofLab valideren in het consultancymodel** kan goedkoper dan een gebruikerstest met 10–15 mensen: verkoop 2–3 **betaalde** validatiesprints aan echte klanten en voer ze uit met de eerste route plus handwerk. Dat is precies de *concierge*-test uit het boek, toegepast op ProofLab zelf: betaling is het sterkste bewijs, en wat je bij elke klant opnieuw handmatig doet, is wat je daarna moet bouwen. Daarnaast: gebruik ProofLab op ProofLab zelf als eerste dossier (dogfooding) en als E2E-test.
+6. **Minder agents:** eens. De 13 agents uit v1.0 worden vier pijplijnstappen: *plannen → bronnen verzamelen en verifiëren → analyseren + Reality Check → rapporteren*, met deterministische controles ertussen.
+
+### 12.4 Geconsolideerd voorstel voor de eerste route (v1)
+
+**Belofte:** van beslisvraag naar onderbouwd besluit, met zichtbare kwaliteit van elk bewijsstuk.
+
+```text
+Beslisvraag → Idee & projecttype → Onderzoeksplan (≤5 vragen)
+→ Marktverkenning met verificatie per bewering (+ handmatige bronnen)
+→ Bottom-up marktomvang (scenario's) → Aannamekaart (belangrijk × bewijs)
+→ Eén experiment uit drie (landingspagina live met cookieloze meting | interview met transcriptupload | prijs-/aanbodtest)
+→ Bewijs met onzekerheid en bewijsladder → Reality Check → Besluit (klant bevestigt)
+→ Rapport (HTML + PDF) met bronnen, beperkingen en tegenbewijs
+```
+
+Uitgewerkt in vijf zichtbare stappen voor de gebruiker (Idee · Markt · Aanname · Test · Besluit), met de mock-upstijl als visuele basis. Klaar is het als het fictieve idee uit §16 van v1.0, **en** een tweede, totaal ander idee, **en** ProofLab zelf de hele route doorlopen met echte bronnen, een echte testpagina en een reproduceerbaar rapport, en de 30 AI-testcases slagen.
