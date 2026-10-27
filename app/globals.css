@@ -118,3 +118,4 @@ select.field{appearance:none;background-image:linear-gradient(45deg,transparent 
 .stepper button:disabled{cursor:default}
 .va-middle{vertical-align:middle}
 @media print{@page{size:A4;margin:18mm 16mm 20mm;@bottom-right{content:"Pagina " counter(page) " van " counter(pages);font-size:9px;color:#5f6879}}.report-section{break-inside:auto}.report-section h3{break-after:avoid}.table tr{break-inside:avoid}.coach-toggle,.toast{display:none!important}}
+@media(max-width:850px){.login-art:before{height:220px;width:220px;right:-90px;top:-120px;opacity:.55}}

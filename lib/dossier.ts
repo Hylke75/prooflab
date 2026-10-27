@@ -114,9 +114,11 @@ export function factsFrom(d: Dossier): DossierFacts {
   return {
     ideaAgeDays: Math.floor((Date.now() - new Date(d.idea.created_at).getTime()) / 86_400_000),
     clientDeciderInvited: d.members.some((m) => m.role === "client_decider"),
+    ideaRegion: d.idea.region,
     claims: d.claims.map((c) => ({
       status: c.status as ClaimStatus,
       section: c.section,
+      region: c.region,
       sourceTypes: (c.claim_sources ?? []).filter((s) => s.quote_check === "exact").map((s) => s.sources?.source_type ?? "other"),
     })),
     competitors: d.competitors.map((c) => ({ kind: c.kind })),

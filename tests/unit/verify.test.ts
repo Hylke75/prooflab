@@ -85,3 +85,12 @@ describe("claim status", () => {
     expect(registrableDomain("niet een url ::")).toBeNull();
   });
 });
+
+describe("number extraction edge cases", () => {
+  it("keeps a year and a following figure apart", () => {
+    expect(extractNumbers("In 2026 telde Nederland 41.230 vestigingen")).toEqual(["2026", "41230"]);
+  });
+  it("reads no-break-space thousands", () => {
+    expect(extractNumbers("1 200 bezoekers")).toEqual(["1200"]);
+  });
+});

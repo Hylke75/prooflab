@@ -75,6 +75,7 @@ describe("hypothesis coach", () => {
 describe("reality check", () => {
   const facts: DossierFacts = {
     ideaAgeDays: 30,
+    ideaRegion: "Nederland",
     clientDeciderInvited: false,
     claims: Array.from({ length: 12 }, () => ({ status: "estimate" as const, section: "market", sourceTypes: ["company_page"] })),
     competitors: [{ kind: "direct" }],

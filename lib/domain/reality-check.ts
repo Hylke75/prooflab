@@ -16,7 +16,8 @@ export type Finding = {
 export type DossierFacts = {
   ideaAgeDays: number;
   clientDeciderInvited: boolean;
-  claims: { status: ClaimStatus; section: string; sourceTypes: string[] }[];
+  ideaRegion: string;
+  claims: { status: ClaimStatus; section: string; sourceTypes: string[]; region?: string | null }[];
   competitors: { kind: string }[];
   sizing: { established: boolean; assumedFactors: number; totalFactors: number; revenueFactorSourced: boolean } | null;
   assumptions: { statement: string; importance: number; category: string; status: string; evidence: number; contradicting: number }[];
@@ -95,6 +96,11 @@ export function runRealityCheck(f: DossierFacts): RealityCheckResult {
     if (!independent) {
       add("no_independent_source", "warning", "Geen onafhankelijke marktbron",
         "Alle bevindingen steunen op bedrijfswebsites, nieuws of blogs. Voeg een officiële statistiek of onderzoeksrapport toe.");
+    }
+    const elsewhere = f.claims.filter((c) => c.region && regionMismatch(f.ideaRegion, c.region)).length;
+    if (elsewhere) {
+      add("other_region", "warning", `${elsewhere} bevinding(en) over een andere regio`,
+        `Het onderzoek gaat over ${f.ideaRegion}. Cijfers uit een andere regio zijn hooguit een analogie, geen marktbewijs.`);
     }
     const contested = f.claims.filter((c) => c.status === "contested").length;
     if (contested) {
@@ -201,6 +207,23 @@ export function runRealityCheck(f: DossierFacts): RealityCheckResult {
       "Onder welke uitkomst van de volgende test stoppen we?",
     ],
   };
+}
+
+const REGION_GROUPS: Record<string, string[]> = {
+  nederland: ["nederland", "nl", "netherlands", "holland", "randstad", "benelux", "europa", "eu", "europe", "wereldwijd", "global"],
+  benelux: ["benelux", "nederland", "belgië", "belgie", "luxemburg", "nl", "be", "europa", "eu", "europe", "wereldwijd", "global"],
+  europa: ["europa", "eu", "europe", "eurozone", "wereldwijd", "global"],
+  wereldwijd: ["wereldwijd", "global", "worldwide"],
+};
+
+// A finding about another market (e.g. US figures for a Dutch idea) does not count as evidence.
+export function regionMismatch(ideaRegion: string, claimRegion: string): boolean {
+  const idea = ideaRegion.toLowerCase();
+  const claim = claimRegion.toLowerCase();
+  const key = Object.keys(REGION_GROUPS).find((k) => idea.includes(k));
+  if (!key) return false;
+  if (claim.includes(idea.trim())) return false;
+  return !REGION_GROUPS[key].some((r) => new RegExp(`(^|[^a-z])${r}([^a-z]|$)`).test(claim));
 }
 
 function rank(s: Severity): number {

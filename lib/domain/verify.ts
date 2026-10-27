@@ -19,9 +19,11 @@ export function normalizeText(s: string): string {
 // "1.200" (nl thousands) → "1200", "1,5" → "1.5", "12,5%" → "12.5", "€ 3.400,00" → "3400".
 export function extractNumbers(s: string): string[] {
   const out: string[] = [];
-  const re = /\d[\d.,\s]*\d|\d/g;
+  // Thousands groups may use "." "," or a (narrow) no-break space; a regular space separates
+  // numbers, so "2026 41.230" stays two numbers.
+  const re = /\d{1,3}(?:[.,\u00a0\u202f]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?/g;
   for (const m of s.matchAll(re)) {
-    const raw = m[0].replace(/\s/g, "");
+    const raw = m[0].replace(/[\u00a0\u202f]/g, "");
     out.push(canonicalNumber(raw));
   }
   return out;
