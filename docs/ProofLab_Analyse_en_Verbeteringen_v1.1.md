@@ -518,3 +518,14 @@ Beslisvraag → Idee & projecttype → Onderzoeksplan (≤5 vragen)
 ```
 
 Uitgewerkt in vijf zichtbare stappen voor de gebruiker (Idee · Markt · Aanname · Test · Besluit), met de mock-upstijl als visuele basis. Klaar is het als het fictieve idee uit §16 van v1.0, **en** een tweede, totaal ander idee, **en** ProofLab zelf de hele route doorlopen met echte bronnen, een echte testpagina en een reproduceerbaar rapport, en de 30 AI-testcases slagen.
+
+### 12.5 Besluiten na de review (27 oktober 2026)
+
+| Vraag | Besluit | Vervangt |
+|---|---|---|
+| Doelgroep v1 | **Consultancytool**: Link & Lead is de gebruiker; klanten kijken mee en bevestigen besluiten. Zelfbediening later. | — (bevestiging van §9c) |
+| Fasering | **Eerst één complete route** (§12.4), daarna uitbreiden | "Originele fasering v1.0" uit §9a |
+| Experimenten in de route | **Alle drie uit de mock-up**: landingspagina live (cookieloos), interview met transcript-upload en analyse, prijs-/aanbodtest zonder echte betaling | ±40/7–9 uit §11.5: de catalogus volgt na de route |
+| Validatie van ProofLab | **ProofLab op ProofLab**: het eerste echte dossier in de app is ProofLab zelf, en dient ook als end-to-end-acceptatietest | — |
+
+Overige punten uit §12.2 volgen het advies: advertenties in v1 voorbereiden en meten (LinkedIn-aanvraag nu starten), AI-gemodereerd interview direct na de route, weekritmes/Fathom na de route, de coach standaard ingeklapt (vastgelegd in `DESIGN_DIFF_LOG.md`).
