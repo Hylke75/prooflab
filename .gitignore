@@ -43,3 +43,4 @@ next-env.d.ts
 # test artefacts
 /test-results
 /playwright-report
+!.env.example
