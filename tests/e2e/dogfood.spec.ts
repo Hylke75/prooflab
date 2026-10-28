@@ -99,11 +99,6 @@ const COMPETITORS: Competitor[] = [
     positioning: "Eigen aanname: consultants laten een AI-assistent een marktrapport schrijven en gebruiken dat als onderbouwing",
     weaknesses: "Eigen aanname: geen controle of citaten letterlijk in de bron staan; geen experimenten",
   },
-  {
-    name: "Niets doen: advies op ervaring", kind: "status_quo",
-    positioning: "Eigen aanname: de opdrachtgever beslist op basis van het advies en de ervaring van de consultant",
-    strengths: "Snel en zonder extra kosten",
-  },
 ];
 
 async function login(page: Page) {
@@ -222,6 +217,7 @@ test("dogfood: ProofLab op ProofLab", async ({ page }) => {
 
   // Every provider and alternative is on the comparison, with its source or an explicit unknown
   await page.goto(`${ideaUrl}/research?tab=competitors`);
-  await expect(page.locator(".competitor-row")).toHaveCount(COMPETITORS.length + 1);
+  // Header row plus the "niets doen" entry the intake creates itself
+  await expect(page.locator(".competitor-row")).toHaveCount(COMPETITORS.length + 2);
   console.log(`Dossier: ${ideaUrl}`);
 });
