@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { startTransition, useActionState, useEffect, useRef } from "react";
 
 export type FormState = { error: string | null; ok?: string | null };
 
@@ -31,7 +31,7 @@ export function ActionForm({
     if (resetOnSuccess && state.ok && !state.error) ref.current?.reset();
   }, [state, resetOnSuccess]);
   return (
-    <form ref={ref} action={formAction} className={className}>
+    <form ref={ref} action={formAction} className={className} onSubmit={(e) => keepValuesOnSubmit(e, formAction)}>
       {state.error && <div className="form-error" role="alert">{state.error}</div>}
       {state.ok && !state.error && <div className="form-ok" role="status">{state.ok}</div>}
       {children}
@@ -41,6 +41,16 @@ export function ActionForm({
       </div>
     </form>
   );
+}
+
+// React resets a form after every action, also when validation fails. Submitting through
+// startTransition keeps what the user typed; buttons with their own formAction keep the default path.
+export function keepValuesOnSubmit(e: React.FormEvent<HTMLFormElement>, run: (fd: FormData) => void) {
+  const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+  if (submitter?.getAttribute("formaction")) return;
+  e.preventDefault();
+  const fd = new FormData(e.currentTarget, submitter ?? undefined);
+  startTransition(() => run(fd));
 }
 
 export function ConfirmButton({ action, label, confirm, className = "btn white sm" }: { action: () => Promise<void>; label: string; confirm: string; className?: string }) {

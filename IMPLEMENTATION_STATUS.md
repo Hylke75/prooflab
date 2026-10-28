@@ -1,14 +1,14 @@
 # Implementation status
 
-Stand: 27 oktober 2026. Bouwvolgorde volgens het besluit "eerst één complete route" (analyse §12.4–12.5).
+Stand: 28 oktober 2026. Bouwvolgorde volgens het besluit "eerst één complete route" (analyse §12.4–12.5).
 Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van een externe stap · ⬜ nog niet gebouwd.
 
 ## Externe stappen die nog openstaan
 
 | Stap | Waarom | Wie |
 |---|---|---|
-| Migratie `security` (+ `system_observations`) toepassen op Supabase-project `prooflab` | Zonder deze migratie staat RLS uit en ontbreken de RPC's; de app kan dan niet onboarden | Toepassen na bevestiging in Supabase (vraag bleef onbeantwoord) |
-| Hash van `INGEST_SECRET` registreren in `ingest_keys` | Testpagina's tellen pas daarna bezoekers | Na de migratie |
+| ~~Migraties toepassen~~ | Gedaan 28-10: `core_schema`, `security`, `hardening` staan op project `prooflab`; ingest-sleutel geregistreerd | ✅ |
+| "Leaked password protection" aanzetten (Authentication → Passwords) | Enige resterende security-advieswaarschuwing die geen bewuste keuze is | Hylke |
 | `ANTHROPIC_API_KEY` als secret | AI-onderzoek, AI-aannames, interviewcodering, AI-vragen in de Reality Check | Hylke |
 | Eigen SMTP (bijv. Resend) in Supabase Auth | Uitnodigingen aan opdrachtgevers buiten het Supabase-team | Hylke |
 | Vercel-project + domein (na merkcheck) | Publieke testpagina's en app online | Hylke |
@@ -18,8 +18,8 @@ Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van e
 
 | Onderdeel | Status | Bewijs |
 |---|---|---|
-| Inloggen (wachtwoord, magic link, account), sessie via proxy, uitloggen | ✅ | E2E `public.spec.ts`; journey-spec na migratie |
-| Werkruimte aanmaken, klanten, opdrachtgevers uitnodigen (beslist mee / kijkt mee) | 🟡 | Code + RLS-tests; live na migratie |
+| Inloggen (wachtwoord, magic link, account), sessie via proxy, uitloggen | ✅ | E2E `public.spec.ts` + journey |
+| Werkruimte aanmaken, klanten, opdrachtgevers uitnodigen (beslist mee / kijkt mee) | ✅ | RLS-tests; live project (uitnodigingsmail vereist eigen SMTP) |
 | Intake: beslisvraag eerst, projecttype, branche, opdrachtgever | ✅ | Typecheck/build; E2E-journey |
 | Onderzoekskaart ≤ 5 vragen (sjabloon per projecttype en branche, AI-voorstel, bewerken) | ✅ / 🟡 AI | Unit `research plan templates` |
 | Bronnenbibliotheek: fragment i.p.v. volledig document, live paginacontrole (SSRF-beveiligd) | ✅ | `lib/fetch-page.ts` |
@@ -35,16 +35,16 @@ Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van e
 | Experimentaanbeveler (snel / sterker / meest overtuigend) met wat een test níét bewijst | ✅ | — |
 | Test Card met hypothesecoach, steekproefadvies, bereikcheck, kanalen | ✅ | Unit `hypothesis coach` |
 | Review → expliciete goedkeuring met controlepunten → vergrendeling → publicatie | ✅ | RLS-test `locks the hypothesis…` |
-| Publieke testpagina: geen cookies, eerlijke uitleg na klik, honeypot, botfilter, prijsvariant server-side | 🟡 | E2E-journey (controleert 0 cookies, ontdubbeling) na migratie |
+| Publieke testpagina: geen cookies, eerlijke uitleg na klik, honeypot, botfilter, prijsvariant server-side | ✅ | E2E-journey controleert 0 cookies en ontdubbeling |
 | Ingest via RPC met sleutel, ontdubbeld per bezoeker/dag | ✅ | RLS-test `only accepts deduplicated test events…` |
 | Live meting per kanaal en per prijspunt; geen oordeel vóór de eindconditie | ✅ | Unit `pre-registered verdict`, eval #18–#23 |
 | Interviews: toestemming verplicht, pseudoniem, DMU-rol, bekenden, codering met letterlijk citaat, AI-codering | ✅ / 🟡 AI | — |
-| Learning Card (concept uit ruwe metingen, bewerken, goedkeuren → status aanname) | ✅ | E2E-journey na migratie |
+| Learning Card (concept uit ruwe metingen, bewerken, goedkeuren → status aanname) | ✅ | E2E-journey |
 | Bewijsladder en sterkte langs vier dimensies; synthetisch telt nooit | ✅ | Unit + eval #16 |
 | Reality Check (regels altijd, AI-vragen optioneel), blokkades, verouderde check na nieuw bewijs | ✅ | Unit `reality check`, eval #24–#30 |
 | Besluit (5 opties) met motivering; opdrachtgever bevestigt; besluiten onveranderlijk | ✅ | RLS-test `keeps decisions immutable…` |
 | Dossierlabels op controleerbare regels | ✅ | Unit `dossier labels` |
-| Rapport: onveranderlijke versies, bronvoetnoten, ruwe aantallen, intervallen, beperkingen, tegenargumenten, besluit, methode; print/PDF; JSON-export | ✅ | E2E-journey na migratie |
+| Rapport: onveranderlijke versies, bronvoetnoten, ruwe aantallen, intervallen, beperkingen, tegenargumenten, besluit, methode; print/PDF; JSON-export | ✅ | E2E-journey |
 | Coach: inhoud berekend uit dossierstand; vraagveld met AI | ✅ / 🟡 AI | — |
 | Audit trail, AI-gebruikslog (model, promptversie, tokens, kosten) | ✅ | RLS-test controleert audit |
 
@@ -52,7 +52,7 @@ Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van e
 
 - [x] Kleuren, typografie, kaarten en layout uit de HTML (CSS letterlijk overgenomen; afwijkingen in DESIGN_DIFF_LOG)
 - [x] Intake, tabs, filters, rekenmodule, risicokaart, experimentselectie en besluit werken
-- [x] Mobiel: drawer, coach als slide-over, één kolom (CSS uit mock-up; E2E `@mobile` na migratie)
+- [x] Mobiel: drawer, coach als slide-over, één kolom (E2E `@mobile` slaagt; geen horizontale overloop op 320/390 px)
 - [x] Elke bevinding toont bron en citaat of is zichtbaar onvoldoende onderbouwd
 - [x] Een AI-bewering telt nooit als klantbewijs
 - [x] Ruwe observaties en rapporten blijven herleidbaar (snapshots, audit)
@@ -66,9 +66,9 @@ Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van e
 - [x] Cross-tenant lezen/schrijven geweigerd (RLS-tests)
 - [x] Publiceren of extern versturen alleen na menselijke goedkeuring
 - [x] Bronnen zijn data, geen instructies (systeemprompt + geen tools bij extractie + letterlijke citaatcontrole; eval #14)
-- [ ] E2E-journey idee → onderzoek → risico → test → bewijs → besluit → rapport tegen het echte project (geschreven in `tests/e2e/journey.spec.ts`; draait zodra de migratie staat)
-- [ ] Visuele controle 1440/768/390/320 van alle ingelogde schermen (na migratie)
-- [ ] Dogfood-dossier "ProofLab op ProofLab" in de app (na migratie)
+- [x] E2E-journey idee → onderzoek → risico → test → bewijs → besluit → rapport tegen het echte Supabase-project (`tests/e2e/journey.spec.ts`, 1,1 min)
+- [x] Visuele controle 1440/768/390/320 van alle ingelogde schermen; overloop opgelost (DESIGN_DIFF_LOG #17)
+- [ ] Dogfood-dossier "ProofLab op ProofLab" in de app
 
 ## Testresultaten (laatste run)
 
@@ -77,7 +77,15 @@ Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van e
 - `npm test` — 71 geslaagd, 3 overgeslagen (live eval zonder API-sleutel)
 - `npm run test:db` — 6 geslaagd (RLS, vergrendeling, state machine, ingest, besluiten, audit)
 - `npm run build` — geslaagd (20 routes)
-- `npx playwright test tests/e2e/public.spec.ts` — 3 geslaagd
+- `npx playwright test` — 5 geslaagd (journey desktop, mobiel, 3 publiek) tegen het echte project
+- Supabase security advisors na hardening: alleen bewuste uitzonderingen (publieke test-RPC's met ingest-sleutel, RLS-helpers) + leaked password protection (instelling)
+
+## Gevonden en opgelost tijdens de live E2E
+
+- Formulieren werden na verzenden door React leeggemaakt, waardoor de intake bij een fout invoer verloor (`keepValuesOnSubmit`)
+- Intake: de knop "Volgende" wisselde tijdens de klik van type en verstuurde te vroeg
+- Bevinding toevoegen: een verouderde fragmentselectie na het toevoegen van een nieuw fragment
+- Contrast loginpagina op mobiel; horizontale overloop op smalle schermen
 
 ## Nog niet gebouwd (na de route)
 

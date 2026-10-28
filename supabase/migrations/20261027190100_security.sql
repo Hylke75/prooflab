@@ -124,6 +124,7 @@ create policy idea_members_delete on public.idea_members for delete to authentic
   using (public.can_write_idea(idea_id));
 
 -- Idea-scoped tables that clients may read and consultants may change.
+-- Reports are immutable snapshots: they get no update policy.
 do $$
 declare t text;
 begin
@@ -135,13 +136,12 @@ begin
   ] loop
     execute format('create policy %I on public.%I for select to authenticated using (public.can_read_idea(idea_id))', t || '_select', t);
     execute format('create policy %I on public.%I for insert to authenticated with check (public.can_write_idea(idea_id))', t || '_insert', t);
-    execute format('create policy %I on public.%I for update to authenticated using (public.can_write_idea(idea_id)) with check (public.can_write_idea(idea_id))', t || '_update', t);
     execute format('create policy %I on public.%I for delete to authenticated using (public.can_write_idea(idea_id))', t || '_delete', t);
+    if t <> 'reports' then
+      execute format('create policy %I on public.%I for update to authenticated using (public.can_write_idea(idea_id)) with check (public.can_write_idea(idea_id))', t || '_update', t);
+    end if;
   end loop;
 end $$;
-
--- Reports are immutable snapshots: no updates.
-drop policy reports_update on public.reports;
 
 -- Sensitive raw data: consultants only (clients see aggregates and pseudonymised quotes).
 create policy research_tasks_select on public.research_tasks for select to authenticated
@@ -163,8 +163,14 @@ create policy interviews_all on public.interviews for all to authenticated
 
 create policy observations_select on public.observations for select to authenticated
   using (public.can_read_idea(idea_id));
+-- System observations summarise a finished experiment and only attach to ended ones.
 create policy observations_insert on public.observations for insert to authenticated
-  with check (public.can_write_idea(idea_id) and origin <> 'system');
+  with check (
+    public.can_write_idea(idea_id) and (
+      origin <> 'system'
+      or exists (select 1 from public.experiments e where e.id = observations.experiment_id and e.state in ('ended', 'analyzed'))
+    )
+  );
 -- Raw observations are never rewritten; manual ones may be removed by consultants.
 create policy observations_delete on public.observations for delete to authenticated
   using (public.can_write_idea(idea_id) and origin = 'manual');
@@ -187,7 +193,6 @@ create policy ai_runs_insert on public.ai_runs for insert to authenticated
 -- Grants: anon gets no table access at all.
 -- ---------------------------------------------------------------------------
 
-revoke all on all tables in schema public from anon;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
 
@@ -421,7 +426,6 @@ create table public.ingest_keys (
   created_at timestamptz not null default now()
 );
 alter table public.ingest_keys enable row level security;
-revoke all on public.ingest_keys from anon, authenticated;
 
 create or replace function public.ingest_key_ok(p_key text)
 returns boolean language sql stable security definer set search_path = '' as $$
@@ -495,13 +499,6 @@ begin
   return v_rows > 0;
 end $$;
 
--- Function privileges: everything private by default, then open what is needed.
-revoke execute on all functions in schema public from public, anon;
-grant execute on function
-  public.is_org_member(uuid), public.is_org_owner(uuid), public.can_write_idea(uuid), public.can_read_idea(uuid),
-  public.create_organization(text), public.claim_invitations(), public.confirm_decision(uuid, text),
-  public.get_public_test(text)
-  to authenticated;
 grant execute on function
   public.get_public_test(text),
   public.record_test_event(text, text, text, text, text, text),

@@ -119,3 +119,7 @@ select.field{appearance:none;background-image:linear-gradient(45deg,transparent 
 .va-middle{vertical-align:middle}
 @media print{@page{size:A4;margin:18mm 16mm 20mm;@bottom-right{content:"Pagina " counter(page) " van " counter(pages);font-size:9px;color:#5f6879}}.report-section{break-inside:auto}.report-section h3{break-after:avoid}.table tr{break-inside:avoid}.coach-toggle,.toast{display:none!important}}
 @media(max-width:850px){.login-art:before{height:220px;width:220px;right:-90px;top:-120px;opacity:.55}}
+/* Smalle schermen: niets mag breder worden dan het scherm (zie DESIGN_DIFF_LOG #17) */
+.data-row>*{min-width:0;overflow-wrap:anywhere}.card{min-width:0;overflow-wrap:anywhere}
+@media(max-width:850px){.grid-2{grid-template-columns:minmax(0,1fr)}.topbar>div:first-child{min-width:0}.crumb{min-width:0}.crumb strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+@media(max-width:560px){.ideas,.grid-3,.research-kpis,.exp-options,.double-field,.choice-grid,.insight-grid,.factor{grid-template-columns:minmax(0,1fr)}.crumb>span{display:none!important}.section-title{flex-wrap:wrap}.pill{white-space:normal;max-width:100%}.table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}}

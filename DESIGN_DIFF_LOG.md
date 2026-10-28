@@ -22,3 +22,4 @@ blok in dezelfde visuele taal.
 | 14 | Coach | Vaste tips per scherm | Zelfde paneel en layout; inhoud berekend uit de stand van het dossier; vraagveld werkt alleen met AI-koppeling | Review #5: reageren op het project, niet op vaste tips |
 | 15 | Loginpagina (mobiel) | n.v.t. | Koraalcirkel kleiner en transparanter | Witte kop over koraal haalde geen AA-contrast |
 | 16 | Nieuwe schermen | — | Inloggen, klanten, help, experimentdetail, publieke testpagina, Learning Cards, rapportversies | Nodig voor een werkende route; opgebouwd uit bestaande componenten |
+| 17 | Smalle schermen (≤ 560 px) | Kruimelpad volledig, pills op één regel, tabellen op volle breedte | Alleen de laatste kruimel (afgekapt met …), pills mogen afbreken, tabellen scrollen binnen hun kaart, grids met `minmax(0,1fr)` | Op 320–390 px schoof de pagina horizontaal (12–152 px); nu nergens overloop, gemeten op alle ingelogde schermen |

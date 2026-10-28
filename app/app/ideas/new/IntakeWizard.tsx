@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { keepValuesOnSubmit } from "@/components/ui/ActionForm";
 import { PROJECT_TYPES, SECTOR_TEMPLATES } from "@/lib/domain/labels";
 import { createIdea, type IntakeState } from "./actions";
 
@@ -34,7 +35,7 @@ export function IntakeWizard({ clients }: { clients: Client[] }) {
   const vis = (i: number) => ({ display: shownStep === i ? "block" : "none" });
 
   return (
-    <form action={action} className="card intake-form" noValidate>
+    <form action={action} className="card intake-form" noValidate onSubmit={(e) => keepValuesOnSubmit(e, action)}>
       {state.error && <div className="form-error" role="alert">{state.error}</div>}
 
       <div style={vis(0)}>
@@ -154,11 +155,11 @@ export function IntakeWizard({ clients }: { clients: Client[] }) {
           ← Vorige
         </button>
         {shownStep < STEPS.length - 1 ? (
-          <button type="button" className="btn primary" onClick={() => setStep(shownStep + 1)}>
+          <button key="next" type="button" className="btn primary" onClick={() => setStep(shownStep + 1)}>
             Volgende stap <Icon name="arrow" size="sm" />
           </button>
         ) : (
-          <button type="submit" className="btn primary" disabled={pending}>
+          <button key="submit" type="submit" className="btn primary" disabled={pending}>
             {pending ? "Dossier aanmaken…" : "Start de marktverkenning"} <Icon name="arrow" size="sm" />
           </button>
         )}

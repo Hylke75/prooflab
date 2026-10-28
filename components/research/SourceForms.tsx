@@ -60,7 +60,9 @@ type Excerpt = { id: string; text: string; sourceTitle: string };
 type Question = { id: string; position: number; question: string };
 
 export function AddClaimForm({ action, excerpts, questions }: { action: Action; excerpts: Excerpt[]; questions: Question[] }) {
-  const [excerptId, setExcerptId] = useState(excerpts[0]?.id ?? "");
+  const [chosen, setExcerptId] = useState(excerpts[0]?.id ?? "");
+  // New sources arrive via revalidation; fall back to the newest one when nothing valid is chosen.
+  const excerptId = excerpts.some((e) => e.id === chosen) ? chosen : (excerpts[0]?.id ?? "");
   const [quote, setQuote] = useState("");
   const [statement, setStatement] = useState("");
   const [stance, setStance] = useState<"supports" | "contradicts">("supports");
