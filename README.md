@@ -64,6 +64,7 @@ uitnodigingen aan opdrachtgevers een eigen SMTP-provider in (bijv. Resend) onder
 npm run check            # lint + typecheck + unit + eval (deterministisch)
 npm run test:db          # RLS- en integriteitstests tegen een lokale Postgres (PGHOST/PGPORT)
 npm run test:e2e         # Playwright; E2E_EMAIL/E2E_PASSWORD van een bevestigde testgebruiker
+npm run dogfood          # zet het dossier "ProofLab op ProofLab" via de UI in de werkruimte van DOGFOOD_EMAIL
 EVAL_LIVE=1 npm test     # 30 praktijkcases, live tegen het model (kost geld; vereist ANTHROPIC_API_KEY)
 ```
 

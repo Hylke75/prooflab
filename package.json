@@ -11,7 +11,8 @@
     "test": "vitest run tests/unit tests/eval",
     "test:db": "scripts/test-db.sh",
     "test:e2e": "playwright test",
-    "check": "npm run lint && npm run typecheck && npm test"
+    "check": "npm run lint && npm run typecheck && npm test",
+    "dogfood": "DOGFOOD=1 playwright test tests/e2e/dogfood.spec.ts --project=desktop"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
