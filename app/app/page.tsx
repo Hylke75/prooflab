@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { PageFrame } from "@/components/shell/PageFrame";
-import { SprintCard, calendarDate } from "@/components/sprint/SprintCard";
+import { SprintCard, UnplannedSprints, calendarDate } from "@/components/sprint/SprintCard";
 import { getWorkspace, type Workspace } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadAssumptions, loadProgress } from "@/lib/progress";
@@ -185,11 +185,16 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
             <h2>Sprintplanning</h2>
             <span className="pill gray">Onderzoek · aannames · testen · besluit</span>
           </div>
-          <div className="sprints">
-            {sprintIdeas.map(({ idea, p }) => (
-              <SprintCard key={idea.id} idea={idea} progress={p} canWrite today={today} />
-            ))}
-          </div>
+          {sprintIdeas.some(({ idea }) => idea.sprint_start) && (
+            <div className="sprints">
+              {sprintIdeas
+                .filter(({ idea }) => idea.sprint_start)
+                .map(({ idea, p }) => (
+                  <SprintCard key={idea.id} idea={idea} progress={p} canWrite today={today} />
+                ))}
+            </div>
+          )}
+          <UnplannedSprints ideas={sprintIdeas.filter(({ idea }) => !idea.sprint_start).map(({ idea }) => idea)} today={today} />
         </>
       )}
 

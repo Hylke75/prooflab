@@ -57,7 +57,7 @@ select.field{appearance:none;background-image:linear-gradient(45deg,transparent 
 /* InsightCard: every conclusion shows what it supports and what it does not prove yet. */
 .insight{border:1px solid var(--line);border-radius:16px;padding:16px 17px;background:#fff}
 .insight-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
-.insight-head h4{font-size:13px;font-weight:800;line-height:1.4}
+.insight-head h4,.insight-head h3.insight-title{font-size:13px;font-weight:800;line-height:1.4;font-family:inherit;letter-spacing:normal}
 .insight-meta{font-size:11px;color:#5f6879;margin-top:6px}
 .insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
 .insight-grid div{background:#f7f8f6;border-radius:11px;padding:10px 12px}
@@ -133,7 +133,7 @@ a:focus-visible,select:focus-visible,summary:focus-visible,[tabindex]:focus-visi
 .round-btn::after,.top-avatar::after,.text-link::after,.risk-dot::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
 .check-row{min-height:44px;margin:4px 0;padding:6px 0}
 .check-row input{margin-top:2px}
-.idea-foot>span:last-child{white-space:nowrap;flex:none;margin-left:10px}
+.idea-foot>span:last-child{white-space:nowrap;flex:none;margin-left:10px;display:inline-flex;align-items:center;gap:4px}
 .sidebar-close{display:none}
 @media(max-width:1160px){.coach{visibility:hidden;transition:transform .25s,visibility 0s .25s}.coach.open{visibility:visible;transition:transform .25s}}
 @media(max-width:850px){.sidebar{visibility:hidden;transition:transform .25s,visibility 0s .25s}.sidebar.open{visibility:visible;transition:transform .25s}.sidebar-close{display:grid;position:absolute;right:14px;top:22px;background:#242b3a;border-color:#394152;color:#e9edf4}}
@@ -182,6 +182,9 @@ h2.as-h3,.section-title h2.as-h3{font-size:19px;line-height:1.25}
 .sprint-foot{gap:6px}
 .sprint-form .double-field{gap:10px}
 .sprint-form .field-label{margin-top:12px}
+.sprint-todo{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--line);font-size:12px;position:relative}
+.sprint-todo:last-child{border:0}
+.sprint-todo .sprint-pop{top:calc(100% - 4px)}
 .sprints{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:31px}
 @media(max-width:560px){.sprints{grid-template-columns:minmax(0,1fr)}.sprint-track{grid-auto-flow:row;grid-auto-columns:auto;grid-template-columns:repeat(2,minmax(0,1fr))}.sprint-strip .sprint-plan{margin-left:0}.sprint-pop{left:0;right:auto}}
 /* Clients page: one row per invited stakeholder */
@@ -206,6 +209,7 @@ h2.as-h3,.section-title h2.as-h3{font-size:19px;line-height:1.25}
 .glossary dt{font-weight:800;font-size:13px;margin-top:14px}
 .glossary dd{margin:3px 0 0;color:#5f6879;font-size:13px;line-height:1.6}
 /* Risk map: deterministic spread, cluster badges, axis labels outside the plotting area */
+.assumption-item .count{flex:none}
 .risk-dot{margin:-19.5px 0 0 -19.5px}
 .risk-dot.cluster{background:var(--ink);color:#fff;font-size:12px}
 .risk-axis{display:flex;justify-content:space-between;gap:10px;font-size:10px;font-weight:800;color:#5f6879;text-transform:uppercase;margin:-8px 0 12px}

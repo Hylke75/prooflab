@@ -137,3 +137,28 @@ export function SprintStrip({ idea, progress, canWrite, today }: { idea: SprintI
     </div>
   );
 }
+
+// Ideas without a planned sprint, as one compact list with a plan action per idea.
+export function UnplannedSprints({ ideas, today }: { ideas: SprintIdea[]; today: string }) {
+  if (ideas.length === 0) return null;
+  return (
+    <div className="card tight">
+      <div className="tiny sprint-kicker">Nog geen sprint gepland</div>
+      <p className="tiny mt-8">Een vaste sprint van 4 tot 6 weken geeft het traject een weekplanning en een rapportdatum.</p>
+      {ideas.map((idea) => (
+        <div className="sprint-todo" key={idea.id}>
+          <Link className="text-link" style={{ fontSize: 13, color: "var(--ink)" }} href={`/app/ideas/${idea.id}`}>{idea.title}</Link>
+          <span className="row" style={{ gap: 8 }}>
+            <Deadline date={idea.decision_deadline} today={today} />
+            <details className="sprint-plan">
+              <summary className="btn white sm">Plan de sprint</summary>
+              <div className="sprint-pop">
+                <SprintPlanForm action={setSprint.bind(null, idea.id)} today={today} compact />
+              </div>
+            </details>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}

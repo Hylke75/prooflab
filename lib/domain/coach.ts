@@ -231,6 +231,9 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
       else if (reportStale(p)) insight = ["Let hierop", "Het laatste besluit staat nog niet in een rapportversie."];
       break;
     }
+    case "dashboard":
+      add("Nieuw idee onderzoeken", "/app/ideas/new", "plus");
+      break;
     default:
       break;
   }
