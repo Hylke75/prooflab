@@ -356,17 +356,18 @@ export async function saveScenario(ideaId: string, scenarioId: string, _: Action
   const supabase = await supabaseServer();
   const { data: factors } = await supabase.from("sizing_factors").select("id, key, unit").eq("scenario_id", scenarioId).eq("idea_id", ideaId);
   for (const f of factors ?? []) {
-    const raw = String(form.get(`value_${f.key}`) ?? "").replace(",", ".");
-    const value = Number(raw);
-    if (!Number.isFinite(value) || value < 0) return { error: "Alle waarden moeten positieve getallen zijn." };
+    // Same reading as quotes: "41.230" is forty-one thousand, "2,5" is two and a half.
+    const value = numericFromInput(String(form.get(`value_${f.key}`) ?? ""));
+    if (value == null || value < 0) return { error: "Alle waarden moeten positieve getallen zijn." };
     if (f.unit === "percent" && value > 100) return { error: "Percentages liggen tussen 0 en 100." };
     const claim = String(form.get(`claim_${f.key}`) ?? "");
     await supabase
       .from("sizing_factors")
       .update({ value, claim_id: /^[0-9a-f-]{36}$/.test(claim) ? claim : null, note: blank(form.get(`note_${f.key}`)) })
-      .eq("id", f.id);
+      .eq("id", f.id)
+      .eq("idea_id", ideaId);
   }
-  await supabase.from("sizing_scenarios").update({ updated_at: new Date().toISOString() }).eq("id", scenarioId);
+  await supabase.from("sizing_scenarios").update({ updated_at: new Date().toISOString() }).eq("id", scenarioId).eq("idea_id", ideaId);
   return done(ideaId, "Scenario opgeslagen.");
 }
 

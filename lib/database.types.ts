@@ -1859,6 +1859,7 @@ export type Database = {
         Returns: { channel: string; variant: string; viewers: number; clickers: number; submitters: number }[]
       }
       mark_report_viewed: { Args: { p_report: string }; Returns: boolean }
+      may_create_account: { Args: { p_email: string; p_key: string }; Returns: boolean }
       observations_for_idea: {
         Args: { p_idea: string }
         Returns: {

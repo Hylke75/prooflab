@@ -385,4 +385,19 @@ d("row level security and integrity rules", () => {
     );
     expect(n).toBeGreaterThanOrEqual(2);
   });
+  it("creates accounts by invitation or allowlist only", async () => {
+    const invited = `uitgenodigd-${randomUUID()}@example.com`;
+    await as(alice, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_viewer')", [A.idea, invited]));
+    await db.query("insert into public.signup_allowlist (entry) values ('@bureau.example') on conflict do nothing");
+    const may = async (email: string) =>
+      as("anon", async (c) => (await c.query("select public.may_create_account($1, $2) as ok", [ingestKey, email])).rows[0].ok);
+    expect(await may(invited)).toBe(true);
+    expect(await may("collega@bureau.example")).toBe(true);
+    expect(await may("vreemde@elders.example")).toBe(false);
+    await expect(as("anon", (c) => c.query("select public.may_create_account('fout', $1)", [invited]))).rejects.toThrow(/FORBIDDEN/);
+    const hook = (await db.query("select public.hook_before_user_created($1) as r", [{ user: { email: "vreemde@elders.example" } }])).rows[0].r;
+    expect(hook.error.http_code).toBe(403);
+    const ok = (await db.query("select public.hook_before_user_created($1) as r", [{ user: { email: invited } }])).rows[0].r;
+    expect(ok).toEqual({});
+  });
 });

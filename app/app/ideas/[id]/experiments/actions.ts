@@ -132,7 +132,7 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
     .select("id")
     .single();
   if (error || !exp) return { error: "Het experiment kon niet worden opgeslagen." };
-  await supabase.from("assumptions").update({ status: "testing" }).eq("id", v.assumption_id).eq("status", "untested");
+  await supabase.from("assumptions").update({ status: "testing" }).eq("id", v.assumption_id).eq("idea_id", ideaId).eq("status", "untested");
   refresh(ideaId);
   redirect(`/app/ideas/${ideaId}/experiments/${exp.id}`);
 }
@@ -174,7 +174,7 @@ export async function deleteDraft(ideaId: string, expId: string) {
   const supabase = await supabaseServer();
   const { data: exp } = await supabase.from("experiments").select("state, hypothesis_id").eq("id", expId).eq("idea_id", ideaId).single();
   if (!exp || !["draft", "ready_for_review"].includes(exp.state)) return;
-  await supabase.from("experiments").delete().eq("id", expId);
+  await supabase.from("experiments").delete().eq("id", expId).eq("idea_id", ideaId);
   await supabase.from("hypotheses").delete().eq("id", exp.hypothesis_id).is("locked_at", null);
   refresh(ideaId);
   redirect(`/app/ideas/${ideaId}/experiments`);

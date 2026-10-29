@@ -63,7 +63,7 @@ export async function linkClaim(ideaId: string, assumptionId: string, _: ActionS
 export async function unlinkClaim(ideaId: string, assumptionId: string, claimId: string) {
   await requireWritableIdea(ideaId);
   const supabase = await supabaseServer();
-  await supabase.from("assumption_claims").delete().eq("assumption_id", assumptionId).eq("claim_id", claimId);
+  await supabase.from("assumption_claims").delete().eq("assumption_id", assumptionId).eq("claim_id", claimId).eq("idea_id", ideaId);
   refresh(ideaId);
 }
 

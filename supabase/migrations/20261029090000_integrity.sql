@@ -117,6 +117,21 @@ create trigger sources_refs before insert or update on public.sources
 create trigger decisions_refs before insert on public.decisions
   for each row execute function public.check_idea_refs('experiment_id', 'experiments', 'reality_check_id', 'reality_checks');
 
+-- An idea can only be linked to a client of its own organisation.
+create or replace function public.check_idea_client()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if new.client_id is not null and not exists (
+    select 1 from public.clients c where c.id = new.client_id and c.org_id = new.org_id
+  ) then
+    raise exception 'IDEA_MISMATCH: deze opdrachtgever hoort niet bij deze werkruimte' using errcode = 'P0001';
+  end if;
+  return new;
+end $$;
+
+create trigger ideas_client_ref before insert or update of client_id, org_id on public.ideas
+  for each row execute function public.check_idea_client();
+
 -- ---------------------------------------------------------------------------
 -- 3. Immutable evidence
 -- ---------------------------------------------------------------------------
@@ -760,10 +775,67 @@ grant execute on function
   public.get_public_test(text), public.add_research_cost(uuid, numeric), public.org_ai_spend(uuid),
   public.experiment_event_counts(uuid), public.mark_report_viewed(uuid), public.observations_for_idea(uuid)
   to authenticated;
-revoke execute on function public.purge_expired_personal_data(), public.ingest_allowed(text), public.check_idea_refs(),
+revoke execute on function public.purge_expired_personal_data(), public.ingest_allowed(text), public.check_idea_refs(), public.check_idea_client(),
   public.audit_row() from authenticated;
 grant execute on function
   public.get_public_test(text),
   public.record_test_event(text, text, text, text, text, text, text),
   public.submit_test_form(text, text, text, text, text, text, jsonb, boolean, text, text)
   to anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 11. Accounts by invitation only
+-- ---------------------------------------------------------------------------
+-- New accounts are allowed for invited client e-mail addresses and for entries on the allowlist
+-- (an exact address, or "@domain.nl" for a whole consultancy). The app checks this before sending a
+-- sign-in link; the auth hook below enforces it for direct calls to Supabase Auth as well
+-- (enable it under Authentication → Hooks → "Before user created").
+
+create table if not exists public.signup_allowlist (
+  entry text primary key check (entry = lower(entry) and (entry like '@%.%' or entry like '%@%.%')),
+  note text,
+  created_at timestamptz not null default now()
+);
+alter table public.signup_allowlist enable row level security;
+
+create or replace function public.email_may_sign_up(p_email text)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.idea_members im where lower(im.email) = lower(btrim(p_email)) and im.user_id is null)
+      or exists (select 1 from public.signup_allowlist a
+                 where a.entry = lower(btrim(p_email)) or lower(btrim(p_email)) like '%' || a.entry);
+$$;
+
+-- Server-only check (guarded by the ingest secret, so it cannot be used to probe invitations).
+create or replace function public.may_create_account(p_key text, p_email text)
+returns boolean language plpgsql stable security definer set search_path = '' as $$
+begin
+  if not public.ingest_key_ok(p_key) then
+    raise exception 'FORBIDDEN' using errcode = 'P0001';
+  end if;
+  return public.email_may_sign_up(p_email);
+end $$;
+
+create or replace function public.hook_before_user_created(event jsonb)
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
+begin
+  if public.email_may_sign_up(coalesce(event->'user'->>'email', '')) then
+    return '{}'::jsonb;
+  end if;
+  return jsonb_build_object('error', jsonb_build_object(
+    'http_code', 403,
+    'message', 'ProofLab werkt op uitnodiging. Vraag je adviseur om een uitnodiging.'));
+end $$;
+
+revoke all on public.signup_allowlist from anon, authenticated;
+revoke execute on function public.email_may_sign_up(text), public.hook_before_user_created(jsonb) from public, anon, authenticated;
+revoke execute on function public.may_create_account(text, text) from public, authenticated;
+grant execute on function public.may_create_account(text, text) to anon;
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'supabase_auth_admin') then
+    grant execute on function public.hook_before_user_created(jsonb) to supabase_auth_admin;
+    grant execute on function public.email_may_sign_up(text) to supabase_auth_admin;
+    grant usage on schema public to supabase_auth_admin;
+    grant select on public.idea_members, public.signup_allowlist to supabase_auth_admin;
+  end if;
+end $$;
