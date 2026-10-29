@@ -58,10 +58,22 @@ insert into public.ingest_keys (key_hash) values (encode(extensions.digest('<ING
 E-mail: de standaard-SMTP van Supabase verstuurt alleen naar teamleden van het Supabase-project. Stel voor
 uitnodigingen aan opdrachtgevers een eigen SMTP-provider in (bijv. Resend) onder Authentication → SMTP.
 
+Toegang op uitnodiging, eenmalig in het Supabase-dashboard:
+
+1. **Authentication → Hooks → Before user created**: kies de Postgres-functie `public.hook_before_user_created`.
+   Alleen uitgenodigde adressen en adressen op de toegangslijst kunnen dan een account aanmaken.
+2. **Authentication → Email Templates → Magic Link**: laat de link wijzen naar
+   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next={{ .RedirectTo }}`, zodat een uitnodiging
+   op elk apparaat werkt.
+3. Consultants op de toegangslijst zetten: `insert into public.signup_allowlist (entry) values ('@jouwbureau.nl');`
+   (of een exact e-mailadres).
+
+Het AI-maandbudget per werkruimte staat in `organizations.ai_monthly_cap_usd` (standaard $50).
+
 ## Tests
 
 ```bash
-npm run check            # lint + typecheck + unit + eval (deterministisch)
+npm run check            # lint + typecheck + unit + eval (deterministisch); CI draait dit plus test:db en build
 npm run test:db          # RLS- en integriteitstests tegen een lokale Postgres (PGHOST/PGPORT)
 npm run test:e2e         # Playwright; E2E_EMAIL/E2E_PASSWORD van een bevestigde testgebruiker
 npm run dogfood          # zet het dossier "ProofLab op ProofLab" via de UI in de werkruimte van DOGFOOD_EMAIL
