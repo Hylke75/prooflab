@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { supabaseServer } from "@/lib/supabase/server";
+import { supabaseAnon, supabaseServer } from "@/lib/supabase/server";
 import { getWorkspace, requireWritableIdea } from "@/lib/data";
 import { env } from "@/lib/env";
 
@@ -51,10 +51,7 @@ export async function inviteStakeholder(ideaId: string, _: ActionState, form: Fo
   if (error) return { error: "Uitnodigen mislukt." };
   let mail = "";
   if (form.get("send_link") === "on") {
-    const { error: otp } = await supabase.auth.signInWithOtp({
-      email: p.data.email,
-      options: { shouldCreateUser: true, emailRedirectTo: `${env.appUrl}/auth/callback` },
-    });
+    const { error: otp } = await sendInvitationLink(p.data.email);
     mail = otp ? " De inloglink kon niet worden verstuurd; deel de app-link zelf." : " Er is een inloglink verstuurd.";
   }
   revalidatePath("/app/clients");
@@ -67,10 +64,7 @@ export async function resendLoginLink(ideaId: string, email: string, _: ActionSt
   const supabase = await supabaseServer();
   const { data: member } = await supabase.from("idea_members").select("email").eq("idea_id", ideaId).eq("email", email).maybeSingle();
   if (!member) return { error: "Deze persoon is niet (meer) uitgenodigd voor dit dossier." };
-  const { error } = await supabase.auth.signInWithOtp({
-    email: member.email,
-    options: { shouldCreateUser: true, emailRedirectTo: `${env.appUrl}/auth/callback` },
-  });
+  const { error } = await sendInvitationLink(member.email);
   if (error) {
     const limited = /rate|limit|too many|security purposes/i.test(error.message);
     return {
@@ -87,4 +81,14 @@ export async function removeStakeholder(ideaId: string, email: string) {
   const supabase = await supabaseServer();
   await supabase.from("idea_members").delete().eq("idea_id", ideaId).eq("email", email);
   revalidatePath("/app/clients");
+}
+
+// Sent without the consultant's session (no cookies), so nothing about the link is tied to the
+// consultant's browser. The e-mail template points at /auth/confirm with a token hash, which the client
+// can open on any device; the account is only created because the address is invited (auth hook).
+function sendInvitationLink(email: string) {
+  return supabaseAnon().auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: true, emailRedirectTo: `${env.appUrl}/app` },
+  });
 }
