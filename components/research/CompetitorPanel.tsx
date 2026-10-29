@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { Icon } from "@/components/Icon";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
+import { Drawer } from "@/components/ui/Drawer";
 import { COMPETITOR_KINDS, type CompetitorKind } from "@/lib/domain/labels";
 
 export type CompetitorView = {
@@ -50,7 +52,7 @@ export function CompetitorPanel({
           <h2>Welke oplossingen zijn er al?</h2>
           <p className="sub">Vergelijk niet alleen vergelijkbare apps, maar ook hoe klanten het nu zonder jouw product oplossen.</p>
         </div>
-        {canWrite && <button className="btn white sm" onClick={() => setOpen("new")}>+ Aanbieder of alternatief</button>}
+        {canWrite && <button type="button" className="btn white sm" onClick={() => setOpen("new")}>+ Aanbieder of alternatief</button>}
       </div>
       <div className="filter-strip" role="group" aria-label="Filter op type">
         {([["all", "Alles"], ["direct", "Directe oplossingen"], ["indirect", "Indirecte oplossingen"], ["alternative", "Huidig alternatief"]] as const).map(([k, l]) => (
@@ -82,19 +84,18 @@ export function CompetitorPanel({
                 <span className="muted">Niet publiek</span>
               )}
             </div>
-            <button className="btn white sm" onClick={() => setOpen(c.id)}>Bekijk</button>
+            <button type="button" className="btn white sm" onClick={() => setOpen(c.id)} aria-label={`Bekijk ${c.name}`}>Bekijk</button>
           </div>
         ))}
       </div>
       <div className="note">Prijzen staan er alleen met peildatum en bron. Een ontbrekende prijs blijft &quot;niet publiek&quot;; ProofLab vult die nooit zelf in.</div>
 
-      {open && (
-        <>
-          <div className="drawer-backdrop" onClick={() => setOpen(null)} />
-          <div className="drawer" role="dialog" aria-modal="true" aria-label={current ? current.name : "Aanbieder toevoegen"}>
+      <Drawer open={!!open} onClose={() => setOpen(null)} portal className="drawer" labelledBy="competitor-drawer-title">
             <div className="row between">
-              <h3>{current ? current.name : "Aanbieder of alternatief toevoegen"}</h3>
-              <button className="round-btn" onClick={() => setOpen(null)} aria-label="Sluiten">×</button>
+              <h2 id="competitor-drawer-title">{current ? current.name : "Aanbieder of alternatief toevoegen"}</h2>
+              <button type="button" className="round-btn" onClick={() => setOpen(null)} aria-label="Sluiten">
+                <Icon name="close" />
+              </button>
             </div>
             {current && (
               <div className="stack mt-12">
@@ -127,9 +128,7 @@ export function CompetitorPanel({
                 <button className="text-link" style={{ color: "#a43c42" }}>Verwijderen</button>
               </form>
             )}
-          </div>
-        </>
-      )}
+      </Drawer>
     </>
   );
 }

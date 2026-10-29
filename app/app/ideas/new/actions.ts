@@ -44,6 +44,14 @@ const IntakeSchema = z.object({
   project_type: z.enum(["new_business", "new_product", "expansion", "revenue_model", "internal_innovation"], { message: "Kies het type project." }),
   sector_template: z.enum(["generic", "smb", "events", "media_culture"]),
   key_uncertainty: optionalText,
+  sprint_start: z
+    .string()
+    .trim()
+    .transform((s) => (s === "" ? null : s))
+    .refine((s) => s === null || /^\d{4}-\d{2}-\d{2}$/.test(s), "Kies een geldige startdatum voor de sprint.")
+    .nullable()
+    .optional(),
+  sprint_weeks: z.coerce.number().int().min(2, "Een sprint duurt minimaal 2 weken.").max(12, "Een sprint duurt maximaal 12 weken.").default(5),
   client_id: z.string().trim().optional(),
   new_client_name: z.string().trim().max(160).optional(),
 });
@@ -88,6 +96,8 @@ export async function createIdea(_: IntakeState, form: FormData): Promise<Intake
       project_type: v.project_type,
       sector_template: v.sector_template,
       key_uncertainty: v.key_uncertainty ?? null,
+      sprint_start: v.sprint_start ?? null,
+      sprint_weeks: v.sprint_weeks,
     })
     .select("id")
     .single();

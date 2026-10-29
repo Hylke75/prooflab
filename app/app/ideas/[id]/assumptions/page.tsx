@@ -50,7 +50,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
 
       {board.length === 0 ? (
         <div className="empty-state">
-          <h3>Nog geen aannames</h3>
+          <h2 className="as-h3">Nog geen aannames</h2>
           <p>
             {aiConfigured()
               ? "Laat ProofLab aannames voorstellen op basis van je idee en de gevonden bevindingen, of voeg ze zelf toe."
@@ -84,7 +84,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
 
       {canWrite && (
         <div className="card mt-18">
-          <h3>Aanname toevoegen</h3>
+          <h2 className="as-h3" id="nieuwe-aanname">Aanname toevoegen</h2>
           <ActionForm action={addAssumption.bind(null, id)} submitLabel="Toevoegen" resetOnSuccess>
             <div className="form-line mt-12">
               <label htmlFor="as-st">Wat moet waar zijn?</label>

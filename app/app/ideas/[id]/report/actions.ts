@@ -22,3 +22,22 @@ export async function createReportVersion(ideaId: string, _: ActionState): Promi
   revalidatePath(`/app/ideas/${ideaId}/report`);
   return { error: null, ok: `Versie ${version} gemaakt.` };
 }
+
+// Shares one immutable version with the client. The database stamps shared_at/shared_by and never
+// unshares; clients only ever see shared versions (row level security).
+export async function shareReportVersion(ideaId: string, reportId: string, _: ActionState): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  if (!/^[0-9a-f-]{36}$/i.test(reportId)) return { error: "Onbekende rapportversie." };
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase
+    .from("reports")
+    .update({ shared_at: new Date().toISOString() })
+    .eq("id", reportId)
+    .eq("idea_id", ideaId)
+    .select("version, shared_at")
+    .maybeSingle();
+  if (error || !data) return { error: "Delen is niet gelukt. Probeer het opnieuw." };
+  revalidatePath(`/app/ideas/${ideaId}/report`);
+  revalidatePath("/app");
+  return { error: null, ok: `Versie ${data.version} is gedeeld met de opdrachtgever.` };
+}

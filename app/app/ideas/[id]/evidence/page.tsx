@@ -56,10 +56,10 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
       <div className="insight-banner" style={{ background: "#edf3e9", borderColor: "#deeadb" }}>
         <div>
           <span className="pill green">{d.label.label}</span>
-          <h3 style={{ margin: "10px 0 5px" }}>
+          <h2 className="as-h3" style={{ margin: "10px 0 5px" }}>
             {highest ? `Sterkste bewijs tot nu toe: ${highest.label.toLowerCase()} (${highest.count}×).` : "Nog geen waargenomen klantgedrag."}
             {missingPayment ? " Betaling nog niet aangetoond." : ""}
-          </h3>
+          </h2>
           <p>
             {d.label.missing.length ? `Voor het volgende niveau ontbreekt: ${d.label.missing.join("; ")}.` : "Het dossier voldoet aan het hoogste bewijsniveau."}
           </p>

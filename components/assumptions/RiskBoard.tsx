@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { layoutRiskPoints } from "@/lib/domain/risk-layout";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { ASSUMPTION_CATEGORIES, ASSUMPTION_STATUS, type AssumptionCategory, type AssumptionStatus } from "@/lib/domain/labels";
 
@@ -46,47 +47,119 @@ export function RiskBoard({
   deleteActions: Record<string, () => Promise<void>>;
 }) {
   const [sel, setSel] = useState(assumptions[0]?.id ?? null);
+  const [cluster, setCluster] = useState<string | null>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const clusterBtn = useRef<HTMLButtonElement | null>(null);
   const current = assumptions.find((a) => a.id === sel) ?? assumptions[0];
+  const placed = layoutRiskPoints(assumptions.map((a) => ({ id: a.id, importance: a.importance, evidence: a.evidence })));
+  const openCluster = placed.find((p) => p.kind === "cluster" && p.key === cluster);
+
+  useEffect(() => {
+    if (!cluster) return;
+    popRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setCluster(null);
+        clusterBtn.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [cluster]);
+
   if (!current) return null;
+  // Centre stays at least 46px (horizontal) / 50px (vertical) from the frame, so a spread dot never leaves it.
+  const pos = (x: number, y: number, dx = 0, dy = 0) => ({
+    left: `calc(clamp(46px, ${x.toFixed(2)}%, calc(100% - 46px)) + ${dx}px)`,
+    top: `calc(clamp(50px, ${y.toFixed(2)}%, calc(100% - 50px)) + ${dy}px)`,
+  });
   return (
     <div className="grid-2">
       <div className="card">
         <div className="section-title">
-          <h3>Risicokaart</h3>
+          <h2 className="as-h3">Risicokaart</h2>
           <span className="pill gray">{assumptions.length} aannames</span>
         </div>
         <p className="sub">Hoe hoger en verder naar rechts, hoe eerder je een aanname wilt onderzoeken.</p>
         <div className="risk-grid" role="group" aria-label="Risicokaart: belangrijkheid tegen bewijs">
-          <span className="axis-label top">Belangrijk ↑</span>
-          <span className="axis-label left">Minder belangrijk</span>
-          <span className="axis-label right">Weinig bewijs →</span>
-          {assumptions.map((a, i) => {
-            const x = 6 + (1 - a.evidence) * 80;
-            const y = 88 - ((a.importance - 1) / 4) * 76;
+          <span className="axis-label top" aria-hidden="true">Belangrijk ↑</span>
+          <span className="axis-label left" aria-hidden="true">Minder belangrijk</span>
+          {placed.map((p) => {
+            if (p.kind === "cluster") {
+              const hot = p.ids.some((id) => {
+                const a = assumptions.find((x) => x.id === id)!;
+                return a.importance >= 4 && a.evidence < 0.35;
+              });
+              const containsCurrent = p.ids.includes(current.id);
+              return (
+                <button
+                  key={p.key}
+                  type="button"
+                  className={`risk-dot cluster${hot ? " hot" : ""}`}
+                  style={{ ...pos(p.x, p.y), outline: containsCurrent ? "3px solid var(--ink)" : undefined }}
+                  onClick={(e) => {
+                    clusterBtn.current = e.currentTarget;
+                    setCluster(cluster === p.key ? null : p.key);
+                  }}
+                  aria-expanded={cluster === p.key}
+                  aria-label={`${p.ids.length} aannames op dezelfde plek: ${p.indexes.map((i) => i + 1).join(", ")}`}
+                >
+                  {p.ids.length}×
+                </button>
+              );
+            }
+            const a = assumptions.find((x) => x.id === p.id)!;
             const hot = a.importance >= 4 && a.evidence < 0.35;
             return (
               <button
                 key={a.id}
+                type="button"
                 className={`risk-dot${hot ? " hot" : ""}`}
-                style={{ left: `${x}%`, top: `${y}%`, outline: a.id === current.id ? "3px solid var(--ink)" : undefined }}
+                style={{ ...pos(p.x, p.y, p.dx, p.dy), outline: a.id === current.id ? "3px solid var(--ink)" : undefined }}
                 onClick={() => setSel(a.id)}
-                aria-label={`Aanname ${i + 1}: ${a.statement}`}
+                aria-label={`Aanname ${p.index + 1}: ${a.statement}`}
                 aria-pressed={a.id === current.id}
               >
-                {i + 1}
+                {p.index + 1}
               </button>
             );
           })}
+          {openCluster && openCluster.kind === "cluster" && (
+            <div className="risk-pop" ref={popRef} role="group" aria-label="Aannames op dezelfde plek" style={{ left: 8, top: 8 }}>
+              {openCluster.ids.map((id, i) => {
+                const a = assumptions.find((x) => x.id === id)!;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={id === current.id}
+                    onClick={() => {
+                      setSel(id);
+                      setCluster(null);
+                    }}
+                  >
+                    <span className="count">{openCluster.indexes[i] + 1}</span>
+                    <span>{a.statement}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="risk-axis" aria-hidden="true">
+          <span>← Veel bewijs</span>
+          <span>Weinig bewijs →</span>
         </div>
         <p className="tiny">Bewijs wordt berekend uit gekoppelde bevindingen (max. 45%) en waargenomen klantgedrag. Tik op een punt om de aanname te bekijken.</p>
       </div>
       <div className="card">
         <div className="section-title">
-          <h3>Prioriteiten</h3>
+          <h2 className="as-h3">Prioriteiten</h2>
           <span className="pill gray">Belangrijk × weinig bewijs</span>
         </div>
         {assumptions.map((a, i) => (
-          <button key={a.id} className={`assumption-item${a.id === current.id ? " active" : ""}`} onClick={() => setSel(a.id)} aria-pressed={a.id === current.id}>
+          <button key={a.id} type="button" className={`assumption-item${a.id === current.id ? " active" : ""}`} onClick={() => setSel(a.id)} aria-pressed={a.id === current.id}>
             <span className="count">{i + 1}</span>
             <span>{a.statement}</span>
             <small>{riskLabel(a)}</small>

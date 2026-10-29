@@ -75,7 +75,7 @@ export function ExperimentBuilder({
       <div className="card">
         <div className="section-title">
           <div>
-            <h3>Welk experiment past bij jouw vraag?</h3>
+            <h2 className="as-h3">Welk experiment past bij jouw vraag?</h2>
             <p className="sub" style={{ marginTop: 5 }}>Drie voorstellen, elk met een ander soort bewijs.</p>
           </div>
           <span className="pill blue">Aanbeveling</span>
@@ -110,7 +110,8 @@ export function ExperimentBuilder({
         <input type="hidden" name="assumption_id" value={assumption.id} />
         <input type="hidden" name="type" value={type} />
         <div className="card" style={{ marginTop: 18 }}>
-          <div className="section-title"><h3>Jouw Test Card</h3><span className="pill gray">Concept</span></div>
+          <div className="section-title"><h2 className="as-h3">Jouw Test Card</h2><span className="pill gray">Concept</span></div>
+          <p className="explain" style={{ marginTop: -8, marginBottom: 14 }}>Een Test Card legt vóór de start vast wat je denkt, hoe je het toetst, wat je meet en wanneer het klopt. Na goedkeuring kan dat niet meer stil veranderen.</p>
           <div className="form-line"><label htmlFor="tc-title">Naam van het experiment</label><input className="field" id="tc-title" name="title" defaultValue={`${EXPERIMENT_TYPES[type].label}: ${assumption.statement.slice(0, 60)}`} key={`t-${type}-${assumption.id}`} /></div>
           <div className="form-line"><label htmlFor="tc-believe">Wij denken dat…</label><textarea className="field" id="tc-believe" name="we_believe" rows={3} value={card.we_believe} onChange={(e) => set("we_believe", e.target.value)} /></div>
           <div className="form-line"><label htmlFor="tc-target">Bij wie?</label><input className="field" id="tc-target" name="target_group" value={card.target_group} onChange={(e) => set("target_group", e.target.value)} /></div>
@@ -165,7 +166,7 @@ export function ExperimentBuilder({
         </div>
 
         <div className="card" style={{ marginTop: 18 }}>
-          <div className="section-title"><h3>Zo ziet jouw experiment eruit</h3><span className="pill blue">Live preview</span></div>
+          <div className="section-title"><h2 className="as-h3">Zo ziet jouw experiment eruit</h2><span className="pill blue">Live preview</span></div>
           {type === "interview" ? (
             <>
               <div className="form-line">

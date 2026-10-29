@@ -12,6 +12,19 @@ const STEPS = [
   ["Besluiten", "Een uitspraak volgt pas na de eindconditie, met een 95%-interval. De Reality Check zoekt tegenbewijs en valkuilen; daarna besluit je: doorgaan, bijsturen, verder testen, pauzeren of stoppen."],
 ];
 
+const GLOSSARY: [string, string][] = [
+  ["Validatiesprint", "Een vast traject van 4 tot 6 weken: week 1 onderzoek, week 2 aannames en testontwerp, daarna testen, en de laatste week besluit en rapport. ProofLab laat zien als het dossier achterloopt op de week."],
+  ["Beslisvraag", "De beslissing die het onderzoek moet ondersteunen, bijvoorbeeld \"investeren we €25.000 in een eerste versie?\". Alles in het dossier is daaraan gekoppeld."],
+  ["Bevinding met bron", "Een uitspraak over de markt met een letterlijk citaat uit een bron. ProofLab zoekt het citaat zelf terug; een AI-tekst is nooit een bron."],
+  ["Aanname", "Iets wat waar moet zijn voordat het idee kan slagen. De risicokaart zet de belangrijkheid af tegen het bewijs dat er al is."],
+  ["Test Card", "Het testplan dat vóór de start wordt vastgelegd: wat we denken, hoe we het toetsen, wat we meten en wanneer het klopt of niet. Na goedkeuring zijn de drempels vergrendeld."],
+  ["95%-interval", "De bandbreedte waarbinnen de werkelijke waarde vrijwel zeker ligt. Bij weinig deelnemers is die breed; een test is pas geslaagd als het hele interval boven de drempel ligt."],
+  ["Learning Card", "De samenvatting na een test: wat we verwachtten, wat we zagen, wat we daaruit leren en wat we daarom doen, met de betrouwbaarheid van de data."],
+  ["Reality Check", "Een verplichte controle vóór elk besluit en rapport. Hij zoekt naar tegenbewijs, zwakke data, valkuilen en conclusies die het bewijs niet draagt, en geeft een advies."],
+  ["Besluit", "Doorgaan, bijsturen, verder testen, pauzeren of stoppen. De consultant legt het vast, de opdrachtgever bevestigt het in ProofLab."],
+  ["Rapportversie", "Een vaste momentopname van het dossier. Een gedeelde versie verandert nooit meer; de opdrachtgever ziet alleen gedeelde versies."],
+];
+
 export default function HelpPage() {
   return (
     <PageFrame crumbs={["Werkruimte", "Zo werkt ProofLab"]} coach="other">
@@ -30,9 +43,23 @@ export default function HelpPage() {
           </div>
         ))}
       </div>
+      <div className="card mt-18" id="begrippen">
+        <div className="section-title">
+          <h2 className="as-h3">Begrippen</h2>
+          <span className="pill gray">Kort uitgelegd</span>
+        </div>
+        <dl className="glossary">
+          {GLOSSARY.map(([term, text]) => (
+            <div key={term}>
+              <dt>{term}</dt>
+              <dd>{text}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
       <div className="grid-2 mt-18">
         <div className="card">
-          <h3>Status van koppelingen</h3>
+          <h2 className="as-h3">Status van koppelingen</h2>
           <div className="data-row"><span>AI-onderzoek (Claude, webzoeken)</span><span className={`pill ${aiConfigured() ? "green" : "orange"}`}>{aiConfigured() ? "Verbonden" : "Niet verbonden"}</span></div>
           <div className="data-row"><span>Cookieloze meting op testpagina&apos;s</span><span className={`pill ${trackingConfigured() ? "green" : "orange"}`}>{trackingConfigured() ? "Actief" : "Niet geconfigureerd"}</span></div>
           <div className="data-row"><span>Advertentiekanalen (LinkedIn, Meta)</span><span className="pill gray">Handmatig via kanaallinks</span></div>
@@ -40,7 +67,7 @@ export default function HelpPage() {
           <p className="tiny mt-12">Zonder AI werkt alles handmatig: bronnen toevoegen, citaten vastleggen, interviews coderen. Er worden nooit gesimuleerde resultaten getoond als echte.</p>
         </div>
         <div className="card">
-          <h3>Privacy en rechten</h3>
+          <h2 className="as-h3">Privacy en rechten</h2>
           <p className="sub mt-8">
             Testpagina&apos;s plaatsen geen cookies en tellen bezoekers met een niet-herleidbare code die per test verschilt. E-mailadressen worden alleen
             met toestemming bewaard (180 dagen). Interviews vragen vastgelegde toestemming en een pseudoniem. Opdrachtgevers zien geen ruwe

@@ -13,6 +13,9 @@ export function ResultMeter({ v, success, fail }: { v: Verdict; success: number;
         {fail != null && <div className="th" style={{ left: x(fail / 100), background: "#a43c42" }}><span style={{ color: "#a43c42" }}>faal {fail}%</span></div>}
       </div>
       <p className="tiny">Gemeten {pct(v.interval.point)} · 95%-interval {pct(v.interval.low)} – {pct(v.interval.high)}</p>
+      <p className="explain">
+        Het 95%-interval is de bandbreedte waarbinnen de werkelijke waarde vrijwel zeker ligt. Geslaagd is de test pas als ook de ondergrens boven de succesdrempel ligt.
+      </p>
     </div>
   );
 }

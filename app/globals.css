@@ -123,3 +123,94 @@ select.field{appearance:none;background-image:linear-gradient(45deg,transparent 
 .data-row>*{min-width:0;overflow-wrap:anywhere}.card{min-width:0;overflow-wrap:anywhere}
 @media(max-width:850px){.grid-2{grid-template-columns:minmax(0,1fr)}.topbar>div:first-child{min-width:0}.crumb{min-width:0}.crumb strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 @media(max-width:560px){.ideas,.grid-3,.research-kpis,.exp-options,.double-field,.choice-grid,.insight-grid,.factor{grid-template-columns:minmax(0,1fr)}.crumb>span{display:none!important}.section-title{flex-wrap:wrap}.pill{white-space:normal;max-width:100%}.table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}}
+/* ---- Accessibility (WCAG 2.2 AA), see DESIGN_DIFF_LOG.md ---- */
+a:focus-visible,select:focus-visible,summary:focus-visible,[tabindex]:focus-visible{outline:3px solid rgba(69,87,244,.55);outline-offset:3px;border-radius:6px}
+.main:focus,.main:focus-visible,aside[tabindex="-1"]:focus{outline:none}
+.skip-link{position:fixed;left:12px;top:-80px;z-index:200;background:var(--ink);color:#fff;padding:12px 16px;border-radius:12px;font-weight:800;text-decoration:none;transition:top .18s}
+.skip-link:focus{top:12px}
+/* Hit areas of at least 44x44px without changing the drawn size of the mock-up controls. */
+.round-btn,.top-avatar,.text-link{position:relative}
+.round-btn::after,.top-avatar::after,.text-link::after,.risk-dot::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
+.check-row{min-height:44px;margin:4px 0;padding:6px 0}
+.check-row input{margin-top:2px}
+.idea-foot>span:last-child{white-space:nowrap;flex:none;margin-left:10px}
+.sidebar-close{display:none}
+@media(max-width:1160px){.coach{visibility:hidden;transition:transform .25s,visibility 0s .25s}.coach.open{visibility:visible;transition:transform .25s}}
+@media(max-width:850px){.sidebar{visibility:hidden;transition:transform .25s,visibility 0s .25s}.sidebar.open{visibility:visible;transition:transform .25s}.sidebar-close{display:grid;position:absolute;right:14px;top:22px;background:#242b3a;border-color:#394152;color:#e9edf4}}
+@media(max-width:560px){.top-actions .round-btn.help-link{display:grid}}
+/* Section titles directly under the page title are h2 for a correct outline, drawn at the card-title size of the mock-up. */
+h2.as-h3,.section-title h2.as-h3{font-size:19px;line-height:1.25}
+.insight-banner h2.as-h3{font-size:18px}
+.empty-state h2.as-h3{margin-bottom:7px}
+.drawer h2{font-size:24px}
+.report-paper h2.report-title{font-size:41px;line-height:1.1;margin:12px 0}
+@media(max-width:560px){.report-paper h2.report-title{font-size:33px}}
+/* Account menu */
+.account{position:relative}
+.account-menu{position:absolute;right:0;top:calc(100% + 10px);min-width:236px;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 18px 40px #0e173022;padding:8px;z-index:40}
+.account-menu[hidden]{display:none}
+.account-who{padding:10px 12px 12px;border-bottom:1px solid var(--line);margin-bottom:6px;display:grid;gap:2px}
+.account-who strong{font-size:13px}
+.account-who span{font-size:11px;color:#5f6879;overflow-wrap:anywhere}
+.account-menu a,.account-menu button{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:0 12px;border-radius:11px;border:0;background:none;color:var(--ink);font-weight:700;font-size:12px;text-decoration:none;text-align:left}
+.account-menu a:hover,.account-menu button:hover{background:#f4f6ff}
+.coach-offline{text-align:center;margin:0}
+/* Sprint timeline */
+.sprint-strip{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;margin:-14px 0 22px;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:#fff;font-size:12px;position:relative}
+.sprint-kicker{font-weight:800;letter-spacing:.12em;text-transform:uppercase;font-size:10px}
+.sprint-phase{font-weight:800}
+.sprint-mini{display:inline-flex;gap:3px}
+.sprint-mini i{width:16px;height:6px;border-radius:4px;background:#e8ebee}
+.sprint-mini i.past{background:#c9d1fa}
+.sprint-mini i.now{background:var(--blue)}
+.sprint-reason{flex-basis:100%;margin-top:-2px}
+.sprint-plan>summary{list-style:none;cursor:pointer}
+.sprint-plan>summary::-webkit-details-marker{display:none}
+.sprint-strip .sprint-plan{margin-left:auto}
+.sprint-pop{position:absolute;right:0;top:calc(100% + 8px);z-index:15;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 18px 40px #0e173022;padding:4px 16px 16px;width:min(420px,calc(100vw - 28px))}
+.sprint-card{display:flex;flex-direction:column;gap:12px}
+.sprint-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.sprint-title{display:block;font:600 16px/1.3 var(--font-space-grotesk),sans-serif;letter-spacing:-.03em;text-decoration:none;margin-top:4px}
+.sprint-track{list-style:none;margin:0;padding:0;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:6px}
+.sprint-track li{display:grid;gap:3px;font-size:10px;color:#5f6879;min-width:0}
+.sprint-track li strong{font-size:10px;color:var(--ink)}
+.sprint-track li span:last-child{line-height:1.35}
+.sprint-bar{height:6px;border-radius:4px;background:#e8ebee;display:block}
+.sprint-track li.done .sprint-bar{background:var(--mint)}
+.sprint-track li.current .sprint-bar{background:var(--blue)}
+.sprint-track li.current strong{color:var(--blue)}
+.sprint-foot{gap:6px}
+.sprint-form .double-field{gap:10px}
+.sprint-form .field-label{margin-top:12px}
+.sprints{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:31px}
+@media(max-width:560px){.sprints{grid-template-columns:minmax(0,1fr)}.sprint-track{grid-auto-flow:row;grid-auto-columns:auto;grid-template-columns:repeat(2,minmax(0,1fr))}.sprint-strip .sprint-plan{margin-left:0}.sprint-pop{left:0;right:auto}}
+/* Clients page: one row per invited stakeholder */
+.member-row{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;padding:8px 0;border-bottom:1px dashed var(--line);font-size:12px}
+.member-row>div:first-child{flex:1 1 220px}
+.member-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.member-actions form .row{margin-top:0}
+.member-actions .form-ok,.member-actions .form-error{margin:0 0 4px}
+/* Client home */
+.action-card{display:flex;justify-content:space-between;align-items:center;gap:16px;background:#fff2de;border:1px solid #f4dcb5;border-radius:18px;padding:18px 20px;margin-bottom:14px}
+.action-card h2{font-size:19px}
+.action-card p{font-size:12px;color:#6b5636;margin-top:4px}
+@media(max-width:560px){.action-card{flex-direction:column;align-items:flex-start}}
+/* Report versions */
+.version-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--line);font-size:12px}
+.version-row:last-child{border:0}
+.version-row .version-name{font-weight:800;min-width:150px}
+.version-row .version-links{margin-left:auto;display:flex;gap:14px;align-items:center}
+.version-row.current{background:linear-gradient(90deg,#f4f6ff,transparent);border-radius:10px;padding-left:8px}
+/* Short explanations at the first use of a method term */
+.explain{font-size:11px;color:#5f6879;line-height:1.5;margin-top:4px}
+.glossary dt{font-weight:800;font-size:13px;margin-top:14px}
+.glossary dd{margin:3px 0 0;color:#5f6879;font-size:13px;line-height:1.6}
+/* Risk map: deterministic spread, cluster badges, axis labels outside the plotting area */
+.risk-dot{margin:-19.5px 0 0 -19.5px}
+.risk-dot.cluster{background:var(--ink);color:#fff;font-size:12px}
+.risk-axis{display:flex;justify-content:space-between;gap:10px;font-size:10px;font-weight:800;color:#5f6879;text-transform:uppercase;margin:-8px 0 12px}
+@media(max-width:1160px){.risk-axis{padding-right:64px}}
+.risk-pop{position:absolute;z-index:6;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 14px 34px #0e173026;padding:6px;width:min(260px,calc(100% - 16px))}
+.risk-pop button{display:flex;gap:8px;align-items:flex-start;width:100%;text-align:left;border:0;background:none;padding:9px 8px;border-radius:10px;font-size:12px;font-weight:700;min-height:44px}
+.risk-pop button:hover,.risk-pop button[aria-pressed=true]{background:#f4f6ff}
+.risk-pop .count{flex:none;height:22px;width:22px;border-radius:7px;background:#eef0ff;color:var(--blue);display:grid;place-items:center;font-size:11px}
