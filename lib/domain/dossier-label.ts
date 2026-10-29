@@ -22,9 +22,14 @@ export function dossierLabel(i: LabelInput): { label: DossierLabel; missing: str
   if (!i.sizingComputed) marketMissing.push("een berekende marktomvang (of expliciet 'niet vastgesteld')");
   if (marketMissing.length) return { label: "Verkenning", missing: marketMissing };
 
-  if (i.behaviourCards.length === 0) return { label: "Onderbouwd marktbeeld", missing: ["een afgerond gedragsexperiment met goedgekeurde Learning Card"] };
-
   const passes = i.behaviourCards.filter((c) => c.verdict === "pass");
+  // A failed or inconclusive behaviour test is learning, not behavioural evidence for the idea.
+  if (passes.length === 0) {
+    return {
+      label: "Onderbouwd marktbeeld",
+      missing: [i.behaviourCards.length ? "een geslaagd gedragsexperiment (de afgeronde tests haalden de drempel niet)" : "een afgerond gedragsexperiment met goedgekeurde Learning Card"],
+    };
+  }
   const distinct = new Set(passes.map((c) => `${c.endedOn?.slice(0, 7)}|${[...c.channels].sort().join(",")}`));
   if (passes.length >= 2 && distinct.size >= 2) return { label: "Herhaald marktgedragsbewijs", missing: [] };
   return { label: "Eerste gedragsbewijs", missing: ["een tweede geslaagd gedragsexperiment in een andere periode of via een ander kanaal"] };

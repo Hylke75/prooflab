@@ -23,7 +23,7 @@ export async function loadDossier(idea: Idea) {
         .order("created_at"),
       supabase.from("competitors").select("*").eq("idea_id", id).order("kind"),
       supabase.from("segments").select("*").eq("idea_id", id),
-      supabase.from("sizing_scenarios").select("*, sizing_factors(*, claims(status, statement))").eq("idea_id", id),
+      supabase.from("sizing_scenarios").select("*, sizing_factors(*, claims(status, statement, numeric_value))").eq("idea_id", id),
       supabase.from("unit_economics").select("*").eq("idea_id", id).maybeSingle(),
       supabase.from("experiments").select("*, hypotheses(*, assumptions(statement, category))").eq("idea_id", id).order("created_at"),
       supabase.from("interviews").select("id, experiment_id, dmu_role, is_acquaintance, consent_recorded, record_type, recruited_via").eq("idea_id", id),
@@ -47,7 +47,12 @@ export async function loadDossier(idea: Idea) {
       const factors = (s.sizing_factors ?? []).sort((a, b) => a.position - b.position);
       const result = computeSizing(
         s.model as SizingModel,
-        factors.map((f) => ({ key: f.key, value: Number(f.value), claimStatus: (f.claims?.status as ClaimStatus) ?? null })),
+        factors.map((f) => ({
+          key: f.key,
+          value: Number(f.value),
+          claimStatus: (f.claims?.status as ClaimStatus) ?? null,
+          claimValue: f.claims?.numeric_value == null ? null : Number(f.claims.numeric_value),
+        })),
       );
       return {
         kind: s.kind as ScenarioKind,

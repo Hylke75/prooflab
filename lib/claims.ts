@@ -16,7 +16,7 @@ export async function recomputeClaim(claimId: string) {
   if (!claim) return;
   const { data: links } = await supabase
     .from("claim_sources")
-    .select("id, quote, stance, quote_check, excerpt_id, source_excerpts(text), sources(source_type, is_primary, domain, published_on, content_hash)")
+    .select("id, quote, stance, quote_check, excerpt_id, source_excerpts(text), sources(source_type, is_primary, domain, publisher, published_on, content_hash)")
     .eq("claim_id", claimId);
   const evidence: EvidenceForStatus[] = [];
   for (const l of links ?? []) {
@@ -28,6 +28,7 @@ export async function recomputeClaim(claimId: string) {
       sourceType: l.sources.source_type as SourceType,
       isPrimary: l.sources.is_primary,
       domain: l.sources.domain,
+      publisher: l.sources.publisher,
       publishedOn: l.sources.published_on,
       contentHash: l.sources.content_hash,
       quoteCheck: check,

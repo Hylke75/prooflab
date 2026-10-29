@@ -268,7 +268,10 @@ begin
     raise exception 'DECISION_STALE: er is nieuw bewijs sinds de laatste Reality Check; voer hem opnieuw uit' using errcode = 'P0001';
   end if;
   if new.action = 'continue' and exists (
-    select 1 from jsonb_array_elements(rc.findings) f where f->>'severity' = 'blocker'
+    select 1
+    from jsonb_array_elements(case when jsonb_typeof(rc.findings) = 'array' then rc.findings
+                                   else coalesce(rc.findings->'findings', '[]'::jsonb) end) f
+    where f->>'severity' = 'blocker'
   ) then
     raise exception 'DECISION_BLOCKED: doorgaan kan niet zolang de Reality Check blokkades toont' using errcode = 'P0001';
   end if;

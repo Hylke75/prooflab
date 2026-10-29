@@ -8,7 +8,7 @@ import { TEMPLATE_ASSUMPTIONS } from "@/lib/domain/recommend";
 import { aiConfigured } from "@/lib/env";
 import { suggestAssumptions } from "@/lib/ai/research";
 import { ideaContext } from "@/lib/idea-context";
-import { logAiRun } from "@/lib/ai/log";
+import { runAi } from "@/lib/ai/guard";
 
 export type ActionState = { error: string | null; ok?: string | null };
 
@@ -73,13 +73,14 @@ export async function seedAssumptions(ideaId: string, _: ActionState): Promise<A
   if (aiConfigured()) {
     const { data: claims } = await supabase.from("claims").select("statement, status").eq("idea_id", ideaId).neq("status", "insufficient").limit(40);
     try {
-      const res = await suggestAssumptions(ideaContext(idea), (claims ?? []).map((c) => `${c.statement} [${c.status}]`));
-      await logAiRun({ ideaId, purpose: "assumptions", outcome: "ok", usage: res.usage });
+      const res = await runAi(ideaId, "assumptions", () =>
+        suggestAssumptions(ideaContext(idea), (claims ?? []).map((c) => `${c.statement} [${c.status}]`)),
+      );
       await supabase.from("assumptions").insert(res.data.assumptions.map((a) => ({ ...a, idea_id: ideaId, origin: "ai" })));
       refresh(ideaId);
       return { error: null, ok: `${res.data.assumptions.length} aannames voorgesteld. Pas aan of verwijder wat niet klopt.` };
-    } catch (e) {
-      await logAiRun({ ideaId, purpose: "assumptions", outcome: "error", detail: String(e) });
+    } catch {
+      // Logged by runAi; fall back to the template below.
     }
   }
   await supabase.from("assumptions").insert(TEMPLATE_ASSUMPTIONS.map((a) => ({ ...a, idea_id: ideaId, origin: "template" })));

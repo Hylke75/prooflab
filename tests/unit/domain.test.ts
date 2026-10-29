@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assumptionEvidence, KIND_DEFAULTS, strength } from "@/lib/domain/evidence";
+import { assumptionEvidence, assumptionStatusFromVerdicts, KIND_DEFAULTS, strength } from "@/lib/domain/evidence";
 import { computeSizing, computeUnitEconomics } from "@/lib/domain/sizing";
 import { checkHypothesis } from "@/lib/domain/hypothesis";
 import { runRealityCheck, type DossierFacts } from "@/lib/domain/reality-check";
@@ -24,7 +24,7 @@ describe("evidence strength", () => {
 describe("market sizing", () => {
   it("computes TAM/SAM/SOM bottom-up with a visible formula", () => {
     const r = computeSizing("b2b_accounts", [
-      { key: "base_count", value: 12000, claimStatus: "verified" },
+      { key: "base_count", value: 12000, claimStatus: "verified", claimValue: 12000 },
       { key: "fit_pct", value: 20 },
       { key: "reach_pct", value: 50 },
       { key: "winnable_pct", value: 5 },
@@ -164,11 +164,24 @@ describe("dossier labels", () => {
   });
   it("reaches a substantiated market picture, then behaviour evidence", () => {
     expect(dossierLabel(base).label).toBe("Onderbouwd marktbeeld");
-    expect(dossierLabel({ ...base, behaviourCards: [{ verdict: "inconclusive", channels: ["linkedin"], endedOn: "2026-10-01" }] }).label).toBe("Eerste gedragsbewijs");
+    // A failed or inconclusive test is learning, not behavioural evidence.
+    expect(dossierLabel({ ...base, behaviourCards: [{ verdict: "inconclusive", channels: ["linkedin"], endedOn: "2026-10-01" }] }).label).toBe("Onderbouwd marktbeeld");
+    expect(dossierLabel({ ...base, behaviourCards: [{ verdict: "fail", channels: ["linkedin"], endedOn: "2026-10-01" }] }).label).toBe("Onderbouwd marktbeeld");
+    expect(dossierLabel({ ...base, behaviourCards: [{ verdict: "pass", channels: ["linkedin"], endedOn: "2026-10-01" }] }).label).toBe("Eerste gedragsbewijs");
   });
   it("requires two passes in different periods or channels for repeated evidence", () => {
     const one = { verdict: "pass", channels: ["linkedin"], endedOn: "2026-09-01" };
     expect(dossierLabel({ ...base, behaviourCards: [one, { ...one }] }).label).toBe("Eerste gedragsbewijs");
     expect(dossierLabel({ ...base, behaviourCards: [one, { ...one, channels: ["meta_ads"] }] }).label).toBe("Herhaald marktgedragsbewijs");
+  });
+});
+
+describe("assumption status from approved experiments", () => {
+  it("keeps an earlier result when a later test is inconclusive and flags conflicts", () => {
+    expect(assumptionStatusFromVerdicts([])).toBe("untested");
+    expect(assumptionStatusFromVerdicts(["pass", "inconclusive"])).toBe("supported");
+    expect(assumptionStatusFromVerdicts(["fail"])).toBe("refuted");
+    expect(assumptionStatusFromVerdicts(["pass", "fail"])).toBe("inconclusive");
+    expect(assumptionStatusFromVerdicts(["inconclusive"])).toBe("inconclusive");
   });
 });

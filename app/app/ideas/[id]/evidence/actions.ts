@@ -3,13 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
-import { getIdea, getWorkspace, requireWritableIdea } from "@/lib/data";
+import { getIdea, requireWritableIdea } from "@/lib/data";
+import { assumptionStatusFromVerdicts, type CardVerdict } from "@/lib/domain/evidence";
 import { dossierSummaryForAi, factsFrom, loadDossier } from "@/lib/dossier";
 import { runRealityCheck, type Finding } from "@/lib/domain/reality-check";
 import { aiConfigured } from "@/lib/env";
 import { challengeDossier } from "@/lib/ai/research";
 import { ideaContext } from "@/lib/idea-context";
-import { logAiRun } from "@/lib/ai/log";
+import { runAi } from "@/lib/ai/guard";
 import type { Json } from "@/lib/database.types";
 
 export type ActionState = { error: string | null; ok?: string | null };
@@ -35,15 +36,28 @@ export async function updateLearningCard(ideaId: string, cardId: string, _: Acti
 // Human approval is required before a result changes the status of an assumption.
 export async function approveLearningCard(ideaId: string, cardId: string, _: ActionState): Promise<ActionState> {
   await requireWritableIdea(ideaId);
-  const ws = await getWorkspace();
   const supabase = await supabaseServer();
   const { data: card } = await supabase.from("learning_cards").select("*, experiments(id, state, hypotheses(assumption_id))").eq("id", cardId).eq("idea_id", ideaId).single();
   if (!card || card.status !== "draft") return { error: "Deze Learning Card is al goedgekeurd." };
-  await supabase.from("learning_cards").update({ status: "approved", approved_by: ws.user.id, approved_at: new Date().toISOString() }).eq("id", cardId);
+  // Approver and time are stamped by the database; the guard makes a second approval impossible.
+  const { data: approved, error } = await supabase
+    .from("learning_cards")
+    .update({ status: "approved" })
+    .eq("id", cardId)
+    .eq("status", "draft")
+    .select("id");
+  if (error || !approved?.length) return { error: "Goedkeuren is niet gelukt. Ververs de pagina en probeer het opnieuw." };
   const assumptionId = card.experiments?.hypotheses?.assumption_id;
   if (assumptionId) {
-    const status = card.verdict === "pass" ? "supported" : card.verdict === "fail" ? "refuted" : "inconclusive";
-    await supabase.from("assumptions").update({ status }).eq("id", assumptionId);
+    // Every approved test of this assumption counts, not only the latest one.
+    const { data: verdicts } = await supabase
+      .from("learning_cards")
+      .select("verdict, experiments!inner(hypotheses!inner(assumption_id))")
+      .eq("idea_id", ideaId)
+      .eq("status", "approved")
+      .eq("experiments.hypotheses.assumption_id", assumptionId);
+    const status = assumptionStatusFromVerdicts((verdicts ?? []).map((v) => v.verdict as CardVerdict));
+    await supabase.from("assumptions").update({ status }).eq("id", assumptionId).eq("idea_id", ideaId);
   }
   if (card.experiments?.state === "ended") await supabase.from("experiments").update({ state: "analyzed" }).eq("id", card.experiments.id);
   refresh(ideaId);
@@ -58,12 +72,11 @@ export async function runCheck(ideaId: string, _: ActionState): Promise<ActionSt
   let aiUsed = false;
   if (aiConfigured()) {
     try {
-      const res = await challengeDossier(ideaContext(idea), dossierSummaryForAi(dossier));
-      await logAiRun({ ideaId, purpose: "reality_check", outcome: "ok", usage: res.usage });
+      const res = await runAi(ideaId, "reality_check", () => challengeDossier(ideaContext(idea), dossierSummaryForAi(dossier)));
       for (const c of res.data.challenges) findings.push({ code: "ai_challenge", severity: c.severity, title: c.title, detail: c.detail, source: "ai" });
       aiUsed = true;
-    } catch (e) {
-      await logAiRun({ ideaId, purpose: "reality_check", outcome: "error", detail: String(e) });
+    } catch {
+      // Logged by runAi; the rule-based check below still runs.
     }
   }
   const supabase = await supabaseServer();
@@ -96,7 +109,8 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   if (lastCard?.approved_at && lastCard.approved_at > check.created_at) return { error: "Er is nieuw bewijs sinds de laatste Reality Check. Voer de check opnieuw uit." };
   const blockers = ((check.findings as { findings?: Finding[] })?.findings ?? []).filter((f) => f.severity === "blocker");
   if (blockers.length && p.data.action === "continue") return { error: "Er zijn blokkerende punten in de Reality Check. 'Doorgaan' kan pas als die zijn opgelost." };
-  const { data: exps } = await supabase.from("experiments").select("id").eq("idea_id", ideaId).eq("state", "analyzed");
+  // The decision links the most recently ended analysed experiment; all analysed ones become decided.
+  const { data: exps } = await supabase.from("experiments").select("id").eq("idea_id", ideaId).eq("state", "analyzed").order("ended_at", { ascending: false });
   const { error } = await supabase.from("decisions").insert({
     idea_id: ideaId,
     reality_check_id: check.id,
@@ -105,7 +119,13 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
     rationale: p.data.rationale,
     next_step: p.data.next_step || null,
   });
-  if (error) return { error: "Het besluit kon niet worden opgeslagen." };
+  if (error) {
+    // The database enforces the same rules; show its reason when it refuses.
+    if (error.message.includes("DECISION_STALE")) return { error: "Er is nieuw bewijs sinds de laatste Reality Check. Voer de check opnieuw uit." };
+    if (error.message.includes("DECISION_BLOCKED")) return { error: "Er zijn blokkerende punten in de Reality Check. 'Doorgaan' kan pas als die zijn opgelost." };
+    if (error.message.includes("DECISION_CHECK")) return { error: "Voer de Reality Check opnieuw uit voordat je besluit." };
+    return { error: "Het besluit kon niet worden opgeslagen." };
+  }
   for (const e of exps ?? []) await supabase.from("experiments").update({ state: "decided" }).eq("id", e.id);
   const status = { continue: "continued", stop: "stopped", pause: "parked", adjust: "active", test_more: "active" }[p.data.action];
   await supabase.from("ideas").update({ status }).eq("id", ideaId);

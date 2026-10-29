@@ -1,17 +1,19 @@
 import "server-only";
 import { supabaseServer } from "@/lib/supabase/server";
 import { searchQuestion, extractClaims, challengeDossier, type ExcerptRef } from "@/lib/ai/research";
-import { logAiRun } from "@/lib/ai/log";
+import { assertAiBudget, runAi } from "@/lib/ai/guard";
+import { env } from "@/lib/env";
 import { ideaContext } from "@/lib/idea-context";
 import { contentHash, recomputeClaim } from "@/lib/claims";
-import { checkQuote, registrableDomain } from "@/lib/domain/verify";
-import { AiRefusedError } from "@/lib/ai/client";
+import { aiSourceType, checkQuote, figuresAppearIn, normalizeText, registrableDomain, sourceTypeForDomain } from "@/lib/domain/verify";
+import { AiBudgetError, AiRefusedError } from "@/lib/ai/client";
 import type { Idea } from "@/lib/data";
 import type { Json } from "@/lib/database.types";
 
 type RunState = { status: string; done: number; total: number; current: string | null; cost: number; budget: number; error: string | null };
 
-const STALE_MS = 5 * 60 * 1000;
+// Longer than the advance route's maxDuration (300 s), so a task still running is never started twice.
+const STALE_MS = 6 * 60 * 1000;
 
 // Executes at most one pending task per call. Each task persists its result before the next
 // starts, so a run survives closed browsers, timeouts and retries (idempotent per task).
@@ -44,10 +46,31 @@ export async function advanceRun(runId: string): Promise<RunState> {
   }
   if ((stale ?? []).some((t) => t.started_at && Date.now() - new Date(t.started_at).getTime() <= STALE_MS)) return state();
 
-  if (Number(run.cost_usd) >= Number(run.budget_usd)) {
-    await supabase.from("research_tasks").update({ status: "skipped", detail: "Budget bereikt." }).eq("run_id", runId).eq("status", "pending");
+  // The run budget is capped by the server setting, whatever is stored on the run.
+  const budget = Math.min(Number(run.budget_usd), env.researchBudgetUsd);
+  let skipReason: string | null = Number(run.cost_usd) >= budget ? "Budget van deze run bereikt." : null;
+  if (!skipReason) {
+    try {
+      await assertAiBudget(run.idea_id);
+    } catch (e) {
+      skipReason = e instanceof AiBudgetError ? e.message : "AI-budget kon niet worden gecontroleerd.";
+    }
+  }
+  if (skipReason) {
+    await supabase.from("research_tasks").update({ status: "skipped", detail: skipReason }).eq("run_id", runId).eq("status", "pending");
   }
   const { data: next } = await supabase.from("research_tasks").select("*").eq("run_id", runId).eq("status", "pending").order("position").limit(1).maybeSingle();
+  // An extraction step only runs once the search for its question has finished.
+  if (next?.kind === "extract") {
+    const { data: search } = await supabase
+      .from("research_tasks")
+      .select("status")
+      .eq("run_id", runId)
+      .eq("kind", "search")
+      .eq("question_id", next.question_id!)
+      .maybeSingle();
+    if (search && !["done", "failed", "skipped"].includes(search.status)) return state();
+  }
   if (!next) {
     await supabase.from("research_runs").update({ status: "done", finished_at: new Date().toISOString() }).eq("id", runId);
     return state();
@@ -65,16 +88,20 @@ export async function advanceRun(runId: string): Promise<RunState> {
   const { data: idea } = await supabase.from("ideas").select("*").eq("id", run.idea_id).single();
   try {
     const result = await runTask(next, idea as Idea, run.mode as "quick" | "deep");
-    await supabase.from("research_tasks").update({ status: "done", output: result.output, detail: result.detail, cost_usd: result.cost, finished_at: new Date().toISOString() }).eq("id", next.id);
-    await supabase.from("research_runs").update({ cost_usd: Number(run.cost_usd) + result.cost }).eq("id", runId);
+    await supabase.from("research_tasks").update({ status: "done", output: result.output, detail: result.detail, finished_at: new Date().toISOString() }).eq("id", next.id);
+    if (result.cost > 0) await supabase.rpc("add_research_cost", { p_task: next.id, p_cost: result.cost });
   } catch (e) {
     const refused = e instanceof AiRefusedError;
-    const retry = !refused && next.attempts + 1 < 3;
+    const retry = !refused && !(e instanceof AiBudgetError) && next.attempts + 1 < 3;
+    // A refusal still used tokens; book them on the run so the budget holds.
+    if (refused && e.usage?.cost) await supabase.rpc("add_research_cost", { p_task: next.id, p_cost: e.usage.cost });
     await supabase
       .from("research_tasks")
-      .update({ status: retry ? "pending" : "failed", detail: refused ? "Het model weigerde deze stap." : `Fout: ${e instanceof Error ? e.message.slice(0, 200) : "onbekend"}` })
+      .update({
+        status: retry ? "pending" : "failed",
+        detail: refused ? "Het model weigerde deze stap." : e instanceof AiBudgetError ? e.message : `Fout: ${e instanceof Error ? e.message.slice(0, 200) : "onbekend"}`,
+      })
       .eq("id", next.id);
-    await logAiRun({ ideaId: run.idea_id, purpose: `research:${next.kind}`, outcome: refused ? "refused" : "error", detail: String(e) });
   }
   return state();
 }
@@ -87,8 +114,7 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
 
   if (task.kind === "search") {
     const { data: q } = await supabase.from("research_questions").select("question").eq("id", task.question_id!).single();
-    const res = await searchQuestion(ctx, q!.question, mode === "quick" ? 3 : 6);
-    await logAiRun({ ideaId: idea.id, purpose: "research:search", outcome: "ok", usage: res.usage });
+    const res = await runAi(idea.id, "research:search", () => searchQuestion(ctx, q!.question, mode === "quick" ? 3 : 6));
     const excerptIds: string[] = [];
     for (const s of res.sources) {
       const domain = registrableDomain(s.url);
@@ -105,7 +131,7 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
             domain,
             title: s.title.slice(0, 300),
             published_on: published,
-            source_type: /(^|\.)(cbs\.nl|europa\.eu|overheid\.nl|rijksoverheid\.nl|kvk\.nl|statline)/.test(domain ?? "") ? "official_statistic" : "other",
+            source_type: sourceTypeForDomain(domain),
             origin: "ai_search",
             access_note: "Gevonden via live webzoekopdracht; alleen geciteerde passages zijn bewaard.",
             content_hash: contentHash(s.excerpts.join("\n")),
@@ -115,9 +141,21 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
         sourceId = created?.id;
       }
       if (!sourceId) continue;
-      for (const text of s.excerpts) {
-        const { data: ex } = await supabase.from("source_excerpts").insert({ source_id: sourceId, idea_id: idea.id, text: text.slice(0, 6000), location: "geciteerde passage" }).select("id").single();
-        if (ex) excerptIds.push(ex.id);
+      // A repeated run reuses passages it already stored instead of duplicating them.
+      const { data: known } = await supabase.from("source_excerpts").select("id, text").eq("source_id", sourceId);
+      const byText = new Map((known ?? []).map((k) => [normalizeText(k.text), k.id]));
+      for (const raw of s.excerpts) {
+        const text = raw.slice(0, 6000);
+        const existingId = byText.get(normalizeText(text));
+        if (existingId) {
+          excerptIds.push(existingId);
+          continue;
+        }
+        const { data: ex } = await supabase.from("source_excerpts").insert({ source_id: sourceId, idea_id: idea.id, text, location: "geciteerde passage" }).select("id").single();
+        if (ex) {
+          excerptIds.push(ex.id);
+          byText.set(normalizeText(text), ex.id);
+        }
       }
     }
     return {
@@ -140,8 +178,7 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
       url: e.sources?.url ?? null,
       text: e.text,
     }));
-    const res = await extractClaims(ctx, q!.question, refs);
-    await logAiRun({ ideaId: idea.id, purpose: "research:extract", outcome: "ok", usage: res.usage });
+    const res = await runAi(idea.id, "research:extract", () => extractClaims(ctx, q!.question, refs));
 
     const byRef = new Map(refs.map((r, i) => [r.ref, excerpts![i]]));
     const bySourceRef = new Map(refs.map((r, i) => [r.sourceRef, excerpts![i].source_id]));
@@ -151,15 +188,21 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
       const allText = (excerpts ?? []).filter((e) => e.source_id === sourceId).map((e) => e.text).join(" ");
       // A publication date is only accepted when its year literally appears in the stored passages.
       const date = s.published_on && /^\d{4}-\d{2}-\d{2}$/.test(s.published_on) && allText.includes(s.published_on.slice(0, 4)) ? s.published_on : null;
+      // The model may describe a source, never promote it: official status comes from the domain list
+      // and an automatically found page is never marked as a primary document.
+      const { data: src } = await supabase.from("sources").select("domain").eq("id", sourceId).single();
       await supabase
         .from("sources")
-        .update({ source_type: s.source_type, is_primary: s.is_primary, publisher: s.publisher, ...(date ? { published_on: date } : {}) })
+        .update({ source_type: aiSourceType(src?.domain ?? null, s.source_type), is_primary: false, publisher: s.publisher?.slice(0, 200) ?? null, ...(date ? { published_on: date } : {}) })
         .eq("id", sourceId)
         .eq("origin", "ai_search");
     }
 
     let kept = 0;
     let rejected = 0;
+    let duplicates = 0;
+    const { data: knownClaims } = await supabase.from("claims").select("statement").eq("idea_id", idea.id);
+    const seenStatements = new Set((knownClaims ?? []).map((c) => normalizeText(c.statement)));
     for (const c of res.data.claims) {
       const ex = byRef.get(c.excerpt_ref);
       if (!ex) {
@@ -172,6 +215,12 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
         rejected++;
         continue;
       }
+      // The same finding from a repeated run is not stored again (it would inflate the evidence count).
+      if (seenStatements.has(normalizeText(c.statement))) {
+        duplicates++;
+        continue;
+      }
+      seenStatements.add(normalizeText(c.statement));
       const { data: claim } = await supabase
         .from("claims")
         .insert({
@@ -200,12 +249,15 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
     }
 
     let competitors = 0;
+    const { data: knownCompetitors } = await supabase.from("competitors").select("name").eq("idea_id", idea.id);
+    const seenNames = new Set((knownCompetitors ?? []).map((c) => normalizeText(c.name)));
     for (const comp of res.data.competitors) {
       const ex = comp.excerpt_ref ? byRef.get(comp.excerpt_ref) : null;
       if (!ex || !comp.quote || checkQuote(comp.quote, ex.text) !== "exact") continue;
-      const { data: dup } = await supabase.from("competitors").select("id").eq("idea_id", idea.id).ilike("name", comp.name).maybeSingle();
-      if (dup) continue;
-      const priceOk = comp.visible_price && comp.quote.includes(comp.visible_price.replace(/\s/g, " ").trim().slice(0, 6));
+      if (seenNames.has(normalizeText(comp.name))) continue;
+      seenNames.add(normalizeText(comp.name));
+      // A price is only kept when every amount in it literally appears in the verified quote.
+      const priceOk = !!comp.visible_price && figuresAppearIn(comp.visible_price, comp.quote);
       await supabase.from("competitors").insert({
         idea_id: idea.id,
         name: comp.name.slice(0, 160),
@@ -221,8 +273,8 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
       competitors++;
     }
     return {
-      output: { claims: kept, rejected, competitors },
-      detail: `${kept} bevindingen met gecontroleerd citaat${rejected ? `, ${rejected} afgewezen (citaat niet letterlijk teruggevonden)` : ""}${competitors ? `, ${competitors} aanbieders` : ""}.`,
+      output: { claims: kept, rejected, duplicates, competitors },
+      detail: `${kept} bevindingen met gecontroleerd citaat${rejected ? `, ${rejected} afgewezen (citaat niet letterlijk teruggevonden)` : ""}${duplicates ? `, ${duplicates} al bekend` : ""}${competitors ? `, ${competitors} aanbieders` : ""}.`,
       cost: res.usage.cost,
     };
   }
@@ -236,8 +288,7 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
       "Aanbieders en alternatieven:",
       ...(comps ?? []).map((c) => `- ${c.name} (${c.kind})`),
     ].join("\n");
-    const res = await challengeDossier(ctx, summary);
-    await logAiRun({ ideaId: idea.id, purpose: "research:challenge", outcome: "ok", usage: res.usage });
+    const res = await runAi(idea.id, "research:challenge", () => challengeDossier(ctx, summary));
     return { output: { challenges: res.data.challenges }, detail: `${res.data.challenges.length} kritische punten gevonden.`, cost: res.usage.cost };
   }
 

@@ -44,7 +44,15 @@ export type Factor = {
   key: string;
   value: number;
   claimStatus?: ClaimStatus | null; // status of the linked claim, if any
+  claimValue?: number | null; // the figure in that claim; the factor only counts as sourced when it matches
 };
+
+// A factor is backed by a source only when the linked claim is usable and its figure is the figure used.
+export function factorSourced(f: Factor | undefined): boolean {
+  if (!f || (f.claimStatus !== "verified" && f.claimStatus !== "estimate")) return false;
+  if (f.claimValue == null || !Number.isFinite(f.claimValue)) return false;
+  return Math.abs(f.value - f.claimValue) <= 1e-6 * Math.max(1, Math.abs(f.claimValue));
+}
 
 export type SizingResult = {
   tamCount: number;
@@ -80,12 +88,8 @@ export function computeSizing(model: SizingModel, factors: Factor[]): SizingResu
       : fmtEur(perCustomer);
 
   const defs = MODEL_FACTORS[model];
-  const sourced = defs.filter((d) => {
-    const s = factors.find((f) => f.key === d.key)?.claimStatus;
-    return s === "verified" || s === "estimate";
-  }).length;
-  const baseStatus = factors.find((f) => f.key === "base_count")?.claimStatus;
-  const established = baseStatus === "verified" || baseStatus === "estimate";
+  const sourced = defs.filter((d) => factorSourced(factors.find((f) => f.key === d.key))).length;
+  const established = factorSourced(factors.find((f) => f.key === "base_count"));
 
   return {
     tamCount,

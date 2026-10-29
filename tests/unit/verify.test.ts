@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { checkQuote, computeClaimStatus, extractNumbers, independentCount, registrableDomain, type EvidenceForStatus } from "@/lib/domain/verify";
+import { aiSourceType, checkQuote, computeClaimStatus, extractNumbers, figuresAppearIn, independentCount, numericFromInput, registrableDomain, valueInQuote, type EvidenceForStatus } from "@/lib/domain/verify";
+import { factorSourced } from "@/lib/domain/sizing";
 
 const ev = (o: Partial<EvidenceForStatus>): EvidenceForStatus => ({
   sourceType: "news",
@@ -92,5 +93,98 @@ describe("number extraction edge cases", () => {
   });
   it("reads no-break-space thousands", () => {
     expect(extractNumbers("1 200 bezoekers")).toEqual(["1200"]);
+  });
+});
+
+describe("figures with scale words, percentages and both decimal styles", () => {
+  const same = (statement: string, quote: string) => checkQuote(quote, `Bron: ${quote}`, statement);
+
+  it("rejects a figure that only matches without its scale or unit", () => {
+    expect(same("De markt is 3 miljoen euro", "De markt is goed voor 30 miljoen euro")).toBe("numbers_mismatch");
+    expect(same("De markt is 2 miljard euro", "De markt is goed voor 30 miljoen euro")).toBe("numbers_mismatch");
+    expect(same("De omzet is 45 miljoen", "De omzet steeg met 45% tot 10 miljoen")).toBe("numbers_mismatch");
+  });
+
+  it("no longer skips small numbers: 3 aanbieders must be in the quote", () => {
+    expect(same("Er zijn 3 aanbieders", "Er zijn drie aanbieders actief in deze markt")).toBe("numbers_mismatch");
+    expect(same("Er zijn 3 aanbieders", "Er zijn 3 aanbieders actief in deze markt")).toBe("exact");
+  });
+
+  it("accepts the same quantity written differently", () => {
+    expect(same("1,5 miljoen bezoekers", "In totaal kwamen er 1.500.000 bezoekers")).toBe("exact");
+    expect(same("Conversie van 0,125", "the conversion was 0.125 overall")).toBe("exact");
+    expect(same("Groei van 12,5%", "een groei van 12.5 procent per jaar")).toBe("exact");
+    expect(same("€ 3,4 mln omzet", "een omzet van 3.400.000 euro")).toBe("exact");
+  });
+
+  it("treats a year as context, not as the claimed figure", () => {
+    expect(same("In 2026 waren er 41.230 vestigingen", "telde Nederland 41.230 vestigingen")).toBe("exact");
+  });
+
+  it("does not read square metres as millions", () => {
+    expect(same("Een zaal van 100 m²", "een zaal van 100 miljoen")).toBe("numbers_mismatch");
+  });
+});
+
+describe("claim status edge cases", () => {
+  const now = new Date("2026-10-27T12:00:00Z");
+
+  it("calls a claim contested when only contradicting sources exist", () => {
+    const r = computeClaimStatus({ evidenceType: "third_party_estimate", freshness: "statistic" }, [ev({ stance: "contradicts" })], now);
+    expect(r.status).toBe("contested");
+  });
+
+  it("does not count two sources without a domain as independent", () => {
+    const a = ev({ domain: null, publisher: null });
+    const b = ev({ domain: null, publisher: null });
+    expect(independentCount([a, b])).toBe(1);
+    expect(independentCount([ev({ domain: null, publisher: "CBS" }), ev({ domain: null, publisher: "KvK" })])).toBe(2);
+  });
+
+  it("never treats a future publication date as fresh", () => {
+    const r = computeClaimStatus(
+      { evidenceType: "official_statistic", freshness: "statistic" },
+      [ev({ sourceType: "official_statistic", publishedOn: "2062-01-01" })],
+      now,
+    );
+    expect(r.status).toBe("insufficient");
+  });
+});
+
+describe("source typing and price checks for AI research", () => {
+  it("only lets code decide which sources are official", () => {
+    expect(aiSourceType("seo-blog.nl", "official_statistic")).toBe("other");
+    expect(aiSourceType("seo-blog.nl", "primary_document")).toBe("other");
+    expect(aiSourceType("seo-blog.nl", "news")).toBe("news");
+    expect(aiSourceType("cbs.nl", "blog")).toBe("official_statistic");
+  });
+  it("accepts a competitor price only when the full amount is quoted", () => {
+    expect(figuresAppearIn("€ 19,99 per maand", "Vanaf € 19,95 per maand")).toBe(false);
+    expect(figuresAppearIn("€ 19,99 per maand", "Vanaf € 19,99 per maand, excl. btw")).toBe(true);
+    expect(figuresAppearIn("Op aanvraag", "Prijs op aanvraag")).toBe(false);
+  });
+});
+
+describe("figures typed by a consultant", () => {
+  it("parses Dutch and English input with scale words", () => {
+    expect(numericFromInput("41.230")).toBe(41230);
+    expect(numericFromInput("1,5 miljoen")).toBe(1_500_000);
+    expect(numericFromInput("0.25")).toBe(0.25);
+    expect(numericFromInput("1.5")).toBe(1.5);
+    expect(numericFromInput("tussen 3 en 5")).toBeNull();
+    expect(numericFromInput("")).toBeNull();
+  });
+  it("checks the figure against the quote", () => {
+    expect(valueInQuote(1_500_000, "In totaal 1,5 miljoen bezoekers")).toBe(true);
+    expect(valueInQuote(15, "In totaal 1,5 miljoen bezoekers")).toBe(false);
+  });
+});
+
+describe("market sizing provenance", () => {
+  it("only counts a factor as sourced when its value is the figure in the linked claim", () => {
+    expect(factorSourced({ key: "base_count", value: 41230, claimStatus: "verified", claimValue: 41230 })).toBe(true);
+    expect(factorSourced({ key: "base_count", value: 500000, claimStatus: "verified", claimValue: 41230 })).toBe(false);
+    expect(factorSourced({ key: "base_count", value: 41230, claimStatus: "verified", claimValue: null })).toBe(false);
+    expect(factorSourced({ key: "base_count", value: 41230, claimStatus: "insufficient", claimValue: 41230 })).toBe(false);
   });
 });

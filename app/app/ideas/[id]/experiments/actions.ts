@@ -14,7 +14,7 @@ import { pct } from "@/lib/domain/stats";
 import { recommend } from "@/lib/domain/recommend";
 import { aiConfigured } from "@/lib/env";
 import { analyzeInterview } from "@/lib/ai/research";
-import { logAiRun } from "@/lib/ai/log";
+import { aiErrorMessage, runAi } from "@/lib/ai/guard";
 import type { Json } from "@/lib/database.types";
 import type { AssumptionCategory, ObservationKind } from "@/lib/domain/labels";
 
@@ -237,7 +237,7 @@ async function storeObservation(ideaId: string, expId: string, interviewId: stri
   const check = checkQuote(o.quote, iv.transcript);
   if (check !== "exact") return { ok: false, reason: "Het citaat staat niet letterlijk in het transcript." };
   const dims = KIND_DEFAULTS[o.kind as ObservationKind];
-  const { data: obs } = await supabase
+  const { data: obs, error } = await supabase
     .from("observations")
     .insert({
       idea_id: ideaId,
@@ -255,7 +255,10 @@ async function storeObservation(ideaId: string, expId: string, interviewId: stri
     })
     .select("id")
     .single();
-  if (obs && o.relation !== "neutral") {
+  // The same AI-coded quote is stored once per interview (unique index), so re-running adds nothing.
+  if (error?.code === "23505") return { ok: false, reason: "duplicate" };
+  if (error || !obs) return { ok: false, reason: "De observatie kon niet worden opgeslagen." };
+  if (o.relation !== "neutral") {
     const { data: exp } = await supabase.from("experiments").select("hypotheses(assumption_id)").eq("id", expId).single();
     const assumptionId = exp?.hypotheses?.assumption_id;
     if (assumptionId) await supabase.from("assumption_observations").insert({ assumption_id: assumptionId, observation_id: obs.id, idea_id: ideaId, relation: o.relation });
@@ -290,20 +293,23 @@ export async function analyzeInterviewWithAi(ideaId: string, expId: string, inte
   ]);
   if (!iv) return { error: "Interview niet gevonden." };
   try {
-    const res = await analyzeInterview(exp?.hypotheses?.we_believe ?? "", iv.transcript);
-    await logAiRun({ ideaId, purpose: "interview_analysis", outcome: "ok", usage: res.usage });
+    const res = await runAi(ideaId, "interview_analysis", () => analyzeInterview(exp?.hypotheses?.we_believe ?? "", iv.transcript));
     let kept = 0;
     let rejected = 0;
+    let known = 0;
     for (const o of res.data.observations) {
       const r = await storeObservation(ideaId, expId, interviewId, { ...o, summary: o.summary.slice(0, 400), quote: o.quote.slice(0, 1500) }, "ai");
       if (r.ok) kept++;
+      else if (r.reason === "duplicate") known++;
       else rejected++;
     }
     refresh(ideaId);
-    return { error: null, ok: `${kept} observaties met letterlijk citaat vastgelegd${rejected ? `; ${rejected} afgewezen omdat het citaat niet in het transcript stond` : ""}. Controleer ze.` };
+    return {
+      error: null,
+      ok: `${kept} observaties met letterlijk citaat vastgelegd${known ? `; ${known} waren al vastgelegd` : ""}${rejected ? `; ${rejected} afgewezen omdat het citaat niet in het transcript stond` : ""}. Controleer ze.`,
+    };
   } catch (e) {
-    await logAiRun({ ideaId, purpose: "interview_analysis", outcome: "error", detail: String(e) });
-    return { error: "De analyse is mislukt. Codeer het interview handmatig." };
+    return { error: aiErrorMessage(e, "De analyse is mislukt. Codeer het interview handmatig.") };
   }
 }
 
@@ -326,11 +332,19 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
   const rec = recommend({ category: (h.assumptions?.category ?? "desirability") as AssumptionCategory, evidence: 0.3, hasDiscoveryEvidence: true });
   const follow = rec.options.find((o) => o.type === exp.type)?.followUp ?? "";
 
+  const { data: cards } = await supabase.from("learning_cards").select("id, status").eq("experiment_id", expId);
+  if ((cards ?? []).some((c) => c.status === "approved")) return { error: "Dit experiment heeft al een goedgekeurde Learning Card." };
+  const draft = (cards ?? []).find((c) => c.status === "draft");
+
   if (exp.type !== "interview") {
-    // One system observation summarises the measured behaviour; raw events stay untouched.
+    // One system observation summarises the measured behaviour; raw events stay untouched. Generating
+    // the card again reuses it, so the evidence for the assumption is never counted twice.
     const kind: ObservationKind = exp.type === "pricing" ? "quote_request" : (exp.config as LandingConfig).collect_email ? "demo_request" : "waitlist_signup";
     const dims = KIND_DEFAULTS[kind];
-    const { data: obs } = await supabase
+    const { data: existing } = await supabase.from("observations").select("id").eq("experiment_id", expId).eq("origin", "system").maybeSingle();
+    const { data: obs } = existing
+      ? { data: existing }
+      : await supabase
       .from("observations")
       .insert({
         idea_id: ideaId,
@@ -345,16 +359,12 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
       })
       .select("id")
       .single();
-    if (obs && verdictKind !== "inconclusive") {
+    if (obs && !existing && verdictKind !== "inconclusive") {
       await supabase.from("assumption_observations").insert({ assumption_id: h.assumption_id, observation_id: obs.id, idea_id: ideaId, relation: verdictKind === "pass" ? "supports" : "contradicts" });
     }
   }
 
-  const { count } = await supabase.from("learning_cards").select("id", { count: "exact", head: true }).eq("experiment_id", expId);
-  const { error } = await supabase.from("learning_cards").insert({
-    experiment_id: expId,
-    idea_id: ideaId,
-    version: (count ?? 0) + 1,
+  const card = {
     we_believed: `${h.we_believe} Het klopt als ${h.success_threshold_pct}% of meer (${h.metric_numerator} / ${h.metric_denominator}), bij minimaal ${h.min_sample} deelnemers.`,
     we_observed: `${m.successes} van ${m.n} (${pct(v.interval.point)}; 95%-interval ${pct(v.interval.low)} tot ${pct(v.interval.high)}).${m.warnings.length ? ` Let op: ${m.warnings.join(" ")}` : ""}`,
     we_learned: v.reason,
@@ -362,7 +372,11 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
     verdict: verdictKind,
     data_reliability: reliability,
     metrics: { n: m.n, successes: m.successes, interval: v.interval, byChannel: m.byChannel, byVariant: m.byVariant, warnings: m.warnings, ended_early: exp.ended_early } as unknown as Json,
-  });
+  };
+  // One concept card per experiment. Measured numbers on a card cannot be edited (database guard), so
+  // generating again replaces the concept with a fresh one computed from the raw data.
+  if (draft) await supabase.from("learning_cards").delete().eq("id", draft.id).eq("status", "draft");
+  const { error } = await supabase.from("learning_cards").insert({ ...card, experiment_id: expId, idea_id: ideaId, version: 1 });
   if (error) return { error: "De Learning Card kon niet worden gemaakt." };
   refresh(ideaId);
   redirect(`/app/ideas/${ideaId}/evidence`);

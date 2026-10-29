@@ -87,3 +87,17 @@ export function assumptionEvidence(
   const fieldPart = Math.min(0.55, field / 40);
   return { score: Math.min(1, deskPart + fieldPart), supporting, contradicting };
 }
+
+export type CardVerdict = "pass" | "fail" | "inconclusive";
+
+// The status of an assumption follows all approved experiments that tested it, not only the latest:
+// a later inconclusive test does not erase an earlier result, and conflicting results stay visible.
+export function assumptionStatusFromVerdicts(verdicts: CardVerdict[]): "supported" | "refuted" | "inconclusive" | "untested" {
+  if (verdicts.length === 0) return "untested";
+  const pass = verdicts.includes("pass");
+  const fail = verdicts.includes("fail");
+  if (pass && fail) return "inconclusive";
+  if (pass) return "supported";
+  if (fail) return "refuted";
+  return "inconclusive";
+}

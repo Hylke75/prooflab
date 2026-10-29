@@ -76,31 +76,29 @@ export async function experimentMetrics(exp: Exp, h: Hyp): Promise<ExperimentMet
     if (excluded) warnings.push(`${excluded} interview(s) zonder vastgelegde toestemming tellen niet mee.`);
     if (valid.length && valid.filter((i) => i.is_acquaintance).length / valid.length > 0.5) warnings.push("Meer dan de helft van de geïnterviewden zijn bekenden.");
   } else {
-    const { data: events } = await supabase.from("test_events").select("visitor_hash, event_type, variant, channel").eq("experiment_id", exp.id);
-    const actionEvent = exp.type === "landing" && (exp.config as LandingConfig).collect_email ? "submit" : "cta_click";
-    const viewers = new Map<string, { channel: string; variant: string }>();
-    const actors = new Set<string>();
-    for (const e of events ?? []) {
-      if (e.event_type === "view" && !viewers.has(e.visitor_hash)) viewers.set(e.visitor_hash, { channel: e.channel, variant: e.variant });
-      if (e.event_type === actionEvent || (actionEvent === "submit" && e.event_type === "submit")) actors.add(e.visitor_hash);
-    }
-    // Only actions by visitors who were also counted as viewers enter the ratio.
-    n = viewers.size;
-    successes = [...actors].filter((v) => viewers.has(v)).length;
+    // Distinct visitors are counted in the database: a page of rows would silently cap large tests.
+    const { data: rows, error } = await supabase.rpc("experiment_event_counts", { p_experiment: exp.id });
+    if (error) warnings.push("De meetgegevens konden niet worden opgehaald; de cijfers hieronder zijn onvolledig.");
+    const useSubmit = exp.type === "landing" && (exp.config as LandingConfig).collect_email;
     const ch = new Map<string, ChannelRow>();
     const va = new Map<string, VariantRow>();
     const prices = exp.type === "pricing" ? (exp.config as PricingConfig).price_points : [];
-    for (const [hash, v] of viewers) {
-      const c = ch.get(v.channel) ?? { channel: v.channel, visitors: 0, actions: 0 };
-      c.visitors++;
-      if (actors.has(hash)) c.actions++;
-      ch.set(v.channel, c);
-      const idx = Number(v.variant);
-      const label = prices[idx] ? `${prices[idx].label} (€ ${prices[idx].amount.toLocaleString("nl-NL")} ${prices[idx].period})` : `Variant ${v.variant}`;
-      const r = va.get(v.variant) ?? { variant: v.variant, label, visitors: 0, actions: 0 };
-      r.visitors++;
-      if (actors.has(hash)) r.actions++;
-      va.set(v.variant, r);
+    for (const r of rows ?? []) {
+      const viewers = Number(r.viewers);
+      // Only actions by visitors who were also counted as viewers enter the ratio.
+      const actions = Number(useSubmit ? r.submitters : r.clickers);
+      n += viewers;
+      successes += actions;
+      const c = ch.get(r.channel) ?? { channel: r.channel, visitors: 0, actions: 0 };
+      c.visitors += viewers;
+      c.actions += actions;
+      ch.set(r.channel, c);
+      const idx = Number(r.variant);
+      const label = prices[idx] ? `${prices[idx].label} (€ ${prices[idx].amount.toLocaleString("nl-NL")} ${prices[idx].period})` : `Variant ${r.variant}`;
+      const v = va.get(r.variant) ?? { variant: r.variant, label, visitors: 0, actions: 0 };
+      v.visitors += viewers;
+      v.actions += actions;
+      va.set(r.variant, v);
     }
     byChannel = [...ch.values()].sort((a, b) => b.visitors - a.visitors);
     byVariant = exp.type === "pricing" ? [...va.values()].sort((a, b) => a.variant.localeCompare(b.variant)) : [];

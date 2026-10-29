@@ -6,11 +6,11 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { requireWritableIdea } from "@/lib/data";
 import { contentHash, recomputeClaim } from "@/lib/claims";
 import { fetchPageText } from "@/lib/fetch-page";
-import { checkQuote, normalizeText, registrableDomain } from "@/lib/domain/verify";
+import { checkQuote, normalizeText, numericFromInput, registrableDomain, valueInQuote } from "@/lib/domain/verify";
 import { aiConfigured, env } from "@/lib/env";
 import { planResearch } from "@/lib/ai/research";
 import { ideaContext } from "@/lib/idea-context";
-import { logAiRun } from "@/lib/ai/log";
+import { aiErrorMessage, runAi } from "@/lib/ai/guard";
 
 export type ActionState = { error: string | null; ok?: string | null };
 
@@ -66,8 +66,7 @@ export async function aiPlan(ideaId: string, _: ActionState): Promise<ActionStat
   if (!aiConfigured()) return { error: "AI is niet verbonden; pas de vragen handmatig aan." };
   const supabase = await supabaseServer();
   try {
-    const res = await planResearch(ideaContext(idea));
-    await logAiRun({ ideaId, purpose: "plan", outcome: "ok", usage: res.usage });
+    const res = await runAi(ideaId, "plan", () => planResearch(ideaContext(idea)));
     // Manually edited questions are kept; template and earlier AI questions are replaced.
     const { data: existing } = await supabase.from("research_questions").select("id, position, origin").eq("idea_id", ideaId);
     const manual = (existing ?? []).filter((q) => q.origin === "manual");
@@ -77,8 +76,7 @@ export async function aiPlan(ideaId: string, _: ActionState): Promise<ActionStat
     if (rows.length) await supabase.from("research_questions").insert(rows);
     return done(ideaId, "De onderzoekskaart is opnieuw opgesteld. Controleer de vragen.");
   } catch (e) {
-    await logAiRun({ ideaId, purpose: "plan", outcome: "error", detail: String(e) });
-    return { error: "Het onderzoeksplan kon niet worden gemaakt. De huidige vragen blijven staan." };
+    return { error: aiErrorMessage(e, "Het onderzoeksplan kon niet worden gemaakt. De huidige vragen blijven staan.") };
   }
 }
 
@@ -188,7 +186,11 @@ export async function addClaim(ideaId: string, _: ActionState, form: FormData): 
   const { data: excerpt } = await supabase.from("source_excerpts").select("id, text, source_id").eq("id", v.excerpt_id).eq("idea_id", ideaId).single();
   if (!excerpt) return { error: "Bronfragment niet gevonden." };
   const check = checkQuote(v.quote, excerpt.text, v.stance === "supports" ? v.statement : undefined);
-  const numeric = blank(v.numeric_value);
+  const numericRaw = blank(v.numeric_value);
+  const numeric = numericFromInput(numericRaw);
+  if (numericRaw && numeric == null) return { error: "Het getal is niet leesbaar. Schrijf één getal, bijvoorbeeld 41.230 of 1,5 miljoen." };
+  // The stored figure feeds the market sizing, so it must be the figure in the quote.
+  if (numeric != null && !valueInQuote(numeric, v.quote)) return { error: "Het getal staat niet in het citaat. Neem het getal over zoals de bron het noemt." };
   const { data: claim, error } = await supabase
     .from("claims")
     .insert({
@@ -199,7 +201,7 @@ export async function addClaim(ideaId: string, _: ActionState, form: FormData): 
       evidence_type: v.evidence_type,
       region: blank(v.region),
       period: blank(v.period),
-      numeric_value: numeric ? Number(numeric.replace(/\./g, "").replace(",", ".")) : null,
+      numeric_value: numeric,
       unit: blank(v.unit),
       definition: blank(v.definition),
       supports: blank(v.supports),

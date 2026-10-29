@@ -31,6 +31,7 @@ export function SizingPanel({ scenarios, claims, actions, canWrite }: { scenario
         key: f.key,
         value: current[f.key]?.value ?? 0,
         claimStatus: claims.find((c) => c.id === current[f.key]?.claim)?.status ?? null,
+        claimValue: claims.find((c) => c.id === current[f.key]?.claim)?.numeric_value ?? null,
       })),
     );
   }, [scenario, current, claims]);
