@@ -607,7 +607,8 @@ begin
   return v1 + v2;
 end $$;
 
--- Daily at 03:17 UTC where pg_cron is available (Supabase); elsewhere the app calls it on report runs.
+-- Daily at 03:17 UTC via pg_cron (available on Supabase). On a database without pg_cron, schedule
+-- "select public.purge_expired_personal_data()" with another scheduler.
 do $$
 begin
   if exists (select 1 from pg_available_extensions where name = 'pg_cron') then
