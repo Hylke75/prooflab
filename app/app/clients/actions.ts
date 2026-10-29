@@ -53,12 +53,33 @@ export async function inviteStakeholder(ideaId: string, _: ActionState, form: Fo
   if (form.get("send_link") === "on") {
     const { error: otp } = await supabase.auth.signInWithOtp({
       email: p.data.email,
-      options: { emailRedirectTo: `${env.appUrl}/auth/callback?next=/app/ideas/${ideaId}/report` },
+      options: { shouldCreateUser: true, emailRedirectTo: `${env.appUrl}/auth/callback` },
     });
     mail = otp ? " De inloglink kon niet worden verstuurd; deel de app-link zelf." : " Er is een inloglink verstuurd.";
   }
   revalidatePath("/app/clients");
   return { error: null, ok: `${p.data.email} kan meekijken${p.data.role === "client_decider" ? " en besluiten bevestigen" : ""}.${mail}` };
+}
+
+// Sends a new magic sign-in link to an invited stakeholder (for a first login, or when the previous link expired).
+export async function resendLoginLink(ideaId: string, email: string, _: ActionState): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  const { data: member } = await supabase.from("idea_members").select("email").eq("idea_id", ideaId).eq("email", email).maybeSingle();
+  if (!member) return { error: "Deze persoon is niet (meer) uitgenodigd voor dit dossier." };
+  const { error } = await supabase.auth.signInWithOtp({
+    email: member.email,
+    options: { shouldCreateUser: true, emailRedirectTo: `${env.appUrl}/auth/callback` },
+  });
+  if (error) {
+    const limited = /rate|limit|too many|security purposes/i.test(error.message);
+    return {
+      error: limited
+        ? "Er zijn te veel inloglinks kort na elkaar verstuurd. Probeer het over een uur opnieuw of deel de app-link zelf."
+        : "De inloglink kon niet worden verstuurd. Controleer het e-mailadres of de e-mailinstellingen van Supabase.",
+    };
+  }
+  return { error: null, ok: `Nieuwe inloglink verstuurd naar ${member.email}.` };
 }
 
 export async function removeStakeholder(ideaId: string, email: string) {

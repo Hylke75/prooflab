@@ -67,7 +67,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
 
       {!selected ? (
         <div className="empty-state">
-          <h3>Eerst aannames</h3>
+          <h2 className="as-h3">Eerst aannames</h2>
           <p>Een experiment toetst één aanname. Maak je aannames zichtbaar en kies de belangrijkste met het minste bewijs.</p>
           <Link className="btn primary" href={`/app/ideas/${id}/assumptions`}>Naar aannames →</Link>
         </div>

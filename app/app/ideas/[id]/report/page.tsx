@@ -7,7 +7,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import type { ReportSnapshot } from "@/lib/report";
 import { pct } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
-import { createReportVersion } from "./actions";
+import { createReportVersion, shareReportVersion } from "./actions";
 import { PrintButton } from "./PrintButton";
 
 export const metadata: Metadata = { title: "Rapportage" };
@@ -16,6 +16,17 @@ const eur = (n: number | null | undefined) => (n == null ? "onbekend" : `€ ${M
 const int = (n: number) => Math.round(n).toLocaleString("nl-NL");
 const date = (s: string | null | undefined) => (s ? new Date(s).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" }) : "onbekend");
 const SECTIONS: Record<string, string> = { market: "Markt en trends", customers: "Klant en probleem", competition: "Concurrentie", pricing: "Prijs en koopproces", sizing: "Marktomvang", regulation: "Regels en context", other: "Overig" };
+type Version = { id: string; version: number; created_at: string; shared_at: string | null; client_viewed_at: string | null };
+
+// The sharing columns come with the integrity migration; without them nothing counts as shared.
+async function loadVersions(ideaId: string): Promise<Version[]> {
+  const supabase = await supabaseServer();
+  const full = await supabase.from("reports").select("id, version, created_at, shared_at, client_viewed_at").eq("idea_id", ideaId).order("version", { ascending: false });
+  if (!full.error) return full.data ?? [];
+  const plain = await supabase.from("reports").select("id, version, created_at").eq("idea_id", ideaId).order("version", { ascending: false });
+  return (plain.data ?? []).map((v) => ({ ...v, shared_at: null, client_viewed_at: null }));
+}
+
 const Notes = ({ n }: { n: number[] }) => (n.length ? <sup>[{n.join(", ")}]</sup> : <sup>[geen bron]</sup>);
 
 export default async function ReportPage({ params, searchParams }: PageProps<"/app/ideas/[id]/report">) {
@@ -23,11 +34,21 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   const sp = await searchParams;
   const { idea, canWrite } = await getIdea(id);
   const supabase = await supabaseServer();
-  const { data: versions } = await supabase.from("reports").select("id, version, created_at").eq("idea_id", id).order("version", { ascending: false });
-  const wanted = typeof sp.v === "string" ? Number(sp.v) : versions?.[0]?.version;
-  const current = versions?.find((v) => v.version === wanted) ?? versions?.[0];
-  const { data: row } = current ? await supabase.from("reports").select("snapshot").eq("id", current.id).single() : { data: null };
+  const all = await loadVersions(id);
+  // Clients only see versions the consultant shared (also enforced by row level security).
+  const versions = canWrite ? all : all.filter((v) => v.shared_at);
+  const wanted = typeof sp.v === "string" ? Number(sp.v) : versions[0]?.version;
+  const current = versions.find((v) => v.version === wanted) ?? versions[0];
+  const [{ data: row }, { data: lastDecision }] = await Promise.all([
+    current ? supabase.from("reports").select("snapshot").eq("id", current.id).single() : Promise.resolve({ data: null }),
+    supabase.from("decisions").select("decided_at, client_confirmed_at").eq("idea_id", id).order("decided_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
   const r = row?.snapshot as ReportSnapshot | undefined;
+  // A client opening a shared version marks it as seen (once; the database keeps the first moment).
+  if (!canWrite && current?.shared_at && !current.client_viewed_at) {
+    await supabase.rpc("mark_report_viewed", { p_report: current.id });
+  }
+  const newest = all[0];
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Rapportage"]} coach="report" ideaId={id}>
@@ -35,30 +56,79 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
         <div>
           <div className="eyebrow">UITKOMST · ONDERZOEKSDOSSIER</div>
           <h1>Een helder verhaal.<br />Met bewijs.</h1>
-          <p className="sub">Elke versie is een vaste momentopname: later bijwerken verandert een eerder gedeeld rapport niet.</p>
+          <p className="sub">
+            {canWrite
+              ? "Elke versie is een vaste momentopname: later bijwerken verandert een eerder gedeeld rapport niet. De opdrachtgever ziet alleen versies die je deelt."
+              : "U ziet de versies die het onderzoeksteam met u heeft gedeeld. Elke versie is een vaste momentopname."}
+          </p>
         </div>
         <div className="stack" style={{ justifyItems: "end" }}>
           {r && <PrintButton />}
           {canWrite && (
-            <ActionForm action={createReportVersion.bind(null, id)} submitLabel={r ? "Nieuwe versie maken" : "Maak het eerste rapport"} submitClass={r ? "btn white sm" : "btn primary"} pendingLabel="Rapport samenstellen…"><span /></ActionForm>
+            <ActionForm action={createReportVersion.bind(null, id)} submitLabel={newest ? "Nieuwe versie maken" : "Maak het eerste rapport"} submitClass={newest ? "btn white sm" : "btn primary"} pendingLabel="Rapport samenstellen…"><span /></ActionForm>
           )}
         </div>
       </div>
-      {versions && versions.length > 1 && (
-        <div className="filter-strip report-controls" aria-label="Rapportversies">
-          {versions.map((v) => (
-            <Link key={v.id} href={`?v=${v.version}`} className={`filter-btn${v.version === current?.version ? " active" : ""}`} style={{ textDecoration: "none" }}>
-              Versie {v.version} · {new Date(v.created_at).toLocaleDateString("nl-NL")}
-            </Link>
-          ))}
-          {current && <a className="filter-btn" href={`/api/reports/${current.id}`} style={{ textDecoration: "none" }}>JSON-export (audit)</a>}
+
+      {versions.length > 0 && (
+        <div className="card tight report-controls" style={{ marginBottom: 22 }}>
+          <div className="section-title" style={{ marginBottom: 6 }}>
+            <h2 className="as-h3">Versies</h2>
+            <span className="pill gray">{versions.length} {versions.length === 1 ? "versie" : "versies"}</span>
+          </div>
+          {versions.map((v) => {
+            const isCurrent = v.id === current?.id;
+            return (
+              <div key={v.id} className={`version-row${isCurrent ? " current" : ""}`}>
+                <span className="version-name">
+                  Versie {v.version} · {new Date(v.created_at).toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" })}
+                </span>
+                {canWrite && (
+                  <span className={`pill ${v.shared_at ? "green" : "gray"}`}>
+                    {v.shared_at ? `Gedeeld ${new Date(v.shared_at).toLocaleDateString("nl-NL", { day: "numeric", month: "short" })}` : "Niet gedeeld"}
+                  </span>
+                )}
+                {v.shared_at && (
+                  <span className={`pill ${v.client_viewed_at ? "blue" : "gray"}`}>
+                    {v.client_viewed_at ? `Bekeken door opdrachtgever ${new Date(v.client_viewed_at).toLocaleDateString("nl-NL", { day: "numeric", month: "short" })}` : "Nog niet bekeken"}
+                  </span>
+                )}
+                {v.id === newest?.id && lastDecision && (
+                  <span className={`pill ${lastDecision.client_confirmed_at ? "green" : "orange"}`}>
+                    {lastDecision.client_confirmed_at ? "Besluit bevestigd" : "Besluit wacht op bevestiging"}
+                  </span>
+                )}
+                <span className="version-links">
+                  {!isCurrent && (
+                    <Link className="text-link" href={`?v=${v.version}`}>
+                      Bekijk
+                    </Link>
+                  )}
+                  <a className="text-link" href={`/api/reports/${v.id}`} aria-label={`JSON-export van versie ${v.version} (audit)`}>
+                    JSON-export
+                  </a>
+                </span>
+                {canWrite && isCurrent && !v.shared_at && (
+                  <div style={{ flexBasis: "100%" }}>
+                    <ActionForm action={shareReportVersion.bind(null, id, v.id)} submitLabel={`Deel versie ${v.version} met opdrachtgever`} submitClass="btn primary sm" pendingLabel="Delen…">
+                      <p className="tiny">Delen is eenmalig en kan niet worden teruggedraaid. De opdrachtgever ziet daarna deze versie, zonder ruwe interviewcitaten of gegevens van testdeelnemers.</p>
+                    </ActionForm>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
       {!r ? (
         <div className="empty-state">
-          <h3>Nog geen rapport</h3>
-          <p>Een rapport bundelt beslisvraag, bevindingen met bronnen, marktomvang, experimenten, de Reality Check en het besluit in één document voor de opdrachtgever.</p>
+          <h2 className="as-h3">{canWrite ? "Nog geen rapport" : "Nog geen gedeeld rapport"}</h2>
+          <p>
+            {canWrite
+              ? "Een rapport bundelt beslisvraag, bevindingen met bronnen, marktomvang, experimenten, de Reality Check en het besluit in één document voor de opdrachtgever."
+              : "Zodra het onderzoeksteam een rapportversie met u deelt, leest u die hier."}
+          </p>
         </div>
       ) : (
         <article className="report-paper">
@@ -68,7 +138,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               <span className={`pill ${r.idea.isDemo ? "orange" : "blue"}`}>{r.idea.isDemo ? "DEMO · GEEN ECHT ONDERZOEK" : r.label.toUpperCase()}</span>
             </div>
             <div className="eyebrow" style={{ marginTop: 35 }}>VALIDATIEDOSSIER · VERSIE {r.version} · {date(r.generatedAt).toUpperCase()}</div>
-            <h1>{r.idea.title}</h1>
+            <h2 className="report-title">{r.idea.title}</h2>
             <p className="sub">
               {r.client ? `Opgesteld door ${r.preparedBy} voor ${r.client}.` : `Opgesteld door ${r.preparedBy}.`} Beslisvraag: {r.idea.decisionQuestion}
             </p>
@@ -171,6 +241,10 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           <section className="report-section">
             <span className="eyebrow">07 / EXPERIMENTEN EN RESULTATEN</span>
             <h3>Van mening naar meetbaar gedrag</h3>
+            <p className="explain">
+              Een Learning Card legt per test vast wat we verwachtten, wat we zagen, wat we daaruit leren en wat we daarom doen. Het 95%-interval is de
+              bandbreedte waarbinnen de werkelijke waarde vrijwel zeker ligt; bij kleine aantallen is die breed.
+            </p>
             {r.experiments.length === 0 && <p>Er zijn nog geen experimenten uitgevoerd.</p>}
             {r.experiments.map((e, i) => (
               <div key={i} className="mt-12" style={{ breakInside: "avoid" }}>
@@ -201,6 +275,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           <section className="report-section">
             <span className="eyebrow">08 / REALITY CHECK: TEGENARGUMENTEN EN BEPERKINGEN</span>
             <h3>Wat dit onderzoek níét bewijst</h3>
+            <p className="explain">De Reality Check zoekt vóór elk besluit bewust naar tegenbewijs, zwakke data en conclusies die het bewijs niet draagt.</p>
             {r.realityCheck ? (
               <>
                 <p>Uitgevoerd {date(r.realityCheck.at)}{r.realityCheck.aiUsed ? ", aangevuld met kritische vragen van AI" : ""}. Advies: {r.realityCheck.advice}. {r.realityCheck.reason}</p>

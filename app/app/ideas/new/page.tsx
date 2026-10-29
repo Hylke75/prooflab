@@ -5,6 +5,7 @@ import { Stepper } from "@/components/ui/Stepper";
 import { getWorkspace } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { IntakeWizard } from "./IntakeWizard";
+import { todayInNL } from "@/lib/domain/sprint";
 
 export const metadata: Metadata = { title: "Nieuw idee" };
 
@@ -28,7 +29,7 @@ export default async function NewIdeaPage() {
       </div>
       <Stepper current="idea" />
       <div className="intake-layout">
-        <IntakeWizard clients={clients ?? []} />
+        <IntakeWizard clients={clients ?? []} today={todayInNL()} />
         <aside className="card tip-card">
           <div className="tip-label">PROOFLAB DENKT MEE</div>
           <h3>Je hoeft het nog niet zeker te weten.</h3>

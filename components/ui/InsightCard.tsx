@@ -41,7 +41,7 @@ export function InsightCard({ claim, actions }: { claim: ClaimView; actions?: Re
   return (
     <article className="insight">
       <div className="insight-head">
-        <h4>{claim.statement}</h4>
+        <h3 className="insight-title">{claim.statement}</h3>
         <span className={`pill ${st.pill}`} title={st.explain}>{st.label}</span>
       </div>
       <div className="insight-meta">

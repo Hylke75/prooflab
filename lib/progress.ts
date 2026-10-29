@@ -65,24 +65,50 @@ export function rankAssumptions(list: AssumptionWithEvidence[]): AssumptionWithE
   return [...list].sort((a, b) => b.importance * (1 - b.evidence) - a.importance * (1 - a.evidence));
 }
 
+// Reports: the sharing columns arrive with the integrity migration; fall back when they are missing.
+async function loadReportMeta(ideaId: string): Promise<{ created_at: string; shared_at: string | null }[]> {
+  const supabase = await supabaseServer();
+  const withShare = await supabase.from("reports").select("created_at, shared_at").eq("idea_id", ideaId).order("version", { ascending: false });
+  if (!withShare.error) return withShare.data ?? [];
+  const plain = await supabase.from("reports").select("created_at").eq("idea_id", ideaId).order("version", { ascending: false });
+  return (plain.data ?? []).map((r) => ({ created_at: r.created_at, shared_at: null }));
+}
+
+const maxIso = (list: (string | null | undefined)[]) => list.filter((x): x is string => !!x).sort().pop() ?? null;
+
 export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> => {
   const supabase = await supabaseServer();
   const count = { count: "exact" as const, head: true };
-  const [questions, claims, verified, weak, competitors, alternatives, experiments, cards, decisions, behaviour, sizing] = await Promise.all([
+  const [questions, claims, verified, weak, competitors, alternatives, segments, experiments, cards, checks, decisions, behaviour, sizing, reports] = await Promise.all([
     supabase.from("research_questions").select("id", count).eq("idea_id", ideaId),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId).eq("status", "verified"),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId).eq("status", "insufficient"),
     supabase.from("competitors").select("id", count).eq("idea_id", ideaId),
     supabase.from("competitors").select("id", count).eq("idea_id", ideaId).in("kind", ["alternative", "status_quo"]),
-    supabase.from("experiments").select("state").eq("idea_id", ideaId),
-    supabase.from("learning_cards").select("status").eq("idea_id", ideaId),
-    supabase.from("decisions").select("id", count).eq("idea_id", ideaId),
+    supabase.from("segments").select("id", count).eq("idea_id", ideaId),
+    supabase.from("experiments").select("id, title, state, started_at, ends_at, created_at").eq("idea_id", ideaId).order("created_at"),
+    supabase.from("learning_cards").select("experiment_id, status, approved_at").eq("idea_id", ideaId),
+    supabase.from("reality_checks").select("created_at").eq("idea_id", ideaId).order("created_at", { ascending: false }).limit(1),
+    supabase.from("decisions").select("decided_at, client_confirmed_at").eq("idea_id", ideaId).order("decided_at", { ascending: false }),
     supabase.from("observations").select("id", count).eq("idea_id", ideaId).eq("is_behaviour", true).eq("is_synthetic", false),
     supabase.from("sizing_factors").select("key, claims(status)").eq("idea_id", ideaId).eq("key", "base_count"),
+    loadReportMeta(ideaId),
   ]);
   const assumptions = rankAssumptions(await loadAssumptions(ideaId));
-  const states = (experiments.data ?? []).map((e) => e.state);
+  const cardList = cards.data ?? [];
+  const approvedCards = cardList.filter((c) => c.status === "approved");
+  const expList = (experiments.data ?? []).map((e) => ({
+    id: e.id,
+    title: e.title,
+    state: e.state,
+    startedAt: e.started_at,
+    endsAt: e.ends_at,
+    hasApprovedCard: approvedCards.some((c) => c.experiment_id === e.id),
+  }));
+  const states = expList.map((e) => e.state);
+  const decisionList = decisions.data ?? [];
+  const top = assumptions.find((a) => a.status !== "supported" && a.status !== "refuted") ?? assumptions[0];
   return {
     ideaId,
     questions: questions.count ?? 0,
@@ -91,15 +117,26 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     weakClaims: weak.count ?? 0,
     competitors: competitors.count ?? 0,
     hasAlternatives: (alternatives.count ?? 0) > 0,
+    segments: segments.count ?? 0,
     sizingEstablished: (sizing.data ?? []).some((f) => f.claims && ["verified", "estimate"].includes(f.claims.status)),
     assumptions: assumptions.length,
-    topAssumption: assumptions[0] ? { statement: assumptions[0].statement, evidence: assumptions[0].evidence } : null,
+    assumptionsWithoutEvidence: assumptions.filter((a) => a.evidence === 0).length,
+    untestedCritical: assumptions.filter((a) => a.importance >= 4 && a.status === "untested").length,
+    topAssumption: top ? { id: top.id, statement: top.statement, evidence: top.evidence } : null,
+    experiments: expList,
     experimentsDraft: states.filter((s) => ["draft", "ready_for_review", "approved"].includes(s)).length,
     experimentsLive: states.filter((s) => s === "live" || s === "paused").length,
     experimentsEnded: states.filter((s) => ["ended", "analyzed", "decided"].includes(s)).length,
-    learningCardsDraft: (cards.data ?? []).filter((c) => c.status === "draft").length,
-    learningCardsApproved: (cards.data ?? []).filter((c) => c.status === "approved").length,
-    decisions: decisions.count ?? 0,
+    learningCardsDraft: cardList.filter((c) => c.status === "draft").length,
+    learningCardsApproved: approvedCards.length,
+    latestCardApprovedAt: maxIso(approvedCards.map((c) => c.approved_at)),
+    latestRealityCheckAt: checks.data?.[0]?.created_at ?? null,
+    decisions: decisionList.length,
+    latestDecisionAt: decisionList[0]?.decided_at ?? null,
+    latestDecisionConfirmed: !!decisionList[0]?.client_confirmed_at,
+    reports: reports.length,
+    latestReportAt: reports[0]?.created_at ?? null,
+    latestReportShared: !!reports[0]?.shared_at,
     behaviourObservations: behaviour.count ?? 0,
   };
 });

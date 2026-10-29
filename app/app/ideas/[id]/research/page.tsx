@@ -116,7 +116,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
       <div className="insight-banner">
         <div>
           <span className="pill blue">✳ Beslisvraag</span>
-          <h3 style={{ marginTop: 10 }}>{idea.decision_question}</h3>
+          <h2 className="as-h3" style={{ marginTop: 10 }}>{idea.decision_question}</h2>
           <p>
             {idea.target_audience}
             {idea.audience_detail ? ` (${idea.audience_detail})` : ""} · {idea.region}

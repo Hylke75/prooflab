@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { keepValuesOnSubmit } from "@/components/ui/ActionForm";
 import { PROJECT_TYPES, SECTOR_TEMPLATES } from "@/lib/domain/labels";
+import { SPRINT_LENGTHS } from "@/lib/domain/sprint";
 import { createIdea, type IntakeState } from "./actions";
 
 type Client = { id: string; name: string };
@@ -19,10 +20,10 @@ const REGIONS = ["🇳🇱 Nederland", "Benelux", "🇪🇺 Europa", "◎ Wereld
 
 const STEPS = ["Beslissing", "Idee", "Doelgroep", "Regio", "Project"] as const;
 const FIELD_STEP: Record<string, number> = {
-  decision_question: 0, budget_eur: 0, title: 1, description: 1, target_audience: 2, region: 3, project_type: 4,
+  decision_question: 0, budget_eur: 0, decision_deadline: 0, title: 1, description: 1, target_audience: 2, region: 3, project_type: 4, sprint_start: 4, sprint_weeks: 4,
 };
 
-export function IntakeWizard({ clients }: { clients: Client[] }) {
+export function IntakeWizard({ clients, today }: { clients: Client[]; today: string }) {
   const [step, setStep] = useState(0);
   const [state, action, pending] = useActionState<IntakeState, FormData>(createIdea, { error: null });
   const [decision, setDecision] = useState("");
@@ -148,6 +149,23 @@ export function IntakeWizard({ clients }: { clients: Client[] }) {
         )}
         <label className="field-label" htmlFor="key_uncertainty">Wat is volgens jou de grootste onzekerheid?</label>
         <input className="field" id="key_uncertainty" name="key_uncertainty" placeholder="Bijv. of eventmanagers hiervoor willen betalen" />
+        <div className="double-field">
+          <div>
+            <label className="field-label" htmlFor="sprint_start">Startdatum sprint</label>
+            <input className="field" id="sprint_start" name="sprint_start" type="date" defaultValue={today} aria-describedby="sprint-hint" />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="sprint_weeks">Duur</label>
+            <select className="field" id="sprint_weeks" name="sprint_weeks" defaultValue="5" aria-describedby="sprint-hint">
+              {SPRINT_LENGTHS.map((w) => (
+                <option key={w} value={w}>{w} weken</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <p className="field-hint" id="sprint-hint">
+          Week 1 onderzoek, week 2 aannames en testontwerp, daarna testen; de laatste week is voor besluit en rapport.
+        </p>
       </div>
 
       <div className="wizard-actions">

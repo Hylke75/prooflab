@@ -50,7 +50,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
         <div className="insight-banner">
           <div>
             <span className="pill green">{state === "live" ? "Meting loopt" : "Gepauzeerd"}</span>
-            <h3 style={{ margin: "10px 0 3px" }}>Een uitspraak volgt pas na de afgesproken eindconditie.</h3>
+            <h2 className="as-h3" style={{ margin: "10px 0 3px" }}>Een uitspraak volgt pas na de afgesproken eindconditie.</h2>
             <p>
               Gestart {exp.started_at ? new Date(exp.started_at).toLocaleDateString("nl-NL") : "—"} · loopt tot uiterlijk{" "}
               {exp.ends_at ? new Date(exp.ends_at).toLocaleDateString("nl-NL") : "—"}. Tussentijds kijken mag; tussentijds concluderen niet.
@@ -89,7 +89,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
       <div className="grid-2 mt-18">
         <div className="card">
           <div className="section-title">
-            <h3>Test Card</h3>
+            <h2 className="as-h3">Test Card</h2>
             <span className={`pill ${h.locked_at ? "dark" : "gray"}`}>{h.locked_at ? `Vergrendeld ${new Date(h.locked_at).toLocaleDateString("nl-NL")}` : "Concept"}</span>
           </div>
           <div className="data-row"><span>Wij denken dat</span><strong style={{ textAlign: "right" }}>{h.we_believe}</strong></div>
@@ -104,7 +104,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
         </div>
 
         <div className="card">
-          <div className="section-title"><h3>Volgende stap</h3></div>
+          <div className="section-title"><h2 className="as-h3">Volgende stap</h2></div>
           {!canWrite && <p className="sub">Je kijkt mee. Het onderzoeksteam beheert dit experiment.</p>}
           {canWrite && state === "draft" && (
             <>
@@ -172,7 +172,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
         <div className="grid-2 mt-18">
           {m.byChannel.length > 0 && (
             <div className="card">
-              <h3>Per kanaal</h3>
+              <h2 className="as-h3">Per kanaal</h2>
               <table className="table mt-12">
                 <thead><tr><th>Kanaal</th><th>Deelnemers</th><th>{h.metric_label}</th><th>Ratio</th></tr></thead>
                 <tbody>
@@ -185,7 +185,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           )}
           {m.byVariant.length > 0 && (
             <div className="card">
-              <h3>Per prijspunt</h3>
+              <h2 className="as-h3">Per prijspunt</h2>
               <table className="table mt-12">
                 <thead><tr><th>Aanbod</th><th>Bezoekers</th><th>Gekozen</th><th>Ratio</th></tr></thead>
                 <tbody>
@@ -297,7 +297,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
 
       {type !== "interview" && (
         <div className="card mt-18">
-          <h3>Testpagina</h3>
+          <h2 className="as-h3">Testpagina</h2>
           <p className="sub mt-8">
             {(exp.config as LandingConfig).headline} — {(exp.config as LandingConfig).cta_label}
             {type === "pricing" && ` · ${(exp.config as PricingConfig).price_points.map((p) => `${p.label} € ${p.amount} ${p.period}`).join(" · ")}`}

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 
 type Shell = {
   sidebarOpen: boolean;
@@ -19,8 +19,8 @@ export function useShell(): Shell {
   return s;
 }
 
-// Drawer, coach slide-over, overlay and toast behave exactly like the reference mock-up:
-// one overlay, Escape closes everything.
+// Drawer, coach slide-over, overlay and toast behave like the reference mock-up: one overlay that
+// closes everything. Focus handling, Escape and inertness live in the shared Drawer primitive.
 export function ShellProvider({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebar] = useState(false);
   const [coachOpen, setCoach] = useState(false);
@@ -36,14 +36,6 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setMessage(""), 3100);
   }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [close]);
 
   const value = useMemo<Shell>(
     () => ({
@@ -65,9 +57,9 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <Ctx value={value}>
-      <div className={`overlay${sidebarOpen || coachOpen ? " show" : ""}`} onClick={close} aria-hidden="true" />
+      <div className={`overlay${sidebarOpen || coachOpen ? " show" : ""}`} onClick={close} aria-hidden="true" data-drawer-keep="" />
       {children}
-      <div className={`toast${message ? " show" : ""}`} role="status" aria-live="polite">
+      <div className={`toast${message ? " show" : ""}`} role="status" aria-live="polite" data-drawer-keep="">
         {message}
       </div>
     </Ctx>
