@@ -4,7 +4,7 @@ import { computeSizing, computeUnitEconomics } from "@/lib/domain/sizing";
 import { checkHypothesis } from "@/lib/domain/hypothesis";
 import { runRealityCheck, type DossierFacts } from "@/lib/domain/reality-check";
 import { templatePlan } from "@/lib/domain/research-plan";
-import { assignVariant, channelFrom, isLikelyBot, visitorHash } from "@/lib/domain/tracking";
+import { assignVariant, channelFrom, clientIp, isLikelyBot, visitorHash } from "@/lib/domain/tracking";
 
 describe("evidence strength", () => {
   it("ranks a deposit above a demo request above an opinion, and synthetic at zero", () => {
@@ -122,13 +122,23 @@ describe("research plan templates", () => {
 });
 
 describe("cookieless tracking", () => {
-  it("produces a stable, daily rotating hash", () => {
-    const a = visitorHash({ salt: "s", ip: "1.2.3.4", userAgent: "Mozilla/5.0 test", slug: "x", day: "2026-10-27" });
-    const b = visitorHash({ salt: "s", ip: "1.2.3.4", userAgent: "Mozilla/5.0 test", slug: "x", day: "2026-10-27" });
-    const c = visitorHash({ salt: "s", ip: "1.2.3.4", userAgent: "Mozilla/5.0 test", slug: "x", day: "2026-10-28" });
+  it("produces a code that is stable per test but differs between tests", () => {
+    const a = visitorHash({ salt: "s", ip: "1.2.3.4", userAgent: "Mozilla/5.0 test", slug: "x" });
+    const b = visitorHash({ salt: "s", ip: "1.2.3.4", userAgent: "Mozilla/5.0 test", slug: "x" });
+    const other = visitorHash({ salt: "s", ip: "1.2.3.4", userAgent: "Mozilla/5.0 test", slug: "y" });
+    const otherSecret = visitorHash({ salt: "t", ip: "1.2.3.4", userAgent: "Mozilla/5.0 test", slug: "x" });
     expect(a).toBe(b);
-    expect(a).not.toBe(c);
+    expect(a).not.toBe(other);
+    expect(a).not.toBe(otherSecret);
     expect(a).toHaveLength(32);
+    // The same visitor keeps the same price variant for the whole test.
+    expect(assignVariant(a, 3)).toBe(assignVariant(b, 3));
+  });
+  it("trusts only the platform or the right-most proxy for the client IP", () => {
+    const h = (m: Record<string, string>) => (n: string) => m[n] ?? null;
+    expect(clientIp(h({ "x-forwarded-for": "6.6.6.6, 10.0.0.1, 203.0.113.9" }))).toBe("203.0.113.9");
+    expect(clientIp(h({ "x-forwarded-for": "6.6.6.6", "x-vercel-forwarded-for": "198.51.100.4" }))).toBe("198.51.100.4");
+    expect(clientIp(h({}))).toBe("0.0.0.0");
   });
   it("filters bots and maps channels", () => {
     expect(isLikelyBot("LinkedInBot/1.0 (compatible; Mozilla/5.0)")).toBe(true);

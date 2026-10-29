@@ -39,7 +39,7 @@ npm run dev                  # http://localhost:3000
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | ja | Supabase-project (publishable key is browser-veilig) |
 | `NEXT_PUBLIC_APP_URL` | ja | Basis-URL voor inloglinks en deelbare testlinks |
 | `INGEST_SECRET` | voor live tests | Gedeeld geheim tussen app-server en de ingest-RPC's van testpagina's |
-| `TRACKING_SALT` | voor live tests | Salt voor de dagelijks wisselende, cookieloze bezoekerscode |
+| `TRACKING_SALT` | voor live tests | Geheim voor de cookieloze, per test verschillende bezoekerscode (HMAC) |
 | `ANTHROPIC_API_KEY` | nee | Zet AI-onderzoek, AI-aannames, interviewcodering en AI-vragen in de Reality Check aan |
 | `RESEARCH_BUDGET_USD` | nee | Maximum per diepe onderzoeksrun (standaard 3) |
 

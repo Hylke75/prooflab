@@ -1,14 +1,25 @@
-// Cookieless measurement for public test pages. The visitor hash rotates daily, is computed
-// server-side from salt + date + IP + user agent + slug, and is never reversible to a person.
+// Cookieless measurement for public test pages. The visitor code is an HMAC of (test page, IP, user agent)
+// under a server secret: stable for the whole test, so a returning visitor counts once and keeps the same
+// price; different for every test, so visitors cannot be followed across tests; never reversible.
 
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
 
-export function visitorHash(input: { salt: string; ip: string; userAgent: string; slug: string; day?: string }): string {
-  const day = input.day ?? new Date().toISOString().slice(0, 10);
-  return createHash("sha256")
-    .update(`${input.salt}|${day}|${input.ip}|${input.userAgent}|${input.slug}`)
-    .digest("hex")
-    .slice(0, 32);
+export function visitorHash(input: { salt: string; ip: string; userAgent: string; slug: string }): string {
+  return createHmac("sha256", input.salt).update(`visitor|${input.slug}|${input.ip}|${input.userAgent}`).digest("hex").slice(0, 32);
+}
+
+// Pseudonymous network bucket for rate limiting; says nothing about the person.
+export function rateBucket(salt: string, ip: string): string {
+  return createHmac("sha256", salt).update(`rate|${ip}`).digest("hex").slice(0, 24);
+}
+
+// The client IP as set by the hosting platform. A browser can send its own X-Forwarded-For; proxies
+// append to it, so only the right-most entry (added by our own edge) is trusted.
+export function clientIp(get: (name: string) => string | null): string {
+  const platform = get("x-vercel-forwarded-for") ?? get("x-real-ip");
+  if (platform) return platform.split(",")[0].trim();
+  const chain = (get("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return chain[chain.length - 1] ?? "0.0.0.0";
 }
 
 const BOT_PATTERN =

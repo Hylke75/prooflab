@@ -200,6 +200,7 @@ export type Database = {
       }
       audit_events: {
         Row: {
+          org_id: string | null
           action: string
           actor_id: string | null
           detail: Json | null
@@ -210,6 +211,7 @@ export type Database = {
           table_name: string
         }
         Insert: {
+          org_id?: string | null
           action: string
           actor_id?: string | null
           detail?: Json | null
@@ -220,6 +222,7 @@ export type Database = {
           table_name: string
         }
         Update: {
+          org_id?: string | null
           action?: string
           actor_id?: string | null
           detail?: Json | null
@@ -777,6 +780,8 @@ export type Database = {
       }
       ideas: {
         Row: {
+          sprint_start: string | null
+          sprint_weeks: number
           audience_detail: string | null
           budget_eur: number | null
           client_id: string | null
@@ -801,6 +806,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          sprint_start?: string | null
+          sprint_weeks?: number
           audience_detail?: string | null
           budget_eur?: number | null
           client_id?: string | null
@@ -825,6 +832,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          sprint_start?: string | null
+          sprint_weeks?: number
           audience_detail?: string | null
           budget_eur?: number | null
           client_id?: string | null
@@ -1107,18 +1116,21 @@ export type Database = {
       }
       organizations: {
         Row: {
+          ai_monthly_cap_usd: number
           created_at: string
           created_by: string
           id: string
           name: string
         }
         Insert: {
+          ai_monthly_cap_usd?: number
           created_at?: string
           created_by?: string
           id?: string
           name: string
         }
         Update: {
+          ai_monthly_cap_usd?: number
           created_at?: string
           created_by?: string
           id?: string
@@ -1190,6 +1202,9 @@ export type Database = {
       }
       reports: {
         Row: {
+          shared_at: string | null
+          shared_by: string | null
+          client_viewed_at: string | null
           created_at: string
           created_by: string
           id: string
@@ -1198,6 +1213,9 @@ export type Database = {
           version: number
         }
         Insert: {
+          shared_at?: string | null
+          shared_by?: string | null
+          client_viewed_at?: string | null
           created_at?: string
           created_by?: string
           id?: string
@@ -1206,6 +1224,9 @@ export type Database = {
           version: number
         }
         Update: {
+          shared_at?: string | null
+          shared_by?: string | null
+          client_viewed_at?: string | null
           created_at?: string
           created_by?: string
           id?: string
@@ -1813,7 +1834,7 @@ export type Database = {
       is_org_member: { Args: { p_org: string }; Returns: boolean }
       is_org_owner: { Args: { p_org: string }; Returns: boolean }
       record_test_event: {
-        Args: { p_channel: string; p_event: string; p_key: string; p_slug: string; p_variant: string; p_visitor: string }
+        Args: { p_channel: string; p_event: string; p_key: string; p_rate_bucket: string; p_slug: string; p_variant: string; p_visitor: string }
         Returns: boolean
       }
       submit_test_form: {
@@ -1824,11 +1845,39 @@ export type Database = {
           p_consent_text: string
           p_email: string | null
           p_key: string
+          p_rate_bucket: string
           p_slug: string
           p_variant: string
           p_visitor: string
         }
         Returns: boolean
+      }
+      add_research_cost: { Args: { p_cost: number; p_task: string }; Returns: number }
+      org_ai_spend: { Args: { p_idea: string }; Returns: { spent: number; cap: number }[] }
+      experiment_event_counts: {
+        Args: { p_experiment: string }
+        Returns: { channel: string; variant: string; viewers: number; clickers: number; submitters: number }[]
+      }
+      mark_report_viewed: { Args: { p_report: string }; Returns: boolean }
+      observations_for_idea: {
+        Args: { p_idea: string }
+        Returns: {
+          id: string
+          idea_id: string
+          experiment_id: string | null
+          interview_id: string | null
+          kind: string
+          summary: string
+          quote: string | null
+          quote_check: string
+          is_fact: boolean
+          is_behaviour: boolean
+          is_real_context: boolean
+          is_costly: boolean
+          is_synthetic: boolean
+          origin: string
+          created_at: string
+        }[]
       }
     }
     Enums: {

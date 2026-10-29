@@ -42,7 +42,7 @@ export default function HelpPage() {
         <div className="card">
           <h3>Privacy en rechten</h3>
           <p className="sub mt-8">
-            Testpagina&apos;s plaatsen geen cookies en tellen bezoekers met een dagelijks wisselende, niet-herleidbare code. E-mailadressen worden alleen
+            Testpagina&apos;s plaatsen geen cookies en tellen bezoekers met een niet-herleidbare code die per test verschilt. E-mailadressen worden alleen
             met toestemming bewaard (180 dagen). Interviews vragen vastgelegde toestemming en een pseudoniem. Opdrachtgevers zien geen ruwe
             persoonsgegevens. ProofLab is onafhankelijk en niet verbonden aan Strategyzer of de auteurs van Testing Business Ideas.
           </p>

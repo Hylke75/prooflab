@@ -22,8 +22,12 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        source: "/app/(.*)",
-        headers: [{ key: "X-Frame-Options", value: "DENY" }],
+        // Nothing in ProofLab may be framed by another site (clickjacking, silent test clicks).
+        source: "/(app|t|login)(.*)",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+        ],
       },
     ];
   },

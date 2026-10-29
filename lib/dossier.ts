@@ -27,7 +27,8 @@ export async function loadDossier(idea: Idea) {
       supabase.from("unit_economics").select("*").eq("idea_id", id).maybeSingle(),
       supabase.from("experiments").select("*, hypotheses(*, assumptions(statement, category))").eq("idea_id", id).order("created_at"),
       supabase.from("interviews").select("id, experiment_id, dmu_role, is_acquaintance, consent_recorded, record_type, recruited_via").eq("idea_id", id),
-      supabase.from("observations").select("*").eq("idea_id", id),
+      // Clients get the same rows without literal interview quotes (enforced in the database).
+      supabase.rpc("observations_for_idea", { p_idea: id }),
       supabase.from("learning_cards").select("*").eq("idea_id", id).order("created_at"),
       supabase.from("reality_checks").select("*").eq("idea_id", id).order("created_at", { ascending: false }).limit(1),
       supabase.from("decisions").select("*").eq("idea_id", id).order("decided_at"),

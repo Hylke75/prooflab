@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseAnon } from "@/lib/supabase/server";
 import { env, trackingConfigured } from "@/lib/env";
-import { consentText, variantFor, visitorFromRequest } from "@/lib/public-test";
+import { consentText, isSameOriginJson, variantFor, visitorFromRequest } from "@/lib/public-test";
 import { channelFrom } from "@/lib/domain/tracking";
 
 const Body = z.object({
@@ -13,13 +13,21 @@ const Body = z.object({
   website: z.string().max(0).optional(), // honeypot: real people leave it empty
 });
 
-// Cookieless event ingest for public test pages. The visitor hash and price variant are
-// computed here on the server; the client cannot choose them.
+// Cookieless event ingest for public test pages. The visitor code and price variant are computed here on
+// the server; the client cannot choose them. The database counts a click only after a view and a
+// submission only after a click, and limits each network to 30 actions per minute per page.
 export async function POST(request: Request, ctx: RouteContext<"/api/t/[slug]">) {
   const { slug } = await ctx.params;
   if (!/^[a-f0-9]{14}$/.test(slug)) return NextResponse.json({ ok: false }, { status: 404 });
   if (!trackingConfigured()) return NextResponse.json({ ok: false, reason: "not_configured" }, { status: 503 });
-  const parsed = Body.safeParse(await request.json().catch(() => null));
+  if (!isSameOriginJson(request)) return NextResponse.json({ ok: false }, { status: 403 });
+  const raw = await request.text();
+  if (raw.length > 4000) return NextResponse.json({ ok: false }, { status: 413 });
+  let json: unknown = null;
+  try {
+    json = JSON.parse(raw);
+  } catch {}
+  const parsed = Body.safeParse(json);
   if (!parsed.success) return NextResponse.json({ ok: false }, { status: 400 });
   const b = parsed.data;
   const visitor = await visitorFromRequest(slug);
@@ -45,6 +53,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/t/[slug]">)
       p_answers: {},
       p_consent: !!b.consent,
       p_consent_text: consentText(t.config.researcher ?? "de onderzoeker"),
+      p_rate_bucket: visitor.bucket,
     });
     if (error) return NextResponse.json({ ok: false }, { status: 400 });
     return NextResponse.json({ ok: true, counted: data });
@@ -56,6 +65,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/t/[slug]">)
     p_event: b.event,
     p_variant: variant,
     p_channel: channel,
+    p_rate_bucket: visitor.bucket,
   });
   if (error) return NextResponse.json({ ok: false }, { status: 400 });
   return NextResponse.json({ ok: true, counted: data });
