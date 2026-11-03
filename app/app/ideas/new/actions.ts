@@ -8,7 +8,8 @@ import { getWorkspace } from "@/lib/data";
 import { templatePlan } from "@/lib/domain/research-plan";
 import { defaultFactors, MODEL_FACTORS, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import type { ProjectType, SectorTemplate } from "@/lib/domain/labels";
-import { OutcomeDefinitionSchema, optionalAmount } from "@/lib/forecast-schemas";
+import { OutcomeDefinitionSchema, optionalAmount, outcomeValueProblem } from "@/lib/forecast-schemas";
+import { measureWindowProblem } from "@/lib/domain/forecast";
 import { STAKE_KINDS, formatStake } from "@/lib/domain/decision-quality";
 import { todayInNL } from "@/lib/domain/sprint";
 
@@ -63,6 +64,10 @@ export async function createIdea(_: IntakeState, form: FormData): Promise<Intake
     return { error: issue.message, field: String(issue.path[0] ?? "") };
   }
   const v = parsed.data;
+  const valueProblem = outcomeValueProblem(v);
+  if (valueProblem) return { error: valueProblem, field: "outcome_min_value_per_customer" };
+  const windowProblem = v.outcome_measure_date ? measureWindowProblem(v.outcome_measure_date, v.decision_deadline) : null;
+  if (windowProblem) return { error: windowProblem, field: "outcome_measure_date" };
   const supabase = await supabaseServer();
 
   let clientId: string | null = v.client_id && /^[0-9a-f-]{36}$/i.test(v.client_id) ? v.client_id : null;
@@ -86,6 +91,9 @@ export async function createIdea(_: IntakeState, form: FormData): Promise<Intake
       outcome_statement: v.outcome_statement,
       outcome_metric: v.outcome_metric,
       outcome_target: v.outcome_target,
+      outcome_min_value_per_customer: v.outcome_min_value_per_customer ?? null,
+      outcome_revenue_target: v.outcome_revenue_target ?? null,
+      outcome_measure_date: v.outcome_measure_date ?? null,
       stake_kind: v.stake_kind,
       stake_value: v.stake_value,
       decision_stakes: formatStake(v.stake_kind, v.stake_value!),

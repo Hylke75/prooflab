@@ -104,6 +104,23 @@ export function outcomeDueFor(decisionDate: string): string {
   return addMonths(decisionDate, OUTCOME_HORIZON_MONTHS);
 }
 
+// De geplande meetdatum van het succescriterium ligt na de beslisdatum en binnen het venster van zes maanden
+// daarna. Geeft een Nederlandse melding terug, of null als de datum past.
+export function measureWindowProblem(measureDate: string, decisionDate: string): string | null {
+  if (!ISO.test(measureDate)) return "Kies een geldige meetdatum.";
+  if (!ISO.test(decisionDate)) return null;
+  if (measureDate <= decisionDate) return `De meetdatum moet na de beslisdatum (${decisionDate}) liggen: je meet het effect van het besluit.`;
+  const end = outcomeDueFor(decisionDate);
+  if (measureDate > end) return `De meetdatum valt buiten het venster van ${OUTCOME_HORIZON_MONTHS} maanden na de beslisdatum. Kies uiterlijk ${end}.`;
+  return null;
+}
+
+// De uitkomstdatum bij een besluit: de vooraf geplande meetdatum als die nog na het besluit en binnen zes maanden
+// valt, anders zes maanden na het besluit.
+export function outcomeDueAtDecision(decidedOn: string, measureDate: string | null | undefined): string {
+  return measureDate && measureWindowProblem(measureDate, decidedOn) === null ? measureDate : outcomeDueFor(decidedOn);
+}
+
 // The interim check-in opens three months after the decision, i.e. three months before the outcome date.
 export function checkinDueFor(outcomeDue: string): string {
   return addMonths(outcomeDue, CHECKIN_AFTER_MONTHS - OUTCOME_HORIZON_MONTHS);

@@ -52,6 +52,7 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.getByLabel("Geslaagd als…", { exact: true }).fill("Zes maanden na het besluit hebben minstens 10 eventbureaus een betaald abonnement.");
   await page.getByLabel("Wat meet je?", { exact: true }).fill("betalende eventbureaus");
   await page.getByLabel("Doelwaarde", { exact: true }).fill("10");
+  await page.getByLabel("Omzetdoel (€)", { exact: true }).fill("15000");
   await page.getByRole("button", { name: "Volgende stap" }).click();
   const title = `E2E-idee ${Date.now()}`;
   await page.getByLabel("Korte naam", { exact: true }).fill(title);

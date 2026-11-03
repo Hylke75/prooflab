@@ -136,6 +136,7 @@ test("dogfood: ProofLab op ProofLab", async ({ page }) => {
   );
   await page.getByLabel("Wat meet je?", { exact: true }).fill("verkochte validatiesprints met ProofLab");
   await page.getByLabel("Doelwaarde", { exact: true }).fill(OUTCOME_TARGET);
+  await page.getByLabel("Omzetdoel (€)", { exact: true }).fill("15000");
   await page.getByRole("button", { name: "Volgende stap" }).click();
   await page.getByLabel("Korte naam", { exact: true }).fill(TITLE);
   await page.getByLabel("Mijn idee", { exact: true }).fill(

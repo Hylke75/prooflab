@@ -23,7 +23,7 @@ const REGIONS = ["🇳🇱 Nederland", "Benelux", "🇪🇺 Europa", "◎ Wereld
 
 const STEPS = ["Beslissing", "Succes", "Idee", "Doelgroep", "Regio", "Project"] as const;
 const FIELD_STEP: Record<string, number> = {
-  decision_question: 0, stake_kind: 0, stake_value: 0, decision_deadline: 0, outcome_statement: 1, outcome_metric: 1, outcome_target: 1,
+  decision_question: 0, stake_kind: 0, stake_value: 0, decision_deadline: 0, outcome_statement: 1, outcome_metric: 1, outcome_target: 1, outcome_min_value_per_customer: 1, outcome_revenue_target: 1, outcome_measure_date: 1,
   title: 2, description: 2, target_audience: 3, region: 4, project_type: 5, sprint_start: 5, sprint_weeks: 5,
 };
 
@@ -113,6 +113,20 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
             <input className="field" id="outcome_target" name="outcome_target" inputMode="decimal" placeholder="Bijv. 15" />
           </div>
         </div>
+        <div className="double-field">
+          <div>
+            <label className="field-label" htmlFor="outcome_min_value_per_customer">Minimumbedrag per klant (€)</label>
+            <input className="field" id="outcome_min_value_per_customer" name="outcome_min_value_per_customer" inputMode="decimal" placeholder="Bijv. 1500" aria-describedby="value-hint" />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="outcome_revenue_target">Omzetdoel (€)</label>
+            <input className="field" id="outcome_revenue_target" name="outcome_revenue_target" inputMode="decimal" placeholder="Bijv. 22500" aria-describedby="value-hint" />
+          </div>
+        </div>
+        <p className="field-hint" id="value-hint">Vul minstens één van beide in: 15 klanten van € 10 is iets anders dan 15 klanten van € 2.000.</p>
+        <label className="field-label" htmlFor="outcome_measure_date">Meetdatum (optioneel)</label>
+        <input className="field" id="outcome_measure_date" name="outcome_measure_date" type="date" min={deadline || undefined} aria-describedby="measure-hint" />
+        <p className="field-hint" id="measure-hint">Na de beslisdatum en uiterlijk zes maanden daarna. Leeg: zes maanden na het besluit.</p>
         <div className="note">Zonder vooraf vastgelegde uitkomst kan niemand achteraf zeggen of de voorspellingen klopten.</div>
       </div>
 

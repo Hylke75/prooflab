@@ -52,7 +52,17 @@ export type CheckinRow = { id: string; onTrack: OnTrack; currentValue: number | 
 export type ForecastView = {
   ideaId: string;
   canWrite: boolean;
-  outcome: { statement: string | null; metric: string | null; target: number | null; due: string | null };
+  outcome: {
+    statement: string | null;
+    metric: string | null;
+    target: number | null;
+    due: string | null;
+    minValuePerCustomer: number | null;
+    revenueTarget: number | null;
+    measureDate: string | null;
+  };
+  // Beslisdatum (gepland of genomen), voor het venster van de meetdatum.
+  decisionDate: string | null;
   baseRate: BaseRateView | null;
   referenceClasses: ReferenceClass[];
   ownBaseRate: OwnBaseRate | null;
@@ -143,7 +153,16 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
   return {
     ideaId: idea.id,
     canWrite,
-    outcome: { statement: idea.outcome_statement, metric: idea.outcome_metric, target: idea.outcome_target == null ? null : Number(idea.outcome_target), due: idea.outcome_due },
+    outcome: {
+      statement: idea.outcome_statement,
+      metric: idea.outcome_metric,
+      target: idea.outcome_target == null ? null : Number(idea.outcome_target),
+      due: idea.outcome_due,
+      minValuePerCustomer: idea.outcome_min_value_per_customer == null ? null : Number(idea.outcome_min_value_per_customer),
+      revenueTarget: idea.outcome_revenue_target == null ? null : Number(idea.outcome_revenue_target),
+      measureDate: idea.outcome_measure_date,
+    },
+    decisionDate: idea.outcome_clock_start ?? idea.decision_deadline,
     baseRate,
     referenceClasses,
     ownBaseRate: ownRow ? { resolved: Number(ownRow.resolved), achieved: Number(ownRow.achieved), projectTypeLabel: PROJECT_TYPES[idea.project_type as ProjectType]?.label ?? idea.project_type } : null,

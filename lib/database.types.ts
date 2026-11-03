@@ -1386,6 +1386,9 @@ export type Database = {
       ideas: {
         Row: {
           outcome_clock_start: string | null
+          outcome_min_value_per_customer: number | null
+          outcome_revenue_target: number | null
+          outcome_measure_date: string | null
           stake_kind: string | null
           stake_value: number | null
           outcome_statement: string | null
@@ -1423,6 +1426,9 @@ export type Database = {
         }
         Insert: {
           outcome_clock_start?: string | null
+          outcome_min_value_per_customer?: number | null
+          outcome_revenue_target?: number | null
+          outcome_measure_date?: string | null
           stake_kind?: string | null
           stake_value?: number | null
           outcome_statement?: string | null
@@ -1460,6 +1466,9 @@ export type Database = {
         }
         Update: {
           outcome_clock_start?: string | null
+          outcome_min_value_per_customer?: number | null
+          outcome_revenue_target?: number | null
+          outcome_measure_date?: string | null
           stake_kind?: string | null
           stake_value?: number | null
           outcome_statement?: string | null

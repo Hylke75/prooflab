@@ -14,7 +14,7 @@ import { ensembleMean } from "@/lib/ai/providers/select";
 import { dossierSummaryForAi, loadDossier } from "@/lib/dossier";
 import { ideaContext } from "@/lib/idea-context";
 import { todayInNL } from "@/lib/domain/sprint";
-import { OutcomeDefinitionSchema, optionalAmount as number } from "@/lib/forecast-schemas";
+import { OutcomeDefinitionSchema, optionalAmount as number, outcomeValueProblem } from "@/lib/forecast-schemas";
 import {
   FORECAST_MOMENTS,
   NO_REFERENCE,
@@ -23,6 +23,7 @@ import {
   PROBABILITY_MAX,
   PROBABILITY_MIN,
   followUp,
+  measureWindowProblem,
   openMomentFor,
   pct,
 } from "@/lib/domain/forecast";
@@ -35,13 +36,27 @@ const refresh = (id: string) => {
 };
 
 export async function saveOutcomeDefinition(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
-  await requireWritableIdea(ideaId);
+  const { idea } = await requireWritableIdea(ideaId);
   const p = OutcomeDefinitionSchema.safeParse(Object.fromEntries(form));
   if (!p.success) return { error: p.error.issues[0].message };
+  const valueProblem = outcomeValueProblem(p.data);
+  if (valueProblem) return { error: valueProblem };
+  // De meetdatum ligt na de beslisdatum en binnen zes maanden daarna. Is het besluit al genomen, dan telt die
+  // datum; anders de geplande beslisdatum, en zonder beslisdatum vandaag.
+  const decisionDate = idea.outcome_clock_start ?? idea.decision_deadline ?? todayInNL();
+  const windowProblem = p.data.outcome_measure_date ? measureWindowProblem(p.data.outcome_measure_date, decisionDate) : null;
+  if (windowProblem) return { error: windowProblem };
   const supabase = await supabaseServer();
   const { error } = await supabase
     .from("ideas")
-    .update({ outcome_statement: p.data.outcome_statement, outcome_metric: p.data.outcome_metric, outcome_target: p.data.outcome_target })
+    .update({
+      outcome_statement: p.data.outcome_statement,
+      outcome_metric: p.data.outcome_metric,
+      outcome_target: p.data.outcome_target,
+      outcome_min_value_per_customer: p.data.outcome_min_value_per_customer ?? null,
+      outcome_revenue_target: p.data.outcome_revenue_target ?? null,
+      outcome_measure_date: p.data.outcome_measure_date ?? null,
+    })
     .eq("id", ideaId);
   if (error) {
     if (error.message.includes("OUTCOME_LOCKED")) return { error: "De uitkomstdefinitie ligt vast: er is al een voorspelling gegeven. Zo kan niemand achteraf het doel verschuiven." };

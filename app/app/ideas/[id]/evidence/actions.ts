@@ -13,7 +13,7 @@ import { ideaContext } from "@/lib/idea-context";
 import { runAi } from "@/lib/ai/guard";
 import type { Json } from "@/lib/database.types";
 import { loadProgress } from "@/lib/progress";
-import { decisionBlocker, outcomeDueFor } from "@/lib/domain/forecast";
+import { decisionBlocker, outcomeDueAtDecision } from "@/lib/domain/forecast";
 import { todayInNL } from "@/lib/domain/sprint";
 
 export type ActionState = { error: string | null; ok?: string | null };
@@ -174,7 +174,8 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   const finalDecision = p.data.action === "continue" || p.data.action === "stop" || p.data.action === "pause";
   if (progress.forecast && !idea.outcome_due && finalDecision) {
     const decidedOn = todayInNL();
-    await supabase.from("ideas").update({ outcome_due: outcomeDueFor(decidedOn), outcome_clock_start: decidedOn }).eq("id", ideaId).is("outcome_due", null);
+    // Een vooraf geplande meetdatum wordt de uitkomstdatum als hij nog binnen zes maanden na het besluit valt.
+    await supabase.from("ideas").update({ outcome_due: outcomeDueAtDecision(decidedOn, idea.outcome_measure_date), outcome_clock_start: decidedOn }).eq("id", ideaId).is("outcome_due", null);
   }
   refresh(ideaId);
   return { error: null, ok: "Besluit vastgelegd. De opdrachtgever kan het nu bevestigen; werk daarna het rapport bij." };
