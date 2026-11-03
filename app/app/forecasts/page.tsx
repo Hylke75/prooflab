@@ -17,6 +17,9 @@ import {
   FORECASTER_LABELS,
   MOMENT_LABELS,
   OWN_BASE_RATE_MIN,
+  BRIER_FEW_OUTCOMES,
+  BRIER_MIN_OUTCOMES,
+  brierWarning,
   pct,
   scoreSet,
   type Achieved,
@@ -126,7 +129,7 @@ export default async function ForecastsPage() {
             <div className="card tight">
               <div className="tiny">Betrouwbaarheid van deze cijfers</div>
               <div className="mini-kpi num">{resolved.length < 10 ? "Laag" : resolved.length < 30 ? "Matig" : "Redelijk"}</div>
-              <span className={`pill ${resolved.length < 10 ? "orange" : "gray"}`}>{resolved.length < 30 ? "Minder dan 30 dossiers: voorzichtig lezen" : "30+ dossiers"}</span>
+              <span className={`pill ${resolved.length < 10 ? "orange" : "gray"}`}>{resolved.length < BRIER_MIN_OUTCOMES ? `Minder dan ${BRIER_MIN_OUTCOMES} dossiers: ${BRIER_FEW_OUTCOMES}` : `${BRIER_MIN_OUTCOMES}+ dossiers`}</span>
             </div>
           </div>
 
@@ -136,6 +139,12 @@ export default async function ForecastsPage() {
                 <h3>Brier-score per voorspeller</h3>
                 <span className="pill gray">Lager is beter</span>
               </div>
+              {brierWarning(resolved.length) && (
+                <div className="form-error" role="note">
+                  <strong>Let op: {BRIER_FEW_OUTCOMES}.</strong> {brierWarning(resolved.length)} Lees deze scores als een eerste indruk, niet als oordeel over een
+                  voorspeller.
+                </div>
+              )}
               <table className="table">
                 <caption className="sr-only">Brier-score, aantal voorspellingen, gemiddelde kans en werkelijk gehaald per voorspeller</caption>
                 <thead>
@@ -169,6 +178,7 @@ export default async function ForecastsPage() {
               {perMoment.length > 0 && (
                 <>
                   <h3 className="mt-24" style={{ fontSize: 15 }}>Per moment</h3>
+                  {brierWarning(resolved.length) && <p className="tiny">Let op: {BRIER_FEW_OUTCOMES} ({resolved.length} van de minimaal {BRIER_MIN_OUTCOMES} uitkomsten).</p>}
                   <table className="table">
                     <caption className="sr-only">Brier-score per voorspelmoment</caption>
                     <thead>

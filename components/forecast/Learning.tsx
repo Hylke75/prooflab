@@ -1,3 +1,4 @@
+import { BRIER_FEW_OUTCOMES, BRIER_MIN_OUTCOMES, brierWarning } from "@/lib/domain/forecast";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { setLearnedWeights } from "@/app/app/forecasts/actions";
 import type { LearningView } from "@/lib/learning-data";
@@ -160,6 +161,7 @@ export function CoachEffect({ view }: { view: LearningView }) {
         Gedaan telt ook notities die de coach zelf sloot omdat het punt was opgelost. De Brier-score (lager is beter) is die van de voorspellingen van mensen bij
         het besluit, alleen in afgeronde dossiers; tussen haakjes het aantal dossiers. Dit is samenhang, geen effect: teams die tips opvolgen kunnen ook om
         andere redenen beter voorspellen. Lees het pas bij tientallen dossiers per regel.
+        {brierWarning(view.resolvedDossiers) ? ` Let op: ${BRIER_FEW_OUTCOMES} (${view.resolvedDossiers} van de minimaal ${BRIER_MIN_OUTCOMES} uitkomsten).` : ""}
       </div>
     </div>
   );

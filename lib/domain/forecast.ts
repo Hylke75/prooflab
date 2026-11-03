@@ -250,4 +250,13 @@ export function scoreSet(list: { probability: number; achieved: Achieved }[]): {
   };
 }
 
+// Brier-scores zeggen pas iets bij genoeg uitkomsten (golf A, punt 16). Daaronder staat bij elke score een
+// waarschuwing.
+export const BRIER_MIN_OUTCOMES = 30;
+export const BRIER_FEW_OUTCOMES = "te weinig dossiers voor een betrouwbaar oordeel";
+
+export function brierWarning(outcomes: number): string | null {
+  return outcomes < BRIER_MIN_OUTCOMES ? `${outcomes} van de minimaal ${BRIER_MIN_OUTCOMES} uitkomsten: ${BRIER_FEW_OUTCOMES}.` : null;
+}
+
 export const pct = (p: number) => `${Math.round(p * 100)}%`;
