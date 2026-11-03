@@ -2066,6 +2066,8 @@ export type Database = {
           status: string
           suggested_sources: string | null
           why_it_matters: string | null
+          unit: string | null
+          expected_source: string | null
         }
         Insert: {
           created_at?: string
@@ -2080,6 +2082,8 @@ export type Database = {
           status?: string
           suggested_sources?: string | null
           why_it_matters?: string | null
+          unit?: string | null
+          expected_source?: string | null
         }
         Update: {
           created_at?: string
@@ -2094,6 +2098,8 @@ export type Database = {
           status?: string
           suggested_sources?: string | null
           why_it_matters?: string | null
+          unit?: string | null
+          expected_source?: string | null
         }
         Relationships: [
           {
@@ -2221,6 +2227,80 @@ export type Database = {
             columns: ["run_id"]
             isOneToOne: false
             referencedRelation: "research_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      research_search_log: {
+        Row: {
+          created_at: string
+          id: string
+          idea_id: string
+          passages: number
+          provider: string
+          query: string
+          question: string | null
+          question_id: string | null
+          reused: boolean
+          run_id: string | null
+          task_id: string | null
+          urls: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          idea_id: string
+          passages?: number
+          provider: string
+          query: string
+          question?: string | null
+          question_id?: string | null
+          reused?: boolean
+          run_id?: string | null
+          task_id?: string | null
+          urls?: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          idea_id?: string
+          passages?: number
+          provider?: string
+          query?: string
+          question?: string | null
+          question_id?: string | null
+          reused?: boolean
+          run_id?: string | null
+          task_id?: string | null
+          urls?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "research_search_log_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "ideas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_search_log_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "research_questions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_search_log_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "research_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_search_log_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "research_tasks"
             referencedColumns: ["id"]
           },
         ]

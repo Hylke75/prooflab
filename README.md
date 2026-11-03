@@ -46,6 +46,7 @@ npm run dev                  # http://localhost:3000
 | `OPENAI_API_KEY` | nee | ChatGPT (OpenAI, Responses API met `web_search`) |
 | `GEMINI_API_KEY` | nee | Gemini (Google, `generateContent` met `google_search`) |
 | `ANTHROPIC_MODEL`, `OPENAI_MODEL`, `GEMINI_MODEL` | nee | Ander model per aanbieder; standaardmodellen en prijzen staan in `lib/ai/providers/config.ts` |
+| `ANTHROPIC_RESEARCH_MODEL`, `OPENAI_RESEARCH_MODEL`, `GEMINI_RESEARCH_MODEL` | nee | Ander (goedkoper) model voor zoeken, uitlezen en steuncontrole; standaard het kleinere model per aanbieder |
 | `RESEARCH_BUDGET_USD` | nee | Maximum per diepe onderzoeksrun (standaard 3) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | nee | Persoonlijke enquête-uitnodigingen en uitnodigingen aan opdrachtgevers via Resend (docs/OPERATIONS.md §10) |
 | `SENTRY_DSN` | nee | Serverfouten naar een Sentry-compatibele dienst (Sentry, GlitchTip, Bugsink); zonder: alleen JSON-logregels |

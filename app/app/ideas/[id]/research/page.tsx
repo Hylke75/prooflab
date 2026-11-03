@@ -5,7 +5,8 @@ import { Stepper } from "@/components/ui/Stepper";
 import { InsightCard, type ClaimView } from "@/components/ui/InsightCard";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { Tabs } from "@/components/research/Tabs";
-import { ResearchRunPanel } from "@/components/research/ResearchRunPanel";
+import { ResearchRunPanel, type QuestionLog, type SearchLogUrl } from "@/components/research/ResearchRunPanel";
+import { EXPECTED_SOURCES, isExpectedSource } from "@/lib/domain/research-plan";
 import { AddClaimForm, AddSourceForm } from "@/components/research/SourceForms";
 import { CompetitorPanel, type CompetitorView } from "@/components/research/CompetitorPanel";
 import { SizingPanel } from "@/components/research/SizingPanel";
@@ -27,7 +28,7 @@ import { aiSettingsForOrg } from "@/lib/ai/settings";
 import { CLAIM_STATUS, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type EvidenceType, type SourceType } from "@/lib/domain/labels";
 import { breakEvenRevenue, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import {
-  addClaim, addSource, aiPlan, checkClaimSupport, deleteClaim, deleteCompetitor, deleteQuestion, deleteSegment, deleteSource,
+  addClaim, addSource, aiPlan, fetchCbsFigures, checkClaimSupport, deleteClaim, deleteCompetitor, deleteQuestion, deleteSegment, deleteSource,
   overrideSupport, recheckCompetitors, saveCompetitor, saveQuestion, saveScenario, saveSegment, saveUnitEconomics,
 } from "./actions";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
@@ -64,6 +65,11 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   const { data: tasks } = run
     ? await supabase.from("research_tasks").select("label, status, detail, kind, output").eq("run_id", run.id).order("position")
     : { data: [] };
+  // Zoeklogboek van de laatste run (RLS: alleen het onderzoeksteam leest het).
+  const { data: logRows } =
+    run && canWrite
+      ? await supabase.from("research_search_log").select("id, question_id, question, provider, query, urls, passages, reused").eq("run_id", run.id).order("created_at")
+      : { data: [] };
   const challenges =
     ((tasks ?? []).find((t) => t.kind === "reality_check" && t.status === "done")?.output as { challenges?: { title: string; detail: string }[] } | null)?.challenges ?? [];
 
@@ -222,6 +228,8 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                 providers={PROVIDERS.map((p) => ({ id: p, name: providerLabel(p), keyEnv: PROVIDER_KEY_ENV[p], connected: configuredProviders().includes(p) }))}
                 searchWith={canWrite && aiConfigured() ? (await researchProviders(idea.org_id)).map((p) => PROVIDER_LABELS[p].name) : []}
                 run={run ? { id: run.id, status: run.status, mode: run.mode, cost: Number(run.cost_usd), budget: Number(run.budget_usd), tasks: (tasks ?? []).map((t) => ({ label: t.label, status: t.status, detail: t.detail })) } : null}
+                searchLog={groupSearchLog(logRows ?? [], questions)}
+                cbsAction={fetchCbsFigures.bind(null, id)}
               />
               {challenges.length > 0 && (
                 <div className="card">
@@ -254,12 +262,16 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                       <span className="num">{q.position}</span>
                       <div style={{ flex: 1 }}>
                         <strong>{q.question}</strong>
-                        <span>{METHOD[q.method as keyof typeof METHOD]} · {qClaims.length} bevinding{qClaims.length === 1 ? "" : "en"}</span>
+                        <span>
+                          {METHOD[q.method as keyof typeof METHOD]}
+                          {isExpectedSource(q.expected_source) ? ` · Brontype: ${EXPECTED_SOURCES[q.expected_source]}` : ""} · {qClaims.length} bevinding{qClaims.length === 1 ? "" : "en"}
+                        </span>
                       </div>
                       <span className={`pill ${pill}`}>{label}</span>
                     </summary>
                     <div style={{ padding: "10px 0 4px 39px" }}>
                       {q.why_it_matters && <p className="tiny">Waarom: {q.why_it_matters}</p>}
+                      {q.unit && <p className="tiny mt-8">Meeteenheid: {q.unit}</p>}
                       <p className="tiny mt-8">Klaar als: {q.done_criterion}</p>
                       {canWrite && (
                         <ActionForm action={saveQuestion.bind(null, id, q.id)} submitLabel="Vraag opslaan" submitClass="btn white sm" footer={<DeleteQuestion ideaId={id} questionId={q.id} />}>
@@ -278,6 +290,19 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                               <label className="field-label" htmlFor={`s-${q.id}`}>Status</label>
                               <select className="field" id={`s-${q.id}`} name="status" defaultValue={q.status}>
                                 {Object.entries(QSTATUS).map(([k, [v]]) => <option key={k} value={k}>{v}</option>)}
+                              </select>
+                            </div>
+                          </div>
+                          <div className="double-field">
+                            <div>
+                              <label className="field-label" htmlFor={`u-${q.id}`}>Meeteenheid</label>
+                              <input className="field" id={`u-${q.id}`} name="unit" defaultValue={q.unit ?? ""} placeholder="Bijv. aantal bedrijven" />
+                            </div>
+                            <div>
+                              <label className="field-label" htmlFor={`b-${q.id}`}>Verwacht brontype</label>
+                              <select className="field" id={`b-${q.id}`} name="expected_source" defaultValue={q.expected_source ?? ""}>
+                                <option value="">Niet opgegeven</option>
+                                {Object.entries(EXPECTED_SOURCES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                               </select>
                             </div>
                           </div>
@@ -549,6 +574,25 @@ function DeleteQuestion({ ideaId, questionId }: { ideaId: string; questionId: st
       Vraag verwijderen
     </button>
   );
+}
+
+type LogRow = { id: string; question_id: string | null; question: string | null; provider: string; query: string; urls: unknown; passages: number; reused: boolean };
+
+// Zoeklogboek per onderzoeksvraag, in de volgorde van de onderzoekskaart.
+function groupSearchLog(rows: LogRow[], questions: { id: string; position: number; question: string }[]): QuestionLog[] {
+  const groups = new Map<string, QuestionLog>();
+  for (const r of rows) {
+    const key = r.question_id ?? `vraag:${r.question ?? ""}`;
+    const q = questions.find((x) => x.id === r.question_id);
+    if (!groups.has(key)) groups.set(key, { key, label: q ? `Vraag ${q.position} · ${q.question}` : (r.question ?? "Vraag"), rows: [] });
+    const urls = (Array.isArray(r.urls) ? r.urls : []).flatMap((u): SearchLogUrl[] => {
+      const x = u as Partial<SearchLogUrl>;
+      return typeof x?.url === "string" ? [{ url: x.url, title: typeof x.title === "string" ? x.title : null, status: String(x.status ?? "niet_opgehaald"), reason: String(x.reason ?? "") }] : [];
+    });
+    groups.get(key)!.rows.push({ id: r.id, provider: isProvider(r.provider) ? PROVIDER_LABELS[r.provider].short : "ProofLab", query: r.query, passages: r.passages, reused: r.reused, urls });
+  }
+  const order = (k: string) => questions.find((q) => q.id === k)?.position ?? 99;
+  return [...groups.values()].sort((a, b) => order(a.key) - order(b.key));
 }
 
 // Providers that would run the web search for this organisation (its choice first, ensemble on or off).

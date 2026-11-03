@@ -9,12 +9,13 @@ import { fetchPageText } from "@/lib/fetch-page";
 import { checkQuote, normalizeText, numericFromInput, registrableDomain, valueInQuote } from "@/lib/domain/verify";
 import { aiConfigured, env } from "@/lib/env";
 import { analyzeSignals, planResearch } from "@/lib/ai/research";
-import { aiSupportCheck } from "@/lib/research-runner";
+import { aiSupportCheck, collectCbsFigures } from "@/lib/research-runner";
 import { isSupportCheck } from "@/lib/domain/support";
 import { priceOnPage, recheckChanges, recheckQuotes, type CompetitorRecheck, type PageRecheck } from "@/lib/domain/recheck";
 import { isSignalSource, painAsAssumption, verifySignalGroups, type SignalExcerpt, type SignalQuote } from "@/lib/domain/customer-signals";
 import { ideaContext } from "@/lib/idea-context";
 import { aiErrorMessage, runAi } from "@/lib/ai/guard";
+import { EXPECTED_SOURCE_KEYS } from "@/lib/domain/research-plan";
 
 export type ActionState = { error: string | null; ok?: string | null };
 
@@ -37,6 +38,16 @@ const QuestionSchema = z.object({
   done_criterion: z.string().trim().min(5).max(400),
   method: z.enum(["desk", "customer", "both"]),
   status: z.enum(["open", "answered", "needs_customer_research"]),
+  unit: z
+    .string()
+    .trim()
+    .max(120)
+    .optional()
+    .transform((s) => (s ? s : null)),
+  expected_source: z
+    .union([z.enum(EXPECTED_SOURCE_KEYS), z.literal("")])
+    .optional()
+    .transform((s) => (s ? s : null)),
 });
 
 export async function saveQuestion(ideaId: string, questionId: string | null, _: ActionState, form: FormData): Promise<ActionState> {
@@ -90,6 +101,17 @@ export async function aiPlan(ideaId: string, _: ActionState): Promise<ActionStat
   } catch (e) {
     return { error: aiErrorMessage(e, "Het onderzoeksplan kon niet worden gemaakt. De huidige vragen blijven staan.") };
   }
+}
+
+// CBS StatLine: officiële bedrijventellingen als bron, zonder AI. Er wordt geen bevinding aangemaakt: de
+// consultant legt zelf een bevinding met citaat vast (of een onderzoeksrun leest de tabelregels uit).
+export async function fetchCbsFigures(ideaId: string, _: ActionState): Promise<ActionState> {
+  const { idea } = await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  const { data: sizeQuestion } = await supabase.from("research_questions").select("question").eq("idea_id", ideaId).eq("expected_source", "official_statistic").order("position").limit(1).maybeSingle();
+  const res = await collectCbsFigures(idea, null, sizeQuestion?.question ?? null);
+  if (res.excerptIds.length === 0) return { error: `${res.detail} Voeg de cijfers anders handmatig toe onder Bronnen.` };
+  return done(ideaId, `${res.detail} Opgeslagen als bron (officiële statistiek) onder Bronnen; leg zelf de bevinding met citaat vast.`);
 }
 
 // ---------------------------------------------------------------------------

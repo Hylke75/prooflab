@@ -10,6 +10,7 @@ import { aiSettingsForOrg } from "@/lib/ai/settings";
 import { modelFor, PROVIDERS, PROVIDER_LABELS } from "@/lib/ai/providers/config";
 import { monitoringConfigured } from "@/lib/monitoring";
 import { log } from "@/lib/log";
+import { zeroSourceRuns } from "@/lib/domain/research-health";
 
 export const metadata: Metadata = { title: "Systeemstatus" };
 
@@ -21,6 +22,24 @@ const yesNo = (ok: boolean | null | undefined, yes = "Aanwezig", no = "Ontbreekt
 const when = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam", dateStyle: "medium", timeStyle: "short" }) : "onbekend";
 const usd = (n: number) => `$${n.toFixed(2).replace(".", ",")}`;
+
+// Afgeronde onderzoeksruns van de laatste 7 dagen in deze werkruimte, en hoeveel daarvan geen enkele passage
+// bewaarden. Null wanneer het niet kon worden bepaald.
+async function zeroSourceRunsLastWeek(orgId: string): Promise<{ zero: number; total: number } | null> {
+  const supabase = await supabaseServer();
+  const since = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+  const { data: ideas, error: e1 } = await supabase.from("ideas").select("id").eq("org_id", orgId);
+  if (e1) return null;
+  const ideaIds = (ideas ?? []).map((i) => i.id);
+  if (ideaIds.length === 0) return { zero: 0, total: 0 };
+  const { data: runs, error: e2 } = await supabase.from("research_runs").select("id").in("idea_id", ideaIds).eq("status", "done").gte("created_at", since).limit(500);
+  if (e2) return null;
+  const runIds = (runs ?? []).map((r) => r.id);
+  if (runIds.length === 0) return { zero: 0, total: 0 };
+  const { data: tasks, error: e3 } = await supabase.from("research_tasks").select("run_id, kind, output").in("run_id", runIds).eq("kind", "search");
+  if (e3) return null;
+  return { zero: zeroSourceRuns(runIds, tasks ?? []).length, total: runIds.length };
+}
 
 // Operational status for workspace owners: schema markers, the purge job, integrations and AI spend. Every value
 // comes from the database (public.system_status) or from whether a server setting is present; secrets are never
@@ -43,6 +62,7 @@ export default async function StatusPage() {
   const cap = s ? Number(s.ai_cap_usd) : 0;
   const share = cap > 0 ? Math.min(100, Math.round((spent / cap) * 100)) : 0;
   const purgeOk = s?.purge_last_status === "succeeded";
+  const zeroRuns = await zeroSourceRunsLastWeek(ws.org.id);
 
   const rows: { label: string; value: React.ReactNode; note?: string }[] = s
     ? [
@@ -155,6 +175,16 @@ export default async function StatusPage() {
                   <tr>
                     <th scope="row">Foutmonitoring</th>
                     <td>{yesNo(monitoring, "SENTRY_DSN ingesteld", "Alleen serverlogs")}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Onderzoeksruns zonder bronnen (7 dagen)</th>
+                    <td>
+                      {zeroRuns == null ? pill("gray", "Onbekend") : pill(zeroRuns.zero === 0 ? "green" : "orange", `${zeroRuns.zero} van ${zeroRuns.total}`)}
+                      <div className="tiny" style={{ marginTop: 4 }}>
+                        Afgeronde runs die geen enkele letterlijke passage bewaarden. Twee op rij voor hetzelfde idee wordt als fout gemeld
+                        (research_zero_sources). Het zoeklogboek bij de onderzoeksrun laat per URL zien waarom.
+                      </div>
+                    </td>
                   </tr>
                 </tbody>
               </table>

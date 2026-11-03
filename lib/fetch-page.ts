@@ -3,10 +3,11 @@ import { lookup } from "node:dns/promises";
 import http from "node:http";
 import https from "node:https";
 import { BlockList, isIP } from "node:net";
+import { MAX_PDF_BYTES, pdfToText } from "@/lib/pdf-text";
 
 // Fetches a public web page as plain text so that a pasted excerpt can be checked against the
 // live page. Guards against SSRF: http(s) only, no private or link-local addresses, manual
-// redirects (each hop re-checked), timeout and size cap.
+// redirects (each hop re-checked), timeout and size cap. PDF's worden naar tekst omgezet (lib/pdf-text.ts).
 
 const MAX_BYTES = 2_000_000;
 
@@ -73,14 +74,14 @@ async function resolvePublic(url: URL): Promise<{ address: string; family: numbe
 
 type RawResponse = { status: number; headers: http.IncomingHttpHeaders; body: http.IncomingMessage };
 
-function requestPinned(url: URL, pin: { address: string; family: number }): Promise<RawResponse> {
+function requestPinned(url: URL, pin: { address: string; family: number }, accept: string): Promise<RawResponse> {
   return new Promise((resolve, reject) => {
     const mod = url.protocol === "https:" ? https : http;
     const req = mod.request(
       url,
       {
         method: "GET",
-        headers: { "user-agent": "ProofLab-bronchecker/1.0 (+bronverificatie)", accept: "text/html,text/plain", "accept-encoding": "identity" },
+        headers: { "user-agent": "ProofLab-bronchecker/1.0 (+bronverificatie)", accept, "accept-encoding": "identity" },
         // Connect to the address that was checked, never to a fresh lookup.
         lookup: ((_host: string, opts: { all?: boolean }, cb: (...args: unknown[]) => void) =>
           opts?.all ? cb(null, [{ address: pin.address, family: pin.family }]) : cb(null, pin.address, pin.family)) as unknown as http.RequestOptions["lookup"],
@@ -114,11 +115,38 @@ export function htmlToText(html: string): string {
     .trim();
 }
 
-export async function fetchPageText(raw: string): Promise<{ url: string; title: string | null; text: string }> {
+// Waarom een pagina niet bruikbaar is; dezelfde codes als in het zoeklogboek (research_search_log).
+export type PageFailure = "geblokkeerd" | "pdf_geen_tekst";
+
+export class PageFetchError extends Error {
+  constructor(
+    readonly reason: PageFailure,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+export type FetchedBody = { url: string; contentType: string; body: Buffer; truncated: boolean };
+
+// Eén SSRF-veilige GET met handmatige doorverwijzingen (elke stap opnieuw gecontroleerd). allowHosts beperkt het
+// ophalen tot vaste hosts (bijv. alleen datasets.cbs.nl); maxBytes hangt af van het inhoudstype.
+export async function fetchPublic(
+  raw: string,
+  opts: { accept: string; allowTypes: RegExp; maxBytes: (contentType: string) => number; allowHosts?: readonly string[] },
+): Promise<FetchedBody> {
   let url = new URL(raw);
   for (let hop = 0; hop < 4; hop++) {
-    const pin = await resolvePublic(url);
-    const res = await requestPinned(url, pin);
+    if (opts.allowHosts && !opts.allowHosts.includes(url.hostname.toLowerCase())) {
+      throw new PageFetchError("geblokkeerd", "Deze host is niet toegestaan.");
+    }
+    let res: RawResponse;
+    try {
+      const pin = await resolvePublic(url);
+      res = await requestPinned(url, pin, opts.accept);
+    } catch (e) {
+      throw new PageFetchError("geblokkeerd", e instanceof Error ? e.message : "De pagina kon niet worden opgehaald.");
+    }
     if (res.status >= 300 && res.status < 400 && res.headers.location) {
       res.body.resume();
       url = new URL(res.headers.location, url);
@@ -126,26 +154,53 @@ export async function fetchPageText(raw: string): Promise<{ url: string; title: 
     }
     if (res.status < 200 || res.status >= 300) {
       res.body.resume();
-      throw new Error("De pagina kon niet worden opgehaald.");
+      throw new PageFetchError("geblokkeerd", `De pagina kon niet worden opgehaald (HTTP ${res.status}).`);
     }
-    const type = String(res.headers["content-type"] ?? "");
-    if (!/text\/html|text\/plain|application\/xhtml/.test(type)) {
+    const contentType = String(res.headers["content-type"] ?? "");
+    if (!opts.allowTypes.test(contentType)) {
       res.body.destroy();
-      throw new Error("Alleen HTML- of tekstpagina's kunnen worden gecontroleerd.");
+      throw new PageFetchError("geblokkeerd", "Alleen HTML-, tekst- en PDF-bestanden kunnen worden gecontroleerd.");
     }
+    const limit = opts.maxBytes(contentType);
     const chunks: Buffer[] = [];
     let size = 0;
+    let truncated = false;
     for await (const chunk of res.body) {
       size += (chunk as Buffer).byteLength;
-      if (size > MAX_BYTES) {
+      if (size > limit) {
+        truncated = true;
         res.body.destroy();
         break;
       }
       chunks.push(chunk as Buffer);
     }
-    const body = Buffer.concat(chunks).toString("utf8");
-    const title = body.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim() ?? null;
-    return { url: url.toString(), title: title ? htmlToText(title) : null, text: type.includes("html") ? htmlToText(body) : body };
+    return { url: url.toString(), contentType, body: Buffer.concat(chunks), truncated };
   }
-  throw new Error("Te veel doorverwijzingen.");
+  throw new PageFetchError("geblokkeerd", "Te veel doorverwijzingen.");
+}
+
+export type PageKind = "html" | "text" | "pdf";
+
+export async function fetchPageText(raw: string): Promise<{ url: string; title: string | null; text: string; kind: PageKind }> {
+  const res = await fetchPublic(raw, {
+    accept: "text/html,text/plain,application/pdf",
+    allowTypes: /text\/html|text\/plain|application\/xhtml|application\/pdf/,
+    maxBytes: (type) => (/application\/pdf/.test(type) ? MAX_PDF_BYTES : MAX_BYTES),
+  });
+  if (/application\/pdf/.test(res.contentType)) {
+    // Een afgekapte PDF is niet te lezen.
+    if (res.truncated) throw new PageFetchError("pdf_geen_tekst", "De PDF is groter dan 10 MB.");
+    const text = await pdfToText(res.body);
+    let name: string | null = null;
+    try {
+      name = decodeURIComponent(new URL(res.url).pathname.split("/").pop() ?? "") || null;
+    } catch {
+      name = null;
+    }
+    return { url: res.url, title: name, text, kind: "pdf" };
+  }
+  const body = res.body.toString("utf8");
+  const title = body.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim() ?? null;
+  const html = res.contentType.includes("html");
+  return { url: res.url, title: title ? htmlToText(title) : null, text: html ? htmlToText(body) : body, kind: html ? "html" : "text" };
 }
