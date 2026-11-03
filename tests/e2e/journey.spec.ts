@@ -158,6 +158,11 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   // Eerst voorspellen (golf B, punt 15): de bewijspagina blijft vergrendeld tot de eigen voorspelling er is.
   await expect(page.getByRole("link", { name: /Geef eerst je voorspelling/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Bewaar mijn keuze" })).toHaveCount(0);
+  // B0 punt 5: het veld is leeg; na invullen staat er wat er wordt vastgelegd.
+  const forecast = page.getByLabel("Kans dat het doel wordt gehaald (%)", { exact: true });
+  await expect(forecast).toHaveValue("");
+  await forecast.fill("30");
+  await expect(page.getByText("Je legt 30% vast. Dit kan daarna niet meer veranderen.")).toBeVisible();
   await page.getByLabel("Waarom? (één zin)", { exact: true }).fill("Weinig gedragsbewijs, dus dicht bij het basispercentage.");
   await page.getByRole("button", { name: "Leg mijn voorspelling vast" }).click();
   // The form makes way for the recorded forecast (and the others for this moment).
