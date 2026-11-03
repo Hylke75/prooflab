@@ -15,6 +15,153 @@ export type Database = {
   }
   public: {
     Tables: {
+      coach_notes: {
+        Row: {
+          id: string
+          idea_id: string
+          code: string
+          kind: string
+          title: string
+          body: string
+          href: string | null
+          source: string
+          audience: string
+          status: string
+          created_at: string
+          resolved_at: string | null
+          resolved_by: string | null
+        }
+        Insert: {
+          id?: string
+          idea_id: string
+          code: string
+          kind: string
+          title: string
+          body: string
+          href?: string | null
+          source: string
+          audience?: string
+          status?: string
+          created_at?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+        }
+        Update: {
+          id?: string
+          idea_id?: string
+          code?: string
+          kind?: string
+          title?: string
+          body?: string
+          href?: string | null
+          source?: string
+          audience?: string
+          status?: string
+          created_at?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+        }
+        Relationships: []
+      }
+      coach_reviews: {
+        Row: {
+          idea_id: string
+          fingerprint: string
+          reviewed_at: string
+          ai_reviews_today: number
+          ai_day: string
+        }
+        Insert: {
+          idea_id: string
+          fingerprint: string
+          reviewed_at?: string
+          ai_reviews_today?: number
+          ai_day?: string
+        }
+        Update: {
+          idea_id?: string
+          fingerprint?: string
+          reviewed_at?: string
+          ai_reviews_today?: number
+          ai_day?: string
+        }
+        Relationships: []
+      }
+      integration_endpoints: {
+        Row: {
+          id: string
+          idea_id: string
+          provider: string
+          label: string
+          token_hash: string
+          active: boolean
+          created_by: string
+          created_at: string
+          last_event_at: string | null
+        }
+        Insert: {
+          id?: string
+          idea_id: string
+          provider: string
+          label: string
+          token_hash: string
+          active?: boolean
+          created_by?: string
+          created_at?: string
+          last_event_at?: string | null
+        }
+        Update: {
+          id?: string
+          idea_id?: string
+          provider?: string
+          label?: string
+          token_hash?: string
+          active?: boolean
+          created_by?: string
+          created_at?: string
+          last_event_at?: string | null
+        }
+        Relationships: []
+      }
+      outreach_events: {
+        Row: {
+          id: number
+          idea_id: string
+          endpoint_id: string
+          event_type: string
+          contact_hash: string
+          campaign: string | null
+          message: string | null
+          received_at: string
+          retention_until: string
+          dedupe_key: string
+        }
+        Insert: {
+          id?: number
+          idea_id: string
+          endpoint_id: string
+          event_type: string
+          contact_hash: string
+          campaign?: string | null
+          message?: string | null
+          received_at?: string
+          retention_until?: string
+          dedupe_key: string
+        }
+        Update: {
+          id?: number
+          idea_id?: string
+          endpoint_id?: string
+          event_type?: string
+          contact_hash?: string
+          campaign?: string | null
+          message?: string | null
+          received_at?: string
+          retention_until?: string
+          dedupe_key?: string
+        }
+        Relationships: []
+      }
       customer_signals: {
         Row: {
           id: string
@@ -2067,6 +2214,10 @@ export type Database = {
       }
       mark_report_viewed: { Args: { p_report: string }; Returns: boolean }
       may_create_account: { Args: { p_email: string; p_key: string }; Returns: boolean }
+      record_outreach_event: {
+        Args: { p_campaign: string | null; p_contact_hash: string; p_dedupe: string; p_event: string; p_key: string; p_message: string | null; p_token_hash: string }
+        Returns: boolean
+      }
       forecast_scores: {
         Args: { p_org: string }
         Returns: { forecaster_kind: string; forecaster_id: string | null; forecasts: number; brier: number; mean_probability: number; hit_rate: number }[]

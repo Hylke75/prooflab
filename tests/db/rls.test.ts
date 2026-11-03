@@ -446,4 +446,30 @@ d("row level security and integrity rules", () => {
     expect(row).toEqual({ review_status: "rejected", reviewed_by: alice.id });
     await expect(as(alice, (c) => c.query("update public.observations set summary = 'Anders' where id = $1", [obs]))).rejects.toThrow(/OBSERVATION_LOCKED/);
   });
+  it("keeps coach notes as said and accepts outreach events only with a valid endpoint", async () => {
+    const note = await as(alice, async (c) =>
+      (await c.query("insert into public.coach_notes (idea_id, code, kind, title, body, source) values ($1, 'no_alternatives', 'tip', 'Breng alternatieven in kaart', 'Hoe lossen klanten dit nu op?', 'rules') returning id", [A.idea])).rows[0].id,
+    );
+    await expect(
+      as(alice, (c) => c.query("insert into public.coach_notes (idea_id, code, kind, title, body, source) values ($1, 'no_alternatives', 'tip', 'Nog eens', 'Dubbel', 'rules')", [A.idea])),
+    ).rejects.toThrow(/coach_notes_open_code/);
+    await expect(as(alice, (c) => c.query("update public.coach_notes set body = 'Anders' where id = $1", [note]))).rejects.toThrow(/COACH_NOTE_LOCKED/);
+    await as(alice, (c) => c.query("update public.coach_notes set status = 'done' where id = $1", [note]));
+    expect((await as(alice, async (c) => (await c.query("select resolved_by from public.coach_notes where id = $1", [note])).rows[0])).resolved_by).toBe(alice.id);
+    // Clients only see notes meant for everyone.
+    expect(await as(client, async (c) => (await c.query("select * from public.coach_notes where id = $1", [note])).rowCount)).toBe(0);
+
+    const tokenHash = createHash("sha256").update("expandi-token").digest("hex");
+    await as(alice, (c) => c.query("insert into public.integration_endpoints (idea_id, provider, label, token_hash) values ($1, 'expandi', 'Campagne MKB', $2)", [A.idea, tokenHash]));
+    const rec = (token: string, dedupe: string) =>
+      as("anon", async (c) =>
+        (await c.query("select public.record_outreach_event($1, $2, 'reply', 'contact1', 'MKB', 'Klinkt interessant, wat kost het?', $3) as ok", [ingestKey, token, dedupe])).rows[0].ok,
+      );
+    expect(await rec(tokenHash, "evt-1")).toBe(true);
+    expect(await rec(tokenHash, "evt-1")).toBe(false);
+    expect(await rec("onbekend", "evt-2")).toBe(false);
+    await expect(as("anon", (c) => c.query("select public.record_outreach_event('fout', $1, 'reply', 'c', null, 'x', 'e')", [tokenHash]))).rejects.toThrow(/FORBIDDEN/);
+    expect(await as(alice, async (c) => (await c.query("select * from public.outreach_events where idea_id = $1", [A.idea])).rowCount)).toBe(1);
+    expect(await as(client, async (c) => (await c.query("select * from public.outreach_events where idea_id = $1", [A.idea])).rowCount)).toBe(0);
+  });
 });
