@@ -1817,6 +1817,39 @@ export type Database = {
           },
         ]
       }
+      org_evidence_caps: {
+        Row: {
+          deposit: number
+          opinion: number
+          org_id: string
+          problem: number
+          quote: number
+          small_action: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          deposit?: number
+          opinion?: number
+          org_id: string
+          problem?: number
+          quote?: number
+          small_action?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          deposit?: number
+          opinion?: number
+          org_id?: string
+          problem?: number
+          quote?: number
+          small_action?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       organizations: {
         Row: {
           ai_monthly_cap_usd: number
@@ -2709,6 +2742,26 @@ export type Database = {
         Returns: { dimension: string; kind: string; achieved: string; direction: string; dossiers: number }[]
       }
       idea_uses_learned_weights: { Args: { p_idea: string }; Returns: boolean }
+      evidence_caps_for_idea: {
+        Args: { p_idea: string }
+        Returns: { opinion: number; problem: number; small_action: number; quote: number; deposit: number }[]
+      }
+      evidence_source_refs: {
+        Args: { p_idea: string }
+        Returns: {
+          item_type: string
+          item_id: string
+          source_id: string | null
+          source_type: string | null
+          source_title: string | null
+          campaign: string | null
+          survey_experiment_id: string | null
+          experiment_id: string | null
+          experiment_title: string | null
+          interview_id: string | null
+          interview_label: string | null
+        }[]
+      }
       idea_learning_counts: {
         Args: { p_idea: string }
         Returns: { dimension: string; kind: string; achieved: string; direction: string; dossiers: number }[]

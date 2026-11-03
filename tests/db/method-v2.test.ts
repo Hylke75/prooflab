@@ -99,6 +99,105 @@ d("methode 2026-11-b", () => {
     expect(row).toEqual({ decision_rule: "absolute", success_count: 4, required_n: 15, expected_pct: 20, available_per_week: 5 });
   });
 
+  it("plafonds: leden lezen, alleen eigenaren schrijven, de opdrachtgever krijgt ze via het dossier", async () => {
+    const editor = await user(`consultant-${randomUUID()}@example.com`);
+    const outsider = await user(`ander-${randomUUID()}@example.com`);
+    const client = await user(`klant-${randomUUID()}@example.com`);
+    await as(owner, (c) => c.query("insert into public.organization_members (org_id, user_id, role) values ($1, $2, 'editor')", [A.org, editor.id]));
+    await as(owner, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_decider')", [A.idea, client.email]));
+    await as(client, (c) => c.query("select public.claim_invitations()"));
+
+    // Zonder rij: geen plafonds uit de database (de app gebruikt dan de standaardwaarden).
+    expect((await as(owner, (c) => c.query("select * from public.evidence_caps_for_idea($1)", [A.idea]))).rowCount).toBe(0);
+
+    await as(owner, (c) => c.query("insert into public.org_evidence_caps (org_id, opinion, problem, small_action, quote, deposit) values ($1, 0.35, 0.5, 0.6, 0.8, 0.9)", [A.org]));
+    const stamped = (await db.query("select updated_by from public.org_evidence_caps where org_id = $1", [A.org])).rows[0];
+    expect(stamped.updated_by).toBe(owner.id);
+
+    // Een consultant (geen eigenaar) leest wel, maar schrijft niet.
+    const seen = await as(editor, async (c) => (await c.query("select opinion::float from public.org_evidence_caps where org_id = $1", [A.org])).rows);
+    expect(seen).toEqual([{ opinion: 0.35 }]);
+    const updated = await as(editor, async (c) => (await c.query("update public.org_evidence_caps set opinion = 0.5 where org_id = $1", [A.org])).rowCount);
+    expect(updated).toBe(0);
+    const deleted = await as(editor, async (c) => (await c.query("delete from public.org_evidence_caps where org_id = $1", [A.org])).rowCount);
+    expect(deleted).toBe(0);
+    await expect(
+      as(editor, (c) => c.query("insert into public.org_evidence_caps (org_id) values ($1) on conflict (org_id) do update set opinion = 0.6", [A.org])),
+    ).rejects.toThrow(/row-level security/);
+
+    // Buitenstaanders zien niets, ook niet via het dossier.
+    expect((await as(outsider, (c) => c.query("select * from public.org_evidence_caps where org_id = $1", [A.org]))).rowCount).toBe(0);
+    expect((await as(outsider, (c) => c.query("select * from public.evidence_caps_for_idea($1)", [A.idea]))).rowCount).toBe(0);
+
+    // De opdrachtgever leest de tabel niet, maar rekent via het dossier met dezelfde plafonds.
+    expect((await as(client, (c) => c.query("select * from public.org_evidence_caps where org_id = $1", [A.org]))).rowCount).toBe(0);
+    const viaIdea = await as(client, async (c) => (await c.query("select opinion::float, quote::float from public.evidence_caps_for_idea($1)", [A.idea])).rows);
+    expect(viaIdea).toEqual([{ opinion: 0.35, quote: 0.8 }]);
+
+    // Oplopend per niveau, binnen 5–99%.
+    await expect(as(owner, (c) => c.query("update public.org_evidence_caps set problem = 0.3 where org_id = $1", [A.org]))).rejects.toThrow(/org_evidence_caps_ascending/);
+    await expect(as(owner, (c) => c.query("update public.org_evidence_caps set deposit = 1 where org_id = $1", [A.org]))).rejects.toThrow(/check/);
+
+    // Elke wijziging staat in het auditspoor van de werkruimte.
+    await as(owner, (c) => c.query("update public.org_evidence_caps set opinion = 0.3 where org_id = $1", [A.org]));
+    const audit = await as(owner, async (c) => (await c.query("select action, detail from public.audit_events where table_name = 'org_evidence_caps' and org_id = $1 order by id", [A.org])).rows);
+    expect(audit.map((r) => r.action)).toEqual(["insert", "update"]);
+    expect(Number(audit[1].detail.old.opinion)).toBe(0.35);
+    expect(Number(audit[1].detail.new.opinion)).toBe(0.3);
+  });
+
+  it("geeft per bevinding en observatie de bron waarmee signalen worden samengevoegd", async () => {
+    const ids = await as(owner, async (c) => {
+      const src = async (type: string, title: string) =>
+        (await c.query("insert into public.sources (idea_id, title, source_type) values ($1, $2, $3) returning id", [A.idea, title, type])).rows[0].id as string;
+      const claim = async (source: string | null) => {
+        const id = (await c.query("insert into public.claims (idea_id, statement, evidence_type) values ($1, 'Bewering', 'qualitative_observation') returning id", [A.idea])).rows[0].id as string;
+        if (source) await c.query("insert into public.claim_sources (claim_id, idea_id, source_id, quote) values ($1, $2, $3, 'citaat')", [id, A.idea, source]);
+        return id;
+      };
+      const h = (await c.query("select id from public.hypotheses where idea_id = $1 limit 1", [A.idea])).rows[0].id;
+      const survey = (await c.query("insert into public.experiments (idea_id, hypothesis_id, type, title) values ($1, $2, 'survey', 'Enquête X') returning id", [A.idea, h])).rows[0].id as string;
+      const cbs = await src("official_statistic", "CBS Statline");
+      const out1 = await src("outreach", "Expandi-antwoorden – Event-Q4 – 3 november 2026");
+      const out2 = await src("outreach", "Expandi-antwoorden – Event-Q4 – 9 november 2026");
+      const open = await src("survey", "Enquête – Enquête X – open antwoorden – 4 november 2026");
+      const iv = (
+        await c.query(
+          `insert into public.interviews (experiment_id, idea_id, participant_label, dmu_role, recruited_via, held_on, record_type, transcript, consent_recorded)
+           values ($1, $2, 'Eventmanager A', 'user', 'network', current_date, 'notes', 'Notities van het gesprek', true) returning id`,
+          [survey, A.idea],
+        )
+      ).rows[0].id as string;
+      const obs = (await c.query("insert into public.observations (idea_id, experiment_id, interview_id, kind, summary) values ($1, $2, $3, 'opinion', 'x') returning id", [A.idea, survey, iv])).rows[0].id as string;
+      return { survey, cbs, iv, obs, c1: await claim(cbs), c2: await claim(out1), c3: await claim(out2), c4: await claim(open), c5: await claim(null) };
+    });
+    const refs = async (who: U) => {
+      const rows = await as(who, async (c) => (await c.query("select * from public.evidence_source_refs($1)", [A.idea])).rows);
+      return new Map(rows.map((r) => [r.item_id, r]));
+    };
+    const mine = await refs(owner);
+    expect(mine.get(ids.c1)).toMatchObject({ item_type: "claim", source_id: ids.cbs, source_title: "CBS Statline" });
+    expect(mine.get(ids.c2).campaign).toBe("Event-Q4");
+    expect(mine.get(ids.c3).campaign).toBe("Event-Q4");
+    expect(mine.get(ids.c4)).toMatchObject({ survey_experiment_id: ids.survey, experiment_title: "Enquête X" });
+    expect(mine.get(ids.c5)).toMatchObject({ source_id: null });
+    expect(mine.get(ids.obs)).toMatchObject({ item_type: "observation", experiment_id: ids.survey, interview_id: ids.iv, interview_label: "Eventmanager A" });
+
+    // Wie alleen meekijkt, ziet geen campagnenamen, outreachtitels of interviewlabels, maar dezelfde groepering.
+    const client = await user(`klant2-${randomUUID()}@example.com`);
+    await as(owner, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_viewer')", [A.idea, client.email]));
+    await as(client, (c) => c.query("select public.claim_invitations()"));
+    const theirs = await refs(client);
+    expect(theirs.get(ids.c2).source_title).toBeNull();
+    expect(theirs.get(ids.c2).campaign).toMatch(/^md5:/);
+    expect(theirs.get(ids.c2).campaign).toBe(theirs.get(ids.c3).campaign);
+    expect(theirs.get(ids.obs).interview_label).toBeNull();
+    expect(theirs.get(ids.c1).source_title).toBe("CBS Statline");
+
+    const outsider = await user(`ander2-${randomUUID()}@example.com`);
+    expect((await as(outsider, (c) => c.query("select * from public.evidence_source_refs($1)", [A.idea]))).rowCount).toBe(0);
+  });
+
   it("accepteert alleen bekende beslisregels en een aantal bij de aantalregel", async () => {
     await expect(hypothesisWithRule(owner, A.idea, "onbekend" as "absolute")).rejects.toThrow(/check/);
     await expect(
