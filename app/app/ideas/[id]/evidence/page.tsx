@@ -21,6 +21,8 @@ import { addPremortem, approveLearningCard, confirmDecision, runCheck, saveDecis
 import { RuleCheckCard } from "@/components/decision/DecisionRule";
 import { loadRuleCheck } from "@/lib/decision-rule-data";
 import { deviationLabel } from "@/lib/domain/decision-rule";
+import { ConfirmDecision } from "@/components/evidence/ConfirmDecision";
+import { againstFor } from "@/lib/against-data";
 
 export const metadata: Metadata = { title: "Bewijs & besluit" };
 
@@ -308,11 +310,8 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                       ? `Bevestigd door de opdrachtgever op ${new Date(dec.client_confirmed_at).toLocaleDateString("nl-NL")}${dec.client_comment ? `: “${dec.client_comment}”` : ""}`
                       : "Nog niet bevestigd door de opdrachtgever."}
                   </p>
-                  {isClientDecider && !dec.client_confirmed_at && (
-                    <ActionForm action={confirmDecision.bind(null, id, dec.id)} submitLabel="Ik bevestig dit besluit" submitClass="btn primary sm">
-                      <input className="field mt-8" name="comment" placeholder="Opmerking (optioneel)" aria-label="Opmerking" />
-                    </ActionForm>
-                  )}
+                  {isClientDecider && !dec.client_confirmed_at && <ConfirmDecision summary={againstFor(d, dec)} action={confirmDecision.bind(null, id, dec.id)} />}
+                  {dec.reviewed_against_summary && <p className="tiny">De opdrachtgever zag bij het bevestigen de samenvatting &ldquo;Wat ging tegen&rdquo;.</p>}
                 </div>
               </div>
             ))}

@@ -229,6 +229,68 @@ d("golf B: besluit en voorspelling", () => {
     });
   });
 
+  describe("punt 18: bevestigen na \"Wat ging tegen\"", () => {
+    const summary = (over: Record<string, unknown> = {}) =>
+      JSON.stringify({ acknowledged: true, failed_tests: [], counter_evidence: [], capped_assumptions: [], rule_deviations: [], ...over });
+
+    it("bevestigt alleen met een complete, gelezen samenvatting", async () => {
+      const idea = await newIdea(alice, org);
+      const client = await user(`klant-${randomUUID()}@example.com`);
+      await as(alice, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_decider')", [idea, client.email]));
+      await as(client, (c) => c.query("select public.claim_invitations()"));
+      // Een mislukte test met een goedgekeurde Learning Card.
+      await as(alice, async (c) => {
+        const a = (await c.query("insert into public.assumptions (idea_id, statement, category, importance) values ($1, 'Eventmanagers betalen', 'desirability', 5) returning id", [idea])).rows[0].id;
+        const h = (
+          await c.query(
+            `insert into public.hypotheses (idea_id, assumption_id, we_believe, target_group, test_method, metric_label,
+               metric_numerator, metric_denominator, success_threshold_pct, fail_threshold_pct, min_sample, max_duration_days)
+             values ($1, $2, 'Eventmanagers handelen', 'NL eventmanagers', 'test', 'ratio', 'teller', 'noemer', 15, 5, 20, 21) returning id`,
+            [idea, a],
+          )
+        ).rows[0].id;
+        const e = (await c.query("insert into public.experiments (idea_id, hypothesis_id, type, title) values ($1, $2, 'pricing', 'Prijstest') returning id", [idea, h])).rows[0].id;
+        const card = (
+          await c.query(
+            `insert into public.learning_cards (experiment_id, idea_id, we_believed, we_observed, we_learned, therefore, verdict, data_reliability)
+             values ($1, $2, 'a', 'b', 'c', 'd', 'fail', 'medium') returning id`,
+            [e, idea],
+          )
+        ).rows[0].id;
+        await c.query("update public.learning_cards set status = 'approved' where id = $1", [card]);
+      });
+      const decision = await decide(alice, idea, "adjust");
+      const confirm = (s: string | null) => as(client, async (c) => (await c.query("select public.confirm_decision($1, 'akkoord', $2::jsonb) as ok", [decision, s])).rows[0].ok);
+      await expect(confirm(null)).rejects.toThrow(/REVIEW_REQUIRED/);
+      await expect(confirm(summary({ acknowledged: false }))).rejects.toThrow(/REVIEW_REQUIRED/);
+      await expect(confirm(JSON.stringify({ acknowledged: true, failed_tests: [] }))).rejects.toThrow(/REVIEW_REQUIRED/);
+      // De mislukte prijstest ontbreekt in de samenvatting.
+      await expect(confirm(summary())).rejects.toThrow(/REVIEW_INCOMPLETE/);
+      expect(await confirm(summary({ failed_tests: [{ id: "x", title: "Prijstest" }] }))).toBe(true);
+      const row = await as(alice, async (c) => (await c.query("select client_confirmed_at is not null as confirmed, reviewed_against_summary ? 'reviewed_at' as stamped from public.decisions where id = $1", [decision])).rows[0]);
+      expect(row).toEqual({ confirmed: true, stamped: true });
+      // De oude bevestiging zonder samenvatting bestaat niet meer.
+      await expect(as(client, (c) => c.query("select public.confirm_decision($1, 'akkoord')", [decision]))).rejects.toThrow(/does not exist/);
+    });
+
+    it("eist dat een afwijking van de beslisregel in de samenvatting staat", async () => {
+      const idea = await newIdea(alice, org);
+      const client = await user(`klant-${randomUUID()}@example.com`);
+      await as(alice, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_decider')", [idea, client.email]));
+      await as(client, (c) => c.query("select public.claim_invitations()"));
+      const a = await as(alice, async (c) => (await c.query("insert into public.assumptions (idea_id, statement, category, importance) values ($1, 'Locaties doen mee', 'feasibility', 4) returning id", [idea])).rows[0].id);
+      await as(alice, (c) => c.query("select public.save_decision_rule($1, null, '', $2)", [idea, JSON.stringify([{ assumption_id: a, min_probability: 0.7 }])]));
+      const decision = await decide(alice, idea, "continue", {
+        rule_met: false,
+        rule_evaluation: JSON.stringify({ met: false, conditions: [], primary: null }),
+        rule_deviation_reason: "Strategisch belangrijk, we nemen het risico bewust",
+      });
+      const confirm = (s: string) => as(client, async (c) => (await c.query("select public.confirm_decision($1, null, $2::jsonb) as ok", [decision, s])).rows[0].ok);
+      await expect(confirm(summary())).rejects.toThrow(/REVIEW_INCOMPLETE/);
+      expect(await confirm(summary({ rule_deviations: [{ label: "Doorgaan terwijl de beslisregel niet is gehaald", reason: "Strategisch belangrijk" }] }))).toBe(true);
+    });
+  });
+
   describe("punt 6: beslisregel", () => {
     // Een aanname met een experiment in concept.
     async function assumptionWithTest(who: Who, idea: string): Promise<{ assumption: string; experiment: string }> {

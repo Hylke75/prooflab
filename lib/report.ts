@@ -207,6 +207,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
           comment: lastDecision.client_comment,
           // Golf B, punt 6: de toets aan de beslisregel en, bij afwijken, de motivering.
           rule: ruleSummary(lastDecision),
+          // Golf B, punt 18: bevestigd na de samenvatting "Wat ging tegen".
+          reviewedAgainst: lastDecision.reviewed_against_summary != null,
         }
       : null,
     sources: [...sources.values()].sort((a, b) => a.n - b.n),

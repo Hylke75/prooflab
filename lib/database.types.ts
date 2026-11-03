@@ -1216,6 +1216,7 @@ export type Database = {
           rule_met: boolean | null
           rule_evaluation: Json | null
           rule_deviation_reason: string | null
+          reviewed_against_summary: Json | null
         }
         Insert: {
           action: string
@@ -1233,6 +1234,7 @@ export type Database = {
           rule_met?: boolean | null
           rule_evaluation?: Json | null
           rule_deviation_reason?: string | null
+          reviewed_against_summary?: Json | null
         }
         Update: {
           action?: string
@@ -1250,6 +1252,7 @@ export type Database = {
           rule_met?: boolean | null
           rule_evaluation?: Json | null
           rule_deviation_reason?: string | null
+          reviewed_against_summary?: Json | null
         }
         Relationships: [
           {
@@ -2800,7 +2803,7 @@ export type Database = {
       job_suppressed_hashes: { Args: { p_key: string; p_job: string; p_hashes: string[] }; Returns: string[] }
       job_survey_sent: { Args: { p_key: string; p_job: string; p_invitation: string; p_message_id: string }; Returns: boolean }
       claim_invitations: { Args: never; Returns: number }
-      confirm_decision: { Args: { p_comment: string; p_decision: string }; Returns: boolean }
+      confirm_decision: { Args: { p_comment: string; p_decision: string; p_reviewed_against_summary: Json }; Returns: boolean }
       create_organization: { Args: { p_name: string }; Returns: string }
       get_public_test: { Args: { p_slug: string }; Returns: Json }
       is_org_member: { Args: { p_org: string }; Returns: boolean }

@@ -8,6 +8,7 @@
 --      hoofdtest moet slagen. Vergrendeld bij de eerste goedgekeurde test; afwijken bij het besluit vraagt een motivering.
 --  15. Eerst voorspellen: de vergrendeling van kansen zit in de app; hier telt de AI in de kalibratie als één stem
 --      (het gemiddelde van de modellen per dossier en moment).
+--  18. De opdrachtgever bevestigt een besluit pas na de samenvatting "Wat ging tegen" (reviewed_against_summary).
 --
 -- De kalibratiefuncties staan onderaan (laatste sectie), omdat ze naar tabellen uit meerdere punten verwijzen.
 
@@ -513,6 +514,88 @@ revoke execute on function public.guard_decision_rule(), public.guard_decision_r
   public.guard_decision_against_rule(), public.audit_rule_deviation() from public, anon, authenticated;
 revoke execute on function public.save_decision_rule(uuid, uuid, text, jsonb) from public, anon;
 grant execute on function public.save_decision_rule(uuid, uuid, text, jsonb) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 18. Opdrachtgever bevestigt na "Wat ging tegen"
+-- ---------------------------------------------------------------------------
+-- Bij het bevestigen ziet de opdrachtgever verplicht wat tegen ging: mislukte tests, tegenbewijs, begrensde aannames
+-- (plafond actief) en afwijkingen van de beslisregel. De app stelt die samenvatting samen (lib/domain/against.ts); de
+-- database eist dat ze is meegegeven en bevestigd, en controleert wat ze zelf kan tellen: het aantal mislukte tests
+-- (laatste goedgekeurde Learning Card per test = 'fail') en de afwijking van de beslisregel bij dit besluit.
+
+alter table public.decisions
+  add column if not exists reviewed_against_summary jsonb
+    check (reviewed_against_summary is null or (jsonb_typeof(reviewed_against_summary) = 'object' and pg_column_size(reviewed_against_summary) <= 60000));
+
+-- De oude bevestiging zonder samenvatting verdwijnt: bevestigen kan alleen nog met de samenvatting.
+drop function if exists public.confirm_decision(uuid, text);
+
+create or replace function public.confirm_decision(p_decision uuid, p_comment text, p_reviewed_against_summary jsonb)
+returns boolean language plpgsql security definer set search_path = '' as $$
+declare
+  d public.decisions;
+  v_org uuid;
+  v_failed int;
+  k text;
+begin
+  select * into d from public.decisions where id = p_decision;
+  if d.id is null then
+    raise exception 'NOT_FOUND' using errcode = 'P0001';
+  end if;
+  select org_id into v_org from public.ideas where id = d.idea_id;
+  if public.is_org_member(v_org) or not exists (
+    select 1 from public.idea_members im
+    where im.idea_id = d.idea_id and im.user_id = auth.uid() and im.role = 'client_decider'
+  ) then
+    raise exception 'FORBIDDEN: alleen de opdrachtgever kan dit besluit bevestigen' using errcode = 'P0001';
+  end if;
+  if d.client_confirmed_at is not null then
+    return false;
+  end if;
+  if p_reviewed_against_summary is null or jsonb_typeof(p_reviewed_against_summary) <> 'object'
+     or coalesce((p_reviewed_against_summary->>'acknowledged')::boolean, false) is not true then
+    raise exception 'REVIEW_REQUIRED: bekijk eerst de samenvatting "Wat ging tegen"' using errcode = 'P0001';
+  end if;
+  foreach k in array array['failed_tests', 'counter_evidence', 'capped_assumptions', 'rule_deviations'] loop
+    if jsonb_typeof(p_reviewed_against_summary->k) is distinct from 'array' then
+      raise exception 'REVIEW_REQUIRED: de samenvatting mist het onderdeel %', k using errcode = 'P0001';
+    end if;
+  end loop;
+  select count(*) into v_failed from public.experiments e
+  where e.idea_id = d.idea_id
+    and (select lc.verdict from public.learning_cards lc where lc.experiment_id = e.id and lc.status = 'approved'
+         order by lc.version desc, lc.created_at desc limit 1) = 'fail';
+  if jsonb_array_length(p_reviewed_against_summary->'failed_tests') < v_failed then
+    raise exception 'REVIEW_INCOMPLETE: de samenvatting noemt niet alle mislukte tests' using errcode = 'P0001';
+  end if;
+  if d.rule_deviation_reason is not null and jsonb_array_length(p_reviewed_against_summary->'rule_deviations') = 0 then
+    raise exception 'REVIEW_INCOMPLETE: de samenvatting noemt de afwijking van de beslisregel niet' using errcode = 'P0001';
+  end if;
+  update public.decisions
+  set client_confirmed_by = auth.uid(), client_confirmed_at = now(), client_comment = left(nullif(btrim(p_comment), ''), 2000),
+      reviewed_against_summary = p_reviewed_against_summary || jsonb_build_object('reviewed_at', now())
+  where id = p_decision;
+  return true;
+end $$;
+
+revoke execute on function public.confirm_decision(uuid, text, jsonb) from public, anon;
+grant execute on function public.confirm_decision(uuid, text, jsonb) to authenticated;
+
+-- De samenvatting hoort bij de bevestiging: bij een nieuw besluit is ze leeg, en daarna verandert ze niet meer.
+create or replace function public.guard_decision_summary()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  if tg_op = 'INSERT' then
+    new.reviewed_against_summary := null;
+  elsif old.reviewed_against_summary is not null and new.reviewed_against_summary is distinct from old.reviewed_against_summary then
+    raise exception 'DECISION_LOCKED: de bevestigde samenvatting verandert niet meer' using errcode = 'P0001';
+  end if;
+  return new;
+end $$;
+drop trigger if exists decisions_summary_guard on public.decisions;
+create trigger decisions_summary_guard before insert or update on public.decisions
+  for each row execute function public.guard_decision_summary();
+revoke execute on function public.guard_decision_summary() from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Kalibratie: alleen dossiers met de succesvraag en zonder uitsluiting

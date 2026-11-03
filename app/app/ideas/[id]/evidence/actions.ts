@@ -17,6 +17,7 @@ import { decisionBlocker, outcomeDueForQuestion, outcomeQuestionFor } from "@/li
 import { todayInNL } from "@/lib/domain/sprint";
 import { deviates, isFinalAction } from "@/lib/domain/decision-rule";
 import { loadRuleCheck } from "@/lib/decision-rule-data";
+import { againstFor } from "@/lib/against-data";
 
 export type ActionState = { error: string | null; ok?: string | null };
 const refresh = (id: string) => revalidatePath(`/app/ideas/${id}`, "layout");
@@ -195,12 +196,28 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   return { error: null, ok: "Besluit vastgelegd. De opdrachtgever kan het nu bevestigen; werk daarna het rapport bij." };
 }
 
+// Golf B, punt 18: bevestigen kan alleen na de samenvatting "Wat ging tegen". De server stelt die opnieuw samen uit het
+// dossier van nu en geeft haar mee; de database eist dat en telt de mislukte tests en de afwijking na.
 export async function confirmDecision(ideaId: string, decisionId: string, _: ActionState, form: FormData): Promise<ActionState> {
-  const { isClientDecider } = await getIdea(ideaId);
+  const { idea, isClientDecider } = await getIdea(ideaId);
   if (!isClientDecider) return { error: "Alleen de opdrachtgever kan dit besluit bevestigen." };
+  if (form.get("reviewed") !== "on") return { error: "Open eerst de samenvatting \u201cWat ging tegen\u201d of vink aan dat u die hebt gelezen." };
   const supabase = await supabaseServer();
-  const { data, error } = await supabase.rpc("confirm_decision", { p_decision: decisionId, p_comment: String(form.get("comment") ?? "").slice(0, 1000) });
-  if (error) return { error: "Bevestigen mislukt." };
+  const [dossier, { data: decision }] = await Promise.all([
+    loadDossier(idea),
+    supabase.from("decisions").select("action, rule_met, rule_deviation_reason").eq("id", decisionId).eq("idea_id", ideaId).maybeSingle(),
+  ]);
+  if (!decision) return { error: "Dit besluit bestaat niet (meer)." };
+  const summary = { ...againstFor(dossier, decision), acknowledged: true };
+  const { data, error } = await supabase.rpc("confirm_decision", {
+    p_decision: decisionId,
+    p_comment: String(form.get("comment") ?? "").slice(0, 1000),
+    p_reviewed_against_summary: summary as unknown as Json,
+  });
+  if (error) {
+    if (error.message.includes("REVIEW_")) return { error: "De samenvatting \u201cWat ging tegen\u201d is niet compleet. Ververs de pagina en lees haar opnieuw." };
+    return { error: "Bevestigen mislukt." };
+  }
   refresh(ideaId);
   return { error: null, ok: data ? "Besluit bevestigd." : "Dit besluit was al bevestigd." };
 }
