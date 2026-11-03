@@ -332,7 +332,18 @@ Zo blijft zichtbaar waar AI tijd bespaart zonder de voorspelling slechter te mak
 | C | Maandelijkse concurrentiecheck, rode-teamronde, AI-varianten voor testpagina's |
 | Later | AI-gemodereerde interviews voor breedte, apart gelabeld en gescoord |
 
-## 6. Open vragen voor Hylke
+## 6. Besluiten (3 november 2026)
+
+- **Uitkomsttermijn:** zes maanden na het besluit, met een tussenstand na drie maanden.
+- **Alle aanpassingen bouwen** volgens het voorstel in dit document.
+- **Bronnen voor klantsignalen:** zoveel mogelijk (reviews, fora, nieuws, eigen exports, losse pagina's). LinkedIn
+  loopt via **Expandi**: per dossier een webhook die antwoorden, connecties en berichten binnenhaalt; contacten worden
+  gepseudonimiseerd, berichten vallen onder dezelfde bewaartermijn als andere persoonsgegevens.
+- **AI-gemodereerde interviews:** na de eerste sprints.
+- **Coach die meekijkt:** tijdens het hele traject plaatst een coach uit zichzelf tips, waarschuwingen en vragen
+  zodra het dossier verandert (vaste regels altijd, AI-tips binnen daglimiet en maandbudget).
+
+## 6b. Eerder open vragen
 
 1. Welke uitkomsthorizon is standaard: 6, 12 of 18 maanden na het besluit?
 2. Mag de opdrachtgever zelf voorspellen, en ziet die de scores van de consultant?
