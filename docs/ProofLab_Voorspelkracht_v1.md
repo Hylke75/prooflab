@@ -1,7 +1,7 @@
 # ProofLab: hoe voorspellen we de uitkomst zo goed mogelijk?
 
 Onderzoek naar methodes die de voorspelkracht van ProofLab kunnen verbeteren, en hoe we ze toepassen.
-Versie 1, 3 november 2026.
+Versie 1.1, 3 november 2026 (hoofdstuk 7 toegevoegd: onderzoeksmethodes en AI).
 
 ## 1. Waar we nu staan
 
@@ -213,9 +213,131 @@ een aanname op de kaart, of een bewuste keuze om het risico te accepteren.
 ProofLab op ProofLab is het eerste testdossier: de uitkomstdefinitie ("Link & Lead verkoopt binnen 6 maanden
 X validatiesprints met ProofLab") en de eerste voorspellingen kunnen direct na fase A worden vastgelegd.
 
+## 7. Onderzoeksmethodes en de rol van AI
+
+Een voorspelling is zo goed als het onderzoek dat erin gaat. Hieronder per methode wat AI aantoonbaar kan, waar het
+misgaat en hoe ProofLab het inzet. Het principe blijft: **AI levert breedte en snelheid, bewijs komt uit bronnen en
+uit gedrag van echte mensen.** Elke AI-uitkomst is terug te voeren op een letterlijke passage of een meting.
+
+### 7.1 Deskresearch
+
+- **Wat het onderzoek zegt:** AI-onderzoeksagenten maken minder nep-links dan vroeger (3–13% niet-bestaande URL's),
+  maar de geciteerde bron ondersteunt de bewering in maar 39–77% van de gevallen
+  ([Rao e.a.](https://www.alphaxiv.org/abs/2604.03173.md); [ReportBench](https://arxiv.org/pdf/2508.15804);
+  [overzicht](https://intuitionlabs.ai/pdfs/citation-reliability-ai-literature-reviews.pdf)).
+- **Wat ProofLab al doet:** alleen bevindingen opslaan waarvan het citaat letterlijk in de opgehaalde pagina staat,
+  met dezelfde getallen. Dat vangt verzonnen citaten en verkeerde cijfers.
+- **Wat erbij moet:** een tweede, onafhankelijke controle of het citaat de bewering ook *inhoudelijk* draagt
+  (een citaat kan letterlijk kloppen en toch iets anders zeggen). Een aparte modelaanroep beoordeelt
+  "ondersteunt / ondersteunt deels / ondersteunt niet"; bij twijfel beslist de consultant. Daarnaast steekproefsgewijs
+  meten hoe vaak consultant en model het eens zijn, zodat we weten hoe betrouwbaar die controle is.
+
+### 7.2 Concurrentie- en marktmonitoring
+
+- AI is goed in het periodiek naast elkaar leggen van prijspagina's en productpagina's. ProofLab heeft al een
+  SSRF-veilige paginaophaler en citaatcontrole.
+- **Toepassing:** een maandelijkse herhaalcheck per concurrent: prijs en positionering opnieuw ophalen, verschillen
+  tonen met de vorige versie, verouderde bevindingen automatisch op "verouderd" zetten. Geen AI-oordeel over de
+  concurrent; alleen gecontroleerde verschillen.
+
+### 7.3 Reviews, fora en klantsignalen analyseren (nieuw)
+
+- **Wat het onderzoek zegt:** een getraind taalmodel haalt klantbehoeften uit reviews minstens zo goed als
+  professionele analisten, en veel sneller; een niet-getraind model met alleen een goede prompt doet het minder goed
+  ([Timoshenko, Mao & Hauser](https://arxiv.org/abs/2503.01870);
+  [MSI](https://www.msi.org/working-paper/can-large-language-models-extract-customer-needs-as-well-as-professional-analysts/);
+  [reiswereldstudie](https://arxiv.org/pdf/2404.17975)).
+- **Toepassing:** een nieuwe bronsoort "klantsignalen": reviews van concurrenten, forumdraden, vacatureteksten en
+  aanbestedingen. AI groepeert ze in behoeften en pijnpunten (*jobs to be done*), met per groep de letterlijke
+  fragmenten en het aantal. Dit telt als **kwalitatieve observatie**, niet als gedrag, en levert vooral betere
+  aannames en interviewvragen op.
+
+### 7.4 Klantinterviews
+
+- **Interviewleidraad:** AI controleert de leidraad op sturende en hypothetische vragen ("Zou u ... gebruiken?") en
+  stelt vragen over gedrag in het verleden voor ("Wanneer deed u dit voor het laatst?"). Dat is de kern van goede
+  probleeminterviews en goed te automatiseren.
+- **Codering van transcripten:** taalmodellen coderen met een vaste codelijst met redelijke tot goede
+  overeenstemming met mensen (kappa ongeveer 0,45–0,8, mensen onderling rond 0,73), maar minder goed bij nuance
+  ([QualiGPT](https://arxiv.org/pdf/2407.14925); [JMIR 2026](https://formative.jmir.org/2026/1/e85572/PDF);
+  [Human-AI concordance](https://arxiv.org/html/2508.14764v2)). ProofLab doet dit al met letterlijk citaat en
+  menselijke goedkeuring. **Toevoeging:** de consultant codeert eerst een paar interviews zelf; ProofLab meet de
+  overeenstemming met het model en toont die. Is die te laag, dan blijft AI-codering een voorstel per citaat.
+- **Kwaliteitscontrole achteraf:** AI markeert in het transcript waar de interviewer stuurde of het idee
+  verkocht. Die passages tellen minder zwaar.
+- **AI-gemodereerde interviews (eerder besloten: later):** ze winnen op schaal, consistentie en eerlijkheid bij
+  gevoelige onderwerpen, maar leveren minder diepte, en deelnemers beoordelen features in één vergelijking lager dan
+  bij een menselijke interviewer. Onafhankelijk onderzoek is schaars; de meeste bronnen zijn leveranciers
+  ([ustwo-test](https://blog.buildbetter.ai/ustwo-tested-ai-moderated-interviews-synthetic-personas/);
+  [Quirks-pilot](https://www.quirks.com/storage/ralene/2026%20Session%20Documents/2026%20DL%20Sess%20Docs/Can%20AI%20Moderate.pdf)).
+  **Toepassing:** eerst mensen om de doelgroep en het probleem scherp te krijgen, daarna AI-interviews voor breedte
+  (meer respondenten per segment). Resultaten krijgen een eigen label en worden apart gescoord.
+
+### 7.5 Enquêtes
+
+- **Voortesten:** een eerste AI-proef met cognitieve interviews was snel maar oppervlakkig
+  ([UKHSA](https://the-sra.org.uk/SRA/Blog/CanLLMsHelpDeliverRapidCognitiveInterviewing.aspx)); menselijke
+  cognitieve interviews vinden echte problemen, maar herschreven vragen moeten opnieuw getest worden
+  ([Lenzner e.a.](https://link.springer.com/article/10.1007/s11135-022-01489-4)). **Toepassing:** AI als eerste filter
+  (onduidelijke woorden, dubbele vragen, sturende formuleringen), daarna 3–5 echte mensen.
+- **Grootste risico: nepantwoorden.** Een AI-agent haalde 99,8% van de aandachtscontroles in online enquêtes en kan
+  het doel van het onderzoek raden ([Westwood, via 404 Media](https://www.404media.co/a-researcher-made-an-ai-that-completely-breaks-the-online-surveys-scientists-rely-on/);
+  [agentic AI en datakwaliteit](https://arxiv.org/pdf/2608.28597);
+  [CloudResearch](https://www.cloudresearch.com/resources/blog/ai-survey-fraud-data-quality-part-2/)).
+  **Toepassing:** geen anonieme online panels als bewijs. Wel bekende, geverifieerde respondenten (klantenbestand,
+  LinkedIn-contact, persoonlijke uitnodiging per kanaal), en de herkomst van elke respons vastleggen.
+
+### 7.6 Gedragsexperimenten
+
+- AI is nuttig om varianten van koppen, aanbod en prijsstaffels te bedenken en om te controleren of een testpagina
+  eerlijk is (geen beloftes die het product niet waarmaakt). De varianten worden vóór de vergrendeling gekozen; daarna
+  verandert er niets.
+- Kanaalkeuze en bereik: AI kan helpen schatten hoeveel bezoekers een kanaal oplevert, maar die schatting telt nooit
+  als resultaat.
+- Het bewijs zelf blijft gedrag van echte bezoekers, met de bestaande ontdubbeling, botfilter en vooraf vastgelegde
+  beslisregel.
+
+### 7.7 Prijsonderzoek
+
+- AI-schattingen van betalingsbereidheid zijn onbetrouwbaar, vooral per segment
+  ([NeurIPS-studie](https://neurips.cc/virtual/2026/169654)). Vragen naar prijs (Van Westendorp, Gabor-Granger) geeft een
+  bandbreedte; een echte toezegging (aanbetaling, voorverkoop, intentieverklaring met bedrag) voorspelt het best.
+- **Toepassing:** AI stelt prijsstaffels en de tekst van de prijstest op; het bewijs komt uit wat mensen echt kiezen.
+
+### 7.8 Analyse en tegenspraak
+
+- AI is sterk in het vinden van tegenargumenten, ontbrekende alternatieven en zwakke plekken in een redenering. Dat
+  doet de Reality Check al. **Toevoeging:** een vaste pre-mortem-ronde (zie 3.10) en een "rode team"-prompt die alleen
+  zoekt naar bewijs tégen de belangrijkste aanname, met dezelfde citaatcontrole.
+
+### 7.9 Hoe we de AI zelf meten
+
+Elke AI-taak krijgt een eigen kwaliteitsmaat, die we in de app bijhouden:
+
+| Taak | Maat | Drempel om zelfstandig te gebruiken |
+|---|---|---|
+| Bevindingen uit bronnen | % citaten dat de bewering inhoudelijk draagt (steekproef door consultant) | ≥ 90% |
+| Codering interviews | Overeenstemming met consultant (kappa) | ≥ 0,7, anders alleen als voorstel |
+| Klantsignalen uit reviews | % groepen dat de consultant herkent en houdt | ≥ 80% |
+| Voorspellingen | Brier-score naast consultant en opdrachtgever | Alleen meewegen als niet slechter |
+
+Zo blijft zichtbaar waar AI tijd bespaart zonder de voorspelling slechter te maken.
+
+### 7.10 Aanvulling op de bouwvolgorde
+
+| Fase | Toevoeging uit dit hoofdstuk |
+|---|---|
+| A | Controle "draagt het citaat de bewering?", controle van interviewleidraden op sturende vragen |
+| B | Klantsignalen uit reviews en fora, overeenstemmingsmeting bij AI-codering, herkomst per enquêterespons |
+| C | Maandelijkse concurrentiecheck, rode-teamronde, AI-varianten voor testpagina's |
+| Later | AI-gemodereerde interviews voor breedte, apart gelabeld en gescoord |
+
 ## 6. Open vragen voor Hylke
 
 1. Welke uitkomsthorizon is standaard: 6, 12 of 18 maanden na het besluit?
 2. Mag de opdrachtgever zelf voorspellen, en ziet die de scores van de consultant?
 3. Willen we AI als extra voorspeller zodra de API-sleutel er is (kost per dossier enkele euro's)?
 4. Willen we prijstests met een echte aanbetaling (vraagt een juridische check, eerder uitgesteld)?
+5. Welke bronnen voor klantsignalen zijn toegestaan (reviews van concurrenten, fora, LinkedIn)? Sommige platforms
+   verbieden automatisch ophalen in hun voorwaarden.
+6. Wanneer wil je AI-gemodereerde interviews toevoegen: na de eerste sprints, of pas als de handmatige route bewezen is?
