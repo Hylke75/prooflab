@@ -9,6 +9,7 @@ import { CHANNELS } from "@/lib/domain/tracking";
 import { describeMethodology, ruleLabelText } from "@/lib/domain/method/describe";
 import { CALIBRATION_MIN_RESOLVED, formatProbability, formatProbabilityRange } from "@/lib/domain/probability-display";
 import { explainRecruitment } from "@/lib/domain/recruitment";
+import { asEvidenceLevel, outcomeWithLevel } from "@/lib/domain/evidence";
 
 export type Tone = "blue" | "green" | "coral" | "lime" | "gray";
 export type Block =
@@ -227,13 +228,18 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
     exps.push({
       t: "p",
       text:
-        `Resultaat: ${e.successes} van ${e.n}${e.interval ? ` (${pct(e.interval.point)}; 95%-interval ${pct(e.interval.low)}–${pct(e.interval.high)})` : ""}. Oordeel: ${"label" in e && e.label ? e.label : e.verdict ? (VERDICT[e.verdict] ?? "onbeslist") : "onbeslist"}${"rule" in e ? ` (${ruleLabelText(e.rule)})` : ""}. ${e.verdictReason}` +
+        `Resultaat: ${e.successes} van ${e.n}${e.interval ? ` (${pct(e.interval.point)}; 95%-interval ${pct(e.interval.low)}–${pct(e.interval.high)})` : ""}. Oordeel: ${outcomeWithLevel("label" in e && e.label ? e.label : e.verdict ? (VERDICT[e.verdict] ?? "onbeslist") : "onbeslist", asEvidenceLevel((e as { level?: unknown }).level))}${"rule" in e ? ` (${ruleLabelText(e.rule)})` : ""}. ${e.verdictReason}` +
         (e.endedEarly ? " De test is vroegtijdig beëindigd." : ""),
     });
     for (const w of e.warnings) exps.push({ t: "p", small: true, muted: true, text: `Let op: ${w}` });
   }
   for (const c of r.learningCards) {
-    exps.push({ t: "note", title: "Learning Card", text: `We dachten: ${c.believed} We zagen: ${c.observed} Daaruit leren we: ${c.learned} Daarom: ${c.therefore} (betrouwbaarheid: ${RELIABILITY[c.reliability] ?? c.reliability})` });
+    const cl = c as { level?: unknown; title?: string | null };
+    exps.push({
+      t: "note",
+      title: `Learning Card${cl.title ? `: ${cl.title}` : ""}${"level" in cl ? ` · ${outcomeWithLevel(VERDICT[c.verdict] ?? "onbeslist", asEvidenceLevel(cl.level))}` : ""}`,
+      text: `We dachten: ${c.believed} We zagen: ${c.observed} Daaruit leren we: ${c.learned} Daarom: ${c.therefore} (betrouwbaarheid: ${RELIABILITY[c.reliability] ?? c.reliability})`,
+    });
   }
   chapters.push({ id: "experiments", eyebrow: "07 / EXPERIMENTEN EN RESULTATEN", title: "Van mening naar meetbaar gedrag", blocks: exps });
 

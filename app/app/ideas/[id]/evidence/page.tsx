@@ -15,12 +15,18 @@ import { loadProgress } from "@/lib/progress";
 import { loadCalibration } from "@/lib/method-data";
 import { Probability } from "@/components/ui/Probability";
 import { stepsDone } from "@/lib/steps";
-import { explainStrength, strength, strengthLabel } from "@/lib/domain/evidence";
+import { asEvidenceLevel, explainStrength, outcomeWithLevel, strength, strengthLabel, testEvidenceLevel, type EvidenceLevel } from "@/lib/domain/evidence";
 import { ASSUMPTION_CATEGORIES, DECISIONS, OBSERVATION_KINDS, type DecisionAction, type ObservationKind } from "@/lib/domain/labels";
 import type { Finding } from "@/lib/domain/reality-check";
 import { addPremortem, approveLearningCard, confirmDecision, runCheck, saveDecision, updateLearningCard } from "./actions";
 
 export const metadata: Metadata = { title: "Bewijs & besluit" };
+
+// Het bewijsniveau op een Learning Card: zoals vastgelegd, of (oudere kaarten) afgeleid uit het testtype.
+function cardLevel(metrics: unknown, exp: { type: string; hypotheses: { decision_rule?: string | null } | null } | undefined): EvidenceLevel | null {
+  const stored = asEvidenceLevel((metrics as { evidence_level?: unknown } | null)?.evidence_level);
+  return stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule }) : null);
+}
 
 const LADDER: { kinds: ObservationKind[]; label: string }[] = [
   { kinds: ["opinion"], label: "Uitgesproken belangstelling" },
@@ -197,7 +203,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
           const exp = d.experiments.find((e) => e.id === c.experiment_id);
           return (
             <div className="card" key={c.id}>
-              <div className="section-title"><h3>{exp?.title ?? "Experiment"}</h3><span className="pill orange">Concept · {c.verdict === "pass" ? "geslaagd" : c.verdict === "fail" ? "niet geslaagd" : "onbeslist"}</span></div>
+              <div className="section-title"><h3>{exp?.title ?? "Experiment"}</h3><span className="pill orange">Concept · {outcomeWithLevel(c.verdict === "pass" ? "geslaagd" : c.verdict === "fail" ? "niet geslaagd" : "onbeslist", cardLevel(c.metrics, exp)).toLowerCase()}</span></div>
               <div className="data-row"><span>We dachten</span><strong style={{ textAlign: "right" }}>{c.we_believed}</strong></div>
               <div className="data-row"><span>We zagen</span><strong style={{ textAlign: "right" }}>{c.we_observed}</strong></div>
               <RuleSummary o={outcomeFromCard(c.metrics, c.verdict, exp?.hypotheses ?? null)} />
@@ -225,7 +231,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
           const exp = d.experiments.find((e) => e.id === c.experiment_id);
           return (
             <div className="card" key={c.id}>
-              <div className="section-title"><h3>{exp?.title ?? "Experiment"}</h3><span className={`pill ${c.verdict === "pass" ? "green" : c.verdict === "fail" ? "coral" : "orange"}`}>{c.verdict === "pass" ? "Geslaagd" : c.verdict === "fail" ? "Niet geslaagd" : "Onbeslist"}</span></div>
+              <div className="section-title"><h3>{exp?.title ?? "Experiment"}</h3><span className={`pill ${c.verdict === "pass" ? "green" : c.verdict === "fail" ? "coral" : "orange"}`}>{outcomeWithLevel(c.verdict === "pass" ? "geslaagd" : c.verdict === "fail" ? "niet geslaagd" : "onbeslist", cardLevel(c.metrics, exp))}</span></div>
               <div className="data-row"><span>We dachten</span><strong style={{ textAlign: "right" }}>{c.we_believed}</strong></div>
               <div className="data-row"><span>We zagen</span><strong style={{ textAlign: "right" }}>{c.we_observed}</strong></div>
               <RuleSummary o={outcomeFromCard(c.metrics, c.verdict, exp?.hypotheses ?? null)} />

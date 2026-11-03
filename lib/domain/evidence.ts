@@ -365,6 +365,37 @@ export const EVIDENCE_LEVELS: { level: EvidenceLevel; label: string; missing: st
   { level: "repeat", label: "Herhaalaankoop", missing: "" },
 ];
 
+// Korte naam per niveau, voor naast een uitkomst: "Geslaagd · niveau: mening" (golf A, punt 14).
+export const LEVEL_SHORT: Record<EvidenceLevel, string> = {
+  opinion: "mening",
+  problem: "probleem in eigen gedrag",
+  small_action: "kleine handeling",
+  quote: "prijskeuze",
+  deposit: "aanbetaling",
+  repeat: "herhaalaankoop",
+};
+
+// Het bewijsniveau van een testuitkomst: het niveau van wat de test meet (dezelfde indeling als de plafonds).
+// Enquête = zelfrapportage (mening); landingpagina = kleine handeling; prijstest = keuze bij een prijs;
+// interviews meten het probleem in eigen gedrag, of met de aantalregel een aanbetaling.
+export function testEvidenceLevel(type: string, opts: { decisionRule?: string | null } = {}): EvidenceLevel {
+  if (type === "survey") return KIND_LEVEL.survey_answer;
+  if (type === "landing") return KIND_LEVEL.waitlist_signup;
+  if (type === "pricing") return KIND_LEVEL.quote_request;
+  if (type === "interview") return opts.decisionRule === "absolute" ? KIND_LEVEL.deposit : KIND_LEVEL.problem_confirmed;
+  return "opinion";
+}
+
+export function asEvidenceLevel(v: unknown): EvidenceLevel | null {
+  return typeof v === "string" && v in LEVEL_SHORT ? (v as EvidenceLevel) : null;
+}
+
+// "Geslaagd · niveau: mening". Zonder niveau alleen de uitkomst.
+export function outcomeWithLevel(outcome: string, level: EvidenceLevel | null | undefined): string {
+  const o = outcome ? outcome.charAt(0).toUpperCase() + outcome.slice(1) : outcome;
+  return level ? `${o} · niveau: ${LEVEL_SHORT[level]}` : o;
+}
+
 export const DEFAULT_CAPS: EvidenceCaps = { opinion: 0.4, problem: 0.5, small_action: 0.6, quote: 0.75, deposit: 0.9 };
 
 // Koppeling van elke soort waarneming aan een bewijsniveau. Tegenbewijs (bezwaar, probleem niet herkend,

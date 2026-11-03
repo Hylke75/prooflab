@@ -7,7 +7,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { getWorkspace, requireWritableIdea } from "@/lib/data";
 import { checkHypothesis } from "@/lib/domain/hypothesis";
 import { checkQuote } from "@/lib/domain/verify";
-import { KIND_DEFAULTS } from "@/lib/domain/evidence";
+import { KIND_DEFAULTS, testEvidenceLevel } from "@/lib/domain/evidence";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { RECRUITMENT_KEYS, recruitmentMissing } from "@/lib/domain/recruitment";
 import { canDesignatePrimary } from "@/lib/domain/primary-test";
@@ -506,6 +506,8 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
       success_threshold_pct: Number(h.success_threshold_pct),
       fail_threshold_pct: h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct),
       required_n: h.required_n ?? null,
+      // Bewijsniveau van wat deze test meet (golf A, punt 14): "Geslaagd · niveau: mening".
+      evidence_level: testEvidenceLevel(exp.type, { decisionRule: h.decision_rule }),
       byChannel: m.byChannel,
       byVariant: m.byVariant,
       warnings: m.warnings,

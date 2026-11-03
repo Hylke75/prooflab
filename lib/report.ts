@@ -2,6 +2,7 @@ import "server-only";
 import type { Dossier } from "@/lib/dossier";
 import { CLAIM_STATUS, COMPETITOR_KINDS, DECISIONS, EVIDENCE_TYPES, EXPERIMENT_TYPES, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type DecisionAction, type EvidenceType, type ExperimentType, type SourceType } from "@/lib/domain/labels";
 import type { Finding } from "@/lib/domain/reality-check";
+import { asEvidenceLevel, testEvidenceLevel } from "@/lib/domain/evidence";
 import { ACHIEVED_LABELS, FORECAST_MOMENTS, FORECASTER_LABELS, MOMENT_LABELS, ON_TRACK_LABELS, aggregate, brier, type Achieved, type ForecasterKind, type OnTrack } from "@/lib/domain/forecast";
 import { ensembleMean } from "@/lib/ai/providers/select";
 import { PROVIDER_LABELS, providerOfModel } from "@/lib/ai/providers/config";
@@ -165,6 +166,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         probability: e.metrics?.verdict.probability ?? null,
         successCount: e.metrics?.verdict.successCount ?? null,
         requiredN: e.hypotheses?.required_n ?? null,
+        // Bewijsniveau van wat deze test meet (golf A, punt 14).
+        level: testEvidenceLevel(e.type, { decisionRule: e.hypotheses?.decision_rule }),
         byChannel: e.metrics?.byChannel ?? [],
         byVariant: e.metrics?.byVariant ?? [],
         warnings: e.metrics?.warnings ?? [],
@@ -175,7 +178,23 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
           ? { invitation: { n: e.metrics.survey.invitation.n, successes: e.metrics.survey.invitation.successes }, openLink: { n: e.metrics.survey.openLink.n, successes: e.metrics.survey.openLink.successes } }
           : null,
       })),
-    learningCards: d.learningCards.filter((c) => c.status === "approved").map((c) => ({ believed: c.we_believed, observed: c.we_observed, learned: c.we_learned, therefore: c.therefore, verdict: c.verdict, reliability: c.data_reliability })),
+    learningCards: d.learningCards
+      .filter((c) => c.status === "approved")
+      .map((c) => {
+        const exp = d.experiments.find((e) => e.id === c.experiment_id);
+        const stored = asEvidenceLevel((c.metrics as { evidence_level?: unknown } | null)?.evidence_level);
+        return {
+          believed: c.we_believed,
+          observed: c.we_observed,
+          learned: c.we_learned,
+          therefore: c.therefore,
+          verdict: c.verdict,
+          reliability: c.data_reliability,
+          // "Geslaagd · niveau: mening" (golf A, punt 14).
+          level: stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule }) : null),
+          title: exp?.title ?? null,
+        };
+      }),
     realityCheck: check ? { at: check.created_at, advice: DECISIONS[check.advice as DecisionAction].label, reason: check.advice_reason, findings: checkFindings, aiUsed: check.ai_used } : null,
     decision: lastDecision
       ? { action: DECISIONS[lastDecision.action as DecisionAction].label, rationale: lastDecision.rationale, nextStep: lastDecision.next_step, at: lastDecision.decided_at, confirmedAt: lastDecision.client_confirmed_at, comment: lastDecision.client_comment }

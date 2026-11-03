@@ -5,6 +5,8 @@ import {
   diminishing,
   explainContribution,
   OBSERVATION_LR,
+  outcomeWithLevel,
+  testEvidenceLevel,
   type ProbabilityObservation,
 } from "@/lib/domain/evidence";
 import { explainRecruitment, interviewRecruitment, recruitmentLabel, recruitmentMissing } from "@/lib/domain/recruitment";
@@ -110,5 +112,21 @@ describe("punt 13: wervingsgroep verplicht op de Test Card", () => {
       expect(recruitmentMissing(t, "cold")).toBe(false);
     }
     expect(recruitmentMissing("interview", null)).toBe(false);
+  });
+});
+
+describe("punt 14: bewijsniveau naast de uitkomst", () => {
+  it("volgt de niveau-indeling van de plafonds", () => {
+    expect(testEvidenceLevel("survey")).toBe("opinion");
+    expect(testEvidenceLevel("landing")).toBe("small_action");
+    expect(testEvidenceLevel("pricing")).toBe("quote");
+    expect(testEvidenceLevel("interview")).toBe("problem");
+    expect(testEvidenceLevel("interview", { decisionRule: "absolute" })).toBe("deposit");
+  });
+
+  it("'Geslaagd · niveau: mening'", () => {
+    expect(outcomeWithLevel("geslaagd", "opinion")).toBe("Geslaagd · niveau: mening");
+    expect(outcomeWithLevel("sterk bewezen", "deposit")).toBe("Sterk bewezen · niveau: aanbetaling");
+    expect(outcomeWithLevel("onbeslist", null)).toBe("Onbeslist");
   });
 });

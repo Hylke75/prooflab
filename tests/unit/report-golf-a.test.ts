@@ -111,3 +111,17 @@ describe("rapport: kansen (punt 3)", () => {
     expect(out).not.toContain("niet gekalibreerd");
   });
 });
+
+describe("rapport: bewijsniveau naast de uitkomst (punt 14)", () => {
+  it("toont het niveau bij de test en op de Learning Card", () => {
+    const base = fixture();
+    const out = all(
+      fixture({
+        experiments: base.experiments.map((e) => ({ ...e, label: "geslaagd", level: "opinion" })),
+        learningCards: [{ believed: "b", observed: "o", learned: "l", therefore: "t", verdict: "pass", reliability: "medium", level: "opinion", title: "Enquête" }],
+      }),
+    );
+    expect(out).toContain("Oordeel: Geslaagd · niveau: mening");
+    expect(out).toContain("Learning Card: Enquête · Geslaagd · niveau: mening");
+  });
+});

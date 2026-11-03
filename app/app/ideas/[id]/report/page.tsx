@@ -14,6 +14,7 @@ import { PrintButton } from "./PrintButton";
 import { Icon } from "@/components/Icon";
 import { Probability } from "@/components/ui/Probability";
 import { explainRecruitment } from "@/lib/domain/recruitment";
+import { asEvidenceLevel, outcomeWithLevel } from "@/lib/domain/evidence";
 import { CALIBRATION_MIN_RESOLVED } from "@/lib/domain/probability-display";
 
 export const metadata: Metadata = { title: "Rapportage" };
@@ -333,7 +334,12 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 <p>
                   Resultaat: {e.successes} van {e.n}
                   {e.interval ? ` (${pct(e.interval.point)}; 95%-interval ${pct(e.interval.low)}–${pct(e.interval.high)})` : ""}. Oordeel:{" "}
-                  <strong>{"label" in e && e.label ? e.label : e.verdict === "pass" ? "geslaagd" : e.verdict === "fail" ? "niet geslaagd" : e.verdict === "running" ? "loopt nog" : "onbeslist"}</strong>
+                  <strong>
+                    {outcomeWithLevel(
+                      "label" in e && e.label ? e.label : e.verdict === "pass" ? "geslaagd" : e.verdict === "fail" ? "niet geslaagd" : e.verdict === "running" ? "loopt nog" : "onbeslist",
+                      "level" in e ? asEvidenceLevel(e.level) : null,
+                    )}
+                  </strong>
                   {"rule" in e ? ` (${ruleLabelText(e.rule)})` : ""}. {e.verdictReason}
                   {"requiredN" in e && e.requiredN != null ? ` Vooraf berekend: ${e.requiredN} deelnemers nodig.` : ""}
                   {e.endedEarly ? " De test is vroegtijdig beëindigd." : ""}
@@ -352,7 +358,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             ))}
             {r.learningCards.map((c, i) => (
               <div key={i} className="note">
-                <strong>Learning Card.</strong> We dachten: {c.believed} We zagen: {c.observed} Daaruit leren we: {c.learned} Daarom: {c.therefore} (betrouwbaarheid: {{ low: "laag", medium: "middel", high: "hoog" }[c.reliability as "low"]})
+                <strong>Learning Card{"title" in c && c.title ? `: ${c.title}` : ""}.</strong>{" "}
+                {"level" in c ? <span className="pill gray">{outcomeWithLevel(c.verdict === "pass" ? "geslaagd" : c.verdict === "fail" ? "niet geslaagd" : "onbeslist", asEvidenceLevel(c.level))}</span> : null} We dachten: {c.believed} We zagen: {c.observed} Daaruit leren we: {c.learned} Daarom: {c.therefore} (betrouwbaarheid: {{ low: "laag", medium: "middel", high: "hoog" }[c.reliability as "low"]})
               </div>
             ))}
           </section>
