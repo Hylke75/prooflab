@@ -3,7 +3,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { searchQuestion, extractClaims, challengeDossier, checkSupport, type ExcerptRef, type FoundSource, type IdeaContext, type QueryLog } from "@/lib/ai/research";
 import { mergeFoundSources } from "@/lib/ai/web-evidence";
 import { providersFor } from "@/lib/ai/settings";
-import { PROVIDER_LABELS, type ProviderId } from "@/lib/ai/providers/config";
+import { isProvider, PROVIDER_LABELS, type ProviderId } from "@/lib/ai/providers/config";
 import { assertAiBudget, runAi } from "@/lib/ai/guard";
 import { log } from "@/lib/log";
 import { env } from "@/lib/env";
@@ -11,6 +11,7 @@ import { ideaContext } from "@/lib/idea-context";
 import { contentHash, recomputeClaim } from "@/lib/claims";
 import { aiSourceType, checkQuote, figuresAppearIn, normalizeText, registrableDomain, sourceTypeForDomain } from "@/lib/domain/verify";
 import { AiBudgetError, AiRefusedError } from "@/lib/ai/client";
+import { RunBudget, withRunBudget } from "@/lib/ai/budget";
 import type { Idea } from "@/lib/data";
 import type { Json } from "@/lib/database.types";
 import { keepAfterSupportCheck, type SupportCheck } from "@/lib/domain/support";
@@ -91,10 +92,15 @@ export async function advanceRun(runId: string): Promise<RunState> {
   await supabase.from("research_runs").update({ status: "running" }).eq("id", runId);
 
   const { data: idea } = await supabase.from("ideas").select("*").eq("id", run.idea_id).single();
+  // Every model call of this task reserves its estimated cost against what the run may still spend (lib/ai/budget.ts).
+  const runBudget = new RunBudget(budget, Number(run.cost_usd));
   try {
-    const result = await runTask(next, idea as Idea, run.mode as "quick" | "deep");
-    await supabase.from("research_tasks").update({ status: "done", output: result.output, detail: result.detail, finished_at: new Date().toISOString() }).eq("id", next.id);
-    if (result.cost > 0) await supabase.rpc("add_research_cost", { p_task: next.id, p_cost: result.cost });
+    const result = await withRunBudget(runBudget, () => runTask(next, idea as Idea, run.mode as "quick" | "deep"));
+    const detail = runBudget.hit ? `${result.detail} ${runBudget.hit}` : result.detail;
+    await supabase.from("research_tasks").update({ status: "done", output: result.output, detail: detail.slice(0, 1000), finished_at: new Date().toISOString() }).eq("id", next.id);
+    // What the calls really cost (the tracker sees every call, including refused and stopped ones).
+    const cost = Math.max(result.cost, runBudget.spent);
+    if (cost > 0) await supabase.rpc("add_research_cost", { p_task: next.id, p_cost: cost });
   } catch (e) {
     const refused = e instanceof AiRefusedError;
     const retry = !refused && !(e instanceof AiBudgetError) && next.attempts + 1 < 3;
@@ -103,8 +109,9 @@ export async function advanceRun(runId: string): Promise<RunState> {
       { runId, taskId: next.id, kind: next.kind, attempt: next.attempts + 1, willRetry: retry, refused, budget: e instanceof AiBudgetError },
       e,
     );
-    // A refusal still used tokens; book them on the run so the budget holds.
-    if (refused && e.usage?.cost) await supabase.rpc("add_research_cost", { p_task: next.id, p_cost: e.usage.cost });
+    // Calls that were made still cost money (a refusal uses tokens too); book them on the run so the budget holds.
+    const cost = Math.max(runBudget.spent, refused ? (e.usage?.cost ?? 0) : 0);
+    if (cost > 0) await supabase.rpc("add_research_cost", { p_task: next.id, p_cost: cost });
     await supabase
       .from("research_tasks")
       .update({
@@ -112,6 +119,11 @@ export async function advanceRun(runId: string): Promise<RunState> {
         detail: refused ? "Het model weigerde deze stap." : e instanceof AiBudgetError ? e.message : `Fout: ${e instanceof Error ? e.message.slice(0, 200) : "onbekend"}`,
       })
       .eq("id", next.id);
+  }
+  // Budget reached: no further task starts; the run records why.
+  if (runBudget.hit) {
+    await supabase.from("research_tasks").update({ status: "skipped", detail: "Budget van deze run bereikt." }).eq("run_id", runId).eq("status", "pending");
+    await supabase.from("research_runs").update({ error: runBudget.hit.slice(0, 500) }).eq("id", runId);
   }
   return state();
 }
@@ -124,13 +136,29 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
 
   if (task.kind === "search") {
     const { data: q } = await supabase.from("research_questions").select("question").eq("id", task.question_id!).single();
-    const res = await searchAcrossProviders(idea.id, "research:search", ctx, q!.question, mode === "quick" ? 3 : 6);
-    const excerptIds = await storeFoundSources(idea.id, task.run_id, res.sources);
-    await writeSearchLog(task, q!.question, res.logs);
+    const question = q!.question;
+    const providers = await providersFor(idea.id, "research");
+    // The same question for the same idea within 7 days: reuse what was found (and paid for) then.
+    const cache = await cachedSearch(idea.id, question, providers);
+    const fresh = providers.filter((p) => !cache.providers.has(p));
+    const res = fresh.length
+      ? await searchAcrossProviders(idea.id, "research:search", ctx, question, mode === "quick" ? 3 : 6, { providers: fresh, avoidQueries: cache.recentQueries })
+      : null;
+    const newIds = res ? await storeFoundSources(idea.id, task.run_id, res.sources) : [];
+    const excerptIds = [...new Set([...newIds, ...cache.excerptIds])];
+    await writeSearchLog(task, question, [...(res?.logs ?? []), ...cache.logs]);
+    const reusedText = cache.providers.size
+      ? `Hergebruikt van een zoekopdracht van ${new Date(cache.at!).toLocaleDateString("nl-NL", { timeZone: "Europe/Amsterdam" })} (${[...cache.providers].map((p) => PROVIDER_LABELS[p].short).join(", ")}; niet opnieuw betaald): ${cache.excerptIds.length} passages.`
+      : "";
     return {
-      output: { excerpt_ids: excerptIds, providers: res.perProvider },
-      detail: `${res.sources.length} bronnen, ${excerptIds.length} letterlijke passages bewaard (${res.searches} zoekopdrachten). ${res.summary}`,
-      cost: res.cost,
+      output: { excerpt_ids: excerptIds, providers: res?.perProvider ?? [], reused_from: [...cache.taskIds] },
+      detail: [
+        res ? `${res.sources.length} bronnen, ${newIds.length} letterlijke passages bewaard (${res.searches} zoekopdrachten). ${res.summary}` : "",
+        reusedText,
+      ]
+        .filter(Boolean)
+        .join(" "),
+      cost: res?.cost ?? 0,
     };
   }
 
@@ -227,10 +255,17 @@ export type ProviderSearch = { provider: ProviderId; ok: boolean; sources: numbe
 // Each provider searches independently (its own runAi: own ledger row, cap checked per call); the found
 // sources are merged by URL. A provider that fails does not stop the others; only when all fail is it an error.
 // Which provider found which page is recorded (sources.found_by) as information, never as evidence weight.
-export async function searchAcrossProviders(ideaId: string, purpose: string, ctx: IdeaContext, question: string, maxSearches: number) {
-  const providers = await providersFor(ideaId, "research");
+export async function searchAcrossProviders(
+  ideaId: string,
+  purpose: string,
+  ctx: IdeaContext,
+  question: string,
+  maxSearches: number,
+  opts: { providers?: ProviderId[]; avoidQueries?: string[] } = {},
+) {
+  const providers = opts.providers ?? (await providersFor(ideaId, "research"));
   const settled = await Promise.allSettled(
-    providers.map((provider) => runAi(ideaId, purpose, (p) => searchQuestion(ctx, question, maxSearches, p), { provider })),
+    providers.map((provider) => runAi(ideaId, purpose, (p) => searchQuestion(ctx, question, maxSearches, p, { avoidQueries: opts.avoidQueries }), { provider })),
   );
   let cost = 0;
   let searches = 0;
@@ -265,6 +300,54 @@ export async function searchAcrossProviders(ideaId: string, purpose: string, ctx
 }
 
 export type ProviderLog = { provider: ProviderId | "prooflab"; entries: QueryLog[]; reused?: boolean };
+
+const REUSE_DAYS = 7;
+const sameQuestion = (a: string | null, b: string) => !!a && normalizeText(a) === normalizeText(b);
+
+// Earlier searches for the same question of this idea within REUSE_DAYS (per provider, the latest one): their
+// passages are reused and their log rows copied (marked reused), so the same search is not paid for twice. Also
+// returns the other search terms of the last week, which the model is asked not to repeat.
+export async function cachedSearch(ideaId: string, question: string, providers: ProviderId[]) {
+  const supabase = await supabaseServer();
+  const since = new Date(Date.now() - REUSE_DAYS * 24 * 3600 * 1000).toISOString();
+  const { data } = await supabase
+    .from("research_search_log")
+    .select("task_id, provider, query, question, urls, passages, reused, created_at")
+    .eq("idea_id", ideaId)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(300);
+  const rows = (data ?? []).filter((r) => !r.reused);
+  const taskFor = new Map<ProviderId, string>();
+  let at: string | null = null;
+  for (const r of rows) {
+    if (!r.task_id || !sameQuestion(r.question, question) || !isProvider(r.provider) || !providers.includes(r.provider) || taskFor.has(r.provider)) continue;
+    taskFor.set(r.provider, r.task_id);
+    at ??= r.created_at;
+  }
+  const taskIds = new Set(taskFor.values());
+  let excerptIds: string[] = [];
+  if (taskIds.size) {
+    const { data: tasks } = await supabase.from("research_tasks").select("id, output").in("id", [...taskIds]);
+    const ids = [...new Set((tasks ?? []).flatMap((t) => (t.output as { excerpt_ids?: string[] } | null)?.excerpt_ids ?? []))].slice(0, 60);
+    // Passages that were deleted since (with their source) are not reused.
+    const { data: still } = ids.length ? await supabase.from("source_excerpts").select("id").in("id", ids) : { data: [] };
+    excerptIds = (still ?? []).map((e) => e.id);
+  }
+  // An earlier search that kept nothing is not reused: searching again is then the only way to find sources.
+  const reusedProviders = new Set(excerptIds.length ? taskFor.keys() : []);
+  if (!reusedProviders.size) taskIds.clear();
+  const logs: ProviderLog[] = [...reusedProviders].map((p) => ({
+    provider: p,
+    reused: true,
+    entries: rows
+      .filter((r) => r.provider === p && r.task_id === taskFor.get(p))
+      .reverse()
+      .map((r) => ({ query: r.query, urls: (Array.isArray(r.urls) ? r.urls : []) as unknown as QueryLog["urls"], passages: r.passages })),
+  }));
+  const recentQueries = [...new Set(rows.filter((r) => !sameQuestion(r.question, question)).map((r) => r.query))].slice(0, 15);
+  return { providers: reusedProviders, taskIds, excerptIds, logs, recentQueries, at };
+}
 
 // One row per search query in research_search_log. A failing insert never fails the research step, but is logged.
 async function writeSearchLog(task: TaskRow, question: string, logs: ProviderLog[]) {

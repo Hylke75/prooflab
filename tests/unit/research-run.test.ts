@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fakeSupabase, runnerRpcs, type FakeDb } from "./helpers/fake-supabase";
+import { fakeSupabase, runnerRpcs } from "./helpers/fake-supabase";
 import { makePdf } from "./helpers/pdf";
+import { doc, f, FILLER, LONG, msg, PDF_LINE, r, s, seedRun } from "./helpers/research-fixtures";
 
 // Een hele onderzoeksrun (advanceRun tot de run klaar is) met een gemockte Claude-API, gemockt ophalen van pagina's
 // en een in-memory database: drie vragen met (1) citaten, (2) alleen gelezen pagina's (tekst, PDF, lege pagina) en
@@ -22,76 +23,6 @@ vi.mock("@/lib/fetch-page", async (importOriginal) => {
   };
 });
 
-const LONG = "Het aantal evenementenbureaus in Nederland steeg in 2025 naar 4.100 bedrijven, blijkt uit de jaarlijkse telling van de branche.";
-const FILLER = "Overige tekst over het weer en het verkeer die niets met de vraag te maken heeft, maar de pagina wel lang genoeg maakt.";
-const PDF_LINE = "Uit de telling blijkt dat in 2025 in Nederland 4100 evenementenbureaus actief waren, vooral kleine bedrijven.";
-
-const msg = (content: unknown[], usage = { input_tokens: 2000, output_tokens: 300, server_tool_use: { web_search_requests: 1 } }) => ({
-  id: "m",
-  type: "message",
-  role: "assistant",
-  model: "claude-test",
-  stop_reason: "end_turn",
-  stop_sequence: null,
-  content,
-  usage,
-});
-const s = (id: string, query: string) => ({ type: "server_tool_use", id, name: "web_search", input: { query } });
-const r = (id: string, urls: string[]) => ({
-  type: "web_search_tool_result",
-  tool_use_id: id,
-  content: urls.map((url) => ({ type: "web_search_result", url, title: `T ${url}`, page_age: null, encrypted_content: "x" })),
-});
-const f = (id: string, url: string) => ({ type: "server_tool_use", id, name: "web_fetch", input: { url } });
-const doc = (id: string, url: string, source: Record<string, unknown>) => ({
-  type: "web_fetch_tool_result",
-  tool_use_id: id,
-  content: { type: "web_fetch_result", url, retrieved_at: null, content: { type: "document", title: `P ${url}`, citations: null, source } },
-});
-
-export function seedRun(questions: string[], budget = 1.5): FakeDb {
-  const ideaId = "idea-1";
-  const runId = "run-1";
-  const db: FakeDb = {
-    ideas: [
-      {
-        id: ideaId,
-        org_id: "org-1",
-        title: "Vergaderzaal-app",
-        decision_question: "Investeren we?",
-        description: "Een app voor evenementenbureaus",
-        target_audience: "evenementenbureaus",
-        audience_detail: null,
-        region: "Nederland",
-        region_detail: null,
-        project_type: "new_product",
-        sector_template: "events",
-        key_uncertainty: null,
-      },
-    ],
-    org_ai_settings: [],
-    research_runs: [{ id: runId, idea_id: ideaId, mode: "quick", status: "queued", budget_usd: budget, cost_usd: 0, error: null, created_at: "2026-11-06T09:00:00Z" }],
-    research_questions: questions.map((q, i) => ({ id: `q${i + 1}`, idea_id: ideaId, position: i + 1, question: q, status: "open" })),
-    research_tasks: questions.map((_, i) => ({
-      id: `t${i + 1}`,
-      run_id: runId,
-      idea_id: ideaId,
-      position: i + 1,
-      kind: "search",
-      question_id: `q${i + 1}`,
-      status: "pending",
-      attempts: 0,
-      label: `Zoeken vraag ${i + 1}`,
-      cost_usd: 0,
-      started_at: null,
-    })),
-    sources: [],
-    source_excerpts: [],
-    ai_runs: [],
-    research_search_log: [],
-  };
-  return db;
-}
 
 beforeEach(() => {
   vi.resetModules();

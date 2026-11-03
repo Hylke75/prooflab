@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { RESEARCH_SYSTEM, type AiUsage } from "./client";
 import { generate, generateJson, generateText } from "./generate";
-import type { ProviderId } from "./providers/config";
+import type { ModelTier, ProviderId } from "./providers/config";
 import { fetchPageText, PageFetchError } from "@/lib/fetch-page";
 import {
   pageProblem,
@@ -44,8 +44,9 @@ Grootste onzekerheid: ${i.keyUncertainty ?? "onbekend"}
 }
 
 // Structured output on the chosen provider; validated against the schema whichever provider answered.
-function parse<T extends z.ZodType>(provider: ProviderId, schema: T, system: string, user: string, effort: "low" | "medium" | "high") {
-  return generateJson(provider, { schema, name: "prooflab_output", system, user, maxTokens: 16000, effort });
+// tier "research": the provider's cheaper model (searching and reading); "main": the heavy model.
+function parse<T extends z.ZodType>(provider: ProviderId, schema: T, system: string, user: string, effort: "low" | "medium" | "high", tier: ModelTier = "main") {
+  return generateJson(provider, { schema, name: "prooflab_output", system, user, maxTokens: 16000, effort, tier });
 }
 
 // ---------------------------------------------------------------------------
@@ -101,16 +102,21 @@ export async function searchQuestion(
   question: string,
   maxSearches: number,
   provider: ProviderId,
-  deps: { fetchPage?: PageFetcher } = {},
-): Promise<{ sources: FoundSource[]; usage: AiUsage; detail: string; log: QueryLog[] }> {
+  deps: { fetchPage?: PageFetcher; avoidQueries?: string[] } = {},
+): Promise<{ sources: FoundSource[]; usage: AiUsage; detail: string; log: QueryLog[]; stoppedForBudget: boolean }> {
   const fetchPage = deps.fetchPage ?? fetchPageText;
   const ledger = new UrlLedger();
+  // Terms already searched (and paid for) for this idea in the last 7 days; ProofLab reuses those results.
+  const avoid = (deps.avoidQueries ?? []).slice(0, 15);
+  const avoidText = avoid.length
+    ? `\nDeze zoektermen zijn de afgelopen 7 dagen al gebruikt; ProofLab heeft die resultaten al. Gebruik andere zoektermen:\n${avoid.map((q) => `- ${q.replace(/[<>\n]/g, " ").slice(0, 120)}`).join("\n")}`
+    : "";
   if (provider === "anthropic") {
     const { res, usage } = await generate(
       provider,
       {
         system: RESEARCH_SYSTEM,
-        user: `${SEARCH_INSTRUCTIONS(idea, question)}
+        user: `${SEARCH_INSTRUCTIONS(idea, question)}${avoidText}
 Open de belangrijkste pagina's met web_fetch. Zoek ook naar tegenbewijs.
 Vat daarna in maximaal tien zinnen samen wat de bronnen letterlijk zeggen, met een citaat bij elke feitelijke bewering.
 Schrijf "onbekend" als je iets niet kunt vinden.`,
@@ -119,6 +125,7 @@ Schrijf "onbekend" als je iets niet kunt vinden.`,
         webSearch: { maxUses: maxSearches },
       },
       "Het model weigerde deze zoekopdracht.",
+      "research",
     );
     // Group cited passages per source. Passages from fetched pages are widened to their paragraph so that later
     // extraction has context; everything stays a verbatim slice of the page.
@@ -172,8 +179,9 @@ Schrijf "onbekend" als je iets niet kunt vinden.`,
     return {
       sources,
       usage,
-      detail: `${sources.length} bronnen${extra > 0 ? ` (${cited} met citaat van het model, ${extra} met de meest relevante alinea's${fetchedByUs ? `, waarvan ${fetchedByUs} door ProofLab zelf geopend` : ""})` : ""}`,
+      detail: `${sources.length} bronnen${extra > 0 ? ` (${cited} met citaat van het model, ${extra} met de meest relevante alinea's${fetchedByUs ? `, waarvan ${fetchedByUs} door ProofLab zelf geopend` : ""})` : ""}${res.stoppedForBudget ? "; zoeken gestopt: budget bereikt" : ""}`,
       log: ledger.build(res.queries ?? [], question, new Map(res.searchResults.map((r) => [r.url, r.title]))),
+      stoppedForBudget: !!res.stoppedForBudget,
     };
   }
 
@@ -181,7 +189,7 @@ Schrijf "onbekend" als je iets niet kunt vinden.`,
     provider,
     {
       system: RESEARCH_SYSTEM,
-      user: `${SEARCH_INSTRUCTIONS(idea, question)}
+      user: `${SEARCH_INSTRUCTIONS(idea, question)}${avoidText}
 Zoek ook naar tegenbewijs. Geef daarna per bruikbare bron precies dit formaat, zonder andere tekst:
 BRON: <volledige URL van de pagina>
 CITAAT: <één zin of korte alinea, letterlijk en woord voor woord van die pagina gekopieerd>
@@ -192,6 +200,7 @@ zelf op en gooit elk citaat weg dat niet letterlijk op de pagina staat. Vind je 
       webSearch: { maxUses: maxSearches },
     },
     "Het model weigerde deze zoekopdracht.",
+    "research",
   );
   const claimed = parseQuotedSources(res.text);
   const citationUrls = res.citations.flatMap((c) => (c.url ? [c.url] : []));
@@ -202,6 +211,7 @@ zelf op en gooit elk citaat weg dat niet letterlijk op de pagina staat. Vind je 
     detail: `${v.sources.length} bronnen, ${v.quotes - v.rejected} van ${v.quotes} citaten letterlijk teruggevonden${v.pagesFailed ? `, ${v.pagesFailed} pagina's niet bereikbaar` : ""}`,
     // Without reported queries (older responses) the research question stands in as the search term.
     log: ledger.build(res.queries ?? [], question),
+    stoppedForBudget: false,
   };
 }
 
@@ -303,6 +313,7 @@ ze letterlijk in het citaat staan. Classificeer elke bron (source_ref). Noem con
 ze in een fragment voorkomen; een prijs alleen als die letterlijk in het citaat staat. Als de fragmenten de vraag niet
 beantwoorden, geef dan lege lijsten.`,
     "medium",
+    "research",
   );
 }
 
@@ -443,6 +454,7 @@ Antwoord "supports" als het citaat dat volledig doet (zelfde onderwerp, regio, p
 "partial" als het maar een deel draagt of de bewering verder gaat dan het citaat, en "not_supported" als het citaat
 iets anders zegt. Geef één korte reden.`,
     "low",
+    "research",
   );
 }
 

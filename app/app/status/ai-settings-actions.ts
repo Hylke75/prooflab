@@ -69,7 +69,9 @@ export async function testAiConnections(): Promise<ConnectionTestState> {
       if (!connected.includes(p)) return { provider: p, name, model, ok: false, ms: 0, message: "Geen sleutel ingesteld." };
       const t0 = Date.now();
       try {
-        const r = await adapterFor(p).generate({ system: "Dit is een verbindingstest.", user: "Antwoord alleen met het woord OK.", maxTokens: 64, timeoutMs: 30000 });
+        // Lage denkstand en ruimte voor denktokens: met 64 tokens en de standaard (hoge) denkstand gaf Gemini een
+        // leeg antwoord omdat alle tokens aan nadenken opgingen.
+        const r = await adapterFor(p).generate({ system: "Dit is een verbindingstest.", user: "Antwoord alleen met het woord OK.", maxTokens: 1024, effort: "low", timeoutMs: 30000 });
         const ms = Date.now() - t0;
         const answer = r.text.trim().slice(0, 40);
         return { provider: p, name, model: r.model, ok: true, ms, message: answer ? `Antwoord: "${answer}"` : "Verbonden (leeg antwoord)." };

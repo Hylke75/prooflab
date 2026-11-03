@@ -15,7 +15,13 @@ export type GenerateRequest = {
   // Server-side web search by the provider. With Claude also server-side page fetching (web_fetch).
   webSearch?: { maxUses: number };
   timeoutMs?: number;
+  // Run budget (lib/ai/budget.ts): a search loop reserves an estimate before every round and stops when the
+  // reservation is refused, returning what it already has.
+  budget?: BudgetGate;
 };
+
+export type BudgetReservation = { settle(actualUsd: number): void };
+export type BudgetGate = { reserve(estimateUsd: number, label: string): BudgetReservation | null };
 
 // A web page the provider itself fetched, with its text (Claude's web_fetch). Other providers return none; their
 // pages are fetched by ProofLab (lib/ai/web-evidence.ts).
@@ -47,6 +53,8 @@ export type GenerateResult = {
   // Search queries as the provider reports them; absent for calls without web search.
   queries?: SearchQuery[];
   fetchFailed?: FetchFailure[];
+  // True when a search loop stopped because the next round would exceed the run budget.
+  stoppedForBudget?: boolean;
 };
 
 export interface ProviderAdapter {

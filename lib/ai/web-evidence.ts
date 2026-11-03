@@ -36,6 +36,19 @@ export const isUrlStatus = (v: unknown): v is UrlStatus => typeof v === "string"
 export type UrlLog = { url: string; title: string | null; status: UrlStatus; reason: string };
 export type QueryLog = { query: string; urls: UrlLog[]; passages: number };
 
+// Pages that never yield a citable passage: video, social media and log-in walls.
+const UNUSABLE_HOSTS = /(^|\.)(youtube\.com|youtu\.be|facebook\.com|instagram\.com|tiktok\.com|x\.com|twitter\.com|pinterest\.[a-z]+|accounts\.google\.com)$/i;
+
+// A URL that is worth opening: http(s) and not on a host that never has readable text.
+export function isUsableUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return (u.protocol === "https:" || u.protocol === "http:") && !UNUSABLE_HOSTS.test(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
 // Below this many characters of cleaned text an HTML page is treated as empty (content loaded by scripts).
 export const EMPTY_PAGE_CHARS = 200;
 const EMPTY_PDF_CHARS = 50;
