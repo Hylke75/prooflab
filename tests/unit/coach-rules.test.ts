@@ -43,6 +43,7 @@ function facts(over: Partial<CoachFacts> = {}): CoachFacts {
       { moment: "research", kind: "consultant" },
     ],
     outreach: { replies: 0, latestReplyAt: null, latestImportAt: null },
+    baseRateChosen: true,
     ...over,
   };
 }
@@ -187,6 +188,19 @@ describe("coach rules", () => {
     expect(codes(ended)).toContain("forecast:experiment");
     expect(codes(facts({ experiments: [exp({ state: "ended" })], forecasts: [{ moment: "experiment", kind: "consultant" }] }))).not.toContain("forecast:experiment");
     expect(openForecastMoment(facts({ claims: [], competitorKinds: [] }))).toBe("intake");
+  });
+
+  it("asks for a base rate before a forecast, never for a forecast the page refuses", () => {
+    const ended = { experiments: [exp({ state: "ended" })] };
+    for (const chosen of [false, undefined]) {
+      const c = codes(facts({ ...ended, baseRateChosen: chosen }));
+      expect(c).toContain("base_rate_missing");
+      expect(c).not.toContain("forecast:experiment");
+    }
+    expect(evaluateRules(facts({ ...ended, baseRateChosen: false })).find((n) => n.code === "base_rate_missing")?.href).toBe(`${base}/outcome#basispercentage`);
+    expect(codes(facts({ ...ended, baseRateChosen: true }))).toContain("forecast:experiment");
+    // Geen open moment of al voorspeld: ook geen basispercentage-tip uit deze regel.
+    expect(codes(facts({ baseRateChosen: false, outcome: { defined: true, due: null, resolved: true, checkins: [] } }))).not.toContain("base_rate_missing");
   });
 
   it("reminds about the three-month check-in and the outcome date", () => {

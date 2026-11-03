@@ -32,7 +32,7 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
   const id = ideaId;
   const exact = { count: "exact" as const };
   const head = { count: "exact" as const, head: true };
-  const [claims, sources, competitors, assumptions, experiments, testEvents, interviews, observations, cards, checks, decisions, forecasts, outcome, checkins, replies] =
+  const [claims, sources, competitors, assumptions, experiments, testEvents, interviews, observations, cards, checks, decisions, forecasts, outcome, checkins, replies, ideaRow] =
     await Promise.all([
       db.from("claims").select("updated_at", exact).eq("idea_id", id).order("updated_at", { ascending: false }).limit(1),
       db.from("sources").select("created_at", exact).eq("idea_id", id).order("created_at", { ascending: false }).limit(1),
@@ -49,6 +49,8 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
       db.from("idea_outcomes").select("idea_id", head).eq("idea_id", id),
       db.from("outcome_checkins").select("id", head).eq("idea_id", id),
       db.from("outreach_events").select("received_at", exact).eq("idea_id", id).eq("event_type", "reply").order("received_at", { ascending: false }).limit(1),
+      // Uitkomstdefinitie en basispercentage: daarop reageren de regels outcome_undefined en forecast_missing.
+      db.from("ideas").select("outcome_statement, reference_class").eq("id", id).maybeSingle(),
     ]);
   const tally = (rows: { [k: string]: unknown }[] | null, key: string) => {
     const m = new Map<string, number>();
@@ -87,6 +89,8 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
     outreach_replies: replies.count ?? 0,
     outreach_replies_at: replies.data?.[0]?.received_at ?? null,
     sprint_week: sprintWeek,
+    outcome_defined: !!ideaRow.data?.outcome_statement,
+    base_rate_chosen: !!ideaRow.data?.reference_class,
   };
 }
 
@@ -153,6 +157,7 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
       checkins: (checkins.data ?? []).map((c) => c.created_at),
     },
     forecasts: (forecasts.data ?? []).map((f) => ({ moment: f.moment, kind: f.forecaster_kind, probability: Number(f.probability) })),
+    baseRateChosen: !!idea.reference_class,
     baseRate: idea.base_rate_low != null && idea.base_rate_high != null ? { low: Number(idea.base_rate_low), high: Number(idea.base_rate_high) } : null,
     // Unknown (schema missing) counts as "enough": then the starting-calibration rule stays quiet.
     orgResolved: orgResolved.error ? Number.POSITIVE_INFINITY : Number(orgResolved.data?.[0]?.resolved ?? 0),

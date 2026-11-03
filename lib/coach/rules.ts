@@ -73,6 +73,9 @@ export type CoachFacts = {
   // Base rate chosen for this dossier (null: none or "no good reference") and the number of resolved dossiers
   // of the organisation (for the starting calibration before there are enough own outcomes).
   baseRate?: { low: number; high: number } | null;
+  // Of er een basispercentage is gekozen, ook "geen goede referentie" (dan is voorspellen toegestaan). Onbekend
+  // telt als niet gekozen: de coach vraagt nooit om een voorspelling die de pagina weigert.
+  baseRateChosen?: boolean;
   orgResolved?: number;
   outreach: { replies: number; latestReplyAt: string | null; latestImportAt: string | null };
 };
@@ -340,6 +343,16 @@ export const RULES: Record<string, Rule> = {
     const m = openForecastMoment(f);
     if (!m) return null;
     if (f.forecasts.some((x) => x.moment === m && x.kind === "consultant")) return null;
+    // Voorspellen kan pas vanaf een basispercentage: eerst die tip, dan pas de vraag om een kans.
+    if (!f.baseRateChosen)
+      return {
+        code: "base_rate_missing",
+        kind: "tip",
+        title: "Kies een basispercentage",
+        body: "Hoe vaak slagen vergelijkbare ideeën? Kies een referentie met bron (of leg uit waarom er geen goede is). Daarna kun je voorspellen, vanaf dat vertrekpunt.",
+        href: `${base}/outcome#basispercentage`,
+        audience: "consultant",
+      };
     return {
       code: `forecast:${m}`,
       kind: "question",
@@ -491,6 +504,7 @@ export const RULE_LABELS: Record<string, string> = {
   decision_confirm: "Besluit bevestigen",
   outcome_undefined: "Uitkomst niet vastgelegd",
   forecast: "Voorspelling ontbreekt",
+  base_rate_missing: "Basispercentage ontbreekt",
   forecast_overconfident: "Voorspelling ver van basispercentage",
   outcome_due: "Uitkomst vastleggen",
   outcome_checkin: "Check-in na drie maanden",
