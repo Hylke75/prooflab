@@ -11,6 +11,9 @@ import { CHANNELS } from "@/lib/domain/tracking";
 import { auditGuide, guideSummary } from "@/lib/domain/interview-audit";
 import { honestyWarnings, type PreparedVariant } from "@/lib/domain/copy-honesty";
 import { GuideAuditList } from "@/components/experiments/InterviewAudit";
+import { SurveyEditor, type SurveyDraftAction } from "@/components/survey/SurveyEditor";
+import { templateSurvey, type SurveyConfig } from "@/lib/domain/survey";
+import { metricFromKey, surveyErrors } from "@/lib/domain/survey-editor";
 
 type VariantsResult = { error: string | null; variants: PreparedVariant[]; draftNotes: string[]; draftWarnings: string[] };
 type VariantsAction = (input: { assumption_id: string; type: "landing" | "pricing"; headline: string; subline: string; offer: string }) => Promise<VariantsResult>;
@@ -33,7 +36,13 @@ export function ExperimentBuilder({
   ideaTitle = "",
   aiConnected = false,
   variantsAction,
+  initialType,
+  researcher = "",
+  surveyDraftAction,
 }: {
+  initialType?: ExperimentType;
+  researcher?: string;
+  surveyDraftAction?: SurveyDraftAction;
   ideaTitle?: string;
   aiConnected?: boolean;
   variantsAction?: VariantsAction;
@@ -46,15 +55,29 @@ export function ExperimentBuilder({
 }) {
   const [assumptionId, setAssumptionId] = useState(initialAssumption);
   const assumption = assumptions.find((a) => a.id === assumptionId) ?? assumptions[0];
-  const [tier, setTier] = useState(0);
+  const [tier, setTier] = useState(() => Math.max(0, options.findIndex((o) => o.type === initialType)));
   const type: ExperimentType = options[tier].type;
+  // The survey is kept while switching assumption or test type; the Test Card metric follows its key question.
+  const [survey, setSurvey] = useState<SurveyConfig>(() =>
+    templateSurvey({ assumption: assumption.statement, audience: audience || "de doelgroep", researcher: researcher || "de onderzoeker", product: ideaTitle }),
+  );
+  const surveyIssues = useMemo(() => (type === "survey" ? surveyErrors(survey) : []), [type, survey]);
   const defaults = useMemo(() => testCardDefaults(type, assumption.statement, audience), [type, assumption.statement, audience]);
-  const [card, setCard] = useState(defaults);
+  const withSurveyMetric = (d: typeof defaults, s: SurveyConfig) => (type === "survey" ? { ...d, ...metricFromKey(s) } : d);
+  const [card, setCard] = useState(() => withSurveyMetric(defaults, survey));
   const [lastKey, setLastKey] = useState(`${type}|${assumption.id}`);
   if (lastKey !== `${type}|${assumption.id}`) {
     setLastKey(`${type}|${assumption.id}`);
-    setCard(defaults);
+    setCard(withSurveyMetric(defaults, survey));
   }
+  const updateSurvey = (next: SurveyConfig) => {
+    setSurvey(next);
+    const m = metricFromKey(next);
+    const keyText = (s: SurveyConfig) => s.questions.find((q) => q.id === s.key_question)?.text ?? "";
+    const keyChanged = next.key_question !== survey.key_question || next.success_options.join() !== survey.success_options.join() || keyText(next) !== keyText(survey);
+    // Teller and noemer always follow the key question; the label only when the key question itself changed.
+    setCard((c) => ({ ...c, metric_numerator: m.metric_numerator, metric_denominator: m.metric_denominator, metric_label: keyChanged ? m.metric_label : c.metric_label }));
+  };
   const [page, setPage] = useState({
     headline: "",
     subline: "",
@@ -109,7 +132,7 @@ export function ExperimentBuilder({
           {assumptions.map((a) => <option key={a.id} value={a.id}>{a.statement}</option>)}
         </select>
         {warning && <div className="note">{warning}</div>}
-        <div className="exp-options" role="radiogroup" aria-label="Experimenttype">
+        <div className={`exp-options${options.length === 4 ? " four" : ""}`} role="radiogroup" aria-label="Experimenttype">
           {options.map((o, i) => (
             <button key={o.tier} type="button" role="radio" aria-checked={tier === i} className={`exp-option${tier === i ? " selected" : ""}`} onClick={() => setTier(i)}>
               <span className="exp-ico">{EXPERIMENT_TYPES[o.type].icon}</span>
@@ -142,9 +165,10 @@ export function ExperimentBuilder({
           <div className="form-line"><label htmlFor="tc-method">Dat toetsen we door…</label><input className="field" id="tc-method" name="test_method" value={card.test_method} onChange={(e) => set("test_method", e.target.value)} /></div>
           <div className="form-line"><label htmlFor="tc-metric">En we meten…</label><input className="field" id="tc-metric" name="metric_label" value={card.metric_label} onChange={(e) => set("metric_label", e.target.value)} /></div>
           <div className="double-field">
-            <div className="form-line"><label htmlFor="tc-num">Teller</label><input className="field" id="tc-num" name="metric_numerator" value={card.metric_numerator} onChange={(e) => set("metric_numerator", e.target.value)} /></div>
-            <div className="form-line"><label htmlFor="tc-den">Noemer</label><input className="field" id="tc-den" name="metric_denominator" value={card.metric_denominator} onChange={(e) => set("metric_denominator", e.target.value)} /></div>
+            <div className="form-line"><label htmlFor="tc-num">Teller</label><input className="field" id="tc-num" name="metric_numerator" value={card.metric_numerator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_numerator", e.target.value)} /></div>
+            <div className="form-line"><label htmlFor="tc-den">Noemer</label><input className="field" id="tc-den" name="metric_denominator" value={card.metric_denominator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_denominator", e.target.value)} /></div>
           </div>
+          {type === "survey" && <p className="field-hint" id="tc-metric-hint" style={{ marginTop: -8, marginBottom: 12 }}>Teller en noemer volgen uit de kernvraag en de succesopties in de enquête hiernaast.</p>}
           <div className="double-field">
             <div className="form-line"><label htmlFor="tc-succ">Het klopt als ≥ (%)</label><input className="field num" id="tc-succ" name="success_threshold_pct" type="number" min={1} max={100} value={card.success_threshold_pct} onChange={(e) => set("success_threshold_pct", e.target.value)} /></div>
             <div className="form-line"><label htmlFor="tc-fail">Het klopt niet als &lt; (%)</label><input className="field num" id="tc-fail" name="fail_threshold_pct" type="number" min={0} max={100} value={card.fail_threshold_pct ?? ""} onChange={(e) => set("fail_threshold_pct", e.target.value)} /></div>
@@ -184,14 +208,28 @@ export function ExperimentBuilder({
             </div>
           )}
           <div className="note">Je legt deze criteria vast vóór de test. Na goedkeuring zijn ze vergrendeld; wijzigen kan alleen met een nieuwe versie en een motivering.</div>
-          <button className="btn primary" style={{ marginTop: 18, width: "100%" }} disabled={!coach.ok}>
+          {surveyIssues.length > 0 && <div className="form-error">Maak de enquête eerst compleet (zie de meldingen bij de vragen).</div>}
+          <button className="btn primary" style={{ marginTop: 18, width: "100%" }} disabled={!coach.ok || surveyIssues.length > 0}>
             Test Card opslaan als concept <Icon name="arrow" size="sm" />
           </button>
         </div>
 
         <div className="card" style={{ marginTop: 18 }}>
           <div className="section-title"><h2 className="as-h3">Zo ziet jouw experiment eruit</h2><span className="pill blue">Live preview</span></div>
-          {type === "interview" ? (
+          {type === "survey" ? (
+            <>
+              <input type="hidden" name="survey_config" value={JSON.stringify(survey)} />
+              <SurveyEditor
+                value={survey}
+                onChange={updateSurvey}
+                productNames={[ideaTitle]}
+                assumptionId={assumption.id}
+                targetGroup={card.target_group}
+                aiConnected={aiConnected}
+                draftAction={surveyDraftAction}
+              />
+            </>
+          ) : type === "interview" ? (
             <>
               <div className="form-line">
                 <label htmlFor="tc-guide">Gespreksleidraad (één vraag per regel)</label>

@@ -6,6 +6,7 @@ import { ActionForm } from "@/components/ui/ActionForm";
 import { ResultMeter } from "@/components/experiments/ResultMeter";
 import { GuideAuditList, TranscriptAuditList } from "@/components/experiments/InterviewAudit";
 import { AiQualityCard } from "@/components/research/AiQualityCard";
+import { SurveyResults } from "@/components/survey/SurveyResults";
 import { getIdea, getWorkspace } from "@/lib/data";
 import { loadAiQuality } from "@/lib/ai-quality";
 import { auditGuide, auditTranscript, guideSummary } from "@/lib/domain/interview-audit";
@@ -77,7 +78,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
 
       <div className="grid-3">
         <div className="live-stat">
-          <small>{type === "interview" ? "Geïnterviewden (met toestemming)" : "Unieke relevante bezoekers"}</small>
+          <small>{type === "interview" ? "Geïnterviewden (met toestemming)" : type === "survey" ? "Respondenten (geloofwaardig, kernvraag beantwoord)" : "Unieke relevante bezoekers"}</small>
           <strong className="num">{m.n}</strong>
           <span className="tiny">minimaal {h.min_sample} afgesproken</span>
         </div>
@@ -133,7 +134,13 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           {canWrite && state === "ready_for_review" && (
             <ActionForm action={transitionExperiment.bind(null, id, expId, "approved")} submitLabel="Akkoord: keur goed en vergrendel">
               <p className="sub">Goedkeuren vergrendelt de hypothese en drempels. Bevestig:</p>
-              {type === "interview" ? (
+              {type === "survey" ? (
+                <>
+                  <label className="check-row"><input type="checkbox" name="check_honest" /> De enquête zegt eerlijk wie de vragen stelt en waarvoor; er wordt niets verkocht.</label>
+                  <label className="check-row"><input type="checkbox" name="check_privacy" /> Er wordt niet om naam of e-mailadres gevraagd in de vragen; uitnodigingen gaan alleen naar mensen met een bestaande relatie en vervallen na 180 dagen.</label>
+                  <label className="check-row"><input type="checkbox" name="check_pretest" /> De vragen zijn voorgelegd aan 3–5 echte mensen uit de doelgroep en waar nodig aangepast.</label>
+                </>
+              ) : type === "interview" ? (
                 <>
                   <label className="check-row"><input type="checkbox" name="check_consent" /> Deelnemers krijgen vooraf uitleg over doel, opname en bewaartermijn, en geven toestemming.</label>
                   <label className="check-row"><input type="checkbox" name="check_neutral" /> De leidraad bevat geen pitch of sturende vragen.</label>
@@ -150,7 +157,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           {canWrite && state === "approved" && (
             <>
               {type !== "interview" && !trackingConfigured() && <div className="form-error">Meting is niet geconfigureerd (INGEST_SECRET en TRACKING_SALT ontbreken). De test kan nog niet live.</div>}
-              {publicUrl && <p className="sub">Bekijk eerst het <a className="text-link" href={`/t/${exp.public_slug}`} target="_blank">voorbeeld</a> (metingen staan nog uit).</p>}
+              {publicUrl && type !== "survey" && <p className="sub">Bekijk eerst het <a className="text-link" href={`/t/${exp.public_slug}`} target="_blank">voorbeeld</a> (metingen staan nog uit).</p>}
               <ActionForm action={transitionExperiment.bind(null, id, expId, "live")} submitLabel={type === "interview" ? "Start de interviewronde" : "Publiceer en start de meting"}>
                 <span />
               </ActionForm>
@@ -169,7 +176,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           )}
           {(cards ?? []).length > 0 && <Link className="btn primary" href={`/app/ideas/${id}/evidence`}>Naar bewijs & besluit →</Link>}
 
-          {publicUrl && running && type !== "interview" && (
+          {publicUrl && running && type !== "interview" && type !== "survey" && (
             <div className="mt-18">
               <div className="eyebrow">DEEL PER KANAAL</div>
               {channels.map((c) => (
@@ -339,7 +346,9 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
         </>
       )}
 
-      {type !== "interview" && (
+      {type === "survey" && <SurveyResults ideaId={id} exp={exp} h={h} m={m} canWrite={canWrite} />}
+
+      {type !== "interview" && type !== "survey" && (
         <div className="card mt-18">
           <h2 className="as-h3">Testpagina</h2>
           <p className="sub mt-8">
