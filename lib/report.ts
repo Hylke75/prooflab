@@ -2,6 +2,9 @@ import "server-only";
 import type { Dossier } from "@/lib/dossier";
 import { CLAIM_STATUS, COMPETITOR_KINDS, DECISIONS, EVIDENCE_TYPES, EXPERIMENT_TYPES, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type DecisionAction, type EvidenceType, type ExperimentType, type SourceType } from "@/lib/domain/labels";
 import type { Finding } from "@/lib/domain/reality-check";
+import { asEvidenceLevel, testEvidenceLevel } from "@/lib/domain/evidence";
+import { buildAllTests } from "@/lib/domain/all-tests";
+import { testRole } from "@/lib/domain/primary-test";
 import { ACHIEVED_LABELS, FORECAST_MOMENTS, FORECASTER_LABELS, MOMENT_LABELS, ON_TRACK_LABELS, aggregate, brier, type Achieved, type ForecasterKind, type OnTrack } from "@/lib/domain/forecast";
 import { ensembleMean } from "@/lib/ai/providers/select";
 import { PROVIDER_LABELS, providerOfModel } from "@/lib/ai/providers/config";
@@ -98,10 +101,15 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         // Methode 2026-11-b: plafond en samengevoegde signalen.
         capReason: p?.capReason ?? null,
         merged: p?.merged ?? [],
+        // Methode 2026-11-c: herhaling binnen dezelfde wervingsgroep.
+        recruitment: p?.recruitment ?? [],
       };
     }),
     // Default or learned evidence factors (lib/domain/calibration.ts), so every probability can be reproduced.
     weights: d.weights,
+    // Kalibratie op het moment van het rapport: te weinig opgeloste dossiers = kansen in banden van 10 procentpunt
+    // met "niet gekalibreerd" (lib/domain/probability-display.ts). Oudere rapporten hebben dit veld niet.
+    calibration: { resolved: d.calibration.resolved, calibrated: d.calibration.calibrated },
     // Methodeversie, beslisregels en gebruikte plafonds: elke kans en elk oordeel is daarmee te reproduceren.
     methodology: {
       version: d.method.version,
@@ -165,6 +173,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         probability: e.metrics?.verdict.probability ?? null,
         successCount: e.metrics?.verdict.successCount ?? null,
         requiredN: e.hypotheses?.required_n ?? null,
+        // Bewijsniveau van wat deze test meet (golf A, punt 14).
+        level: testEvidenceLevel(e.type, { decisionRule: e.hypotheses?.decision_rule }),
         byChannel: e.metrics?.byChannel ?? [],
         byVariant: e.metrics?.byVariant ?? [],
         warnings: e.metrics?.warnings ?? [],
@@ -199,7 +209,41 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
             .map((i) => ({ recruitedVia: i.recruited_via, isAcquaintance: i.is_acquaintance, consent: i.consent_recorded })),
         })),
     ),
-    learningCards: d.learningCards.filter((c) => c.status === "approved").map((c) => ({ believed: c.we_believed, observed: c.we_observed, learned: c.we_learned, therefore: c.therefore, verdict: c.verdict, reliability: c.data_reliability })),
+    // Verplichte lijst "Alle tests" (golf A, punt 12): ook afgebroken, mislukte en verkennende tests, met het aantal
+    // tests per aanname.
+    allTests: buildAllTests(
+      d.experiments.map((e) => ({
+        title: e.title,
+        type: EXPERIMENT_TYPES[e.type as ExperimentType]?.label ?? e.type,
+        state: e.state,
+        assumptionId: e.hypotheses?.assumption_id ?? null,
+        assumption: e.hypotheses?.assumptions?.statement ?? null,
+        role: testRole(e.id, e.hypotheses?.assumption_id, d.assumptions.map((a) => ({ id: a.id, primary_experiment_id: a.primaryExperimentId }))),
+        locked: !!e.hypotheses?.locked_at,
+        endedEarly: !!e.ended_early,
+        label: e.metrics?.verdict.label ?? null,
+        level: testEvidenceLevel(e.type, { decisionRule: e.hypotheses?.decision_rule }),
+        n: e.metrics?.n ?? 0,
+        successes: e.metrics?.successes ?? 0,
+      })),
+    ),
+    learningCards: d.learningCards
+      .filter((c) => c.status === "approved")
+      .map((c) => {
+        const exp = d.experiments.find((e) => e.id === c.experiment_id);
+        const stored = asEvidenceLevel((c.metrics as { evidence_level?: unknown } | null)?.evidence_level);
+        return {
+          believed: c.we_believed,
+          observed: c.we_observed,
+          learned: c.we_learned,
+          therefore: c.therefore,
+          verdict: c.verdict,
+          reliability: c.data_reliability,
+          // "Geslaagd · niveau: mening" (golf A, punt 14).
+          level: stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule }) : null),
+          title: exp?.title ?? null,
+        };
+      }),
     realityCheck: check ? { at: check.created_at, advice: DECISIONS[check.advice as DecisionAction].label, reason: check.advice_reason, findings: checkFindings, aiUsed: check.ai_used } : null,
     decision: lastDecision
       ? { action: DECISIONS[lastDecision.action as DecisionAction].label, rationale: lastDecision.rationale, nextStep: lastDecision.next_step, at: lastDecision.decided_at, confirmedAt: lastDecision.client_confirmed_at, comment: lastDecision.client_comment }

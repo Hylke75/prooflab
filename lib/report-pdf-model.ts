@@ -7,6 +7,10 @@ import type { ReportSnapshot } from "@/lib/report";
 import { pct } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { describeMethodology, ruleLabelText } from "@/lib/domain/method/describe";
+import { CALIBRATION_MIN_RESOLVED, formatProbability, formatProbabilityRange } from "@/lib/domain/probability-display";
+import { explainRecruitment } from "@/lib/domain/recruitment";
+import { asEvidenceLevel, outcomeWithLevel } from "@/lib/domain/evidence";
+import { allTestsSummary, type AllTestsPerAssumption, type AllTestsRow } from "@/lib/domain/all-tests";
 
 export type Tone = "blue" | "green" | "coral" | "lime" | "gray";
 export type Block =
@@ -173,6 +177,8 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
 
   // 06 Assumptions
   const withProb = r.assumptions.some((a) => a.probability);
+  // Rapporten van vóór golf A hebben geen kalibratie: dan de voorzichtige weergave in banden.
+  const calibrated = !!(r as { calibration?: { calibrated?: boolean } }).calibration?.calibrated;
   chapters.push({
     id: "assumptions",
     eyebrow: "06 / AANNAMES EN RISICO'S",
@@ -181,17 +187,31 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
       ? [
           {
             t: "table",
-            head: ["Aanname", "Belang", withProb ? "Geschatte kans" : "Bewijs", "Status"],
+            head: ["Aanname", "Belang", withProb ? (calibrated ? "Geschatte kans" : "Geschatte kans (niet gekalibreerd)") : "Bewijs", "Status"],
             widths: [54, 10, 18, 18],
             rows: r.assumptions.map((a) => [
               `${a.statement}${a.premortem ? " (uit de pre-mortem)" : ""}`,
               `${a.importance}/5`,
-              withProb && a.probability ? `${pct0(a.probability.point)} (${pct0(a.probability.low)}–${pct0(a.probability.high)})` : `${a.evidence}%`,
+              withProb && a.probability
+                ? `${formatProbability(a.probability.point, calibrated).text} (${formatProbabilityRange(a.probability.low, a.probability.high, calibrated).text})` +
+                  ((a as { recruitment?: { group: string; sources: number }[] }).recruitment ?? []).map((x) => ` ${explainRecruitment(x)}`).join("")
+                : `${a.evidence}%`,
               ASSUMPTION_STATUS[a.status] ?? a.status,
             ]),
           },
           ...(withProb
-            ? [{ t: "p" as const, small: true, muted: true, text: "Geschatte kans dat de aanname klopt: een beginwaarde (meestal 50%), bijgewerkt met een vaste factor per soort bewijs. Uitspraken tellen nauwelijks, gedrag en betalingen sterk." }]
+            ? [
+                {
+                  t: "p" as const,
+                  small: true,
+                  muted: true,
+                  text:
+                    "Geschatte kans dat de aanname klopt: een beginwaarde (meestal 50%), bijgewerkt met een vaste factor per soort bewijs. Uitspraken tellen nauwelijks, gedrag en betalingen sterk." +
+                    (calibrated
+                      ? ""
+                      : ` Niet gekalibreerd: bij dit rapport had de werkruimte minder dan ${CALIBRATION_MIN_RESOLVED} opgeloste dossiers om deze kansen aan te toetsen. Daarom staan ze in banden van 10 procentpunt.`),
+                },
+              ]
             : []),
         ]
       : [{ t: "p", text: "Er zijn nog geen aannames vastgelegd.", muted: true }],
@@ -201,6 +221,25 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
   const exps: Block[] = [
     { t: "p", small: true, muted: true, text: "Het 95%-interval is de bandbreedte waarbinnen de werkelijke waarde vrijwel zeker ligt; bij kleine aantallen is die breed. Drempels zijn vóór de start vergrendeld." },
   ];
+  // Verplichte lijst "Alle tests" (golf A, punt 12). Rapporten van daarvoor hebben hem niet.
+  const allTests = (r as { allTests?: { rows: AllTestsRow[]; perAssumption: AllTestsPerAssumption[] } }).allTests;
+  exps.push({ t: "h", text: "Alle tests" });
+  if (allTests) {
+    exps.push({ t: "p", small: true, text: `${allTestsSummary(allTests.rows)} Deze lijst is verplicht: ook afgebroken, mislukte en verkennende tests staan erin.` });
+    if (allTests.rows.length) {
+      exps.push({
+        t: "table",
+        head: ["Test", "Aanname", "Rol", "Status", "Resultaat", "Uitkomst"],
+        widths: [20, 24, 11, 17, 10, 18],
+        rows: allTests.rows.map((t) => [`${t.title} (${t.type})`, t.assumption, t.role, t.status, t.result, t.outcome]),
+      });
+    }
+    if (allTests.perAssumption.length) {
+      exps.push({ t: "list", small: true, items: allTests.perAssumption.map((a) => `${a.assumption}: ${a.total} ${a.total === 1 ? "test" : "tests"} (${a.primary} hoofdtest, ${a.exploratory} verkennend)`) });
+    }
+  } else {
+    exps.push({ t: "p", small: true, muted: true, text: 'Dit rapport is gemaakt vóór de lijst "Alle tests" bestond.' });
+  }
   if (!r.experiments.length) exps.push({ t: "p", text: "Er zijn nog geen experimenten uitgevoerd.", muted: true });
   for (const e of r.experiments) {
     exps.push({ t: "h", text: `${e.title} (${e.type})` });
@@ -209,13 +248,18 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
     exps.push({
       t: "p",
       text:
-        `Resultaat: ${e.successes} van ${e.n}${e.interval ? ` (${pct(e.interval.point)}; 95%-interval ${pct(e.interval.low)}–${pct(e.interval.high)})` : ""}. Oordeel: ${"label" in e && e.label ? e.label : e.verdict ? (VERDICT[e.verdict] ?? "onbeslist") : "onbeslist"}${"rule" in e ? ` (${ruleLabelText(e.rule)})` : ""}. ${e.verdictReason}` +
+        `Resultaat: ${e.successes} van ${e.n}${e.interval ? ` (${pct(e.interval.point)}; 95%-interval ${pct(e.interval.low)}–${pct(e.interval.high)})` : ""}. Oordeel: ${outcomeWithLevel("label" in e && e.label ? e.label : e.verdict ? (VERDICT[e.verdict] ?? "onbeslist") : "onbeslist", asEvidenceLevel((e as { level?: unknown }).level))}${"rule" in e ? ` (${ruleLabelText(e.rule)})` : ""}. ${e.verdictReason}` +
         (e.endedEarly ? " De test is vroegtijdig beëindigd." : ""),
     });
     for (const w of e.warnings) exps.push({ t: "p", small: true, muted: true, text: `Let op: ${w}` });
   }
   for (const c of r.learningCards) {
-    exps.push({ t: "note", title: "Learning Card", text: `We dachten: ${c.believed} We zagen: ${c.observed} Daaruit leren we: ${c.learned} Daarom: ${c.therefore} (betrouwbaarheid: ${RELIABILITY[c.reliability] ?? c.reliability})` });
+    const cl = c as { level?: unknown; title?: string | null };
+    exps.push({
+      t: "note",
+      title: `Learning Card${cl.title ? `: ${cl.title}` : ""}${"level" in cl ? ` · ${outcomeWithLevel(VERDICT[c.verdict] ?? "onbeslist", asEvidenceLevel(cl.level))}` : ""}`,
+      text: `We dachten: ${c.believed} We zagen: ${c.observed} Daaruit leren we: ${c.learned} Daarom: ${c.therefore} (betrouwbaarheid: ${RELIABILITY[c.reliability] ?? c.reliability})`,
+    });
   }
   chapters.push({ id: "experiments", eyebrow: "07 / EXPERIMENTEN EN RESULTATEN", title: "Van mening naar meetbaar gedrag", blocks: exps });
 

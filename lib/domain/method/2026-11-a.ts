@@ -12,6 +12,8 @@ export const method2026_11_a: MethodModule = {
   version: "2026-11-a",
   label: "Methode 2026-11-a",
   usesCaps: false,
+  usesRules: false,
+  primaryDecides: false,
   rules: [
     "Oordeel per test: geslaagd als ook de ondergrens van het 95%-interval boven de succesdrempel ligt; niet geslaagd als ook de bovengrens onder de faaldrempel ligt; anders onbeslist.",
     "Kans per aanname: een vaste factor per soort bewijs op de kansverhouding, afnemend meegeteld per soort; geen samenvoegen per bron en geen plafond.",

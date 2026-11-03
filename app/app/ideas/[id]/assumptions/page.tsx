@@ -18,7 +18,7 @@ import { aiConfigured } from "@/lib/env";
 import { ASSUMPTION_CATEGORIES, type AssumptionCategory, type AssumptionStatus } from "@/lib/domain/labels";
 import { asMethodVersion, CURRENT_METHOD, METHODS, type MethodVersion } from "@/lib/domain/method";
 import { EVIDENCE_LEVELS, type EvidenceCaps } from "@/lib/domain/evidence";
-import { loadIdeaCaps } from "@/lib/method-data";
+import { loadCalibration, loadIdeaCaps } from "@/lib/method-data";
 import { addAssumption, deleteAssumption, linkClaim, seedAssumptions, setImportance, setPrior, unlinkClaim } from "./actions";
 
 export const metadata: Metadata = { title: "Aannames" };
@@ -34,10 +34,13 @@ function HowWeCalculate({ weights, method, caps }: { weights: WeightsInUse; meth
       <p className="sub mt-12">
         Elke aanname begint op 50%. Elk stuk bewijs vermenigvuldigt de kansverhouding (odds) met een vaste factor; tegenbewijs deelt erdoor.
         Meer van hetzelfde telt afnemend mee: n stuks tellen als log₂(1 + n) stuks, dus 20 dezelfde meningen brengen 50% maar naar ongeveer 60%.
-        AI-gecodeerde observaties tellen voor {AI_UNREVIEWED_WEIGHT * 100}% zolang niemand ze heeft beoordeeld, volledig na akkoord en niet na afkeuren. Synthetische data telt nooit mee.
+        {METHODS[method].primaryDecides
+          ? "AI-gecodeerde observaties tellen pas mee na akkoord van een consultant, niet zolang niemand ze heeft beoordeeld en niet na afkeuren."
+          : `AI-gecodeerde observaties tellen voor ${AI_UNREVIEWED_WEIGHT * 100}% zolang niemand ze heeft beoordeeld, volledig na akkoord en niet na afkeuren.`}{" "}
+        Synthetische data telt nooit mee.
         De kans blijft altijd tussen 1% en 99%.
       </p>
-      {method === "2026-11-b" ? (
+      {METHODS[method].usesCaps ? (
         <p className="sub mt-12">
           {METHODS[method].label}: ondersteunend bewijs uit dezelfde bron (dezelfde enquête of test, hetzelfde interview, dezelfde bron of outreach-campagne) telt
           één keer, met de sterkste factor; tegenbewijs telt per signaal. De kans is begrensd door het hoogste bewijsniveau:{" "}
@@ -45,6 +48,13 @@ function HowWeCalculate({ weights, method, caps }: { weights: WeightsInUse; meth
         </p>
       ) : (
         <p className="sub mt-12">{METHODS[method].label}: geen samenvoegen per bron en geen plafond per bewijsniveau.</p>
+      )}
+      {METHODS[method].primaryDecides && (
+        <p className="sub mt-12">
+          {METHODS[method].label}: ondersteunend bewijs uit dezelfde wervingsgroep (eigen netwerk, warm contact, koud, betaald panel of onbekend) telt over
+          verschillende bronnen heen afnemend mee: n bronnen uit één groep tellen als log₂(1 + n). Per aanname beslist alleen de vooraf aangewezen hoofdtest over de
+          status; andere tests zijn verkennend.
+        </p>
       )}
       <div style={{ overflowX: "auto" }}>
         <table className="table mt-12">
@@ -75,13 +85,14 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
   const { idea, canWrite } = await getIdea(id);
   const supabase = await supabaseServer();
   const method = asMethodVersion(idea.method_version);
-  const [ranked, progress, { data: claims }, { data: links }, weights, caps] = await Promise.all([
+  const [ranked, progress, { data: claims }, { data: links }, weights, caps, calibration] = await Promise.all([
     loadInformationValue(id),
     loadProgress(id),
     supabase.from("claims").select("id, statement, status").eq("idea_id", id).order("created_at"),
     supabase.from("assumption_claims").select("assumption_id, claim_id, relation, claims(statement, status)").eq("idea_id", id),
     loadIdeaWeights(id),
     loadIdeaCaps(id),
+    loadCalibration(id),
   ]);
   const board: BoardAssumption[] = ranked.map((a) => ({
     ...a,
@@ -131,6 +142,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
           assumptions={board}
           claims={usable}
           canWrite={canWrite}
+          calibrated={calibration.calibrated}
           linkActions={Object.fromEntries(board.map((a) => [a.id, linkClaim.bind(null, id, a.id)]))}
           unlinkActions={Object.fromEntries(board.map((a) => [a.id, Object.fromEntries(a.claims.map((c) => [c.id, unlinkClaim.bind(null, id, a.id, c.id)]))]))}
           importanceActions={Object.fromEntries(board.map((a) => [a.id, setImportance.bind(null, id, a.id)]))}

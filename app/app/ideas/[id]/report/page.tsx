@@ -12,6 +12,11 @@ import { CHANNELS } from "@/lib/domain/tracking";
 import { createReportVersion, shareReportVersion } from "./actions";
 import { PrintButton } from "./PrintButton";
 import { Icon } from "@/components/Icon";
+import { Probability } from "@/components/ui/Probability";
+import { explainRecruitment } from "@/lib/domain/recruitment";
+import { asEvidenceLevel, outcomeWithLevel } from "@/lib/domain/evidence";
+import { allTestsSummary } from "@/lib/domain/all-tests";
+import { CALIBRATION_MIN_RESOLVED } from "@/lib/domain/probability-display";
 
 export const metadata: Metadata = { title: "Rapportage" };
 
@@ -62,6 +67,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
     supabase.from("decisions").select("decided_at, client_confirmed_at").eq("idea_id", id).order("decided_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const r = row?.snapshot as ReportSnapshot | undefined;
+  // Rapporten van vóór golf A hebben geen kalibratie: dan de voorzichtige weergave (banden).
+  const calibrated = !!(r && "calibration" in r && r.calibration?.calibrated);
   // A client opening a shared version marks it as seen (once; the database keeps the first moment).
   if (!canWrite && current?.shared_at && !current.client_viewed_at) {
     await supabase.rpc("mark_report_viewed", { p_report: current.id });
@@ -283,7 +290,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             <span className="eyebrow">06 / Aannames en risico&apos;s</span>
             <h3>Wat moet waar zijn?</h3>
             <table className="table">
-              <thead><tr><th>Aanname</th><th>Belang</th>{r.assumptions.some((a) => "probability" in a && a.probability) ? <th>Geschatte kans</th> : <th>Bewijs</th>}<th>Status</th></tr></thead>
+              <thead><tr><th>Aanname</th><th>Belang</th>{r.assumptions.some((a) => "probability" in a && a.probability) ? <th>Geschatte kans{calibrated ? "" : " (niet gekalibreerd)"}</th> : <th>Bewijs</th>}<th>Status</th></tr></thead>
               <tbody>
                 {r.assumptions.map((a, i) => (
                   <tr key={i}>
@@ -291,9 +298,11 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                     <td className="num">{a.importance}/5</td>
                     {"probability" in a && a.probability ? (
                       <td className="num">
-                        {pct0(a.probability.point)} <span className="tiny">({pct0(a.probability.low)}–{pct0(a.probability.high)})</span>
+                        <Probability p={a.probability.point} calibrated={calibrated} showLabel={false} />{" "}
+                        <span className="tiny">(<Probability p={a.probability.low} high={a.probability.high} calibrated={calibrated} showLabel={false} />)</span>
                         {"capReason" in a && a.capReason ? <span className="tiny" style={{ display: "block" }}>{a.capReason}</span> : null}
                         {"merged" in a && a.merged.length ? <span className="tiny" style={{ display: "block" }}>{a.merged.map((m) => `${m.signals} signalen uit ${m.label} samengevoegd`).join("; ")}</span> : null}
+                        {"recruitment" in a && a.recruitment?.length ? <span className="tiny" style={{ display: "block" }}>{a.recruitment.map((x) => explainRecruitment(x)).join(" ")}</span> : null}
                       </td>
                     ) : (
                       <td className="num">{a.evidence}%</td>
@@ -309,6 +318,9 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 tellen nauwelijks, gedrag en betalingen sterk. Tussen haakjes de bandbreedte als die factoren de helft zwakker of sterker zijn.{" "}
                 {"weights" in r && r.weights ? describeWeights(r.weights) : "Gebruikte factoren: de vaste standaardfactoren van ProofLab (rapport gemaakt vóór geleerde factoren bestonden)."}{" "}
                 Rekenwijze: {describeMethodology("methodology" in r ? r.methodology : null).title}.
+                {calibrated
+                  ? ""
+                  : ` Niet gekalibreerd: bij dit rapport had de werkruimte minder dan ${CALIBRATION_MIN_RESOLVED} opgeloste dossiers om deze kansen aan te toetsen. Daarom staan ze in banden van 10 procentpunt; de exacte waarde staat in de tooltip.`}
               </p>
             )}
           </section>
@@ -320,6 +332,44 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               Een Learning Card legt per test vast wat we verwachtten, wat we zagen, wat we daaruit leren en wat we daarom doen. Het 95%-interval is de
               bandbreedte waarbinnen de werkelijke waarde vrijwel zeker ligt; bij kleine aantallen is die breed.
             </p>
+            <div className="mt-12" style={{ breakInside: "avoid" }}>
+              <strong style={{ fontSize: 13 }}>Alle tests</strong>
+              {"allTests" in r && r.allTests ? (
+                <>
+                  <p className="tiny">
+                    {allTestsSummary(r.allTests.rows)} Deze lijst is verplicht: ook afgebroken, mislukte en verkennende tests staan erin, zodat niet achteraf
+                    gekozen kan worden welke test telt.
+                  </p>
+                  {r.allTests.rows.length > 0 && (
+                    <div style={{ overflowX: "auto" }}>
+                      <table className="table">
+                        <caption className="sr-only">Alle vooraf vastgelegde tests met rol, status en uitkomst</caption>
+                        <thead><tr><th scope="col">Test</th><th scope="col">Aanname</th><th scope="col">Rol</th><th scope="col">Status</th><th scope="col">Resultaat</th><th scope="col">Uitkomst</th></tr></thead>
+                        <tbody>
+                          {r.allTests.rows.map((t, i) => (
+                            <tr key={i}>
+                              <td>{t.title} <span className="tiny">({t.type})</span></td>
+                              <td>{t.assumption}</td>
+                              <td>{t.role}</td>
+                              <td>{t.status}</td>
+                              <td className="num">{t.result}</td>
+                              <td>{t.outcome}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {r.allTests.perAssumption.length > 0 && (
+                    <p className="tiny">
+                      Tests per aanname: {r.allTests.perAssumption.map((a) => `${a.assumption}: ${a.total} (${a.primary} hoofdtest, ${a.exploratory} verkennend)`).join(" · ")}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="tiny">Dit rapport is gemaakt vóór de lijst &quot;Alle tests&quot; bestond; maak een nieuwe rapportversie voor de volledige lijst.</p>
+              )}
+            </div>
             {r.experiments.length === 0 && <p>Er zijn nog geen experimenten uitgevoerd.</p>}
             {r.experiments.map((e, i) => (
               <div key={i} className="mt-12" style={{ breakInside: "avoid" }}>
@@ -331,7 +381,12 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 <p>
                   Resultaat: {e.successes} van {e.n}
                   {e.interval ? ` (${pct(e.interval.point)}; 95%-interval ${pct(e.interval.low)}–${pct(e.interval.high)})` : ""}. Oordeel:{" "}
-                  <strong>{"label" in e && e.label ? e.label : e.verdict === "pass" ? "geslaagd" : e.verdict === "fail" ? "niet geslaagd" : e.verdict === "running" ? "loopt nog" : "onbeslist"}</strong>
+                  <strong>
+                    {outcomeWithLevel(
+                      "label" in e && e.label ? e.label : e.verdict === "pass" ? "geslaagd" : e.verdict === "fail" ? "niet geslaagd" : e.verdict === "running" ? "loopt nog" : "onbeslist",
+                      "level" in e ? asEvidenceLevel(e.level) : null,
+                    )}
+                  </strong>
                   {"rule" in e ? ` (${ruleLabelText(e.rule)})` : ""}. {e.verdictReason}
                   {"requiredN" in e && e.requiredN != null ? ` Vooraf berekend: ${e.requiredN} deelnemers nodig.` : ""}
                   {e.endedEarly ? " De test is vroegtijdig beëindigd." : ""}
@@ -350,7 +405,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             ))}
             {r.learningCards.map((c, i) => (
               <div key={i} className="note">
-                <strong>Learning Card.</strong> We dachten: {c.believed} We zagen: {c.observed} Daaruit leren we: {c.learned} Daarom: {c.therefore} (betrouwbaarheid: {{ low: "laag", medium: "middel", high: "hoog" }[c.reliability as "low"]})
+                <strong>Learning Card{"title" in c && c.title ? `: ${c.title}` : ""}.</strong>{" "}
+                {"level" in c ? <span className="pill gray">{outcomeWithLevel(c.verdict === "pass" ? "geslaagd" : c.verdict === "fail" ? "niet geslaagd" : "onbeslist", asEvidenceLevel(c.level))}</span> : null} We dachten: {c.believed} We zagen: {c.observed} Daaruit leren we: {c.learned} Daarom: {c.therefore} (betrouwbaarheid: {{ low: "laag", medium: "middel", high: "hoog" }[c.reliability as "low"]})
               </div>
             ))}
             {/* Golf C, punt 19: momentopname van de aantallen (rapporten van vóór 7 november 2026 hebben die niet). */}

@@ -24,6 +24,11 @@ export type AssumptionWithEvidence = {
   contradicting: number;
   // Estimated probability that the assumption holds (research 3.5), from the stored starting value (default 50%).
   probability: AssumptionProbability;
+  // Golf A, punt 5: onderbouwing van de startkans en of die vergrendeld is (er hangt bewijs aan de aanname).
+  priorRationale: string | null;
+  priorLocked: boolean;
+  // Golf A, punt 11: de vooraf aangewezen hoofdtest (experiment-id) of null.
+  primaryExperimentId: string | null;
 };
 
 type ObsLink = {
@@ -105,7 +110,13 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
       .filter((l) => l.assumption_id === a.id && l.claims)
       .map((l) => {
         const ref = refs.get(`claim:${l.claim_id}`);
-        return { status: l.claims!.status as ClaimStatus, relation: l.relation as "supports" | "contradicts", sourceKey: ref?.key ?? null, sourceLabel: ref?.label ?? null };
+        return {
+          status: l.claims!.status as ClaimStatus,
+          relation: l.relation as "supports" | "contradicts",
+          sourceKey: ref?.key ?? null,
+          sourceLabel: ref?.label ?? null,
+          recruitmentGroup: ref?.recruitment ?? null,
+        };
       });
     const observations = obsLinks
       .filter((l) => l.assumption_id === a.id && l.observations)
@@ -135,6 +146,7 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
             reviewStatus: l.observations!.review_status ?? null,
             sourceKey: ref?.key ?? null,
             sourceLabel: ref?.label ?? null,
+            recruitmentGroup: ref?.recruitment ?? null,
           };
         }),
       a.prior == null ? 0.5 : Number(a.prior),
@@ -152,6 +164,9 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
       evidence: e.score,
       supporting: e.supporting,
       contradicting: e.contradicting,
+      priorRationale: a.prior_rationale ?? null,
+      priorLocked: !!a.prior_locked_at,
+      primaryExperimentId: a.primary_experiment_id ?? null,
     };
   });
 }

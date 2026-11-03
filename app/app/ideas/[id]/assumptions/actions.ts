@@ -10,6 +10,7 @@ import { extractClaims, suggestAssumptions, type ExcerptRef } from "@/lib/ai/res
 import { searchAcrossProviders, storeExtractedClaims, storeFoundSources } from "@/lib/research-runner";
 import { ideaContext } from "@/lib/idea-context";
 import { aiErrorMessage, runAi } from "@/lib/ai/guard";
+import { NEUTRAL_PRIOR, priorChangeError, priorDbError } from "@/lib/domain/prior";
 
 export type ActionState = { error: string | null; ok?: string | null };
 
@@ -41,14 +42,24 @@ export async function setImportance(ideaId: string, assumptionId: string, form: 
   refresh(ideaId);
 }
 
-// The starting probability before any evidence ("hoe waarschijnlijk vonden we dit vooraf?").
-export async function setPrior(ideaId: string, assumptionId: string, form: FormData) {
+// De startkans vóór enig bewijs ("hoe waarschijnlijk vonden we dit vooraf?"). Een afwijking van 50% vraagt een
+// onderbouwing; zodra er bewijs aan de aanname hangt, kan de startkans alleen met een reden veranderen (audit).
+// De database controleert hetzelfde (guard_assumption_prior).
+export async function setPrior(ideaId: string, assumptionId: string, _: ActionState, form: FormData): Promise<ActionState> {
   await requireWritableIdea(ideaId);
-  const n = z.coerce.number().min(0.01).max(0.99).safeParse(form.get("prior"));
-  if (!n.success) return;
+  const prior = Number(form.get("prior"));
+  const rationale = String(form.get("prior_rationale") ?? "");
+  const reason = String(form.get("prior_reason") ?? "");
   const supabase = await supabaseServer();
-  await supabase.from("assumptions").update({ prior: n.data }).eq("id", assumptionId).eq("idea_id", ideaId);
+  const { data: a } = await supabase.from("assumptions").select("prior, prior_locked_at").eq("id", assumptionId).eq("idea_id", ideaId).maybeSingle();
+  if (!a) return { error: "Aanname niet gevonden." };
+  const current = a.prior == null ? NEUTRAL_PRIOR : Number(a.prior);
+  const problem = priorChangeError({ current, prior, rationale, reason, locked: !!a.prior_locked_at });
+  if (problem) return { error: problem };
+  const { error } = await supabase.rpc("change_assumption_prior", { p_assumption: assumptionId, p_prior: prior, p_rationale: rationale, p_reason: reason });
+  if (error) return { error: priorDbError(error.message) };
   refresh(ideaId);
+  return { error: null, ok: a.prior_locked_at ? "Startkans gewijzigd; de reden staat in het auditspoor." : "Startkans opgeslagen." };
 }
 
 export async function deleteAssumption(ideaId: string, assumptionId: string) {

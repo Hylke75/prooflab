@@ -11,7 +11,7 @@ import type { ClaimStatus } from "@/lib/domain/labels";
 import type { Idea } from "@/lib/data";
 import { loadIdeaWeights } from "@/lib/learning-data";
 import { asMethodVersion, METHODS } from "@/lib/domain/method";
-import { loadIdeaCaps } from "@/lib/method-data";
+import { loadCalibration, loadIdeaCaps } from "@/lib/method-data";
 
 // Collects everything about one idea in a single pass. Used by the Reality Check and as the
 // immutable snapshot behind every report version.
@@ -49,6 +49,8 @@ export async function loadDossier(idea: Idea) {
   // The method version of this dossier, with its rules and (2026-11-b) the caps per evidence level.
   const version = asMethodVersion(idea.method_version);
   const caps = await loadIdeaCaps(id);
+  // Genoeg opgeloste dossiers in de werkruimte om kansen exact te tonen? Anders in banden (golf A, punt 3).
+  const calibration = await loadCalibration(id);
   const method = { version, label: METHODS[version].label, rules: METHODS[version].rules, caps: METHODS[version].usesCaps ? caps.caps : null, capsCustom: caps.custom };
   const expList = experiments.data ?? [];
   const metrics = await Promise.all(expList.map((e) => (e.hypotheses ? experimentMetrics(e, e.hypotheses, version) : null)));
@@ -117,6 +119,8 @@ export async function loadDossier(idea: Idea) {
     band: a.probability.band,
     capReason: a.probability.cap?.active ? a.probability.cap.reason : null,
     merged: (a.probability.merged ?? []).map((m) => ({ label: m.label, signals: m.signals })),
+    // Methode 2026-11-c: wervingsgroepen waaruit meer dan één bron kwam.
+    recruitment: a.probability.recruitment ?? [],
     top: a.probability.top.map((c) => ({ label: c.label, direction: c.direction, count: c.count, lr: c.lr, weight: c.weight, explanation: explainContribution(c) })),
   }));
 
@@ -196,6 +200,7 @@ export async function loadDossier(idea: Idea) {
     probabilities,
     weights,
     method,
+    calibration,
     simulation: simulations.find((s) => s.kind === "realistic") ?? simulations[0] ?? null,
     simulations,
     prediction,

@@ -8,7 +8,8 @@ import { checkHypothesis } from "@/lib/domain/hypothesis";
 import { testCardDefaults, type Option } from "@/lib/domain/recommend";
 import { DECISION_RULES, PASS_PROBABILITY, FAIL_PROBABILITY, requiredSample, sampleFeasibility, wilson, type DecisionRule } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
-import type { MethodVersion } from "@/lib/domain/method";
+import { METHODS, type MethodVersion } from "@/lib/domain/method";
+import { RECRUITMENT_GROUPS, RECRUITMENT_KEYS, RECRUITMENT_REQUIRED_TYPES, recruitmentMissing, type RecruitmentGroup } from "@/lib/domain/recruitment";
 import { auditGuide, guideSummary } from "@/lib/domain/interview-audit";
 import { honestyWarnings, type PreparedVariant } from "@/lib/domain/copy-honesty";
 import { GuideAuditList } from "@/components/experiments/InterviewAudit";
@@ -20,7 +21,8 @@ import { metricFromKey, surveyErrors } from "@/lib/domain/survey-editor";
 type VariantsResult = { error: string | null; variants: PreparedVariant[]; draftNotes: string[]; draftWarnings: string[] };
 type VariantsAction = (input: { assumption_id: string; type: "landing" | "pricing"; headline: string; subline: string; offer: string }) => Promise<VariantsResult>;
 
-type Assumption = { id: string; statement: string };
+// primary: de huidige hoofdtest van de aanname (locked = al goedgekeurd of gestart), of null.
+type Assumption = { id: string; statement: string; primary?: { locked: boolean } | null };
 type Action = (s: FormState, f: FormData) => Promise<FormState>;
 
 function minSuccesses(n: number, thresholdPct: number): number | null {
@@ -41,7 +43,7 @@ export function ExperimentBuilder({
   initialType,
   researcher = "",
   surveyDraftAction,
-  method = "2026-11-b",
+  method = "2026-11-c",
 }: {
   method?: MethodVersion;
   initialType?: ExperimentType;
@@ -109,6 +111,11 @@ export function ExperimentBuilder({
     );
   };
   const [channels, setChannels] = useState<string[]>(["linkedin", "network"]);
+  // Wervingsgroep (golf A, punt 13): verplicht bij enquête-, landing- en prijstests, zonder vooraf gekozen waarde.
+  const [recruitment, setRecruitment] = useState<string>("");
+  // Het bewaarde AI-origineel van de enquête (golf A, punt 17), zodat zichtbaar blijft wat de mens aanpaste.
+  const [surveyDraftId, setSurveyDraftId] = useState<string | null>(null);
+  const recruitmentRequired = (RECRUITMENT_REQUIRED_TYPES as readonly string[]).includes(type);
   const [reach, setReach] = useState("");
   const [guide, setGuide] = useState(NEUTRAL_INTERVIEW_GUIDE.join("\n"));
   const audit = useMemo(() => auditGuide(guide.split("\n"), { productNames: [ideaTitle, page.product_name] }), [guide, ideaTitle, page.product_name]);
@@ -134,7 +141,7 @@ export function ExperimentBuilder({
   const needed = n > 0 ? minSuccesses(n, Number(card.success_threshold_pct)) : null;
   // Beslisregel (methode 2026-11-b): vooraf rekenen hoeveel deelnemers nodig zijn bij de verwachte uitkomst.
   // Dossiers met methode 2026-11-a houden de intervalregel: geen beslisregel en geen vooraf berekend aantal.
-  const v2 = method === "2026-11-b";
+  const v2 = METHODS[method].usesRules;
   const absoluteAllowed = v2 && type === "interview";
   const activeRule: DecisionRule = absoluteAllowed ? rule : "probability";
   const countN = Number(successCount) || 0;
@@ -296,6 +303,24 @@ export function ExperimentBuilder({
             />
           )}
           <div className="form-line"><label htmlFor="tc-bias">Verwachte vertekeningen</label><input className="field" id="tc-bias" name="expected_biases" value={card.expected_biases} onChange={(e) => set("expected_biases", e.target.value)} /></div>
+          <fieldset className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }} aria-describedby="tc-rg-hint">
+            <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
+              Wervingsgroep{recruitmentRequired ? " (verplicht)" : " (standaard voor de gesprekken)"}
+            </legend>
+            <div className="row">
+              {RECRUITMENT_KEYS.map((k) => (
+                <label key={k} className="check-row" style={{ margin: "2px 10px 2px 0" }} title={RECRUITMENT_GROUPS[k].explain}>
+                  <input type="radio" name="recruitment_group" value={k} checked={recruitment === k} onChange={() => setRecruitment(k)} required={recruitmentRequired} /> {RECRUITMENT_GROUPS[k].label}
+                </label>
+              ))}
+            </div>
+            <p className="field-hint" id="tc-rg-hint">
+              {recruitment ? `${RECRUITMENT_GROUPS[recruitment as RecruitmentGroup].explain} ` : ""}
+              {recruitmentRequired
+                ? "Signalen uit dezelfde wervingsgroep zijn geen onafhankelijk bewijs: herhaling binnen één groep telt afnemend mee."
+                : "Per gesprek leg je vast of het een bekende is (eigen netwerk) of welke groep anders geldt."}
+            </p>
+          </fieldset>
           <fieldset className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }}>
             <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Wervingskanalen</legend>
             <div className="row">
@@ -317,9 +342,23 @@ export function ExperimentBuilder({
               <ul style={{ margin: "6px 0 0 16px", padding: 0 }}>{coach.issues.map((i) => <li key={i.message}>{i.message}</li>)}</ul>
             </div>
           )}
+          {assumption.primary?.locked ? (
+            <p className="field-hint">
+              Deze aanname heeft al een goedgekeurde hoofdtest. Deze test wordt verkennend: hij geeft richting, maar beslist niet over de aanname.
+            </p>
+          ) : (
+            <label className="check-row">
+              <input type="checkbox" name="is_primary" defaultChecked={!assumption.primary} key={`primary-${assumption.id}`} />{" "}
+              {assumption.primary ? "Maak dit de hoofdtest van deze aanname (vervangt de huidige hoofdtest, die nog niet is goedgekeurd)" : "Dit is de hoofdtest van deze aanname"}
+            </label>
+          )}
+          <p className="field-hint">
+            Per aanname wijs je vooraf één hoofdtest aan; alleen die beslist over de aanname. Andere tests heten verkennend. Na goedkeuring ligt de keuze vast.
+          </p>
           <div className="note">Je legt deze criteria vast vóór de test. Na goedkeuring zijn ze vergrendeld; wijzigen kan alleen met een nieuwe versie en een motivering.</div>
           {surveyIssues.length > 0 && <div className="form-error">Maak de enquête eerst compleet (zie de meldingen bij de vragen).</div>}
-          <button className="btn primary" style={{ marginTop: 18, width: "100%" }} disabled={!coach.ok || surveyIssues.length > 0}>
+          {recruitmentMissing(type, recruitment) && <div className="form-error">Kies de wervingsgroep voordat je de Test Card opslaat.</div>}
+          <button className="btn primary" style={{ marginTop: 18, width: "100%" }} disabled={!coach.ok || surveyIssues.length > 0 || recruitmentMissing(type, recruitment)}>
             Test Card opslaan als concept <Icon name="arrow" size="sm" />
           </button>
         </div>
@@ -329,6 +368,7 @@ export function ExperimentBuilder({
           {type === "survey" ? (
             <>
               <input type="hidden" name="survey_config" value={JSON.stringify(survey)} />
+              {surveyDraftId && <input type="hidden" name="survey_ai_draft_id" value={surveyDraftId} />}
               <SurveyEditor
                 value={survey}
                 onChange={updateSurvey}
@@ -337,6 +377,7 @@ export function ExperimentBuilder({
                 targetGroup={card.target_group}
                 aiConnected={aiConnected}
                 draftAction={surveyDraftAction}
+                onDraftId={setSurveyDraftId}
               />
             </>
           ) : type === "interview" ? (

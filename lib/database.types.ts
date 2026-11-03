@@ -107,6 +107,33 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_drafts: {
+        Row: {
+          id: string
+          idea_id: string
+          kind: string
+          content: Json
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          idea_id: string
+          kind: string
+          content: Json
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          idea_id?: string
+          kind?: string
+          content?: Json
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       promo_posts: {
         Row: {
           id: string
@@ -118,6 +145,7 @@ export type Database = {
           code: string
           created_by: string
           created_at: string
+          ai_original: string | null
         }
         Insert: {
           id?: string
@@ -129,6 +157,7 @@ export type Database = {
           code?: string
           created_by?: string
           created_at?: string
+          ai_original?: string | null
         }
         Update: {
           id?: string
@@ -140,6 +169,7 @@ export type Database = {
           code?: string
           created_by?: string
           created_at?: string
+          ai_original?: string | null
         }
         Relationships: []
       }
@@ -797,6 +827,9 @@ export type Database = {
           origin: string
           statement: string
           status: string
+          prior_rationale: string | null
+          prior_locked_at: string | null
+          primary_experiment_id: string | null
         }
         Insert: {
           prior?: number | null
@@ -808,6 +841,9 @@ export type Database = {
           origin?: string
           statement: string
           status?: string
+          prior_rationale?: string | null
+          prior_locked_at?: string | null
+          primary_experiment_id?: string | null
         }
         Update: {
           prior?: number | null
@@ -819,6 +855,9 @@ export type Database = {
           origin?: string
           statement?: string
           status?: string
+          prior_rationale?: string | null
+          prior_locked_at?: string | null
+          primary_experiment_id?: string | null
         }
         Relationships: [
           {
@@ -1252,6 +1291,8 @@ export type Database = {
           idea_id: string
           owner_id: string
           public_slug: string | null
+          recruitment_group: string | null
+          ai_draft_id: string | null
           started_at: string | null
           state: string
           title: string
@@ -1272,6 +1313,8 @@ export type Database = {
           idea_id: string
           owner_id?: string
           public_slug?: string | null
+          recruitment_group?: string | null
+          ai_draft_id?: string | null
           started_at?: string | null
           state?: string
           title: string
@@ -1292,6 +1335,8 @@ export type Database = {
           idea_id?: string
           owner_id?: string
           public_slug?: string | null
+          recruitment_group?: string | null
+          ai_draft_id?: string | null
           started_at?: string | null
           state?: string
           title?: string
@@ -1606,6 +1651,7 @@ export type Database = {
           participant_label: string
           record_type: string
           recruited_via: string
+          recruitment_group: string | null
           retention_until: string
           segment: string | null
           transcript: string
@@ -1622,6 +1668,7 @@ export type Database = {
           participant_label: string
           record_type: string
           recruited_via: string
+          recruitment_group?: string | null
           retention_until?: string
           segment?: string | null
           transcript: string
@@ -1638,6 +1685,7 @@ export type Database = {
           participant_label?: string
           record_type?: string
           recruited_via?: string
+          recruitment_group?: string | null
           retention_until?: string
           segment?: string | null
           transcript?: string
@@ -1747,6 +1795,7 @@ export type Database = {
           origin: string
           quote: string | null
           quote_check: string
+          recruitment_group: string | null
           summary: string
         }
         Insert: {
@@ -1767,6 +1816,7 @@ export type Database = {
           origin?: string
           quote?: string | null
           quote_check?: string
+          recruitment_group?: string | null
           summary: string
         }
         Update: {
@@ -1787,6 +1837,7 @@ export type Database = {
           origin?: string
           quote?: string | null
           quote_check?: string
+          recruitment_group?: string | null
           summary?: string
         }
         Relationships: [
@@ -2072,6 +2123,7 @@ export type Database = {
           origin: string
           position: number
           question: string
+          ai_original: string | null
           status: string
           suggested_sources: string | null
           why_it_matters: string | null
@@ -2088,6 +2140,7 @@ export type Database = {
           origin?: string
           position: number
           question: string
+          ai_original?: string | null
           status?: string
           suggested_sources?: string | null
           why_it_matters?: string | null
@@ -2104,6 +2157,7 @@ export type Database = {
           origin?: string
           position?: number
           question?: string
+          ai_original?: string | null
           status?: string
           suggested_sources?: string | null
           why_it_matters?: string | null
@@ -2912,6 +2966,9 @@ export type Database = {
         Returns: { opinion: number; problem: number; small_action: number; quote: number; deposit: number }[]
       }
       switch_method_version: { Args: { p_idea: string; p_to: string; p_preview: Json }; Returns: string }
+      resolved_dossiers_for_idea: { Args: { p_idea: string }; Returns: number }
+      evidence_recruitment_refs: { Args: { p_idea: string }; Returns: { item_type: string; item_id: string; recruitment_group: string | null }[] }
+      change_assumption_prior: { Args: { p_assumption: string; p_prior: number; p_rationale: string; p_reason: string }; Returns: undefined }
       evidence_source_refs: {
         Args: { p_idea: string }
         Returns: {

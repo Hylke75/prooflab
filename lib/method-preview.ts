@@ -5,7 +5,7 @@ import { experimentMetrics } from "@/lib/experiment-metrics";
 import { METHODS, type MethodVersion } from "@/lib/domain/method";
 import type { RuledVerdict, VerdictInput } from "@/lib/domain/stats";
 
-export type PreviewAssumption = { id: string; statement: string; from: number; to: number; capReason: string | null; merged: { label: string; signals: number }[] };
+export type PreviewAssumption = { id: string; statement: string; from: number; to: number; capReason: string | null; merged: { label: string; signals: number }[]; recruitment: { group: string; sources: number }[] };
 export type PreviewTest = { id: string; title: string; state: string; n: number; successes: number; from: RuledVerdict; to: RuledVerdict; approvedCard: boolean };
 export type MethodPreview = { from: MethodVersion; to: MethodVersion; assumptions: PreviewAssumption[]; tests: PreviewTest[] };
 
@@ -38,6 +38,7 @@ export async function methodPreview(ideaId: string, from: MethodVersion, to: Met
       to: b.probability.probability,
       capReason: b.probability.cap?.active ? b.probability.cap.reason : null,
       merged: (b.probability.merged ?? []).map((m) => ({ label: m.label, signals: m.signals })),
+      recruitment: b.probability.recruitment ?? [],
     };
   });
 

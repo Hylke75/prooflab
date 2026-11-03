@@ -5,20 +5,22 @@ import { ActionForm } from "@/components/ui/ActionForm";
 import { LABEL_PILL } from "@/components/experiments/RuleSummary";
 import { getIdea } from "@/lib/data";
 import { asMethodVersion, CURRENT_METHOD, METHODS } from "@/lib/domain/method";
-import { ruleLabelText } from "@/lib/domain/method/describe";
+import { changesBetween, ruleLabelText } from "@/lib/domain/method/describe";
 import { pct } from "@/lib/domain/stats";
 import { methodPreview } from "@/lib/method-preview";
 import { switchMethod } from "./actions";
+import { loadCalibration } from "@/lib/method-data";
+import { Probability } from "@/components/ui/Probability";
+import { explainRecruitment } from "@/lib/domain/recruitment";
 
 export const metadata: Metadata = { title: "Methode" };
 
-const pct0 = (x: number) => `${Math.round(x * 100)}%`;
 const diff = (a: number, b: number) => {
   const d = Math.round((b - a) * 100);
   return d === 0 ? "gelijk" : `${d > 0 ? "+" : "−"}${Math.abs(d)} punt${Math.abs(d) === 1 ? "" : "en"}`;
 };
 
-// Rekenwijze van het dossier, en voor dossiers op 2026-11-a de overstap naar 2026-11-b met vooraf een
+// Rekenwijze van het dossier, en voor dossiers op een oudere versie de overstap naar de nieuwste met vooraf een
 // overzicht van wat er verandert.
 export default async function MethodPage({ params }: PageProps<"/app/ideas/[id]/method">) {
   const { id } = await params;
@@ -26,6 +28,7 @@ export default async function MethodPage({ params }: PageProps<"/app/ideas/[id]/
   const version = asMethodVersion(idea.method_version);
   const current = METHODS[version];
   const preview = version !== CURRENT_METHOD ? await methodPreview(id, version, CURRENT_METHOD) : null;
+  const calibration = await loadCalibration(id);
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Methode"]} coach="assumptions" ideaId={id}>
@@ -54,15 +57,16 @@ export default async function MethodPage({ params }: PageProps<"/app/ideas/[id]/
             <div>
               <span className="pill blue">Nieuw</span>
               <h2 className="as-h3" style={{ margin: "10px 0 5px" }}>Overstappen naar methode {CURRENT_METHOD}?</h2>
-              <p>
-                {METHODS[CURRENT_METHOD].label} gebruikt een beslisregel per testtype (kansregel of vast aantal), telt bewijs per bron één keer en begrenst de kans per
-                aanname op het hoogste bewijsniveau. Hieronder zie je vooraf wat er in dit dossier verandert. Er wordt niets opgeslagen tot je bevestigt.
-              </p>
+              <p>Wat {METHODS[CURRENT_METHOD].label} verandert ten opzichte van {current.label.toLowerCase()}:</p>
+              <ul style={{ margin: "6px 0 0 18px", lineHeight: 1.6 }}>
+                {changesBetween(version, CURRENT_METHOD).map((c) => <li key={c}>{c}</li>)}
+              </ul>
+              <p className="mt-8">Hieronder zie je vooraf wat er in dit dossier verandert. Er wordt niets opgeslagen tot je bevestigt.</p>
             </div>
           </div>
 
           <div className="card mt-18">
-            <div className="section-title"><h2 className="as-h3">Kans per aanname</h2><span className="pill gray">{preview.assumptions.length} aannames</span></div>
+            <div className="section-title"><h2 className="as-h3">Kans per aanname</h2><span className="pill gray">{preview.assumptions.length} aannames{calibration.calibrated ? "" : " · niet gekalibreerd"}</span></div>
             {preview.assumptions.length === 0 ? (
               <p className="sub">Nog geen aannames.</p>
             ) : (
@@ -74,11 +78,11 @@ export default async function MethodPage({ params }: PageProps<"/app/ideas/[id]/
                     {preview.assumptions.map((a) => (
                       <tr key={a.id}>
                         <td>{a.statement}</td>
-                        <td className="num">{pct0(a.from)}</td>
-                        <td className="num">{pct0(a.to)}</td>
+                        <td className="num"><Probability p={a.from} calibrated={calibration.calibrated} showLabel={false} /></td>
+                        <td className="num"><Probability p={a.to} calibrated={calibration.calibrated} showLabel={false} /></td>
                         <td className="num">{diff(a.from, a.to)}</td>
                         <td className="tiny">
-                          {[a.capReason, ...a.merged.map((m) => `${m.signals} signalen uit ${m.label} samengevoegd`)].filter(Boolean).join("; ") || "—"}
+                          {[a.capReason, ...a.merged.map((m) => `${m.signals} signalen uit ${m.label} samengevoegd`), ...a.recruitment.map((r) => explainRecruitment(r))].filter(Boolean).join("; ") || "—"}
                         </td>
                       </tr>
                     ))}

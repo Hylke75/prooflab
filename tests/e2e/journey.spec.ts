@@ -105,6 +105,7 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.getByLabel("Kop", { exact: true }).fill("Vind de perfecte eventlocatie in minuten.");
   await page.getByLabel("Ondertitel", { exact: true }).fill("Een persoonlijke selectie, zonder eindeloos zoeken.");
   await page.getByLabel("Minimale steekproef", { exact: true }).fill("5");
+  await page.getByRole("radio", { name: "Koud", exact: true }).check();
   await page.getByRole("button", { name: /Test Card opslaan als concept/ }).click();
   await page.waitForURL(/\/experiments\/[0-9a-f-]{36}/);
   await page.getByRole("button", { name: "Ter review aanbieden" }).click();

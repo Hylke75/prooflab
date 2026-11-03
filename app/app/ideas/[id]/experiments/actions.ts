@@ -7,11 +7,14 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { getWorkspace, requireWritableIdea } from "@/lib/data";
 import { checkHypothesis } from "@/lib/domain/hypothesis";
 import { checkQuote } from "@/lib/domain/verify";
-import { KIND_DEFAULTS } from "@/lib/domain/evidence";
+import { KIND_DEFAULTS, testEvidenceLevel } from "@/lib/domain/evidence";
 import { CHANNELS } from "@/lib/domain/tracking";
+import { RECRUITMENT_KEYS, recruitmentMissing } from "@/lib/domain/recruitment";
+import { canDesignatePrimary } from "@/lib/domain/primary-test";
 import { experimentMetrics, loadSurveyResponses, surveyConfigOf, type LandingConfig, type PricingConfig } from "@/lib/experiment-metrics";
 import { pct, requiredSample } from "@/lib/domain/stats";
 import { ideaMethodVersion } from "@/lib/method-data";
+import { METHODS } from "@/lib/domain/method";
 import { recommend } from "@/lib/domain/recommend";
 import { aiConfigured } from "@/lib/env";
 import { analyzeInterview, suggestCopyVariants } from "@/lib/ai/research";
@@ -58,6 +61,8 @@ const Base = z.object({
   expected_pct: z.coerce.number().gt(0, "Vul de verwachte uitkomst in (in %).").max(100, "De verwachte uitkomst is hoogstens 100%.").optional(),
   available_per_week: z.coerce.number().int().min(0).optional(),
   cost_estimate_eur: z.coerce.number().min(0).optional(),
+  // Wervingsgroep (golf A, punt 13): verplicht bij enquête-, landing- en prijstests.
+  recruitment_group: z.enum(RECRUITMENT_KEYS).optional(),
 });
 
 export async function createExperiment(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
@@ -65,7 +70,7 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
   const ws = await getWorkspace();
   const raw = Object.fromEntries(form);
   // Lege getalvelden betekenen "niet ingevuld", niet 0.
-  for (const k of ["fail_threshold_pct", "success_count", "expected_pct", "available_per_week", "expected_reach"]) if (raw[k] === "") delete raw[k];
+  for (const k of ["fail_threshold_pct", "success_count", "expected_pct", "available_per_week", "expected_reach", "recruitment_group"]) if (raw[k] === "") delete raw[k];
   const p = Base.safeParse(raw);
   if (!p.success) return { error: p.error.issues[0].message };
   const v = p.data;
@@ -83,7 +88,7 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
   // Beslisregel: de aantalregel alleen voor sterke handelingen; in de code zijn dat de aanbetalingen en
   // herhaalaankopen die in interviews worden vastgelegd. Landing-, prijs- en enquêtetests meten een percentage.
   // Dossiers met methode 2026-11-a houden de intervalregel: daar wordt geen beslisregel vastgelegd.
-  const rule = (await ideaMethodVersion(ideaId)) === "2026-11-b" ? (v.decision_rule ?? "probability") : null;
+  const rule = METHODS[await ideaMethodVersion(ideaId)].usesRules ? (v.decision_rule ?? "probability") : null;
   let requiredN: number | null = null;
   if (rule) {
     if (rule === "absolute" && v.type !== "interview") return { error: "Een vast aantal past alleen bij sterke handelingen (aanbetaling of herhaalaankoop in gesprekken). Kies de kansregel." };
@@ -108,6 +113,10 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
     max_duration_days: v.max_duration_days,
   });
   if (!coach.ok) return { error: coach.issues[0].message };
+
+  if (recruitmentMissing(v.type, v.recruitment_group)) {
+    return { error: "Kies de wervingsgroep: via welke weg bereik je de deelnemers (eigen netwerk, warm, koud, betaald panel of onbekend)?" };
+  }
 
   const channels = form.getAll("channels").map(String).filter((c) => c in CHANNELS);
   if (channels.length === 0) return { error: "Kies minstens één wervingskanaal. Zonder werving zegt een test niets." };
@@ -183,11 +192,19 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       config,
       channels: channels.map((c) => ({ channel: c, expected_reach: v.expected_reach ? Math.round(v.expected_reach / channels.length) : null })),
       cost_estimate_eur: v.cost_estimate_eur ?? 0,
+      recruitment_group: v.recruitment_group ?? null,
+      // Het AI-origineel van de enquête (de database controleert dat het bij dit dossier hoort).
+      ai_draft_id: v.type === "survey" && typeof raw.survey_ai_draft_id === "string" && /^[0-9a-f-]{36}$/i.test(raw.survey_ai_draft_id) ? raw.survey_ai_draft_id : null,
     })
     .select("id")
     .single();
   if (error || !exp) return { error: "Het experiment kon niet worden opgeslagen." };
   await supabase.from("assumptions").update({ status: "testing" }).eq("id", v.assumption_id).eq("idea_id", ideaId).eq("status", "untested");
+  // Hoofdtest (golf A, punt 11): vooraf aanwijzen. Kan het niet (de huidige hoofdtest ligt al vast), dan blijft
+  // deze test verkennend; de testpagina laat zien waarom.
+  if (form.get("is_primary") === "on") {
+    await supabase.from("assumptions").update({ primary_experiment_id: exp.id }).eq("id", v.assumption_id).eq("idea_id", ideaId);
+  }
   refresh(ideaId);
   redirect(`/app/ideas/${ideaId}/experiments/${exp.id}`);
 }
@@ -229,6 +246,26 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
   return { error: null, ok: msg[to] ?? "Bijgewerkt." };
 }
 
+// Wijs deze test aan als hoofdtest van zijn aanname (golf A, punt 11). Alleen vóór de goedkeuring, en alleen als de
+// huidige hoofdtest ook nog niet is goedgekeurd; de database controleert hetzelfde en legt de wijziging vast.
+export async function setPrimaryTest(ideaId: string, expId: string, _: ActionState): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  const { data: exp } = await supabase.from("experiments").select("id, state, hypotheses(assumption_id)").eq("id", expId).eq("idea_id", ideaId).maybeSingle();
+  const assumptionId = exp?.hypotheses?.assumption_id;
+  if (!exp || !assumptionId) return { error: "Test niet gevonden." };
+  const { data: a } = await supabase.from("assumptions").select("primary_experiment_id").eq("id", assumptionId).maybeSingle();
+  const { data: current } = a?.primary_experiment_id
+    ? await supabase.from("experiments").select("state").eq("id", a.primary_experiment_id).maybeSingle()
+    : { data: null };
+  const check = canDesignatePrimary(exp, current);
+  if (!check.ok) return { error: check.reason };
+  const { error } = await supabase.from("assumptions").update({ primary_experiment_id: expId }).eq("id", assumptionId).eq("idea_id", ideaId);
+  if (error) return { error: error.message.includes("PRIMARY_TEST") ? error.message.replace(/^.*?: /, "") : "De hoofdtest kon niet worden aangewezen." };
+  refresh(ideaId);
+  return { error: null, ok: "Dit is nu de hoofdtest van de aanname. De andere tests van deze aanname zijn verkennend." };
+}
+
 export async function deleteDraft(ideaId: string, expId: string) {
   await requireWritableIdea(ideaId);
   const supabase = await supabaseServer();
@@ -252,6 +289,8 @@ const InterviewSchema = z.object({
   held_on: z.string().date("Vul de datum van het gesprek in."),
   record_type: z.enum(["transcript", "notes"]),
   transcript: text(60000).min(50, "Plak het transcript of je notities (minimaal 50 tekens)."),
+  // Een bekende wordt in de database altijd eigen netwerk (is_acquaintance).
+  recruitment_group: z.enum(RECRUITMENT_KEYS).optional(),
 });
 
 export async function addInterview(ideaId: string, expId: string, _: ActionState, form: FormData): Promise<ActionState> {
@@ -469,6 +508,8 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
       success_threshold_pct: Number(h.success_threshold_pct),
       fail_threshold_pct: h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct),
       required_n: h.required_n ?? null,
+      // Bewijsniveau van wat deze test meet (golf A, punt 14): "Geslaagd · niveau: mening".
+      evidence_level: testEvidenceLevel(exp.type, { decisionRule: h.decision_rule }),
       byChannel: m.byChannel,
       byVariant: m.byVariant,
       warnings: m.warnings,
@@ -561,7 +602,7 @@ export async function proposeCopyVariants(ideaId: string, input: z.input<typeof 
 // Surveys: the AI coach's first draft and open answers as customer signals
 // ---------------------------------------------------------------------------
 
-export type SurveyDraftState = { error: string | null; draft: DraftResult | null };
+export type SurveyDraftState = { error: string | null; draft: DraftResult | null; draftId?: string | null };
 
 const DraftInput = z.object({ assumption_id: z.string().uuid(), target_group: text(300).optional() });
 
@@ -583,7 +624,11 @@ export async function draftSurveyWithCoach(ideaId: string, input: z.input<typeof
     const res = await runAi(ideaId, "survey_draft", (p) =>
       draftSurvey({ idea: ideaContext(idea), assumption: a.statement, audience, decisionQuestion: idea.decision_question, dossier }, p),
     );
-    return { error: null, draft: sanitiseDraft(res.data, ctx) };
+    const draft = sanitiseDraft(res.data, ctx);
+    // Het AI-origineel blijft bewaard (golf A, punt 17): na het opslaan van de Test Card is zichtbaar wat de mens
+    // eraan veranderde. Lukt bewaren niet, dan werkt de opzet gewoon, alleen zonder vergelijking.
+    const { data: saved } = await supabase.from("ai_drafts").insert({ idea_id: ideaId, kind: "survey", content: draft.config as unknown as Json }).select("id").single();
+    return { error: null, draft, draftId: saved?.id ?? null };
   } catch (e) {
     if (e instanceof AiBudgetError) return { error: null, draft: templateDraft(ctx, `${e.message} Daarom staat hieronder het sjabloon van ProofLab, geen AI-opzet.`) };
     return { error: null, draft: templateDraft(ctx, `${aiErrorMessage(e, "De coach kon geen opzet maken.")} Daarom staat hieronder het sjabloon van ProofLab, geen AI-opzet.`) };
