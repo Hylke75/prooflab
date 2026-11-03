@@ -27,6 +27,8 @@ type Assumption = { id: string; statement: string; primary?: { locked: boolean }
 type SaveState = FormState & { fieldErrors?: Record<string, string> };
 type Action = (s: SaveState, f: FormData) => Promise<SaveState>;
 
+const CTA_DEFAULT: Record<ExperimentType, string> = { interview: "Plan een gesprek", pricing: "Kies dit aanbod", landing: "Vraag een demo aan", survey: "Vraag een demo aan" };
+
 // Veld → element dat focus krijgt bij een fout (B1a).
 const FIELD_FOCUS: Record<string, string> = {
   title: "tc-title",
@@ -99,6 +101,13 @@ export function ExperimentBuilder({
   const [card, setCard] = useState(() => withSurveyMetric(defaults, survey));
   const [rule, setRule] = useState<DecisionRule>("probability");
   const [lastKey, setLastKey] = useState(`${type}|${assumption.id}`);
+  const [page, setPage] = useState({
+    headline: "",
+    subline: "",
+    offer: "",
+    cta_label: CTA_DEFAULT[type],
+    product_name: "",
+  });
   const titleFor = () => `${EXPERIMENT_TYPES[type].label}: ${assumption.statement.slice(0, 60)}`;
   const [title, setTitle] = useState(titleFor);
   // Fase B1b, stap 1: de drempels liggen vast vóórdat ProofLab rekent. Wijzigen kan daarna alleen met een motivering.
@@ -112,6 +121,8 @@ export function ExperimentBuilder({
     setCard(withSurveyMetric(defaults, survey));
     setRule("probability");
     setTitle(titleFor());
+    // De knoptekst volgt het testtype, tenzij de gebruiker hem zelf heeft aangepast.
+    setPage((pg) => (Object.values(CTA_DEFAULT).includes(pg.cta_label) ? { ...pg, cta_label: CTA_DEFAULT[type] } : pg));
     setLocked(false);
     setLockedAt(null);
     setChanging(false);
@@ -125,13 +136,6 @@ export function ExperimentBuilder({
     // Teller and noemer always follow the key question; the label only when the key question itself changed.
     setCard((c) => ({ ...c, metric_numerator: m.metric_numerator, metric_denominator: m.metric_denominator, metric_label: keyChanged ? m.metric_label : c.metric_label }));
   };
-  const [page, setPage] = useState({
-    headline: "",
-    subline: "",
-    offer: "",
-    cta_label: type === "interview" ? "Plan een gesprek" : type === "pricing" ? "Kies dit aanbod" : "Vraag een demo aan",
-    product_name: "",
-  });
   const [prices, setPrices] = useState([
     { label: "Basis", amount: "", period: "per maand" },
     { label: "Plus", amount: "", period: "per maand" },
