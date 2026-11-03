@@ -159,3 +159,143 @@ export function computeUnitEconomics(u: UnitEconomicsInput): UnitEconomicsResult
 
   return { marginPerCustomerYear: margin, paybackMonths: payback, lifetimeValue: ltv, ltvToCac, breakEvenCustomers: breakEven, missing, warnings };
 }
+
+// Annual revenue at which the gross margin covers the fixed costs. Null when either is unknown.
+export function breakEvenRevenue(u: Pick<UnitEconomicsInput, "grossMarginPct" | "fixedCostsYear">): number | null {
+  if (u.fixedCostsYear == null || u.grossMarginPct == null || u.grossMarginPct <= 0) return null;
+  return u.fixedCostsYear / (u.grossMarginPct / 100);
+}
+
+// ---------------------------------------------------------------------------
+// Monte Carlo market sizing (research 3.8). Per factor an optional 90% range (low/high); factors
+// without a range stay fixed at their value, so a scenario without ranges behaves as before.
+//
+// Distribution per ranged factor:
+// - low > 0: log-normal fitted to the range (low and high are the 5th and 95th percentile; the
+//   median is their geometric mean). Market factors are positive and skewed, and multiply.
+// - low = 0: triangular from low via the value to high (a log-normal cannot start at zero).
+// Percentages are capped at 100. 5.000 draws with a seeded PRNG (mulberry32), so the same input
+// always gives the same output. The variance driver is a one-at-a-time sensitivity: SOM revenue
+// with that factor at its low and at its high, the others at their value.
+// ---------------------------------------------------------------------------
+
+export type RangedFactor = { key: string; value: number; low?: number | null; high?: number | null };
+
+export type Percentiles = { p10: number; p50: number; p90: number };
+
+export type SimulationResult = {
+  draws: number;
+  seed: number;
+  rangedFactors: number;
+  somCount: Percentiles;
+  somRevenue: Percentiles;
+  threshold: number | null;
+  pAboveThreshold: number | null;
+  drivers: { key: string; swing: number; share: number }[]; // largest swing first
+  method: string;
+};
+
+export const SIMULATION_DRAWS = 5000;
+export const SIMULATION_SEED = 20261103;
+const Z90 = 1.6448536269514722;
+
+export function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export function hasRange(f: RangedFactor): f is RangedFactor & { low: number; high: number } {
+  return f.low != null && f.high != null && Number.isFinite(f.low) && Number.isFinite(f.high) && f.high > f.low && f.low >= 0;
+}
+
+function somFor(model: SizingModel, v: Record<string, number>): { count: number; revenue: number } {
+  const count = (v.base_count ?? 0) * ((v.fit_pct ?? 0) / 100) * ((v.reach_pct ?? 0) / 100) * ((v.winnable_pct ?? 0) / 100);
+  const per = model === "transactions" ? (v.frequency ?? 0) * (v.ticket ?? 0) : (v.revenue_per_customer ?? 0);
+  return { count, revenue: count * per };
+}
+
+// Linear interpolation between order statistics.
+export function percentile(sorted: number[], q: number): number {
+  if (sorted.length === 0) return 0;
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+function sampler(f: RangedFactor & { low: number; high: number }, unit: FactorUnit | undefined, rnd: () => number): () => number {
+  const cap = (x: number) => (unit === "percent" ? Math.min(100, x) : x);
+  if (f.low > 0) {
+    const mu = (Math.log(f.low) + Math.log(f.high)) / 2;
+    const sigma = (Math.log(f.high) - Math.log(f.low)) / (2 * Z90);
+    return () => {
+      // Box–Muller; 1 − u keeps the logarithm finite.
+      const z = Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(2 * Math.PI * rnd());
+      return cap(Math.exp(mu + sigma * z));
+    };
+  }
+  const a = f.low;
+  const b = f.high;
+  const c = Math.min(b, Math.max(a, f.value));
+  const fc = (c - a) / (b - a);
+  return () => {
+    const u = rnd();
+    return cap(u < fc ? a + Math.sqrt(u * (b - a) * (c - a)) : b - Math.sqrt((1 - u) * (b - a) * (b - c)));
+  };
+}
+
+export function simulateSizing(
+  model: SizingModel,
+  factors: RangedFactor[],
+  opts: { draws?: number; seed?: number; threshold?: number | null } = {},
+): SimulationResult | null {
+  const ranged = factors.filter(hasRange);
+  if (ranged.length === 0) return null;
+  const draws = opts.draws ?? SIMULATION_DRAWS;
+  const seed = opts.seed ?? SIMULATION_SEED;
+  const units = Object.fromEntries(MODEL_FACTORS[model].map((d) => [d.key, d.unit]));
+  const point: Record<string, number> = Object.fromEntries(factors.map((f) => [f.key, f.value]));
+  const rnd = mulberry32(seed);
+  // Fixed key order keeps the stream of random numbers per factor stable.
+  const samplers = [...ranged].sort((x, y) => x.key.localeCompare(y.key)).map((f) => ({ key: f.key, draw: sampler(f, units[f.key], rnd) }));
+  const counts = new Float64Array(draws);
+  const revenues = new Float64Array(draws);
+  const threshold = opts.threshold ?? null;
+  let above = 0;
+  for (let i = 0; i < draws; i++) {
+    const v = { ...point };
+    for (const s of samplers) v[s.key] = s.draw();
+    const r = somFor(model, v);
+    counts[i] = r.count;
+    revenues[i] = r.revenue;
+    if (threshold != null && r.revenue >= threshold) above++;
+  }
+  const sc = Array.from(counts).sort((a, b) => a - b);
+  const sr = Array.from(revenues).sort((a, b) => a - b);
+  const q = (s: number[]): Percentiles => ({ p10: percentile(s, 0.1), p50: percentile(s, 0.5), p90: percentile(s, 0.9) });
+  const swings = ranged.map((f) => ({
+    key: f.key,
+    swing: Math.abs(somFor(model, { ...point, [f.key]: f.high }).revenue - somFor(model, { ...point, [f.key]: f.low }).revenue),
+  }));
+  const total = swings.reduce((s, x) => s + x.swing * x.swing, 0);
+  const drivers = swings
+    .map((s) => ({ ...s, share: total > 0 ? (s.swing * s.swing) / total : 0 }))
+    .sort((a, b) => b.swing - a.swing || a.key.localeCompare(b.key));
+  return {
+    draws,
+    seed,
+    rangedFactors: ranged.length,
+    somCount: q(sc),
+    somRevenue: q(sr),
+    threshold,
+    pAboveThreshold: threshold != null ? above / draws : null,
+    drivers,
+    method: `${draws.toLocaleString("nl-NL")} trekkingen; log-normaal bij een bandbreedte boven 0, driehoek bij een ondergrens van 0`,
+  };
+}

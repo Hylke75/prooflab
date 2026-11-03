@@ -20,7 +20,9 @@ export type DossierFacts = {
   claims: { status: ClaimStatus; section: string; sourceTypes: string[]; region?: string | null }[];
   competitors: { kind: string }[];
   sizing: { established: boolean; assumedFactors: number; totalFactors: number; revenueFactorSourced: boolean } | null;
-  assumptions: { statement: string; importance: number; category: string; status: string; evidence: number; contradicting: number }[];
+  assumptions: { statement: string; importance: number; category: string; status: string; evidence: number; contradicting: number; origin?: string }[];
+  // Research 3.10: whether the pre-mortem was done. Left out by callers that do not know (no finding).
+  premortemDone?: boolean;
   experiments: {
     type: "landing" | "interview" | "pricing";
     state: string;
@@ -79,6 +81,17 @@ export function runRealityCheck(f: DossierFacts): RealityCheckResult {
   if (top && top.evidence < 0.3 && f.experiments.length > 0) {
     add("too_few_experiments", "info", "Belangrijkste aanname nog zwak onderbouwd",
       `"${top.statement}" heeft nog weinig bewijs. Eén experiment is zelden genoeg voor de kritiekste aanname.`);
+  }
+  // Pre-mortem (research 3.10): the reasons for failure are assumptions like any other. Critical ones
+  // without evidence count as untested critical assumptions in the advice below.
+  if (f.premortemDone === false) {
+    add("no_premortem", "warning", "Nog geen pre-mortem",
+      "Stel de vraag: het is zes maanden na het besluit en dit is mislukt, wat is de meest waarschijnlijke reden? Leg 1 tot 3 redenen vast als aannames.");
+  }
+  const premortemOpen = f.assumptions.filter((a) => a.origin === "premortem" && a.importance >= 4 && a.status === "untested" && a.evidence === 0);
+  if (premortemOpen.length) {
+    add("premortem_untested", "warning", `${premortemOpen.length} faalreden(en) uit de pre-mortem nog niet getoetst`,
+      `Nog zonder bewijs: ${premortemOpen.map((a) => `"${a.statement}"`).join(", ")}. Ze tellen mee als ongeteste kritieke aannames.`);
   }
   const approvedCards = f.learningCards.filter((c) => c.status === "approved");
   if (approvedCards.length > 0 && f.decisionsAfterLastLearning === 0) {
