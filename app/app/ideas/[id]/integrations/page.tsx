@@ -9,12 +9,12 @@ import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { trackingConfigured } from "@/lib/env";
 import { pct } from "@/lib/domain/stats";
+import { SIGNAL_SOURCE_TYPES, isSignalSource } from "@/lib/domain/customer-signals";
 import { campaignStats } from "@/lib/integrations/outreach-stats";
 import { createExpandiEndpoint, deactivateEndpoint, fetchPageSource, importFragments, importOutreachReplies } from "./actions";
 
 export const metadata: Metadata = { title: "Bronnen & koppelingen" };
 
-const SIGNAL_TYPES = ["review_site", "forum", "outreach", "blog", "news", "other"];
 const date = (iso: string) => new Date(iso).toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" });
 const dateTime = (iso: string) => new Date(iso).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -34,12 +34,13 @@ export default async function IntegrationsPage({ params }: PageProps<"/app/ideas
       .not("message", "is", null)
       .order("received_at", { ascending: false })
       .limit(10),
-    supabase.from("sources").select("id", { count: "exact", head: true }).eq("idea_id", id).in("source_type", SIGNAL_TYPES),
+    supabase.from("sources").select("source_type, origin").eq("idea_id", id).in("source_type", SIGNAL_SOURCE_TYPES),
   ]);
   const endpoints = endpointsRes.data ?? [];
   const stats = campaignStats(eventsRes.data ?? []);
   const replies = repliesRes.data ?? [];
-  const signalSourceCount = sourcesRes.count ?? 0;
+  // Zelfde regel als Doelgroepen: automatisch gevonden blogs, nieuws en overige pagina's zijn geen klantsignalen.
+  const signalSourceCount = (sourcesRes.data ?? []).filter(isSignalSource).length;
   const configured = trackingConfigured();
   const missingSchema = !!endpointsRes.error;
   // Klantsignalen hebben één vaste plek: Marktverkenning → Doelgroepen. Deze pagina is alleen de plek om ze binnen te halen.
