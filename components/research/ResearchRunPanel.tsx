@@ -7,12 +7,27 @@ import { cancelResearchRun, startResearchRun } from "@/app/app/ideas/[id]/resear
 
 type Task = { label: string; status: string; detail: string | null };
 type RunView = { id: string; status: string; mode: string; cost: number; budget: number; tasks: Task[] } | null;
+export type ProviderStatus = { id: string; name: string; keyEnv: string; connected: boolean };
 
 const ST: Record<string, string> = { done: "done", running: "running", failed: "failed", pending: "", skipped: "" };
 
 // Real progress from persisted tasks, no fake percentage. The run keeps going step by step
 // while this page is open; when the browser closes it resumes on the next visit.
-export function ResearchRunPanel({ ideaId, run, aiConnected, canWrite }: { ideaId: string; run: RunView; aiConnected: boolean; canWrite: boolean }) {
+export function ResearchRunPanel({
+  ideaId,
+  run,
+  providers,
+  searchWith,
+  canWrite,
+}: {
+  ideaId: string;
+  run: RunView;
+  providers: ProviderStatus[];
+  // Names of the providers that search the web for this organisation, chosen one first.
+  searchWith: string[];
+  canWrite: boolean;
+}) {
+  const aiConnected = providers.some((p) => p.connected);
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -61,17 +76,36 @@ export function ResearchRunPanel({ ideaId, run, aiConnected, canWrite }: { ideaI
           <span className="pill gray">Nog niet gestart</span>
         )}
       </div>
+      <ul className="row" style={{ listStyle: "none", padding: 0, margin: "0 0 12px", flexWrap: "wrap", gap: 6 }} aria-label="AI-aanbieders voor webonderzoek">
+        {providers.map((p) => (
+          <li key={p.id}>
+            <span className={`pill ${p.connected ? "green" : "gray"}`}>
+              {p.name}: {p.connected ? "verbonden" : "niet verbonden"}
+            </span>
+          </li>
+        ))}
+      </ul>
       {!aiConnected ? (
         <div className="note" style={{ marginTop: 0 }}>
           <strong>Live webonderzoek niet verbonden.</strong> ProofLab maakt geen gepretendeerd actueel rapport. Voeg bronnen
           toe onder <em>Bronnen</em>: plak het relevante fragment en een letterlijk citaat, dan controleert ProofLab de
           bevinding automatisch.
+          <br />
+          <span className="tiny">
+            Voor de eigenaar: zet minstens één API-sleutel ({providers.map((p) => p.keyEnv).join(", ")}) bij de omgevingsvariabelen van het
+            Vercel-project (Settings → Environment Variables) en rol opnieuw uit. Eén sleutel is genoeg; met meer zoeken de aanbieders los van elkaar.
+          </span>
         </div>
       ) : (
         <>
           <p className="sub">
-            De AI zoekt per onderzoeksvraag naar bronnen, bewaart alleen letterlijke passages en houdt een bevinding pas als
-            het citaat woord voor woord in de bron staat. Kosten worden per stap bijgehouden.
+            {searchWith.length > 1
+              ? `${searchWith.join(", ")} zoeken per onderzoeksvraag los van elkaar naar bronnen.`
+              : searchWith.length === 1
+                ? `${searchWith[0]} zoekt per onderzoeksvraag naar bronnen.`
+                : "De AI zoekt per onderzoeksvraag naar bronnen."}{" "}
+            ProofLab bewaart alleen letterlijke passages van de pagina en houdt een bevinding pas als het citaat woord voor woord
+            in de bron staat, welke aanbieder de bron ook vond. Kosten worden per stap bijgehouden.
           </p>
           {canWrite && !active && (
             <div className="row mt-12">

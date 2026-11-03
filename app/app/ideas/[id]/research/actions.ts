@@ -58,9 +58,16 @@ export async function saveQuestion(ideaId: string, questionId: string | null, _:
   return done(ideaId, "Onderzoeksvraag opgeslagen.");
 }
 
+// While a research run is busy its steps point at the questions; changing the card would silently drop them.
+async function runIsActive(supabase: Awaited<ReturnType<typeof supabaseServer>>, ideaId: string): Promise<boolean> {
+  const { data } = await supabase.from("research_runs").select("id").eq("idea_id", ideaId).in("status", ["queued", "running"]).limit(1);
+  return (data?.length ?? 0) > 0;
+}
+
 export async function deleteQuestion(ideaId: string, questionId: string) {
   await requireWritableIdea(ideaId);
   const supabase = await supabaseServer();
+  if (await runIsActive(supabase, ideaId)) return;
   await supabase.from("research_questions").delete().eq("id", questionId).eq("idea_id", ideaId);
   revalidatePath(`/app/ideas/${ideaId}`, "layout");
 }
@@ -69,8 +76,9 @@ export async function aiPlan(ideaId: string, _: ActionState): Promise<ActionStat
   const { idea } = await requireWritableIdea(ideaId);
   if (!aiConfigured()) return { error: "AI is niet verbonden; pas de vragen handmatig aan." };
   const supabase = await supabaseServer();
+  if (await runIsActive(supabase, ideaId)) return { error: "Er loopt nog een onderzoeksrun. Wacht tot die klaar is (of stop hem) voordat je de onderzoekskaart opnieuw laat opstellen." };
   try {
-    const res = await runAi(ideaId, "plan", () => planResearch(ideaContext(idea)));
+    const res = await runAi(ideaId, "plan", (p) => planResearch(ideaContext(idea), p));
     // Manually edited questions are kept; template and earlier AI questions are replaced.
     const { data: existing } = await supabase.from("research_questions").select("id, position, origin").eq("idea_id", ideaId);
     const manual = (existing ?? []).filter((q) => q.origin === "manual");
@@ -609,8 +617,8 @@ export async function analyzeCustomerSignals(ideaId: string, _: ActionState, for
   try {
     for (let start = 0; start < analysed.length; start += BATCH) {
       const excerpts: SignalExcerpt[] = analysed.slice(start, start + BATCH).map((e, i) => ({ ...e, ref: `K${i + 1}` }));
-      const res = await runAi(ideaId, "customer_signals", () =>
-        analyzeSignals(ideaContext(idea), excerpts.map((e) => ({ ref: e.ref, title: e.source_title, text: e.text }))),
+      const res = await runAi(ideaId, "customer_signals", (p) =>
+        analyzeSignals(ideaContext(idea), excerpts.map((e) => ({ ref: e.ref, title: e.source_title, text: e.text })), p),
       );
       const v = verifySignalGroups(res.data.groups, excerpts);
       droppedQuotes += v.droppedQuotes;

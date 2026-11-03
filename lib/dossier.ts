@@ -112,7 +112,7 @@ export async function loadDossier(idea: Idea) {
   // Prediction loop and customer signals. Forecasts follow the blind rule: the snapshot holds the forecasts
   // the person making the report can see.
   const [forecastsRes, outcomeRes, checkinsRes, refRes, signalsRes] = await Promise.all([
-    supabase.from("forecasts").select("moment, forecaster_kind, probability, rationale, created_at").eq("idea_id", id).order("created_at"),
+    supabase.from("forecasts").select("moment, forecaster_kind, probability, rationale, model, created_at").eq("idea_id", id).order("created_at"),
     supabase.from("idea_outcomes").select("achieved, actual_value, evidence, resolved_at").eq("idea_id", id).maybeSingle(),
     supabase.from("outcome_checkins").select("on_track, current_value, note, created_at").eq("idea_id", id).order("created_at"),
     idea.reference_class && !idea.reference_class.startsWith("own:") && idea.reference_class !== "none"

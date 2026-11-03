@@ -1,6 +1,9 @@
 import "server-only";
 import { supabaseServer } from "@/lib/supabase/server";
-import { searchQuestion, extractClaims, challengeDossier, checkSupport, type ExcerptRef, type FoundSource } from "@/lib/ai/research";
+import { searchQuestion, extractClaims, challengeDossier, checkSupport, type ExcerptRef, type FoundSource, type IdeaContext } from "@/lib/ai/research";
+import { mergeFoundSources } from "@/lib/ai/web-evidence";
+import { providersFor } from "@/lib/ai/settings";
+import { PROVIDER_LABELS, type ProviderId } from "@/lib/ai/providers/config";
 import { assertAiBudget, runAi } from "@/lib/ai/guard";
 import { log } from "@/lib/log";
 import { env } from "@/lib/env";
@@ -121,12 +124,12 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
 
   if (task.kind === "search") {
     const { data: q } = await supabase.from("research_questions").select("question").eq("id", task.question_id!).single();
-    const res = await runAi(idea.id, "research:search", () => searchQuestion(ctx, q!.question, mode === "quick" ? 3 : 6));
+    const res = await searchAcrossProviders(idea.id, "research:search", ctx, q!.question, mode === "quick" ? 3 : 6);
     const excerptIds = await storeFoundSources(idea.id, task.run_id, res.sources);
     return {
-      output: { excerpt_ids: excerptIds },
-      detail: `${res.sources.length} bronnen, ${excerptIds.length} letterlijke passages bewaard (${res.usage.searches} zoekopdrachten).`,
-      cost: res.usage.cost,
+      output: { excerpt_ids: excerptIds, providers: res.perProvider },
+      detail: `${res.sources.length} bronnen, ${excerptIds.length} letterlijke passages bewaard (${res.searches} zoekopdrachten). ${res.summary}`,
+      cost: res.cost,
     };
   }
 
@@ -143,7 +146,7 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
       url: e.sources?.url ?? null,
       text: e.text,
     }));
-    const res = await runAi(idea.id, "research:extract", () => extractClaims(ctx, q!.question, refs));
+    const res = await runAi(idea.id, "research:extract", (p) => extractClaims(ctx, q!.question, refs, p));
 
     const byRef = new Map(refs.map((r, i) => [r.ref, excerpts![i]]));
     const bySourceRef = new Map(refs.map((r, i) => [r.sourceRef, excerpts![i].source_id]));
@@ -207,11 +210,55 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
       "Aanbieders en alternatieven:",
       ...(comps ?? []).map((c) => `- ${c.name} (${c.kind})`),
     ].join("\n");
-    const res = await runAi(idea.id, "research:challenge", () => challengeDossier(ctx, summary));
+    const res = await runAi(idea.id, "research:challenge", (p) => challengeDossier(ctx, summary, p));
     return { output: { challenges: res.data.challenges }, detail: `${res.data.challenges.length} kritische punten gevonden.`, cost: res.usage.cost };
   }
 
   return { output: {}, detail: "Overgeslagen.", cost: 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Web search on every provider the organisation uses for research (also used by the red-team search)
+// ---------------------------------------------------------------------------
+
+export type ProviderSearch = { provider: ProviderId; ok: boolean; sources: number; detail: string };
+
+// Each provider searches independently (its own runAi: own ledger row, cap checked per call); the found
+// sources are merged by URL. A provider that fails does not stop the others; only when all fail is it an error.
+// Which provider found which page is recorded (sources.found_by) as information, never as evidence weight.
+export async function searchAcrossProviders(ideaId: string, purpose: string, ctx: IdeaContext, question: string, maxSearches: number) {
+  const providers = await providersFor(ideaId, "research");
+  const settled = await Promise.allSettled(
+    providers.map((provider) => runAi(ideaId, purpose, (p) => searchQuestion(ctx, question, maxSearches, p), { provider })),
+  );
+  let cost = 0;
+  let searches = 0;
+  const lists: FoundSource[][] = [];
+  const perProvider: ProviderSearch[] = [];
+  settled.forEach((r, i) => {
+    const provider = providers[i];
+    if (r.status === "fulfilled") {
+      cost += r.value.usage.cost;
+      searches += r.value.usage.searches;
+      lists.push(r.value.sources);
+      perProvider.push({ provider, ok: true, sources: r.value.sources.length, detail: r.value.detail });
+    } else {
+      // A refusal still used tokens: book them on the run.
+      if (r.reason instanceof AiRefusedError) cost += r.reason.usage?.cost ?? 0;
+      perProvider.push({ provider, ok: false, sources: 0, detail: r.reason instanceof AiRefusedError ? "geweigerd" : "mislukt" });
+    }
+  });
+  if (lists.length === 0) {
+    const first = settled.find((r): r is PromiseRejectedResult => r.status === "rejected");
+    throw first?.reason ?? new Error("Zoeken mislukt.");
+  }
+  const sources = mergeFoundSources(lists);
+  const shared = sources.filter((s) => s.foundBy.length > 1).length;
+  const summary =
+    providers.length > 1
+      ? `${perProvider.map((x) => `${PROVIDER_LABELS[x.provider].short}: ${x.detail}`).join("; ")}.${shared ? ` ${shared} ${shared === 1 ? "bron" : "bronnen"} door meer dan één aanbieder gevonden (ter informatie, geen extra bewijs).` : ""}`
+      : `${PROVIDER_LABELS[providers[0]].short}: ${perProvider[0].detail}.`;
+  return { sources, cost, searches, perProvider, summary };
 }
 
 // ---------------------------------------------------------------------------
@@ -224,8 +271,13 @@ export async function storeFoundSources(ideaId: string, runId: string | null, fo
   const excerptIds: string[] = [];
   for (const s of found) {
     const domain = registrableDomain(s.url);
-    const { data: existing } = await supabase.from("sources").select("id").eq("idea_id", ideaId).eq("url", s.url).maybeSingle();
+    const { data: existing } = await supabase.from("sources").select("id, found_by").eq("idea_id", ideaId).eq("url", s.url).maybeSingle();
     let sourceId = existing?.id;
+    // Remember every provider that led to this page (information only).
+    const missing = s.foundBy.filter((p) => !(existing?.found_by ?? []).includes(p));
+    if (existing && missing.length) {
+      await supabase.from("sources").update({ found_by: [...(existing.found_by ?? []), ...missing] }).eq("id", existing.id).eq("origin", "ai_search");
+    }
     if (!sourceId) {
       const published = parsePageAge(s.pageAge);
       const { data: created } = await supabase
@@ -239,7 +291,8 @@ export async function storeFoundSources(ideaId: string, runId: string | null, fo
           published_on: published,
           source_type: sourceTypeForDomain(domain),
           origin: "ai_search",
-          access_note: "Gevonden via live webzoekopdracht; alleen geciteerde passages zijn bewaard.",
+          found_by: s.foundBy,
+          access_note: "Gevonden via live webzoekopdracht; alleen letterlijke passages van de pagina zijn bewaard.",
           content_hash: contentHash(s.excerpts.join("\n")),
         })
         .select("id")
@@ -275,7 +328,7 @@ export async function aiSupportCheck(
   relation: "supports" | "contradicts" = "supports",
 ): Promise<{ verdict: SupportCheck; reason: string | null; cost: number }> {
   try {
-    const res = await runAi(ideaId, "research:support", () => checkSupport(statement, quote, relation));
+    const res = await runAi(ideaId, "research:support", (p) => checkSupport(statement, quote, relation, p));
     return { verdict: res.data.verdict, reason: res.data.reason.slice(0, 500), cost: res.usage.cost };
   } catch (e) {
     return { verdict: "unchecked", reason: null, cost: e instanceof AiRefusedError ? (e.usage?.cost ?? 0) : 0 };

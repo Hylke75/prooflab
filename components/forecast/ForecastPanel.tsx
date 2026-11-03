@@ -5,12 +5,16 @@ import { BaseRateSummary, baseRateStart } from "./BaseRate";
 import { requestAiForecast, submitForecast } from "@/app/app/ideas/[id]/outcome/actions";
 import type { ForecastRow, ForecastView } from "@/lib/forecast-data";
 import { aggregate, FORECAST_MOMENTS, MOMENT_LABELS, pct, type ForecastMoment } from "@/lib/domain/forecast";
+import { PROVIDER_LABELS } from "@/lib/ai/providers/config";
+import { ensembleMean } from "@/lib/ai/providers/select";
 
 const KIND_PILL = { consultant: "blue", client: "orange", ai: "gray" } as const;
 
 function ForecastList({ rows }: { rows: ForecastRow[] }) {
   const agg = aggregate(rows.filter((r) => r.kind !== "ai").map((r) => r.probability));
-  const ai = rows.find((r) => r.kind === "ai");
+  const aiRows = rows.filter((r) => r.kind === "ai");
+  const ai = aiRows[0];
+  const aiMean = ensembleMean(aiRows.map((r) => r.probability));
   return (
     <>
       {agg && (
@@ -46,7 +50,18 @@ function ForecastList({ rows }: { rows: ForecastRow[] }) {
           </div>
         </div>
       ))}
-      {ai && <p className="tiny">Het gemiddelde is alleen over mensen. De AI-voorspelling krijgt een eigen score en telt nooit als bewijs.</p>}
+      {aiRows.length > 1 && aiMean != null && (
+        <div className="note">
+          <strong>AI-voorspellingen: gemiddeld {pct(aiMean)}</strong> ({aiRows.map((r) => `${r.name.replace(/^AI · /, "")} ${pct(r.probability)}`).join(", ")}).
+          Elk model voorspelde los van de andere, met hetzelfde dossier. Overeenstemming tussen modellen is geen bewijs: ze lezen dezelfde tekst.
+        </div>
+      )}
+      {ai && (
+        <p className="tiny">
+          Het gemiddelde bovenaan is alleen over mensen. {aiRows.length > 1 ? "De AI-voorspellingen krijgen elk een eigen score" : "De AI-voorspelling krijgt een eigen score"} en
+          tellen nooit als bewijs.
+        </p>
+      )}
     </>
   );
 }
@@ -107,9 +122,19 @@ export function ForecastPanel({ view, compact = false }: { view: ForecastView; c
       <>
         <p className="sub"><strong>{MOMENT_LABELS[m].label}.</strong> Alle zichtbare voorspellingen voor dit moment.</p>
         <ForecastList rows={rows} />
-        {view.aiAvailable && !rows.some((r) => r.kind === "ai") && (
-          <ActionForm action={requestAiForecast.bind(null, view.ideaId)} submitLabel="AI-voorspelling toevoegen" submitClass="btn white" pendingLabel="AI denkt na…">
-            <p className="tiny mt-12">Het model krijgt de uitkomstdefinitie, het basispercentage en een samenvatting van het dossier. Het telt als aparte voorspeller, nooit als bewijs.</p>
+        {view.aiAvailable && view.aiPending.length > 0 && (
+          <ActionForm
+            action={requestAiForecast.bind(null, view.ideaId)}
+            submitLabel={view.aiPending.length > 1 ? `${view.aiPending.length} AI-voorspellingen toevoegen` : "AI-voorspelling toevoegen"}
+            submitClass="btn white"
+            pendingLabel="AI denkt na…"
+          >
+            <p className="tiny mt-12">
+              {view.aiPending.length > 1
+                ? `${view.aiPending.map((p) => PROVIDER_LABELS[p].name).join(", ")} voorspellen elk los van elkaar, met de uitkomstdefinitie, het basispercentage en een samenvatting van het dossier. Je ziet daarna elk getal en het gemiddelde.`
+                : `${PROVIDER_LABELS[view.aiPending[0]].name} krijgt de uitkomstdefinitie, het basispercentage en een samenvatting van het dossier.`}{" "}
+              Een AI-voorspelling telt als aparte voorspeller, nooit als bewijs.
+            </p>
           </ActionForm>
         )}
       </>

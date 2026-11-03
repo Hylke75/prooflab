@@ -1,5 +1,6 @@
 import "server-only";
 import { parseTrackingSalts, saltFor } from "@/lib/domain/survey-tokens";
+import { PROVIDERS, type ProviderId } from "@/lib/ai/providers/config";
 
 // TRACKING_SALTS (versioned, first = current) with TRACKING_SALT as the "v1" fallback. See survey-tokens.ts.
 export const trackingSalts = parseTrackingSalts(process.env.TRACKING_SALTS, process.env.TRACKING_SALT);
@@ -14,7 +15,11 @@ export const env = {
   // The current salt (visitor codes, rate buckets, new invitations). Older versions: trackingSalts.all.
   trackingSalt: trackingSalts.current?.secret ?? "",
   trackingSaltVersion: trackingSalts.current?.version ?? "v1",
+  // AI providers: at least one key turns AI on. Model IDs: lib/ai/providers/config.ts (overridable per provider
+  // with ANTHROPIC_MODEL, OPENAI_MODEL, GEMINI_MODEL).
   anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",
+  openaiKey: process.env.OPENAI_API_KEY ?? "",
+  geminiKey: process.env.GEMINI_API_KEY ?? "",
   // Optional: personal survey invitations are sent through the Resend HTTP API.
   resendKey: process.env.RESEND_API_KEY ?? "",
   emailFrom: process.env.EMAIL_FROM ?? "",
@@ -23,8 +28,17 @@ export const env = {
   researchBudgetUsd: Number(process.env.RESEARCH_BUDGET_USD ?? "3") || 3,
 };
 
+export function providerKey(p: ProviderId): string {
+  return p === "anthropic" ? env.anthropicKey : p === "openai" ? env.openaiKey : env.geminiKey;
+}
+
+// Providers with an API key in this environment, in the fixed order Claude, ChatGPT, Gemini.
+export function configuredProviders(): ProviderId[] {
+  return PROVIDERS.filter((p) => providerKey(p).trim().length > 0);
+}
+
 export function aiConfigured(): boolean {
-  return env.anthropicKey.length > 0;
+  return configuredProviders().length > 0;
 }
 
 export function trackingConfigured(): boolean {

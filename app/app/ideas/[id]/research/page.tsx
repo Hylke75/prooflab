@@ -20,7 +20,10 @@ import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadProgress } from "@/lib/progress";
 import { stepsDone } from "@/lib/steps";
-import { aiConfigured } from "@/lib/env";
+import { aiConfigured, configuredProviders } from "@/lib/env";
+import { isProvider, PROVIDER_KEY_ENV, PROVIDER_LABELS, PROVIDERS, providerLabel } from "@/lib/ai/providers/config";
+import { ensembleProviders } from "@/lib/ai/providers/select";
+import { aiSettingsForOrg } from "@/lib/ai/settings";
 import { CLAIM_STATUS, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type EvidenceType, type SourceType } from "@/lib/domain/labels";
 import { breakEvenRevenue, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import {
@@ -201,7 +204,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
             </div>
             <div className="card tight">
               <div className="tiny">Bevindingen met bron</div>
-              <div className="mini-kpi num">{String(claims.length).padStart(2, "0")}</div>
+              <div className="mini-kpi num">{claims.length}</div>
               <span className="stat-caption">{verified} geverifieerd · {claims.filter((c) => c.status === "insufficient").length} onvoldoende bewijs</span>
             </div>
             <div className="card tight">
@@ -216,7 +219,8 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               <ResearchRunPanel
                 ideaId={id}
                 canWrite={canWrite}
-                aiConnected={aiConfigured()}
+                providers={PROVIDERS.map((p) => ({ id: p, name: providerLabel(p), keyEnv: PROVIDER_KEY_ENV[p], connected: configuredProviders().includes(p) }))}
+                searchWith={canWrite && aiConfigured() ? (await researchProviders(idea.org_id)).map((p) => PROVIDER_LABELS[p].name) : []}
                 run={run ? { id: run.id, status: run.status, mode: run.mode, cost: Number(run.cost_usd), budget: Number(run.budget_usd), tasks: (tasks ?? []).map((t) => ({ label: t.label, status: t.status, detail: t.detail })) } : null}
               />
               {challenges.length > 0 && (
@@ -474,6 +478,12 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                       {new Date(s.retrieved_at).toLocaleDateString("nl-NL")} · {(s.source_excerpts ?? []).length} fragment(en) · {used} bevinding(en)
                     </p>
                     {s.access_note && <p style={{ whiteSpace: "pre-line" }}>{s.access_note}</p>}
+                    {(s.found_by ?? []).length > 0 && (
+                      <p className="tiny">
+                        Gevonden door: {s.found_by.filter(isProvider).map((p) => PROVIDER_LABELS[p].name).join(", ")}
+                        {s.found_by.length > 1 ? " · meerdere aanbieders vonden deze pagina los van elkaar; ter informatie, het telt niet als extra bewijs." : ""}
+                      </p>
+                    )}
                     {used > 0 && (
                       <p style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                         Draagt het citaat de bewering?
@@ -539,4 +549,9 @@ function DeleteQuestion({ ideaId, questionId }: { ideaId: string; questionId: st
       Vraag verwijderen
     </button>
   );
+}
+
+// Providers that would run the web search for this organisation (its choice first, ensemble on or off).
+async function researchProviders(orgId: string) {
+  return ensembleProviders(await aiSettingsForOrg(orgId), "research", configuredProviders());
 }

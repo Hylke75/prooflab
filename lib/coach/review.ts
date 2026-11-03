@@ -248,13 +248,17 @@ export async function runCoachReview(ideaId: string, opts: { force?: boolean } =
           ...notes.filter((n) => n.status === "open" && !plan.close.includes(n.id)),
           ...plan.create.map((n) => ({ code: n.code, title: n.title, body: n.body })),
         ];
-        const res = await runAi(ideaId, "coach_review", () =>
-          coachReview(ideaContext(idea), {
+        const res = await runAi(ideaId, "coach_review", (p) =>
+          coachReview(
+            ideaContext(idea),
+            {
             dossier: dossierSummaryForAi(dossier),
             changes: describeChanges(row?.fingerprint, fingerprint),
             openNotes: open.map((n) => ({ title: n.title, body: n.body })),
             sprint: sprint ? `Week ${sprint.week} van ${sprint.weeks}${sprint.behindReason ? `; ${sprint.behindReason}` : ""}` : "Geen sprint gepland",
-          }),
+            },
+            p,
+          ),
         );
         const suppressed = notes.filter((n) => n.status !== "open").map((n) => ({ code: n.code, title: n.title }));
         created += await insertNotes(db, ideaId, validateAiNotes(res.data, ideaId, [...open, ...suppressed]), "ai");

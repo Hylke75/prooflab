@@ -3,6 +3,14 @@ import type { Dossier } from "@/lib/dossier";
 import { CLAIM_STATUS, COMPETITOR_KINDS, DECISIONS, EVIDENCE_TYPES, EXPERIMENT_TYPES, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type DecisionAction, type EvidenceType, type ExperimentType, type SourceType } from "@/lib/domain/labels";
 import type { Finding } from "@/lib/domain/reality-check";
 import { ACHIEVED_LABELS, FORECAST_MOMENTS, FORECASTER_LABELS, MOMENT_LABELS, ON_TRACK_LABELS, aggregate, brier, type Achieved, type ForecasterKind, type OnTrack } from "@/lib/domain/forecast";
+import { ensembleMean } from "@/lib/ai/providers/select";
+import { PROVIDER_LABELS, providerOfModel } from "@/lib/ai/providers/config";
+
+// "AI · Gemini" for an AI forecast whose provider is known; null otherwise.
+function aiName(kind: string, model: string | null): string | null {
+  const p = kind === "ai" ? providerOfModel(model) : null;
+  return p ? `AI · ${PROVIDER_LABELS[p].name}` : null;
+}
 
 // A report is an immutable snapshot: re-rendering version N later shows exactly what was
 // known at the time, even if the dossier has changed since.
@@ -102,14 +110,14 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
           return { moment: MOMENT_LABELS[m].label, count: rows.length, people: null, ai: null, forecasts: [] as { who: string; probability: number; rationale: string; brier: number | null }[] };
         }
         const people = rows.filter((f) => f.forecaster_kind !== "ai").map((f) => Number(f.probability));
-        const ai = rows.find((f) => f.forecaster_kind === "ai");
+        const ai = ensembleMean(rows.filter((f) => f.forecaster_kind === "ai").map((f) => Number(f.probability)));
         return {
           moment: MOMENT_LABELS[m].label,
           count: rows.length,
           people: aggregate(people),
-          ai: ai ? Number(ai.probability) : null,
+          ai,
           forecasts: rows.map((f) => ({
-            who: FORECASTER_LABELS[f.forecaster_kind as ForecasterKind],
+            who: aiName(f.forecaster_kind, f.model) ?? FORECASTER_LABELS[f.forecaster_kind as ForecasterKind],
             probability: Number(f.probability),
             rationale: f.rationale,
             brier: d.prediction.result ? brier(Number(f.probability), d.prediction.result.achieved as Achieved) : null,

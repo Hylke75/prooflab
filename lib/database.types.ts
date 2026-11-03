@@ -609,6 +609,7 @@ export type Database = {
           outcome: string
           output_tokens: number
           prompt_version: string
+          provider: string | null
           purpose: string
           web_searches: number
         }
@@ -624,6 +625,7 @@ export type Database = {
           outcome: string
           output_tokens?: number
           prompt_version: string
+          provider?: string | null
           purpose: string
           web_searches?: number
         }
@@ -639,6 +641,7 @@ export type Database = {
           outcome?: string
           output_tokens?: number
           prompt_version?: string
+          provider?: string | null
           purpose?: string
           web_searches?: number
         }
@@ -1752,6 +1755,53 @@ export type Database = {
           },
         ]
       }
+      org_ai_settings: {
+        Row: {
+          coach_provider: string | null
+          default_provider: string
+          ensemble: boolean
+          forecast_provider: string | null
+          org_id: string
+          promo_provider: string | null
+          research_provider: string | null
+          survey_provider: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          coach_provider?: string | null
+          default_provider?: string
+          ensemble?: boolean
+          forecast_provider?: string | null
+          org_id: string
+          promo_provider?: string | null
+          research_provider?: string | null
+          survey_provider?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          coach_provider?: string | null
+          default_provider?: string
+          ensemble?: boolean
+          forecast_provider?: string | null
+          org_id?: string
+          promo_provider?: string | null
+          research_provider?: string | null
+          survey_provider?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_ai_settings_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           ai_monthly_cap_usd: number
@@ -2257,6 +2307,7 @@ export type Database = {
           content_hash: string | null
           created_at: string
           domain: string | null
+          found_by: string[]
           id: string
           idea_id: string
           is_primary: boolean
@@ -2276,6 +2327,7 @@ export type Database = {
           content_hash?: string | null
           created_at?: string
           domain?: string | null
+          found_by?: string[]
           id?: string
           idea_id: string
           is_primary?: boolean
@@ -2295,6 +2347,7 @@ export type Database = {
           content_hash?: string | null
           created_at?: string
           domain?: string | null
+          found_by?: string[]
           id?: string
           idea_id?: string
           is_primary?: boolean

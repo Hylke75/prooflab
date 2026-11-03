@@ -3,7 +3,11 @@ import { redirect } from "next/navigation";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { getWorkspace } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
-import { aiConfigured, emailConfigured, trackingConfigured } from "@/lib/env";
+import { configuredProviders, emailConfigured, trackingConfigured } from "@/lib/env";
+import { AiProviderSettings } from "@/components/settings/AiProviderSettings";
+import { AiConnectionTest } from "@/components/settings/AiConnectionTest";
+import { aiSettingsForOrg } from "@/lib/ai/settings";
+import { modelFor, PROVIDERS, PROVIDER_LABELS } from "@/lib/ai/providers/config";
 import { monitoringConfigured } from "@/lib/monitoring";
 import { log } from "@/lib/log";
 
@@ -29,7 +33,9 @@ export default async function StatusPage() {
   const s = data?.[0] ?? null;
   if (error) await log.warn("system_status_unavailable", { code: error.code });
 
-  const ai = aiConfigured();
+  const connected = configuredProviders();
+  const aiSettings = await aiSettingsForOrg(ws.org.id);
+  const models = Object.fromEntries(PROVIDERS.map((p) => [p, modelFor(p)])) as Record<(typeof PROVIDERS)[number], string>;
   const email = emailConfigured();
   const tracking = trackingConfigured();
   const monitoring = monitoringConfigured();
@@ -125,10 +131,12 @@ export default async function StatusPage() {
               <table className="table">
                 <caption className="sr-only">Welke koppelingen in deze omgeving zijn ingesteld</caption>
                 <tbody>
-                  <tr>
-                    <th scope="row">AI (Claude API)</th>
-                    <td>{yesNo(ai, "Verbonden", "Niet verbonden: handmatige modus")}</td>
-                  </tr>
+                  {PROVIDERS.map((p) => (
+                    <tr key={p}>
+                      <th scope="row">AI: {PROVIDER_LABELS[p].name} ({PROVIDER_LABELS[p].vendor})</th>
+                      <td>{yesNo(connected.includes(p), "Verbonden", connected.length ? "Niet verbonden" : "Niet verbonden: handmatige modus")}</td>
+                    </tr>
+                  ))}
                   <tr>
                     <th scope="row">E-mail (Resend)</th>
                     <td>{yesNo(email, "Ingesteld", "Niet gekoppeld: CSV met persoonlijke links")}</td>
@@ -154,6 +162,10 @@ export default async function StatusPage() {
           </div>
         </>
       )}
+      <div style={{ marginTop: 22 }}>
+        <AiProviderSettings settings={aiSettings} connected={connected} models={models} />
+        <AiConnectionTest />
+      </div>
     </PageFrame>
   );
 }

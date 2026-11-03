@@ -75,7 +75,7 @@ export async function runCheck(ideaId: string, _: ActionState): Promise<ActionSt
   let aiUsed = false;
   if (aiConfigured()) {
     try {
-      const res = await runAi(ideaId, "reality_check", () => challengeDossier(ideaContext(idea), dossierSummaryForAi(dossier)));
+      const res = await runAi(ideaId, "reality_check", (p) => challengeDossier(ideaContext(idea), dossierSummaryForAi(dossier), p));
       for (const c of res.data.challenges) findings.push({ code: "ai_challenge", severity: c.severity, title: c.title, detail: c.detail, source: "ai" });
       aiUsed = true;
     } catch {
