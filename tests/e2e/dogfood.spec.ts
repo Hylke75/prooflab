@@ -10,6 +10,10 @@ const password = process.env.DOGFOOD_PASSWORD ?? process.env.E2E_PASSWORD ?? "";
 test.skip(!process.env.DOGFOOD || !email || !password, "Alleen via npm run dogfood");
 
 const TITLE = "ProofLab op ProofLab";
+// The outcome definition is a real business target of Link & Lead: it comes from the product owner, never
+// from this test (docs/ProofLab_Voorspelkracht_v1.md §5: "verkoopt binnen 6 maanden X validatiesprints").
+const OUTCOME_TARGET = process.env.DOGFOOD_OUTCOME_TARGET ?? "";
+test.skip(!!process.env.DOGFOOD && !OUTCOME_TARGET, "Zet DOGFOOD_OUTCOME_TARGET: het aantal validatiesprints dat Link & Lead binnen zes maanden wil verkopen");
 
 type Finding = {
   source: { title: string; type: string; url: string; publisher: string; excerpt: string; location: string };
@@ -123,6 +127,12 @@ test("dogfood: ProofLab op ProofLab", async ({ page }) => {
   await page.getByLabel("De beslisvraag, in je eigen woorden", { exact: true }).fill(
     "Maken we van ProofLab de vaste werkwijze voor validatiesprints van Link & Lead, en investeren we in een versie voor opdrachtgevers?",
   );
+  await page.getByRole("button", { name: "Volgende stap" }).click();
+  await page.getByLabel("Geslaagd als…", { exact: true }).fill(
+    `Link & Lead verkoopt binnen zes maanden na het besluit minstens ${OUTCOME_TARGET} validatiesprints met ProofLab.`,
+  );
+  await page.getByLabel("Wat meet je?", { exact: true }).fill("verkochte validatiesprints met ProofLab");
+  await page.getByLabel("Doelwaarde", { exact: true }).fill(OUTCOME_TARGET);
   await page.getByRole("button", { name: "Volgende stap" }).click();
   await page.getByLabel("Korte naam", { exact: true }).fill(TITLE);
   await page.getByLabel("Mijn idee", { exact: true }).fill(

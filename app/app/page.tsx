@@ -10,6 +10,7 @@ import { nextAction, sprintStage, type IdeaProgress } from "@/lib/domain/coach";
 import { SPRINT_PHASES, sprintStatus, testDay, todayInNL } from "@/lib/domain/sprint";
 import { DECISIONS, type DecisionAction } from "@/lib/domain/labels";
 import { currentStepLabel, stepsDone } from "@/lib/steps";
+import { loadOutcomeReminders } from "@/lib/forecast-data";
 import { CreateWorkspace } from "./CreateWorkspace";
 
 export const metadata: Metadata = { title: "Overzicht" };
@@ -92,10 +93,31 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
   const awaiting = progresses.filter((p) => p.decisions > 0 && !p.latestDecisionConfirmed).length;
   const actions = progresses.map((p, idx) => ({ ...nextAction(p), idea: list[idx].title })).slice(0, 3);
   const sprintIdeas = list.map((i, idx) => ({ idea: i, p: progresses[idx] })).filter(({ idea }) => idea.status === "active");
+  // Outcome follow-up: three months after the decision a check-in, six months after it the outcome.
+  // Across all ideas of the organisation, also those decided long ago and no longer in this list.
+  const ws = await getWorkspace();
+  const reminders = ws.org ? await loadOutcomeReminders(ws.org.id, today) : [];
 
   return (
     <PageFrame crumbs={["Werkruimte", "Overzicht"]} coach="dashboard" ideaId={list[0]?.id}>
       <Hero client={false} />
+
+      {reminders.map(({ ideaId, title, kind, date }) => (
+        <div className="action-card" key={`${kind}-${ideaId}`} role="region" aria-label={`${kind === "outcome" ? "Uitkomst vastleggen" : "Tussenstand geven"}: ${title}`}>
+          <div>
+            <span className="pill orange">{kind === "outcome" ? "Uitkomst vastleggen" : "Tussenstand geven"}</span>
+            <h2 style={{ marginTop: 8 }}>{title}</h2>
+            <p>
+              {kind === "outcome"
+                ? `De uitkomstdatum (${calendarDate(date, { day: "numeric", month: "long", year: "numeric" })}) is bereikt. Leg vast of het doel is gehaald, met bewijs; dan worden de voorspellingen gescoord.`
+                : `Drie maanden na het besluit (sinds ${calendarDate(date, { day: "numeric", month: "long" })}): ligt het doel op koers?`}
+            </p>
+          </div>
+          <Link className="btn primary" href={`/app/ideas/${ideaId}/outcome#${kind === "outcome" ? "uitkomst" : "tussenstand"}`}>
+            {kind === "outcome" ? "Uitkomst vastleggen" : "Tussenstand geven"} <Icon name="arrow" size="sm" />
+          </Link>
+        </div>
+      ))}
 
       <div className="grid-3" style={{ marginBottom: 31 }}>
         <div className="card tight">

@@ -18,9 +18,10 @@ const DECISIONS = [
 const AUDIENCES = ["Zakelijke klanten (B2B)", "Consumenten (B2C)", "Publieke organisaties of verenigingen", "Interne gebruikers"];
 const REGIONS = ["🇳🇱 Nederland", "Benelux", "🇪🇺 Europa", "◎ Wereldwijd"];
 
-const STEPS = ["Beslissing", "Idee", "Doelgroep", "Regio", "Project"] as const;
+const STEPS = ["Beslissing", "Succes", "Idee", "Doelgroep", "Regio", "Project"] as const;
 const FIELD_STEP: Record<string, number> = {
-  decision_question: 0, budget_eur: 0, decision_deadline: 0, title: 1, description: 1, target_audience: 2, region: 3, project_type: 4, sprint_start: 4, sprint_weeks: 4,
+  decision_question: 0, budget_eur: 0, decision_deadline: 0, outcome_statement: 1, outcome_metric: 1, outcome_target: 1,
+  title: 2, description: 2, target_audience: 3, region: 4, project_type: 5, sprint_start: 5, sprint_weeks: 5,
 };
 
 export function IntakeWizard({ clients, today }: { clients: Client[]; today: string }) {
@@ -40,7 +41,7 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
       {state.error && <div className="form-error" role="alert">{state.error}</div>}
 
       <div style={vis(0)}>
-        <span className="pill blue">Vraag 1 / 5</span>
+        <span className="pill blue">Vraag 1 / 6</span>
         <h2 style={{ marginTop: 21 }}>Welke beslissing wil je nemen?</h2>
         <p className="sub">Elk onderzoek krijgt zo een doel, en een moment waarop het genoeg is.</p>
         <div className="choice-grid">
@@ -66,7 +67,28 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
       </div>
 
       <div style={vis(1)}>
-        <span className="pill blue">Vraag 2 / 5</span>
+        <span className="pill blue">Vraag 2 / 6</span>
+        <h2 style={{ marginTop: 21 }}>Wanneer is dit geslaagd?</h2>
+        <p className="sub" id="outcome-hint">
+          Eén meetbare zin met een doelwaarde. We meten het zes maanden na het besluit; zodra er voorspellingen zijn, ligt deze definitie vast.
+        </p>
+        <label className="field-label" htmlFor="outcome_statement">Geslaagd als…</label>
+        <textarea className="field" id="outcome_statement" name="outcome_statement" maxLength={400} style={{ minHeight: 80 }} aria-describedby="outcome-hint" placeholder="Bijv. Zes maanden na het besluit hebben minstens 15 MKB-klanten een betaald abonnement." />
+        <div className="double-field">
+          <div>
+            <label className="field-label" htmlFor="outcome_metric">Wat meet je?</label>
+            <input className="field" id="outcome_metric" name="outcome_metric" maxLength={160} placeholder="Bijv. betalende klanten" />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="outcome_target">Doelwaarde</label>
+            <input className="field" id="outcome_target" name="outcome_target" inputMode="decimal" placeholder="Bijv. 15" />
+          </div>
+        </div>
+        <div className="note">Zonder vooraf vastgelegde uitkomst kan niemand achteraf zeggen of de voorspellingen klopten.</div>
+      </div>
+
+      <div style={vis(2)}>
+        <span className="pill blue">Vraag 3 / 6</span>
         <h2 style={{ marginTop: 21 }}>Welk idee wil je onderzoeken?</h2>
         <p className="sub">Vertel het alsof je het aan een vriend uitlegt. Kort is helemaal goed.</p>
         <label className="field-label" htmlFor="title">Korte naam</label>
@@ -76,8 +98,8 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
         <div className="note">Tip: beschrijf vooral wat iemand ermee kan doen, nog niet hoe het technisch werkt.</div>
       </div>
 
-      <div style={vis(2)}>
-        <span className="pill blue">Vraag 3 / 5</span>
+      <div style={vis(3)}>
+        <span className="pill blue">Vraag 4 / 6</span>
         <h2 style={{ marginTop: 21 }}>Voor wie is dit idee bedoeld?</h2>
         <p className="sub">We beginnen met één duidelijke doelgroep. Later kun je uitbreiden.</p>
         <div className="choice-grid">
@@ -92,8 +114,8 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
         <input className="field" id="audience_detail" name="audience_detail" placeholder="Bijv. eventmanagers bij bedrijven met 50+ medewerkers" />
       </div>
 
-      <div style={vis(3)}>
-        <span className="pill blue">Vraag 4 / 5</span>
+      <div style={vis(4)}>
+        <span className="pill blue">Vraag 5 / 6</span>
         <h2 style={{ marginTop: 21 }}>Waar wil je beginnen?</h2>
         <p className="sub">Dat helpt om betrouwbare en relevante marktinformatie te vinden.</p>
         <div className="choice-grid">
@@ -108,8 +130,8 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
         <input className="field" id="region_detail" name="region_detail" placeholder="Bijv. Randstad of Benelux" />
       </div>
 
-      <div style={vis(4)}>
-        <span className="pill blue">Vraag 5 / 5</span>
+      <div style={vis(5)}>
+        <span className="pill blue">Vraag 6 / 6</span>
         <h2 style={{ marginTop: 21 }}>Wat voor project is dit?</h2>
         <p className="sub">Niet elk idee vraagt hetzelfde onderzoek. ProofLab stemt de onderzoekskaart hierop af.</p>
         <div className="choice-grid">

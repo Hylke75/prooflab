@@ -8,6 +8,7 @@ import { getWorkspace } from "@/lib/data";
 import { templatePlan } from "@/lib/domain/research-plan";
 import { defaultFactors, MODEL_FACTORS, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import type { ProjectType, SectorTemplate } from "@/lib/domain/labels";
+import { OutcomeDefinitionSchema } from "@/lib/forecast-schemas";
 
 export type IntakeState = { error: string | null; field?: string };
 
@@ -21,6 +22,7 @@ const optionalText = z
 
 const IntakeSchema = z.object({
   decision_question: z.string().trim().min(10, "Beschrijf de beslissing in minimaal één korte zin.").max(400),
+  ...OutcomeDefinitionSchema.shape,
   decision_stakes: optionalText,
   decision_deadline: z
     .string()
@@ -85,6 +87,9 @@ export async function createIdea(_: IntakeState, form: FormData): Promise<Intake
       client_id: clientId,
       title: v.title,
       decision_question: v.decision_question,
+      outcome_statement: v.outcome_statement,
+      outcome_metric: v.outcome_metric,
+      outcome_target: v.outcome_target,
       decision_stakes: v.decision_stakes ?? null,
       decision_deadline: v.decision_deadline ?? null,
       budget_eur: v.budget_eur ?? null,

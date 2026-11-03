@@ -12,6 +12,9 @@ import { challengeDossier } from "@/lib/ai/research";
 import { ideaContext } from "@/lib/idea-context";
 import { runAi } from "@/lib/ai/guard";
 import type { Json } from "@/lib/database.types";
+import { loadProgress } from "@/lib/progress";
+import { decisionBlocker, outcomeDueFor } from "@/lib/domain/forecast";
+import { todayInNL } from "@/lib/domain/sprint";
 
 export type ActionState = { error: string | null; ok?: string | null };
 const refresh = (id: string) => revalidatePath(`/app/ideas/${id}`, "layout");
@@ -99,7 +102,7 @@ const DecisionSchema = z.object({
 });
 
 export async function saveDecision(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
-  await requireWritableIdea(ideaId);
+  const { idea } = await requireWritableIdea(ideaId);
   const p = DecisionSchema.safeParse(Object.fromEntries(form));
   if (!p.success) return { error: p.error.issues[0].message };
   const supabase = await supabaseServer();
@@ -109,6 +112,11 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   if (lastCard?.approved_at && lastCard.approved_at > check.created_at) return { error: "Er is nieuw bewijs sinds de laatste Reality Check. Voer de check opnieuw uit." };
   const blockers = ((check.findings as { findings?: Finding[] })?.findings ?? []).filter((f) => f.severity === "blocker");
   if (blockers.length && p.data.action === "continue") return { error: "Er zijn blokkerende punten in de Reality Check. 'Doorgaan' kan pas als die zijn opgelost." };
+  // Prediction loop: a decision is measured against the outcome six months later, so the outcome must be
+  // defined and the decider gives their own forecast while the decision moment is open.
+  const progress = await loadProgress(ideaId);
+  const blocker = decisionBlocker(progress);
+  if (blocker) return { error: blocker };
   // The decision links the most recently ended analysed experiment; all analysed ones become decided.
   const { data: exps } = await supabase.from("experiments").select("id").eq("idea_id", ideaId).eq("state", "analyzed").order("ended_at", { ascending: false });
   const { error } = await supabase.from("decisions").insert({
@@ -129,6 +137,8 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   for (const e of exps ?? []) await supabase.from("experiments").update({ state: "decided" }).eq("id", e.id);
   const status = { continue: "continued", stop: "stopped", pause: "parked", adjust: "active", test_more: "active" }[p.data.action];
   await supabase.from("ideas").update({ status }).eq("id", ideaId);
+  // The first decision after the outcome definition starts the six-month clock (set once, never moved).
+  if (progress.forecast && !idea.outcome_due) await supabase.from("ideas").update({ outcome_due: outcomeDueFor(todayInNL()) }).eq("id", ideaId).is("outcome_due", null);
   refresh(ideaId);
   return { error: null, ok: "Besluit vastgelegd. De opdrachtgever kan het nu bevestigen; werk daarna het rapport bij." };
 }

@@ -4,6 +4,8 @@ import { PageFrame } from "@/components/shell/PageFrame";
 import { Stepper } from "@/components/ui/Stepper";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { DecisionSelector } from "@/components/evidence/DecisionSelector";
+import { DecisionForecast } from "@/components/forecast/DecisionForecast";
+import { decisionBlocker } from "@/lib/domain/forecast";
 import { getIdea } from "@/lib/data";
 import { loadDossier } from "@/lib/dossier";
 import { loadProgress } from "@/lib/progress";
@@ -122,6 +124,8 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
             )}
           </div>
 
+          <DecisionForecast ideaId={id} />
+
           {canWrite && (
             <div className="card">
               <div className="section-title"><h3>Wat wil je nu doen?</h3><span className="pill blue">Jij beslist</span></div>
@@ -129,7 +133,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
               <DecisionSelector
                 advised={(check?.advice as DecisionAction) ?? null}
                 action={saveDecision.bind(null, id)}
-                disabledReason={!check ? "Voer eerst de Reality Check uit." : stale ? "Voer de Reality Check opnieuw uit; er is nieuw bewijs." : null}
+                disabledReason={!check ? "Voer eerst de Reality Check uit." : stale ? "Voer de Reality Check opnieuw uit; er is nieuw bewijs." : decisionBlocker(progress)}
               />
             </div>
           )}

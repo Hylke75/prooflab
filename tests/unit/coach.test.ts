@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { coachFor, nextAction, sprintStage, type ExperimentSummary, type IdeaProgress } from "@/lib/domain/coach";
+import type { ForecastState } from "@/lib/domain/forecast";
 import { addDays, phaseOfWeek, sprintMilestones, sprintStatus, testDay, todayInNL } from "@/lib/domain/sprint";
 
 const ID = "00000000-0000-4000-8000-000000000001";
@@ -159,6 +160,59 @@ describe("coachFor", () => {
     expect(c.suggestions[0].label).toBe("Bekijk en bevestig het besluit");
     expect(c.suggestions.some((s) => /Test Card|Reality Check doen|Publiceer/.test(s.label))).toBe(false);
     expect(c.suggestions.length).toBeLessThanOrEqual(3);
+  });
+});
+
+describe("prediction loop in the coach", () => {
+  const f = (over: Partial<ForecastState> = {}): ForecastState => ({
+    outcomeDefined: true,
+    baseRateChosen: true,
+    outcomeDue: null,
+    ownMoments: ["intake", "research"],
+    checkins: 0,
+    resolved: false,
+    today: "2026-11-03",
+    ...over,
+  });
+
+  it("leaves the existing route untouched when the prediction schema is absent", () => {
+    expect(nextAction(progress()).title).toBe("Toets de grootste onzekerheid");
+    expect(nextAction(progress({ forecast: f() })).title).toBe("Toets de grootste onzekerheid");
+  });
+
+  it("asks to define success first", () => {
+    const a = nextAction(progress({ questions: 0, forecast: f({ outcomeDefined: false, ownMoments: [] }) }));
+    expect(a).toMatchObject({ title: "Leg vast wanneer dit geslaagd is", href: `${base}/outcome#definitie` });
+  });
+
+  it("asks for a forecast at the open moment, once per person", () => {
+    expect(nextAction(progress({ forecast: f({ ownMoments: ["intake"] }) }))).toMatchObject({ title: "Geef je voorspelling", href: `${base}/outcome#voorspelling` });
+    expect(nextAction(progress({ claims: 0, forecast: f({ ownMoments: [] }) })).detail).toContain("Na de intake");
+    // The decision moment forecast lives next to the decision.
+    const atDecision = learned({ latestRealityCheckAt: "2026-10-21T10:00:00Z", forecast: f() });
+    expect(nextAction(atDecision)).toMatchObject({ title: "Geef je voorspelling", href: `${base}/evidence#voorspelling` });
+    expect(coachFor("evidence", atDecision).suggestions.map((s) => s.label)).toEqual(expect.arrayContaining(["Geef je voorspelling", "Neem het besluit"]));
+    expect(nextAction(learned({ latestRealityCheckAt: "2026-10-21T10:00:00Z", forecast: f({ ownMoments: ["decision"] }) })).title).toBe("Neem het besluit");
+  });
+
+  it("asks for the check-in after three months and the outcome after six", () => {
+    const decided = { latestRealityCheckAt: "2026-10-21T10:00:00Z", decisions: 1, latestDecisionAt: "2026-11-03T10:00:00Z" };
+    const due = "2027-05-03";
+    expect(nextAction(learned({ ...decided, forecast: f({ outcomeDue: due, today: "2027-01-10", ownMoments: ["decision"] }) })).title).not.toMatch(/tussenstand|uitkomst/i);
+    expect(nextAction(learned({ ...decided, forecast: f({ outcomeDue: due, today: "2027-02-03" }) }))).toMatchObject({ title: "Geef de tussenstand", href: `${base}/outcome#tussenstand` });
+    expect(nextAction(learned({ ...decided, forecast: f({ outcomeDue: due, today: "2027-05-03" }) }))).toMatchObject({ title: "Leg de uitkomst vast", href: `${base}/outcome#uitkomst` });
+    expect(nextAction(learned({ ...decided, forecast: f({ outcomeDue: due, today: "2027-06-01", checkins: 1, resolved: true }) })).title).not.toBe("Leg de uitkomst vast");
+  });
+
+  it("invites a client to forecast without assigning research work", () => {
+    const c = coachFor("research", progress({ forecast: f({ ownMoments: [] }) }), { audience: "client" });
+    expect(c.suggestions[0]).toMatchObject({ label: "Geef uw voorspelling", href: `${base}/outcome#voorspelling` });
+    expect(c.suggestions.length).toBeLessThanOrEqual(3);
+  });
+
+  it("points the outcome page at the base rate when it is missing", () => {
+    const c = coachFor("outcome", progress({ forecast: f({ baseRateChosen: false, ownMoments: [] }) }));
+    expect(c.suggestions.map((s) => s.label)).toContain("Kies een basispercentage");
   });
 });
 

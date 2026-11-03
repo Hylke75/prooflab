@@ -14,6 +14,8 @@ const IDEA_NAV: { suffix: string; label: string; icon: IconName }[] = [
   { suffix: "/experiments", label: "Experimenten", icon: "flask" },
   { suffix: "/evidence", label: "Bewijs & besluit", icon: "shield" },
   { suffix: "/report", label: "Rapportage", icon: "file" },
+  // Not one of the five stepper steps: the prediction loop runs alongside them and continues after the decision.
+  { suffix: "/outcome", label: "Voorspelling & uitkomst", icon: "trend" },
 ];
 
 export function Sidebar({
@@ -52,6 +54,7 @@ export function Sidebar({
       <nav className="side-nav" aria-label="Werkruimte">
         {link("/app", "Overzicht", "home", pathname === "/app")}
         {isConsultant && link("/app/clients", "Klanten", "users", pathname.startsWith("/app/clients"))}
+        {isConsultant && link("/app/forecasts", "Voorspelkwaliteit", "trend", pathname.startsWith("/app/forecasts"))}
       </nav>
       {currentId && (
         <>
