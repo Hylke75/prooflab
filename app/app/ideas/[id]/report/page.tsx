@@ -10,7 +10,6 @@ import { describeWeights } from "@/lib/domain/calibration";
 import { describeMethodology, ruleLabelText } from "@/lib/domain/method/describe";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { createReportVersion, shareReportVersion } from "./actions";
-import { PrintButton } from "./PrintButton";
 import { Icon } from "@/components/Icon";
 import { Probability } from "@/components/ui/Probability";
 import { explainRecruitment } from "@/lib/domain/recruitment";
@@ -92,10 +91,10 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
         <div className="stack" style={{ justifyItems: "end" }}>
           {r && current && (
             <div className="row" style={{ justifyContent: "flex-end" }}>
-              <a className="btn white" href={`/app/ideas/${id}/report/pdf?v=${current.version}`} download>
-                <Icon name="file" /> Download PDF
+              {/* Eén knop: de server-PDF van deze versie. Printen kan via de browser; de printstylesheet blijft. */}
+              <a className="btn primary" href={`/app/ideas/${id}/report/pdf?v=${current.version}`} download>
+                <Icon name="file" /> Download als PDF
               </a>
-              <PrintButton />
             </div>
           )}
           {canWrite && (
