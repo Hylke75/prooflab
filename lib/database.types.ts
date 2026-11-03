@@ -869,6 +869,7 @@ export type Database = {
           prior_rationale: string | null
           prior_locked_at: string | null
           primary_experiment_id: string | null
+          kind: string | null
         }
         Insert: {
           prior?: number | null
@@ -883,6 +884,7 @@ export type Database = {
           prior_rationale?: string | null
           prior_locked_at?: string | null
           primary_experiment_id?: string | null
+          kind?: string | null
         }
         Update: {
           prior?: number | null
@@ -897,6 +899,7 @@ export type Database = {
           prior_rationale?: string | null
           prior_locked_at?: string | null
           primary_experiment_id?: string | null
+          kind?: string | null
         }
         Relationships: [
           {
@@ -1351,6 +1354,7 @@ export type Database = {
           state: string
           title: string
           type: string
+          end_reason: string | null
         }
         Insert: {
           approved_at?: string | null
@@ -1373,6 +1377,7 @@ export type Database = {
           state?: string
           title: string
           type: string
+          end_reason?: string | null
         }
         Update: {
           approved_at?: string | null
@@ -1395,6 +1400,7 @@ export type Database = {
           state?: string
           title?: string
           type?: string
+          end_reason?: string | null
         }
         Relationships: [
           {
@@ -1712,6 +1718,7 @@ export type Database = {
           retention_until: string
           segment: string | null
           transcript: string
+          is_practice: boolean | null
         }
         Insert: {
           consent_recorded: boolean
@@ -1729,6 +1736,7 @@ export type Database = {
           retention_until?: string
           segment?: string | null
           transcript: string
+          is_practice?: boolean | null
         }
         Update: {
           consent_recorded?: boolean
@@ -1746,6 +1754,7 @@ export type Database = {
           retention_until?: string
           segment?: string | null
           transcript?: string
+          is_practice?: boolean | null
         }
         Relationships: [
           {
