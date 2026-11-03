@@ -80,6 +80,8 @@ export type CoachFacts = {
   // Beslisvraag en grootste onzekerheid uit de intake (optioneel voor aanroepers die ze niet kennen).
   idea?: { decisionQuestion: string; keyUncertainty: string | null };
   orgResolved?: number;
+  // Golf B, punt 6: of het dossier een beslisregel heeft (undefined = onbekend; dan blijft de regel stil).
+  decisionRule?: { defined: boolean; locked: boolean };
   outreach: { replies: number; latestReplyAt: string | null; latestImportAt: string | null };
 };
 
@@ -459,6 +461,21 @@ export const RULES: Record<string, Rule> = {
     };
   },
 
+  decision_rule_missing: (f, base) => {
+    if (!f.decisionRule || f.decisionRule.defined || f.decisions.length > 0 || f.experiments.length === 0) return null;
+    const approved = f.experiments.some((e) => !["draft", "ready_for_review"].includes(e.state));
+    return {
+      code: approved ? "decision_rule_missing:late" : "decision_rule_missing",
+      kind: approved ? "warning" : "tip",
+      title: approved ? "De beslisregel ontbreekt, terwijl er al getest wordt" : "Leg de beslisregel vast vóór de eerste test",
+      body: approved
+        ? "Er is al een test goedgekeurd zonder vooraf vastgelegde beslisregel. Leg hem alsnog vast: hij staat dan als 'achteraf vastgelegd' in het rapport."
+        : "Welke aannames moeten boven welke kans uitkomen, en welke hoofdtest moet slagen, om door te gaan? Leg dat nu vast; bij de eerste goedgekeurde test gaat de regel op slot.",
+      href: `${base}/assumptions#beslisregel`,
+      audience: "consultant",
+    };
+  },
+
   sprint_behind: (f, base) => {
     if (!f.sprint?.behindReason) return null;
     return {
@@ -548,6 +565,7 @@ export const RULE_LABELS: Record<string, string> = {
   outcome_due: "Uitkomst vastleggen",
   stop_review_due: "Was stoppen terecht?",
   outcome_checkin: "Check-in na drie maanden",
+  decision_rule_missing: "Beslisregel ontbreekt",
   sprint_behind: "Sprint loopt achter",
   no_customer_voice: "Stem van de klant ontbreekt",
   outreach_unimported: "LinkedIn-antwoorden niet opgenomen",
@@ -594,6 +612,7 @@ export const NOT_DONE: Record<string, string> = {
   outcome_due: "We zien nog geen vastgelegde uitkomst.",
   stop_review_due: "We zien nog geen antwoord op de vraag of stoppen terecht was.",
   outcome_checkin: "We zien nog geen tussenstand na drie maanden.",
+  decision_rule_missing: "We zien nog geen vastgelegde beslisregel.",
   sprint_behind: "We zien nog niet dat het dossier de sprintweek heeft ingehaald.",
   no_customer_voice: "We zien nog geen bron met de stem van de klant (review, forum, interview of enquête).",
   outreach_unimported: "We zien nog geen opgenomen LinkedIn-antwoorden bij de bronnen.",

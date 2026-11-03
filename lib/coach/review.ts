@@ -100,7 +100,7 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
 async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today: string): Promise<CoachFacts> {
   const id = d.idea.id;
   const stopped = d.idea.outcome_question === "stop_review";
-  const [sources, forecasts, outcome, checkins, replies, imports, orgResolved, stopReview] = await Promise.all([
+  const [sources, forecasts, outcome, checkins, replies, imports, orgResolved, stopReview, rule] = await Promise.all([
     db.from("sources").select("source_type").eq("idea_id", id),
     // Row level security returns only the forecasts this consultant may see (blind rule).
     db.from("forecasts").select("moment, forecaster_kind, probability").eq("idea_id", id),
@@ -110,6 +110,7 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
     db.from("sources").select("created_at").eq("idea_id", id).eq("source_type", "outreach").order("created_at", { ascending: false }).limit(1),
     db.rpc("own_base_rate", { p_org: d.idea.org_id, p_project_type: null, p_min: 0 }),
     stopped ? db.from("stop_reviews").select("idea_id").eq("idea_id", id).maybeSingle() : Promise.resolve({ data: null }),
+    db.from("decision_rules").select("locked_at").eq("idea_id", id).maybeSingle(),
   ]);
   const idea = d.idea;
   return {
@@ -167,6 +168,7 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
     baseRate: idea.base_rate_low != null && idea.base_rate_high != null ? { low: Number(idea.base_rate_low), high: Number(idea.base_rate_high) } : null,
     // Unknown (schema missing) counts as "enough": then the starting-calibration rule stays quiet.
     orgResolved: orgResolved.error ? Number.POSITIVE_INFINITY : Number(orgResolved.data?.[0]?.resolved ?? 0),
+    decisionRule: rule.error ? undefined : { defined: !!rule.data, locked: !!rule.data?.locked_at },
     outreach: { replies: replies.count ?? 0, latestReplyAt: replies.data?.[0]?.received_at ?? null, latestImportAt: imports.data?.[0]?.created_at ?? null },
   };
 }

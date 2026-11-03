@@ -548,6 +548,19 @@ export type Database = {
         }
         Relationships: []
       }
+      // Golf B (punt 6): beslisregel per dossier en de aannames met hun minimale kans.
+      decision_rules: {
+        Row: { idea_id: string; primary_experiment_id: string | null; note: string | null; created_by: string | null; created_at: string; updated_at: string; locked_at: string | null; recorded_late: boolean }
+        Insert: { idea_id: string; primary_experiment_id?: string | null; note?: string | null; created_by?: string | null; created_at?: string; updated_at?: string; locked_at?: string | null; recorded_late?: boolean }
+        Update: { idea_id?: string; primary_experiment_id?: string | null; note?: string | null; created_by?: string | null; created_at?: string; updated_at?: string; locked_at?: string | null; recorded_late?: boolean }
+        Relationships: []
+      }
+      decision_rule_assumptions: {
+        Row: { idea_id: string; assumption_id: string; min_probability: number }
+        Insert: { idea_id: string; assumption_id: string; min_probability: number }
+        Update: { idea_id?: string; assumption_id?: string; min_probability?: number }
+        Relationships: []
+      }
       // Golf B (punt 2): dossier met onvoldoende uitvoering uit de kalibratie gehaald, met reden.
       calibration_exclusions: {
         Row: { idea_id: string; reason: string; excluded_by: string; excluded_at: string }
@@ -1200,6 +1213,9 @@ export type Database = {
           next_step: string | null
           rationale: string
           reality_check_id: string
+          rule_met: boolean | null
+          rule_evaluation: Json | null
+          rule_deviation_reason: string | null
         }
         Insert: {
           action: string
@@ -1214,6 +1230,9 @@ export type Database = {
           next_step?: string | null
           rationale: string
           reality_check_id: string
+          rule_met?: boolean | null
+          rule_evaluation?: Json | null
+          rule_deviation_reason?: string | null
         }
         Update: {
           action?: string
@@ -1228,6 +1247,9 @@ export type Database = {
           next_step?: string | null
           rationale?: string
           reality_check_id?: string
+          rule_met?: boolean | null
+          rule_evaluation?: Json | null
+          rule_deviation_reason?: string | null
         }
         Relationships: [
           {
@@ -2912,6 +2934,7 @@ export type Database = {
         Args: { p_org: string; p_project_type: string | null; p_min?: number }
         Returns: { resolved: number; achieved: number }[]
       }
+      save_decision_rule: { Args: { p_idea: string; p_primary: string | null; p_note: string; p_conditions: Json }; Returns: string }
       stop_review_counts: {
         Args: { p_org: string }
         Returns: { stopped: number; justified: number; not_justified: number; unknown: number; open: number }[]

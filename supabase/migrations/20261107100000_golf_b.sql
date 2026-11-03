@@ -4,6 +4,8 @@
 --      Deze dossiers tellen niet mee in de kalibratie van slagingskansen en de eigen basisrate.
 --   2. Bij de uitkomst ook de inzet: gestart ja/nee, uren en budget ten opzichte van plan. Onvoldoende uitvoering wordt
 --      gemarkeerd; een consultant kan zo'n dossier met reden uit de kalibratie halen (calibration_exclusions, geaudit).
+--   6. Beslisregel van bewijs naar besluit (decision_rules): welke aannames boven welke kans moeten uitkomen en welke
+--      hoofdtest moet slagen. Vergrendeld bij de eerste goedgekeurde test; afwijken bij het besluit vraagt een motivering.
 --
 -- De kalibratiefuncties staan onderaan (laatste sectie), omdat ze naar tabellen uit meerdere punten verwijzen.
 
@@ -253,6 +255,262 @@ grant select, insert, delete on public.calibration_exclusions to authenticated;
 revoke execute on function public.stamp_outcome_effort(), public.guard_calibration_exclusion(), public.audit_calibration_exclusion() from public, anon, authenticated;
 revoke execute on function public.execution_insufficient(boolean, numeric, numeric, text, numeric) from public, anon;
 grant execute on function public.execution_insufficient(boolean, numeric, numeric, text, numeric) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 6. Beslisregel van bewijs naar besluit
+-- ---------------------------------------------------------------------------
+-- Eén regel per dossier, vooraf vastgelegd: "doorgaan als deze aannames boven deze kans uitkomen en deze hoofdtest
+-- slaagt". De hoofdtest is een experiment-id (primary_experiment_id). Golf A voegt parallel een veld is_primary toe
+-- (één hoofdtest per aanname); deze generieke structuur kiest het experiment dat voor het besluit de doorslag geeft en
+-- staat daar los van. Na samenvoegen hoort de hoofdtest van de regel een is_primary-test te zijn (te controleren in de app).
+--
+-- Vergrendeling: zodra de eerste test van het dossier is goedgekeurd (experiments.state = 'approved'), of uiterlijk bij
+-- het eerste definitieve besluit. Een regel die pas na de eerste goedgekeurde test wordt vastgelegd, is meteen
+-- vergrendeld en heet "achteraf vastgelegd" (recorded_late), zodat niemand de regel op de uitkomsten kan afstemmen.
+
+create table if not exists public.decision_rules (
+  idea_id uuid primary key references public.ideas(id) on delete cascade,
+  primary_experiment_id uuid references public.experiments(id) on delete set null,
+  note text check (char_length(note) <= 600),
+  created_by uuid default auth.uid() references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  locked_at timestamptz,
+  recorded_late boolean not null default false
+);
+create index if not exists decision_rules_primary_experiment_fk on public.decision_rules(primary_experiment_id);
+create index if not exists decision_rules_created_by_fk on public.decision_rules(created_by);
+
+create table if not exists public.decision_rule_assumptions (
+  idea_id uuid not null references public.decision_rules(idea_id) on delete cascade,
+  assumption_id uuid not null references public.assumptions(id) on delete cascade,
+  min_probability numeric not null check (min_probability between 0.05 and 0.95),
+  primary key (idea_id, assumption_id)
+);
+create index if not exists decision_rule_assumptions_assumption_fk on public.decision_rule_assumptions(assumption_id);
+
+alter table public.decision_rules enable row level security;
+alter table public.decision_rule_assumptions enable row level security;
+drop policy if exists decision_rules_select on public.decision_rules;
+create policy decision_rules_select on public.decision_rules for select to authenticated using (public.can_read_idea(idea_id));
+drop policy if exists decision_rule_assumptions_select on public.decision_rule_assumptions;
+create policy decision_rule_assumptions_select on public.decision_rule_assumptions for select to authenticated using (public.can_read_idea(idea_id));
+-- Geen insert-, update- of delete-policies: vastleggen gaat in één keer via save_decision_rule (hieronder), zodat regel,
+-- voorwaarden en vergrendeling altijd samen kloppen.
+
+-- Verwijzingen blijven binnen hetzelfde dossier.
+drop trigger if exists decision_rules_refs on public.decision_rules;
+create trigger decision_rules_refs before insert or update on public.decision_rules
+  for each row execute function public.check_idea_refs('primary_experiment_id', 'experiments');
+drop trigger if exists decision_rule_assumptions_refs on public.decision_rule_assumptions;
+create trigger decision_rule_assumptions_refs before insert or update on public.decision_rule_assumptions
+  for each row execute function public.check_idea_refs('assumption_id', 'assumptions');
+
+create or replace function public.guard_decision_rule()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if tg_op = 'INSERT' then
+    new.created_by := auth.uid();
+    new.created_at := now();
+    new.updated_at := now();
+    new.locked_at := null;
+    new.recorded_late := false;
+    return new;
+  end if;
+  if tg_op = 'DELETE' then
+    -- Bij het verwijderen van het hele dossier (cascade) is het idee al weg.
+    if old.locked_at is not null and exists (select 1 from public.ideas i where i.id = old.idea_id) then
+      raise exception 'DECISION_RULE_LOCKED: de beslisregel ligt vast sinds de eerste goedgekeurde test' using errcode = 'P0001';
+    end if;
+    return old;
+  end if;
+  if old.locked_at is not null then
+    raise exception 'DECISION_RULE_LOCKED: de beslisregel ligt vast sinds de eerste goedgekeurde test' using errcode = 'P0001';
+  end if;
+  new.idea_id := old.idea_id;
+  new.created_by := old.created_by;
+  new.created_at := old.created_at;
+  -- "Achteraf vastgelegd" wordt alleen samen met de vergrendeling gezet (save_decision_rule).
+  if new.locked_at is null then
+    new.recorded_late := old.recorded_late;
+  end if;
+  new.updated_at := now();
+  return new;
+end $$;
+drop trigger if exists decision_rules_guard on public.decision_rules;
+create trigger decision_rules_guard before insert or update or delete on public.decision_rules
+  for each row execute function public.guard_decision_rule();
+
+create or replace function public.guard_decision_rule_assumption()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  v_idea uuid := case when tg_op = 'DELETE' then old.idea_id else new.idea_id end;
+begin
+  if exists (select 1 from public.decision_rules r where r.idea_id = v_idea and r.locked_at is not null)
+     and exists (select 1 from public.ideas i where i.id = v_idea) then
+    raise exception 'DECISION_RULE_LOCKED: de beslisregel ligt vast sinds de eerste goedgekeurde test' using errcode = 'P0001';
+  end if;
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+  update public.decision_rules set updated_at = now() where idea_id = v_idea and locked_at is null;
+  return new;
+end $$;
+drop trigger if exists decision_rule_assumptions_guard on public.decision_rule_assumptions;
+create trigger decision_rule_assumptions_guard before insert or update or delete on public.decision_rule_assumptions
+  for each row execute function public.guard_decision_rule_assumption();
+
+-- De eerste goedgekeurde test vergrendelt de regel.
+create or replace function public.lock_decision_rule_on_approval()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if new.state = 'approved' and old.state is distinct from 'approved' then
+    update public.decision_rules set locked_at = now() where idea_id = new.idea_id and locked_at is null;
+  end if;
+  return null;
+end $$;
+drop trigger if exists experiments_lock_decision_rule on public.experiments;
+create trigger experiments_lock_decision_rule after update of state on public.experiments
+  for each row execute function public.lock_decision_rule_on_approval();
+
+-- Regel en voorwaarden in één keer vastleggen (alleen consultants, alleen zolang de regel open is). p_conditions is een
+-- lijst [{"assumption_id": ..., "min_probability": 0.6}]. Is er al een test goedgekeurd, dan is de regel meteen
+-- vergrendeld en "achteraf vastgelegd". Geeft 'open', 'locked_late' terug.
+create or replace function public.save_decision_rule(p_idea uuid, p_primary uuid, p_note text, p_conditions jsonb)
+returns text language plpgsql security definer set search_path = '' as $$
+declare
+  v_locked timestamptz;
+  v_exists boolean;
+  v_late boolean;
+begin
+  if auth.uid() is null or not public.can_write_idea(p_idea) then
+    raise exception 'FORBIDDEN' using errcode = 'P0001';
+  end if;
+  if jsonb_typeof(coalesce(p_conditions, '[]'::jsonb)) <> 'array' then
+    raise exception 'DECISION_RULE_INVALID: voorwaarden horen in een lijst' using errcode = 'P0001';
+  end if;
+  if p_primary is null and jsonb_array_length(coalesce(p_conditions, '[]'::jsonb)) = 0 then
+    raise exception 'DECISION_RULE_INVALID: kies minstens één aanname of een hoofdtest' using errcode = 'P0001';
+  end if;
+  perform 1 from public.ideas where id = p_idea for update;
+  select true, locked_at into v_exists, v_locked from public.decision_rules where idea_id = p_idea;
+  if v_locked is not null then
+    raise exception 'DECISION_RULE_LOCKED: de beslisregel ligt vast sinds de eerste goedgekeurde test' using errcode = 'P0001';
+  end if;
+  if coalesce(v_exists, false) then
+    update public.decision_rules set primary_experiment_id = p_primary, note = nullif(btrim(p_note), '') where idea_id = p_idea;
+    delete from public.decision_rule_assumptions where idea_id = p_idea;
+  else
+    insert into public.decision_rules (idea_id, primary_experiment_id, note) values (p_idea, p_primary, nullif(btrim(p_note), ''));
+  end if;
+  insert into public.decision_rule_assumptions (idea_id, assumption_id, min_probability)
+  select p_idea, (c->>'assumption_id')::uuid, (c->>'min_probability')::numeric
+  from jsonb_array_elements(coalesce(p_conditions, '[]'::jsonb)) c;
+  -- Al een test goedgekeurd: meteen vergrendeld en achteraf vastgelegd.
+  v_late := exists (select 1 from public.experiments e where e.idea_id = p_idea
+                    and (e.approved_at is not null or e.state not in ('draft', 'ready_for_review')));
+  if v_late then
+    update public.decision_rules set locked_at = now(), recorded_late = true where idea_id = p_idea;
+    return 'locked_late';
+  end if;
+  return 'open';
+end $$;
+
+do $$
+declare t text;
+begin
+  foreach t in array array['decision_rules', 'decision_rule_assumptions'] loop
+    execute format('drop trigger if exists %I on public.%I', t || '_audit', t);
+    execute format('create trigger %I after insert or update or delete on public.%I for each row execute function public.audit_row()', t || '_audit', t);
+  end loop;
+end $$;
+
+-- Het besluit legt de toets aan de regel vast: per voorwaarde gehaald of niet (rule_evaluation, door de app berekend
+-- met de kansen van dat moment), het oordeel (rule_met) en bij afwijken de motivering. Afwijken = doorgaan terwijl de
+-- regel niet is gehaald, of stoppen/pauzeren terwijl hij wel is gehaald. De database controleert wat ze zelf kan zien:
+-- een hoofdtest zonder goedgekeurde geslaagde Learning Card kan de regel niet "gehaald" maken.
+alter table public.decisions
+  add column if not exists rule_met boolean,
+  add column if not exists rule_evaluation jsonb check (rule_evaluation is null or (jsonb_typeof(rule_evaluation) = 'object' and pg_column_size(rule_evaluation) <= 20000)),
+  add column if not exists rule_deviation_reason text check (char_length(rule_deviation_reason) <= 2000);
+
+create or replace function public.guard_decision_against_rule()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  r public.decision_rules;
+  v_pass boolean;
+begin
+  select * into r from public.decision_rules where idea_id = new.idea_id;
+  if r.idea_id is null or new.action not in ('continue', 'stop', 'pause') then
+    new.rule_met := null;
+    new.rule_evaluation := null;
+    new.rule_deviation_reason := null;
+    return new;
+  end if;
+  if new.rule_met is null or new.rule_evaluation is null then
+    raise exception 'DECISION_RULE_EVAL: een definitief besluit wordt getoetst aan de beslisregel van dit dossier' using errcode = 'P0001';
+  end if;
+  if r.primary_experiment_id is not null and new.rule_met then
+    select lc.verdict = 'pass' into v_pass from public.learning_cards lc
+    where lc.experiment_id = r.primary_experiment_id and lc.status = 'approved'
+    order by lc.version desc, lc.created_at desc limit 1;
+    if not coalesce(v_pass, false) then
+      raise exception 'DECISION_RULE_EVAL: de hoofdtest is niet (goedgekeurd) geslaagd, dus de regel is niet gehaald' using errcode = 'P0001';
+    end if;
+  end if;
+  if (not new.rule_met and new.action = 'continue') or (new.rule_met and new.action in ('stop', 'pause')) then
+    if char_length(btrim(coalesce(new.rule_deviation_reason, ''))) < 15 then
+      raise exception 'DECISION_RULE_DEVIATION: dit besluit wijkt af van de beslisregel; motiveer waarom' using errcode = 'P0001';
+    end if;
+    new.rule_deviation_reason := btrim(new.rule_deviation_reason);
+  else
+    new.rule_deviation_reason := null;
+  end if;
+  -- Uiterlijk bij het eerste definitieve besluit ligt de regel vast.
+  update public.decision_rules set locked_at = now() where idea_id = new.idea_id and locked_at is null;
+  return new;
+end $$;
+drop trigger if exists decisions_rule_guard on public.decisions;
+create trigger decisions_rule_guard before insert on public.decisions
+  for each row execute function public.guard_decision_against_rule();
+
+-- Afwijken van de regel komt met de motivering in het auditspoor (audit_row legt bij een insert geen inhoud vast).
+create or replace function public.audit_rule_deviation()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if new.rule_deviation_reason is not null then
+    insert into public.audit_events (idea_id, org_id, actor_id, table_name, row_id, action, detail)
+    values (new.idea_id, (select i.org_id from public.ideas i where i.id = new.idea_id), auth.uid(), 'decisions', new.id::text, 'rule_deviation',
+            jsonb_build_object('action', new.action, 'rule_met', new.rule_met, 'reason', new.rule_deviation_reason));
+  end if;
+  return null;
+end $$;
+drop trigger if exists decisions_rule_deviation_audit on public.decisions;
+create trigger decisions_rule_deviation_audit after insert on public.decisions
+  for each row execute function public.audit_rule_deviation();
+
+-- Een vastgelegd besluit verandert niet: ook de toets aan de regel niet.
+create or replace function public.guard_decision()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  if tg_op = 'UPDATE' then
+    if (new.action, new.rationale, new.next_step, new.decided_by, new.decided_at, new.reality_check_id, new.experiment_id,
+        new.rule_met, new.rule_evaluation, new.rule_deviation_reason)
+       is distinct from
+       (old.action, old.rationale, old.next_step, old.decided_by, old.decided_at, old.reality_check_id, old.experiment_id,
+        old.rule_met, old.rule_evaluation, old.rule_deviation_reason) then
+      raise exception 'DECISION_LOCKED: een vastgelegd besluit kan niet worden gewijzigd' using errcode = 'P0001';
+    end if;
+  end if;
+  return new;
+end $$;
+
+revoke all on public.decision_rules, public.decision_rule_assumptions from anon;
+grant select on public.decision_rules, public.decision_rule_assumptions to authenticated;
+revoke execute on function public.guard_decision_rule(), public.guard_decision_rule_assumption(), public.lock_decision_rule_on_approval(),
+  public.guard_decision_against_rule(), public.audit_rule_deviation() from public, anon, authenticated;
+revoke execute on function public.save_decision_rule(uuid, uuid, text, jsonb) from public, anon;
+grant execute on function public.save_decision_rule(uuid, uuid, text, jsonb) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Kalibratie: alleen dossiers met de succesvraag en zonder uitsluiting

@@ -17,6 +17,9 @@ import { explainStrength, strength, strengthLabel } from "@/lib/domain/evidence"
 import { ASSUMPTION_CATEGORIES, DECISIONS, OBSERVATION_KINDS, type DecisionAction, type ObservationKind } from "@/lib/domain/labels";
 import type { Finding } from "@/lib/domain/reality-check";
 import { addPremortem, approveLearningCard, confirmDecision, runCheck, saveDecision, updateLearningCard } from "./actions";
+import { RuleCheckCard } from "@/components/decision/DecisionRule";
+import { loadRuleCheck } from "@/lib/decision-rule-data";
+import { deviationLabel } from "@/lib/domain/decision-rule";
 
 export const metadata: Metadata = { title: "Bewijs & besluit" };
 
@@ -33,7 +36,7 @@ const SEV = { blocker: ["Blokkerend", "coral"], warning: ["Let op", "orange"], i
 export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id]/evidence">) {
   const { id } = await params;
   const { idea, canWrite, isClientDecider } = await getIdea(id);
-  const [d, progress] = await Promise.all([loadDossier(idea), loadProgress(id)]);
+  const [d, progress, ruleCheck] = await Promise.all([loadDossier(idea), loadProgress(id), loadRuleCheck(id)]);
   const obs = d.observations.filter((o) => !o.is_synthetic).sort((a, b) => strength({ isFact: b.is_fact, isBehaviour: b.is_behaviour, isRealContext: b.is_real_context, isCostly: b.is_costly, isSynthetic: false }) - strength({ isFact: a.is_fact, isBehaviour: a.is_behaviour, isRealContext: a.is_real_context, isCostly: a.is_costly, isSynthetic: false }));
   const reached = LADDER.map((r) => ({ ...r, count: obs.filter((o) => r.kinds.includes(o.kind as ObservationKind)).length }));
   const highest = [...reached].reverse().find((r) => r.count > 0);
@@ -175,6 +178,13 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
 
           <DecisionForecast ideaId={id} />
 
+          {ruleCheck && <RuleCheckCard rule={ruleCheck.rule} evaluation={ruleCheck.evaluation} />}
+          {!ruleCheck && canWrite && (
+            <p className="tiny">
+              Dit dossier heeft geen beslisregel. <Link className="text-link" href={`/app/ideas/${id}/assumptions#beslisregel`}>Leg vast wanneer je doorgaat →</Link>
+            </p>
+          )}
+
           {canWrite && (
             <div className="card">
               <div className="section-title"><h3>Wat wil je nu doen?</h3><span className="pill blue">Jij beslist</span></div>
@@ -183,6 +193,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                 advised={(check?.advice as DecisionAction) ?? null}
                 action={saveDecision.bind(null, id)}
                 disabledReason={!check ? "Voer eerst de Reality Check uit." : stale ? "Voer de Reality Check opnieuw uit; er is nieuw bewijs." : decisionBlocker(progress)}
+                ruleMet={ruleCheck ? ruleCheck.evaluation.met : null}
               />
             </div>
           )}
@@ -263,6 +274,12 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                   <strong>{DECISIONS[dec.action as DecisionAction].label} · {new Date(dec.decided_at).toLocaleDateString("nl-NL")}</strong>
                   <p>{dec.rationale}</p>
                   {dec.next_step && <p>Volgende stap: {dec.next_step}</p>}
+                  {dec.rule_met != null && (
+                    <p>
+                      Beslisregel: {dec.rule_met ? "gehaald" : "niet gehaald"}.
+                      {dec.rule_deviation_reason ? ` ${deviationLabel(dec.action, dec.rule_met)}. Motivering: ${dec.rule_deviation_reason}` : ""}
+                    </p>
+                  )}
                   <p>
                     {dec.client_confirmed_at
                       ? `Bevestigd door de opdrachtgever op ${new Date(dec.client_confirmed_at).toLocaleDateString("nl-NL")}${dec.client_comment ? `: “${dec.client_comment}”` : ""}`

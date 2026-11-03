@@ -4,9 +4,23 @@ import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { DECISIONS, type DecisionAction } from "@/lib/domain/labels";
+import { DEVIATION_MIN_CHARS, deviates, deviationLabel } from "@/lib/domain/decision-rule";
 
-export function DecisionSelector({ advised, action, disabledReason }: { advised: DecisionAction | null; action: (s: FormState, f: FormData) => Promise<FormState>; disabledReason: string | null }) {
+// ruleMet: de toets aan de beslisregel van het dossier (null = geen regel). Wijkt de keuze af, dan is een motivering
+// verplicht (golf B, punt 6); die gaat naar het auditspoor en het rapport.
+export function DecisionSelector({
+  advised,
+  action,
+  disabledReason,
+  ruleMet = null,
+}: {
+  advised: DecisionAction | null;
+  action: (s: FormState, f: FormData) => Promise<FormState>;
+  disabledReason: string | null;
+  ruleMet?: boolean | null;
+}) {
   const [choice, setChoice] = useState<DecisionAction>(advised ?? "test_more");
+  const deviation = deviates(choice, ruleMet);
   return (
     <ActionForm action={action} submitLabel="Bewaar mijn keuze ✓" submitClass="btn primary hidden">
       <input type="hidden" name="action" value={choice} />
@@ -23,6 +37,16 @@ export function DecisionSelector({ advised, action, disabledReason }: { advised:
       </div>
       <label className="field-label" htmlFor="dec-why">Waarom? (komt in het rapport)</label>
       <textarea className="field" id="dec-why" name="rationale" rows={3} required minLength={15} />
+      {deviation && ruleMet != null && (
+        <>
+          <div className="note" role="note">
+            <strong>{deviationLabel(choice, ruleMet)}.</strong> Je wijkt af van de beslisregel die vooraf is vastgelegd. Motiveer waarom; de motivering komt in het
+            auditspoor en in het rapport, en de opdrachtgever ziet haar bij het bevestigen.
+          </div>
+          <label className="field-label" htmlFor="dec-deviation">Waarom wijk je af van de beslisregel?</label>
+          <textarea className="field" id="dec-deviation" name="rule_deviation_reason" rows={3} required minLength={DEVIATION_MIN_CHARS} maxLength={2000} />
+        </>
+      )}
       <label className="field-label" htmlFor="dec-next">Concrete volgende stap</label>
       <input className="field" id="dec-next" name="next_step" placeholder="Bijv. prijs-/aanbodtest met drie prijspunten in november" />
       {disabledReason && <div className="note">{disabledReason}</div>}

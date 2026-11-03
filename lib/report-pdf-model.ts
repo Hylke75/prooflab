@@ -263,6 +263,11 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
         ["Status rapport", meta.shared ? "Gedeeld met opdrachtgever" : "Concept, niet gedeeld"],
       ],
     });
+    // Golf B, punt 6: toets aan de beslisregel en de motivering bij afwijken.
+    if (r.decision.rule) {
+      decision.push({ t: "p", text: `Beslisregel: ${r.decision.rule.met ? "gehaald" : "niet gehaald"}. ${r.decision.rule.lines.join("; ")}.` });
+      if (r.decision.rule.deviation) decision.push({ t: "p", text: `Afwijking van de beslisregel: ${r.decision.rule.deviation.label.toLowerCase()}. Motivering: ${r.decision.rule.deviation.reason}` });
+    }
   } else {
     decision.push({ t: "p", text: "Er is nog geen besluit vastgelegd. Een besluit wordt altijd door een mens genomen en met datum en auteur bewaard.", muted: true });
   }

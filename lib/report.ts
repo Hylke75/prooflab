@@ -5,6 +5,7 @@ import type { Finding } from "@/lib/domain/reality-check";
 import { ACHIEVED_LABELS, FORECAST_MOMENTS, FORECASTER_LABELS, JUSTIFIED_LABELS, MOMENT_LABELS, ON_TRACK_LABELS, aggregate, brier, type Achieved, type ForecasterKind, type Justified, type OnTrack } from "@/lib/domain/forecast";
 import { ensembleMean } from "@/lib/ai/providers/select";
 import { effortSummary } from "@/lib/domain/effort";
+import { deviationLabel, type RuleEvaluation } from "@/lib/domain/decision-rule";
 import { PROVIDER_LABELS, providerOfModel } from "@/lib/ai/providers/config";
 
 // "AI · Gemini" for an AI forecast whose provider is known; null otherwise.
@@ -196,7 +197,16 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
     learningCards: d.learningCards.filter((c) => c.status === "approved").map((c) => ({ believed: c.we_believed, observed: c.we_observed, learned: c.we_learned, therefore: c.therefore, verdict: c.verdict, reliability: c.data_reliability })),
     realityCheck: check ? { at: check.created_at, advice: DECISIONS[check.advice as DecisionAction].label, reason: check.advice_reason, findings: checkFindings, aiUsed: check.ai_used } : null,
     decision: lastDecision
-      ? { action: DECISIONS[lastDecision.action as DecisionAction].label, rationale: lastDecision.rationale, nextStep: lastDecision.next_step, at: lastDecision.decided_at, confirmedAt: lastDecision.client_confirmed_at, comment: lastDecision.client_comment }
+      ? {
+          action: DECISIONS[lastDecision.action as DecisionAction].label,
+          rationale: lastDecision.rationale,
+          nextStep: lastDecision.next_step,
+          at: lastDecision.decided_at,
+          confirmedAt: lastDecision.client_confirmed_at,
+          comment: lastDecision.client_comment,
+          // Golf B, punt 6: de toets aan de beslisregel en, bij afwijken, de motivering.
+          rule: ruleSummary(lastDecision),
+        }
       : null,
     sources: [...sources.values()].sort((a, b) => a.n - b.n),
     method: {
@@ -204,5 +214,20 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       aiCostUsd: Number(aiCost.toFixed(2)),
       models: [...new Set(d.research.ai.map((r) => `${r.model} (prompt ${r.prompt_version})`))],
     },
+  };
+}
+
+// De toets aan de beslisregel bij een besluit, leesbaar voor het rapport (null zonder regel of bij een tussenbesluit).
+function ruleSummary(d: { action: string; rule_met?: boolean | null; rule_evaluation?: unknown; rule_deviation_reason?: string | null }) {
+  if (d.rule_met == null) return null;
+  const ev = d.rule_evaluation as RuleEvaluation | null;
+  const lines = [
+    ...(ev?.conditions ?? []).map((c) => `${c.statement}: ${c.probability != null ? `${Math.round(c.probability * 100)}%` : "onbekend"} (minstens ${Math.round(c.minProbability * 100)}%) · ${c.met ? "gehaald" : "niet gehaald"}`),
+    ...(ev?.primary ? [`Hoofdtest ${ev.primary.title}: ${ev.primary.met ? "geslaagd" : "niet geslaagd"}`] : []),
+  ];
+  return {
+    met: d.rule_met,
+    lines,
+    deviation: d.rule_deviation_reason ? { label: deviationLabel(d.action, d.rule_met), reason: d.rule_deviation_reason } : null,
   };
 }

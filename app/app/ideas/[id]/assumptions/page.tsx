@@ -20,6 +20,8 @@ import { asMethodVersion, CURRENT_METHOD, METHODS, type MethodVersion } from "@/
 import { EVIDENCE_LEVELS, type EvidenceCaps } from "@/lib/domain/evidence";
 import { loadIdeaCaps } from "@/lib/method-data";
 import { addAssumption, deleteAssumption, linkClaim, seedAssumptions, setImportance, setPrior, unlinkClaim } from "./actions";
+import { DecisionRuleCard } from "@/components/decision/DecisionRule";
+import { loadDecisionRule } from "@/lib/decision-rule-data";
 
 export const metadata: Metadata = { title: "Aannames" };
 
@@ -75,13 +77,15 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
   const { idea, canWrite } = await getIdea(id);
   const supabase = await supabaseServer();
   const method = asMethodVersion(idea.method_version);
-  const [ranked, progress, { data: claims }, { data: links }, weights, caps] = await Promise.all([
+  const [ranked, progress, { data: claims }, { data: links }, weights, caps, rule, { data: experiments }] = await Promise.all([
     loadInformationValue(id),
     loadProgress(id),
     supabase.from("claims").select("id, statement, status").eq("idea_id", id).order("created_at"),
     supabase.from("assumption_claims").select("assumption_id, claim_id, relation, claims(statement, status)").eq("idea_id", id),
     loadIdeaWeights(id),
     loadIdeaCaps(id),
+    loadDecisionRule(id),
+    supabase.from("experiments").select("id, title").eq("idea_id", id).order("created_at"),
   ]);
   const board: BoardAssumption[] = ranked.map((a) => ({
     ...a,
@@ -147,6 +151,15 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
       )}
 
       <RedTeamButton ideaId={id} assumptions={board} canWrite={canWrite} />
+      {rule !== undefined && (
+        <DecisionRuleCard
+          ideaId={id}
+          rule={rule}
+          assumptions={board.map((a) => ({ id: a.id, statement: a.statement, importance: a.importance }))}
+          experiments={experiments ?? []}
+          canWrite={canWrite}
+        />
+      )}
       {board.length > 0 && <HowWeCalculate weights={weights.inUse} method={method} caps={caps.caps} />}
 
       {canWrite && (

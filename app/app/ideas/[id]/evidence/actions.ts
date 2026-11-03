@@ -15,6 +15,8 @@ import type { Json } from "@/lib/database.types";
 import { loadProgress } from "@/lib/progress";
 import { decisionBlocker, outcomeDueForQuestion, outcomeQuestionFor } from "@/lib/domain/forecast";
 import { todayInNL } from "@/lib/domain/sprint";
+import { deviates, isFinalAction } from "@/lib/domain/decision-rule";
+import { loadRuleCheck } from "@/lib/decision-rule-data";
 
 export type ActionState = { error: string | null; ok?: string | null };
 const refresh = (id: string) => revalidatePath(`/app/ideas/${id}`, "layout");
@@ -130,6 +132,7 @@ const DecisionSchema = z.object({
   action: z.enum(["continue", "adjust", "test_more", "pause", "stop"]),
   rationale: z.string().trim().min(15, "Leg in minstens één zin uit waarom.").max(2000),
   next_step: z.string().trim().max(600).optional(),
+  rule_deviation_reason: z.string().trim().max(2000).optional(),
 });
 
 export async function saveDecision(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
@@ -148,6 +151,10 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   const progress = await loadProgress(ideaId);
   const blocker = decisionBlocker(progress);
   if (blocker) return { error: blocker };
+  // Golf B, punt 6: een definitief besluit wordt getoetst aan de beslisregel. Wie afwijkt, motiveert dat.
+  const ruleCheck = isFinalAction(p.data.action) ? await loadRuleCheck(ideaId) : null;
+  const deviation = ruleCheck ? deviates(p.data.action, ruleCheck.evaluation.met) : false;
+  if (deviation && (p.data.rule_deviation_reason ?? "").length < 15) return { error: "Dit besluit wijkt af van de beslisregel. Motiveer in minstens één zin waarom." };
   // The decision links the most recently ended analysed experiment; all analysed ones become decided.
   const { data: exps } = await supabase.from("experiments").select("id").eq("idea_id", ideaId).eq("state", "analyzed").order("ended_at", { ascending: false });
   const { error } = await supabase.from("decisions").insert({
@@ -157,12 +164,17 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
     action: p.data.action,
     rationale: p.data.rationale,
     next_step: p.data.next_step || null,
+    rule_met: ruleCheck ? ruleCheck.evaluation.met : null,
+    rule_evaluation: ruleCheck ? (ruleCheck.evaluation as unknown as Json) : null,
+    rule_deviation_reason: deviation ? p.data.rule_deviation_reason : null,
   });
   if (error) {
     // The database enforces the same rules; show its reason when it refuses.
     if (error.message.includes("DECISION_STALE")) return { error: "Er is nieuw bewijs sinds de laatste Reality Check. Voer de check opnieuw uit." };
     if (error.message.includes("DECISION_BLOCKED")) return { error: "Er zijn blokkerende punten in de Reality Check. 'Doorgaan' kan pas als die zijn opgelost." };
     if (error.message.includes("DECISION_CHECK")) return { error: "Voer de Reality Check opnieuw uit voordat je besluit." };
+    if (error.message.includes("DECISION_RULE_DEVIATION")) return { error: "Dit besluit wijkt af van de beslisregel. Motiveer in minstens één zin waarom." };
+    if (error.message.includes("DECISION_RULE_EVAL")) return { error: "De toets aan de beslisregel klopt niet meer met het dossier. Ververs de pagina en probeer het opnieuw." };
     return { error: "Het besluit kon niet worden opgeslagen." };
   }
   for (const e of exps ?? []) await supabase.from("experiments").update({ state: "decided" }).eq("id", e.id);

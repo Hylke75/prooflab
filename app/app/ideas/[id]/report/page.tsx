@@ -373,6 +373,18 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 {r.decision.confirmedAt ? `Bevestigd door de opdrachtgever op ${date(r.decision.confirmedAt)}${r.decision.comment ? ` (“${r.decision.comment}”)` : ""}.` : "Nog niet bevestigd door de opdrachtgever."}
               </p>
             )}
+            {r.decision?.rule && (
+              <div className="mt-12">
+                <p>
+                  <strong>Beslisregel: {r.decision.rule.met ? "gehaald" : "niet gehaald"}.</strong> {r.decision.rule.lines.join("; ")}.
+                </p>
+                {r.decision.rule.deviation && (
+                  <p className="mt-8">
+                    <strong>Afwijking van de beslisregel:</strong> {r.decision.rule.deviation.label.toLowerCase()}. Motivering: {r.decision.rule.deviation.reason}
+                  </p>
+                )}
+              </div>
+            )}
           </section>
 
           {r.prediction && (

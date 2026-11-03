@@ -194,4 +194,89 @@ d("golf B: besluit en voorspelling", () => {
       await expect(as(alice, (c) => c.query("insert into public.calibration_exclusions (idea_id, reason) values ($1, 'Een buitenstaander probeert het ook')", [idea]))).rejects.toThrow(/row-level security/);
     });
   });
+
+  describe("punt 6: beslisregel", () => {
+    // Een aanname met een experiment in concept.
+    async function assumptionWithTest(who: Who, idea: string): Promise<{ assumption: string; experiment: string }> {
+      return as(who, async (c) => {
+        const a = (await c.query("insert into public.assumptions (idea_id, statement, category, importance) values ($1, 'Eventmanagers betalen voor selectie', 'desirability', 5) returning id", [idea])).rows[0].id;
+        const h = (
+          await c.query(
+            `insert into public.hypotheses (idea_id, assumption_id, we_believe, target_group, test_method, metric_label,
+               metric_numerator, metric_denominator, success_threshold_pct, fail_threshold_pct, min_sample, max_duration_days)
+             values ($1, $2, 'Eventmanagers handelen', 'NL eventmanagers', 'test', 'ratio', 'teller', 'noemer', 15, 5, 20, 21) returning id`,
+            [idea, a],
+          )
+        ).rows[0].id;
+        const e = (await c.query("insert into public.experiments (idea_id, hypothesis_id, type, title) values ($1, $2, 'landing', 'Landingspagina') returning id", [idea, h])).rows[0].id;
+        return { assumption: a, experiment: e };
+      });
+    }
+    const save = (who: Who, idea: string, primary: string | null, conditions: { assumption_id: string; min_probability: number }[]) =>
+      as(who, async (c) => (await c.query("select public.save_decision_rule($1, $2, 'Toelichting', $3) as r", [idea, primary, JSON.stringify(conditions)])).rows[0].r as string);
+    const ruleRow = (who: Who, idea: string) =>
+      as(who, async (c) => (await c.query("select locked_at is not null as locked, recorded_late from public.decision_rules where idea_id = $1", [idea])).rows[0]);
+
+    it("kan worden aangepast tot de eerste goedgekeurde test, en ligt daarna vast", async () => {
+      const idea = await newIdea(alice, org);
+      const x = await assumptionWithTest(alice, idea);
+      expect(await save(alice, idea, x.experiment, [{ assumption_id: x.assumption, min_probability: 0.6 }])).toBe("open");
+      expect(await save(alice, idea, x.experiment, [{ assumption_id: x.assumption, min_probability: 0.7 }])).toBe("open");
+      expect(await as(alice, async (c) => Number((await c.query("select min_probability from public.decision_rule_assumptions where idea_id = $1", [idea])).rows[0].min_probability))).toBe(0.7);
+      // Direct schrijven gaat niet; alleen via save_decision_rule.
+      await expect(as(alice, (c) => c.query("update public.decision_rules set note = 'stil gewijzigd' where idea_id = $1", [idea]))).rejects.toThrow(/permission denied/);
+
+      await as(alice, (c) => c.query("update public.experiments set state = 'ready_for_review' where id = $1", [x.experiment]));
+      await as(alice, (c) => c.query("update public.experiments set state = 'approved' where id = $1", [x.experiment]));
+      expect(await ruleRow(alice, idea)).toEqual({ locked: true, recorded_late: false });
+      await expect(save(alice, idea, x.experiment, [{ assumption_id: x.assumption, min_probability: 0.5 }])).rejects.toThrow(/DECISION_RULE_LOCKED/);
+      // Ook terug naar concept maakt de regel niet weer open.
+      await as(alice, (c) => c.query("update public.experiments set state = 'draft' where id = $1", [x.experiment]));
+      await expect(save(alice, idea, null, [{ assumption_id: x.assumption, min_probability: 0.5 }])).rejects.toThrow(/DECISION_RULE_LOCKED/);
+      // De aanname in een vergrendelde regel kan niet meer weg.
+      await expect(as(alice, (c) => c.query("delete from public.assumptions where id = $1", [x.assumption]))).rejects.toThrow(/DECISION_RULE_LOCKED/);
+    });
+
+    it("markeert een regel na de eerste goedgekeurde test als achteraf vastgelegd", async () => {
+      const idea = await newIdea(alice, org);
+      const x = await assumptionWithTest(alice, idea);
+      await as(alice, (c) => c.query("update public.experiments set state = 'ready_for_review' where id = $1", [x.experiment]));
+      await as(alice, (c) => c.query("update public.experiments set state = 'approved' where id = $1", [x.experiment]));
+      expect(await save(alice, idea, x.experiment, [{ assumption_id: x.assumption, min_probability: 0.6 }])).toBe("locked_late");
+      expect(await ruleRow(alice, idea)).toEqual({ locked: true, recorded_late: true });
+      expect(await as(alice, async (c) => (await c.query("select count(*)::int as n from public.decision_rule_assumptions where idea_id = $1", [idea])).rows[0].n)).toBe(1);
+    });
+
+    it("weigert verwijzingen naar een ander dossier en schrijven door een opdrachtgever", async () => {
+      const idea = await newIdea(alice, org);
+      const other = await newIdea(alice, org);
+      const x = await assumptionWithTest(alice, other);
+      await expect(save(alice, idea, x.experiment, [])).rejects.toThrow(/IDEA_MISMATCH/);
+      const client = await user(`klant-${randomUUID()}@example.com`);
+      await as(alice, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_decider')", [idea, client.email]));
+      await as(client, (c) => c.query("select public.claim_invitations()"));
+      await expect(save(client, idea, null, [])).rejects.toThrow(/FORBIDDEN/);
+    });
+
+    it("toetst het besluit: afwijken vraagt een motivering die in de audit komt, en een niet-geslaagde hoofdtest maakt de regel niet gehaald", async () => {
+      const idea = await newIdea(alice, org);
+      const x = await assumptionWithTest(alice, idea);
+      await save(alice, idea, x.experiment, [{ assumption_id: x.assumption, min_probability: 0.6 }]);
+      const evaluation = JSON.stringify({ met: false, conditions: [], primary: null });
+      await expect(decide(alice, idea, "continue")).rejects.toThrow(/DECISION_RULE_EVAL/);
+      await expect(decide(alice, idea, "continue", { rule_met: false, rule_evaluation: evaluation })).rejects.toThrow(/DECISION_RULE_DEVIATION/);
+      // Zonder geslaagde hoofdtest kan de app de regel niet "gehaald" noemen.
+      await expect(decide(alice, idea, "continue", { rule_met: true, rule_evaluation: evaluation })).rejects.toThrow(/DECISION_RULE_EVAL/);
+      const id = await decide(alice, idea, "continue", { rule_met: false, rule_evaluation: evaluation, rule_deviation_reason: "Strategisch belangrijk, we nemen het risico bewust" });
+      const audit = await as(alice, async (c) => (await c.query("select detail->>'reason' as reason from public.audit_events where action = 'rule_deviation' and row_id = $1", [id])).rows);
+      expect(audit).toEqual([{ reason: "Strategisch belangrijk, we nemen het risico bewust" }]);
+      // Het eerste definitieve besluit vergrendelt de regel ook zonder goedgekeurde test.
+      expect(await ruleRow(alice, idea)).toEqual({ locked: true, recorded_late: false });
+      // Een besluit dat de regel volgt, bewaart geen motivering; een tussenbesluit wordt niet getoetst.
+      const followed = await decide(alice, idea, "stop", { rule_met: false, rule_evaluation: evaluation, rule_deviation_reason: "overbodig" });
+      const testMore = await decide(alice, idea, "test_more", { rule_met: true, rule_evaluation: evaluation });
+      const rows = await as(alice, async (c) => (await c.query("select id, rule_met, rule_deviation_reason from public.decisions where id = any($1)", [[followed, testMore]])).rows);
+      expect(Object.fromEntries(rows.map((r) => [r.id, [r.rule_met, r.rule_deviation_reason]]))).toEqual({ [followed]: [false, null], [testMore]: [null, null] });
+    });
+  });
 });
