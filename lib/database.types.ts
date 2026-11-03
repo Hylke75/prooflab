@@ -2377,6 +2377,10 @@ export type Database = {
       mark_report_viewed: { Args: { p_report: string }; Returns: boolean }
       may_create_account: { Args: { p_email: string; p_key: string }; Returns: boolean }
       get_public_survey: { Args: { p_slug: string; p_token_hash: string | null }; Returns: Json }
+      survey_key_answers: {
+        Args: { p_experiment: string }
+        Returns: { id: string; source: string; channel: string; duration_ms: number | null; created_at: string; key_answer: Json | null }[]
+      }
       submit_survey: {
         Args: {
           p_answers: Json

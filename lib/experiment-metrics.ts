@@ -44,6 +44,24 @@ export type ExperimentMetrics = {
   survey: SurveySplit | null;
 };
 
+// Only the pre-registered key question per response, for everyone who can read the dossier (clients included):
+// enough for the verdict and the split per source, without the other (possibly personal) answers.
+export async function loadSurveyKeyAnswers(expId: string, keyQuestion: string): Promise<{ rows: ExportRow[]; error: boolean }> {
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase.rpc("survey_key_answers", { p_experiment: expId });
+  if (error) return { rows: [], error: true };
+  return {
+    rows: (data ?? []).map((r) => ({
+      answers: (r.key_answer == null ? {} : { [keyQuestion]: r.key_answer }) as Answers,
+      source: r.source === "invitation" ? "invitation" : "open_link",
+      channel: r.channel,
+      duration_ms: r.duration_ms,
+      created_at: r.created_at,
+    })),
+    error: false,
+  };
+}
+
 // The stored survey config, or null when it does not (or no longer) match the schema.
 export function surveyConfigOf(config: unknown): SurveyConfig | null {
   const r = SurveyConfigSchema.safeParse(config);
@@ -140,7 +158,7 @@ export async function experimentMetrics(exp: Exp, h: Hyp): Promise<ExperimentMet
     // The verdict uses every believable response (all sources), as pre-registered; the split per source shows
     // how much of it comes from known, invited people.
     const config = surveyConfigOf(exp.config);
-    const { rows, error } = await loadSurveyResponses(exp.id);
+    const { rows, error } = config ? await loadSurveyKeyAnswers(exp.id, config.key_question) : { rows: [], error: false };
     if (error) warnings.push("De antwoorden konden niet worden opgehaald; de cijfers hieronder zijn onvolledig.");
     if (!config) {
       warnings.push("De opzet van deze enquête is ongeldig; er kan geen kernvraag worden geteld.");

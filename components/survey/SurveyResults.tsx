@@ -13,7 +13,8 @@ const MAX_OPEN_SHOWN = 100;
 
 // Results of a survey for the research team: the pre-registered key metric with its 95% interval and the split
 // per source, a summary per question, CSV export and open answers as customer signals. Self-reported answers,
-// never observed behaviour. Responses are only readable for the research team (row level security).
+// never observed behaviour. Full responses are only readable for the research team (row level security); readers
+// see the key metric, computed from survey_key_answers.
 export async function SurveyResults({ ideaId, exp, h, m, canWrite }: { ideaId: string; exp: Exp; h: Hyp; m: ExperimentMetrics; canWrite: boolean }) {
   const config = surveyConfigOf(exp.config);
   if (!config) {
@@ -23,8 +24,23 @@ export async function SurveyResults({ ideaId, exp, h, m, canWrite }: { ideaId: s
     return (
       <div className="card mt-18">
         <h2 className="as-h3">Enquête</h2>
-        <p className="sub mt-8">De losse antwoorden zijn alleen zichtbaar voor het onderzoeksteam. De uitkomst volgt via de Learning Card en het rapport.</p>
-        <p className="tiny mt-8">Zelfrapportage, geen waargenomen gedrag.</p>
+        {m.survey && m.survey.all.n > 0 ? (
+          <>
+            <p className="sub mt-8">{config.questions.find((q) => q.id === config.key_question)?.text}</p>
+            <table className="table mt-8">
+              <thead><tr><th>Bron</th><th>Antwoorden</th><th>Succes</th><th>95%-interval</th></tr></thead>
+              <tbody>
+                <SplitRow label="Persoonlijk uitgenodigd" k={m.survey.invitation} />
+                <SplitRow label="Open link" k={m.survey.openLink} />
+                <SplitRow label="Totaal" k={m.survey.all} strong />
+              </tbody>
+            </table>
+            {!m.endConditionReached && <p className="tiny mt-8">De test loopt nog; het oordeel volgt na de afgesproken eindconditie.</p>}
+          </>
+        ) : (
+          <p className="sub mt-8">Er zijn nog geen antwoorden op de kernvraag.</p>
+        )}
+        <p className="tiny mt-8">Alleen de vooraf vastgelegde kernvraag is zichtbaar; de overige antwoorden blijven bij het onderzoeksteam. Zelfrapportage, geen waargenomen gedrag.</p>
       </div>
     );
   }
