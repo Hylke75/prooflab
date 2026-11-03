@@ -10,7 +10,7 @@ import { checkQuote } from "@/lib/domain/verify";
 import { KIND_DEFAULTS } from "@/lib/domain/evidence";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { experimentMetrics, loadSurveyResponses, surveyConfigOf, type LandingConfig, type PricingConfig } from "@/lib/experiment-metrics";
-import { pct } from "@/lib/domain/stats";
+import { pct, requiredSample } from "@/lib/domain/stats";
 import { recommend } from "@/lib/domain/recommend";
 import { aiConfigured } from "@/lib/env";
 import { analyzeInterview, suggestCopyVariants } from "@/lib/ai/research";
@@ -51,6 +51,11 @@ const Base = z.object({
   max_duration_days: z.coerce.number().int(),
   expected_biases: text(600).optional(),
   expected_reach: z.coerce.number().int().min(0).optional(),
+  // Methode 2026-11-b: beslisregel en de aannames voor het vooraf berekende aantal deelnemers.
+  decision_rule: z.enum(["absolute", "probability"]).optional(),
+  success_count: z.coerce.number().int().min(1, "Het afgesproken aantal is minstens 1.").optional(),
+  expected_pct: z.coerce.number().gt(0, "Vul de verwachte uitkomst in (in %).").max(100, "De verwachte uitkomst is hoogstens 100%.").optional(),
+  available_per_week: z.coerce.number().int().min(0).optional(),
   cost_estimate_eur: z.coerce.number().min(0).optional(),
 });
 
@@ -58,6 +63,8 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
   await requireWritableIdea(ideaId);
   const ws = await getWorkspace();
   const raw = Object.fromEntries(form);
+  // Lege getalvelden betekenen "niet ingevuld", niet 0.
+  for (const k of ["fail_threshold_pct", "success_count", "expected_pct", "available_per_week", "expected_reach"]) if (raw[k] === "") delete raw[k];
   const p = Base.safeParse(raw);
   if (!p.success) return { error: p.error.issues[0].message };
   const v = p.data;
@@ -71,6 +78,22 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
     const m = metricFromKey(survey);
     v.metric_numerator = m.metric_numerator;
     v.metric_denominator = m.metric_denominator;
+  }
+  // Beslisregel: de aantalregel alleen voor sterke handelingen; in de code zijn dat de aanbetalingen en
+  // herhaalaankopen die in interviews worden vastgelegd. Landing-, prijs- en enquêtetests meten een percentage.
+  const rule = v.decision_rule ?? null;
+  let requiredN: number | null = null;
+  if (rule) {
+    if (rule === "absolute" && v.type !== "interview") return { error: "Een vast aantal past alleen bij sterke handelingen (aanbetaling of herhaalaankoop in gesprekken). Kies de kansregel." };
+    if (v.expected_pct == null) return { error: "Vul de verwachte uitkomst in: daarmee rekent ProofLab vooraf het benodigde aantal deelnemers uit." };
+    if (rule === "absolute") {
+      if (v.success_count == null) return { error: "Leg vast hoeveel sterke handelingen minimaal nodig zijn." };
+      if (v.success_count > v.min_sample) return { error: "Het afgesproken aantal kan niet groter zijn dan de minimale steekproef." };
+      // De percentagedrempel volgt uit het aantal: nodig voor het 95%-interval en het label "sterk bewezen".
+      v.success_threshold_pct = Math.min(100, Math.round((v.success_count / v.min_sample) * 1000) / 10);
+      v.fail_threshold_pct = undefined;
+    }
+    requiredN = requiredSample({ rule, expectedPct: v.expected_pct, thresholdPct: v.success_threshold_pct, successCount: v.success_count ?? null });
   }
   const coach = checkHypothesis({
     we_believe: v.we_believe,
@@ -138,6 +161,12 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       min_sample: v.min_sample,
       max_duration_days: v.max_duration_days,
       expected_biases: v.expected_biases || null,
+      // Vastgelegd met de drempels en na goedkeuring vergrendeld (guard_hypothesis_lock).
+      decision_rule: rule,
+      success_count: rule === "absolute" ? (v.success_count ?? null) : null,
+      expected_pct: rule ? (v.expected_pct ?? null) : null,
+      available_per_week: rule ? (v.available_per_week ?? null) : null,
+      required_n: requiredN,
     })
     .select("id")
     .single();
@@ -412,7 +441,10 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
   }
 
   const card = {
-    we_believed: `${h.we_believe} Het klopt als ${h.success_threshold_pct}% of meer (${h.metric_numerator} / ${h.metric_denominator}), bij minimaal ${h.min_sample} deelnemers.`,
+    we_believed:
+      h.decision_rule === "absolute"
+        ? `${h.we_believe} Het klopt als minstens ${h.success_count} van minimaal ${h.min_sample} deelnemers dit doen (${h.metric_numerator}).`
+        : `${h.we_believe} Het klopt als ${h.success_threshold_pct}% of meer (${h.metric_numerator} / ${h.metric_denominator}), bij minimaal ${h.min_sample} deelnemers.`,
     we_observed: `${m.successes} van ${m.n} (${pct(v.interval.point)}; 95%-interval ${pct(v.interval.low)} tot ${pct(v.interval.high)}).${
       s ? ` Zelfrapportage, geen waargenomen gedrag. Uitgenodigde respondenten: ${s.invitation.successes} van ${s.invitation.n}; open link: ${s.openLink.successes} van ${s.openLink.n}.` : ""
     }${m.warnings.length ? ` Let op: ${m.warnings.join(" ")}` : ""}`,
@@ -424,6 +456,16 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
       n: m.n,
       successes: m.successes,
       interval: v.interval,
+      // Beslisregel en uitkomst zoals berekend; een goedgekeurde kaart verandert hierna nooit meer.
+      decision_rule: v.rule,
+      probability: v.probability,
+      probability_fail: v.probabilityFail,
+      success_count: v.successCount,
+      strong_proof: v.strongProof,
+      label: v.label,
+      success_threshold_pct: Number(h.success_threshold_pct),
+      fail_threshold_pct: h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct),
+      required_n: h.required_n ?? null,
       byChannel: m.byChannel,
       byVariant: m.byVariant,
       warnings: m.warnings,

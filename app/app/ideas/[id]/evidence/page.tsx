@@ -4,6 +4,7 @@ import { PageFrame } from "@/components/shell/PageFrame";
 import { Stepper } from "@/components/ui/Stepper";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { DecisionSelector } from "@/components/evidence/DecisionSelector";
+import { RuleSummary, outcomeFromCard } from "@/components/experiments/RuleSummary";
 import { DecisionForecast } from "@/components/forecast/DecisionForecast";
 import { decisionBlocker } from "@/lib/domain/forecast";
 import { getIdea } from "@/lib/data";
@@ -194,6 +195,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
               <div className="section-title"><h3>{exp?.title ?? "Experiment"}</h3><span className="pill orange">Concept · {c.verdict === "pass" ? "geslaagd" : c.verdict === "fail" ? "niet geslaagd" : "onbeslist"}</span></div>
               <div className="data-row"><span>We dachten</span><strong style={{ textAlign: "right" }}>{c.we_believed}</strong></div>
               <div className="data-row"><span>We zagen</span><strong style={{ textAlign: "right" }}>{c.we_observed}</strong></div>
+              <RuleSummary o={outcomeFromCard(c.metrics, c.verdict, exp?.hypotheses ?? null)} />
               {canWrite ? (
                 <>
                   <ActionForm action={updateLearningCard.bind(null, id, c.id)} submitLabel="Opslaan" submitClass="btn white sm">
@@ -221,6 +223,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
               <div className="section-title"><h3>{exp?.title ?? "Experiment"}</h3><span className={`pill ${c.verdict === "pass" ? "green" : c.verdict === "fail" ? "coral" : "orange"}`}>{c.verdict === "pass" ? "Geslaagd" : c.verdict === "fail" ? "Niet geslaagd" : "Onbeslist"}</span></div>
               <div className="data-row"><span>We dachten</span><strong style={{ textAlign: "right" }}>{c.we_believed}</strong></div>
               <div className="data-row"><span>We zagen</span><strong style={{ textAlign: "right" }}>{c.we_observed}</strong></div>
+              <RuleSummary o={outcomeFromCard(c.metrics, c.verdict, exp?.hypotheses ?? null)} />
               <div className="data-row"><span>Daaruit leren we</span><strong style={{ textAlign: "right" }}>{c.we_learned}</strong></div>
               <div className="data-row"><span>Daarom gaan we</span><strong style={{ textAlign: "right" }}>{c.therefore}</strong></div>
               <div className="data-row"><span>Betrouwbaarheid</span><strong>{{ low: "Laag", medium: "Middel", high: "Hoog" }[c.data_reliability]}</strong></div>

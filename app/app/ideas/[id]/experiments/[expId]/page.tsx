@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { ActionForm } from "@/components/ui/ActionForm";
+import { RuleSummary, ruleName } from "@/components/experiments/RuleSummary";
 import { ResultMeter } from "@/components/experiments/ResultMeter";
 import { GuideAuditList, TranscriptAuditList } from "@/components/experiments/InterviewAudit";
 import { AiQualityCard } from "@/components/research/AiQualityCard";
@@ -99,8 +100,13 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
 
       {m.n > 0 && (
         <div className={`verdict mt-18 ${v.kind}`}>
-          <strong>{v.kind === "running" ? "Nog geen uitspraak" : v.kind === "pass" ? "Geslaagd volgens de vooraf vastgelegde regel" : v.kind === "fail" ? "Niet geslaagd" : "Onbeslist"}</strong>
+          <strong>{v.kind === "running" ? "Nog geen uitspraak" : v.kind === "pass" ? `${v.strongProof ? "Sterk bewezen" : "Geslaagd"} volgens de vooraf vastgelegde regel` : v.kind === "fail" ? "Niet geslaagd" : "Onbeslist"}</strong>
           <p className="sub" style={{ marginTop: 4 }}>{v.reason}</p>
+          {v.kind !== "running" && (
+            <RuleSummary
+              o={{ rule: v.rule, label: v.label, probability: v.probability, probabilityFail: v.probabilityFail, successCount: v.successCount, successes: m.successes, n: m.n, interval: v.interval, thresholdPct: Number(h.success_threshold_pct), failThresholdPct: h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct) }}
+            />
+          )}
           {v.kind !== "running" && <ResultMeter v={v} success={Number(h.success_threshold_pct)} fail={h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct)} bayes={m.bayes} />}
         </div>
       )}
@@ -116,9 +122,25 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           <div className="data-row"><span>Bij</span><strong style={{ textAlign: "right" }}>{h.target_group}</strong></div>
           <div className="data-row"><span>Dat toetsen we door</span><strong style={{ textAlign: "right" }}>{h.test_method}</strong></div>
           <div className="data-row"><span>We meten</span><strong style={{ textAlign: "right" }}>{h.metric_numerator} / {h.metric_denominator}</strong></div>
-          <div className="data-row"><span>Het klopt als</span><strong className="num">≥ {h.success_threshold_pct}%</strong></div>
-          <div className="data-row"><span>Het klopt niet als</span><strong className="num">{h.fail_threshold_pct != null ? `< ${h.fail_threshold_pct}%` : "—"}</strong></div>
+          <div className="data-row"><span>Beslisregel</span><strong style={{ textAlign: "right" }}>{ruleName(h.decision_rule ?? "interval")}</strong></div>
+          {h.decision_rule === "absolute" ? (
+            <div className="data-row"><span>Het klopt als</span><strong className="num">≥ {h.success_count} van {h.min_sample}</strong></div>
+          ) : (
+            <>
+              <div className="data-row"><span>Het klopt als</span><strong className="num">≥ {h.success_threshold_pct}%</strong></div>
+              <div className="data-row"><span>Het klopt niet als</span><strong className="num">{h.fail_threshold_pct != null ? `< ${h.fail_threshold_pct}%` : "—"}</strong></div>
+            </>
+          )}
           <div className="data-row"><span>Steekproef · looptijd</span><strong className="num">≥ {h.min_sample} · max. {h.max_duration_days} dagen</strong></div>
+          {h.decision_rule && (
+            <div className="data-row">
+              <span>Vooraf berekend</span>
+              <strong style={{ textAlign: "right" }}>
+                {h.required_n != null ? `${h.required_n} deelnemers nodig` : "drempel niet haalbaar met de verwachting"} bij een verwachte uitkomst van {h.expected_pct}%
+                {h.available_per_week != null ? ` · ${h.available_per_week} beschikbaar per week` : ""}
+              </strong>
+            </div>
+          )}
           <div className="data-row"><span>Kanalen</span><strong style={{ textAlign: "right" }}>{channels.map((c) => CHANNELS[c.channel as keyof typeof CHANNELS] ?? c.channel).join(", ")}</strong></div>
           {h.expected_biases && <div className="note">Verwachte vertekeningen: {h.expected_biases}</div>}
         </div>

@@ -1263,8 +1263,11 @@ export type Database = {
       hypotheses: {
         Row: {
           assumption_id: string
+          available_per_week: number | null
           change_reason: string | null
           created_at: string
+          decision_rule: string | null
+          expected_pct: number | null
           expected_biases: string | null
           fail_threshold_pct: number | null
           id: string
@@ -1275,6 +1278,8 @@ export type Database = {
           metric_label: string
           metric_numerator: string
           min_sample: number
+          required_n: number | null
+          success_count: number | null
           success_threshold_pct: number
           superseded_by: string | null
           target_group: string
@@ -1284,8 +1289,11 @@ export type Database = {
         }
         Insert: {
           assumption_id: string
+          available_per_week?: number | null
           change_reason?: string | null
           created_at?: string
+          decision_rule?: string | null
+          expected_pct?: number | null
           expected_biases?: string | null
           fail_threshold_pct?: number | null
           id?: string
@@ -1296,6 +1304,8 @@ export type Database = {
           metric_label: string
           metric_numerator: string
           min_sample: number
+          required_n?: number | null
+          success_count?: number | null
           success_threshold_pct: number
           superseded_by?: string | null
           target_group: string
@@ -1305,8 +1315,11 @@ export type Database = {
         }
         Update: {
           assumption_id?: string
+          available_per_week?: number | null
           change_reason?: string | null
           created_at?: string
+          decision_rule?: string | null
+          expected_pct?: number | null
           expected_biases?: string | null
           fail_threshold_pct?: number | null
           id?: string
@@ -1317,6 +1330,8 @@ export type Database = {
           metric_label?: string
           metric_numerator?: string
           min_sample?: number
+          required_n?: number | null
+          success_count?: number | null
           success_threshold_pct?: number
           superseded_by?: string | null
           target_group?: string
