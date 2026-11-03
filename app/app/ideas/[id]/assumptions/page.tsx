@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { PageFrame } from "@/components/shell/PageFrame";
-import { Stepper } from "@/components/ui/Stepper";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { RiskBoard, type BoardAssumption } from "@/components/assumptions/RiskBoard";
 import { RedTeamButton } from "@/components/assumptions/RedTeamButton";
@@ -11,7 +10,6 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { loadInformationValue, loadProgress } from "@/lib/progress";
 import { AI_UNREVIEWED_WEIGHT, CLAIM_LR, fmtLr, OBSERVATION_LR, type LrEntry } from "@/lib/domain/evidence";
 import { DECISION_BOUNDARY, EUR_PER_COST_UNIT, TEST_LR } from "@/lib/domain/recommend";
-import { stepStates } from "@/lib/steps";
 import { loadIdeaWeights } from "@/lib/learning-data";
 import { describeWeights, type WeightsInUse } from "@/lib/domain/calibration";
 import { aiConfigured } from "@/lib/env";
@@ -122,7 +120,6 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
           Ontwerp een test <Icon name="arrow" size="sm" />
         </Link>
       </div>
-      <Stepper current="assumptions" ideaId={id} states={stepStates(progress)} />
       {method !== CURRENT_METHOD && (
         <div className="note">
           Dit dossier rekent met methode {method}. <Link className="text-link" href={`/app/ideas/${id}/method`}>Bekijk wat overstappen naar methode {CURRENT_METHOD} verandert →</Link>

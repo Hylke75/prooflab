@@ -1,6 +1,7 @@
 import { Coach } from "./Coach";
 import { Topbar } from "./Topbar";
 import { SprintStrip } from "@/components/sprint/SprintCard";
+import { Stepper } from "@/components/ui/Stepper";
 import { coachFor, type CoachPage } from "@/lib/domain/coach";
 import { todayInNL } from "@/lib/domain/sprint";
 import { getIdea, getWorkspace } from "@/lib/data";
@@ -12,8 +13,6 @@ import { CoachWatch } from "@/components/coach/CoachWatch";
 import { SyncIdeaSteps } from "./ShellProvider";
 import { STEPS, stepForPath, stepStates } from "@/lib/steps";
 import Link from "next/link";
-
-const IDEA_PAGES: CoachPage[] = ["overview", "research", "assumptions", "experiments", "evidence", "report"];
 
 // Main column + coach column of the three-column grid from the reference design.
 export async function PageFrame({
@@ -55,7 +54,13 @@ export async function PageFrame({
       <main className="main" id="main" tabIndex={-1}>
         <Topbar crumbs={crumbs} initials={initials} email={ws.user.email} name={name} badge={badge} isConsultant={!!ws.org} isOwner={ws.org?.role === "owner"} />
         <div className="workspace">
-          {access && progress && IDEA_PAGES.includes(coach) && <SprintStrip idea={access.idea} progress={progress} canWrite={access.canWrite} today={todayInNL()} />}
+          {/* Eén kop voor alle pagina's van een idee (ook /outcome): sprintbalk, stappenbalk en eventuele tabbladen. */}
+          {access && progress && section !== undefined && (
+            <>
+              <SprintStrip idea={access.idea} progress={progress} canWrite={access.canWrite} today={todayInNL()} />
+              <Stepper current={stepKey} ideaId={ideaId} states={stepStates(progress)} />
+            </>
+          )}
           {ideaId && step && tabs.length > 1 && (
             <nav className="step-tabs no-print" aria-label={`Tabbladen van ${step.label}`}>
               {tabs.map((t) => {
