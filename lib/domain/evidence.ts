@@ -202,7 +202,8 @@ export type AssumptionProbability = {
   contributions: Contribution[]; // sorted by absolute effect
   top: Contribution[]; // the three largest
   counted: number;
-  ignored: { synthetic: number; rejected: number; neutral: number };
+  // unreviewed: alleen methode 2026-11-c, AI-codering die nog wacht op beoordeling (telt niet mee).
+  ignored: { synthetic: number; rejected: number; neutral: number; unreviewed?: number };
   // Alleen methode 2026-11-b: samengevoegde signalen per bron en het plafond per bewijsniveau.
   merged?: MergedSource[];
   cap?: CapInfo | null;
@@ -468,7 +469,7 @@ type Item = {
 };
 
 // Wat methode 2026-11-c toevoegt aan de rekenwijze van 2026-11-b. Zonder opties rekent de kern exact als 2026-11-b.
-type CoreOptions = { recruitmentDamping?: boolean };
+type CoreOptions = { recruitmentDamping?: boolean; aiNeedsReview?: boolean };
 
 export function assumptionProbabilityV2(
   claims: ProbabilityClaim[],
@@ -488,7 +489,7 @@ function probabilityCore(
   caps: EvidenceCaps,
   opts: CoreOptions,
 ): AssumptionProbability {
-  const ignored: AssumptionProbability["ignored"] = { synthetic: 0, rejected: 0, neutral: 0 };
+  const ignored: AssumptionProbability["ignored"] = opts.aiNeedsReview ? { synthetic: 0, rejected: 0, neutral: 0, unreviewed: 0 } : { synthetic: 0, rejected: 0, neutral: 0 };
   const items: Item[] = [];
   let unique = 0;
   const own = () => `eigen:${unique++}`;
@@ -517,7 +518,14 @@ function probabilityCore(
         ignored.rejected++;
         continue;
       }
-      if (o.reviewStatus !== "accepted") weight = AI_UNREVIEWED_WEIGHT;
+      if (o.reviewStatus !== "accepted") {
+        // Methode 2026-11-c: onbeoordeelde AI-codering telt niet mee, pas na beoordeling door een consultant.
+        if (opts.aiNeedsReview) {
+          ignored.unreviewed = (ignored.unreviewed ?? 0) + 1;
+          continue;
+        }
+        weight = AI_UNREVIEWED_WEIGHT;
+      }
     }
     const kind = (o.kind in OBSERVATION_LR ? o.kind : "other") as ObservationKind;
     const base = OBSERVATION_LR[kind];
@@ -626,6 +634,7 @@ function probabilityCore(
 // ===========================================================================
 // Methode 2026-11-c (golf A): bouwt voort op 2026-11-b.
 // - Herhaling binnen dezelfde wervingsgroep over verschillende bronnen heen telt afnemend mee (punt 4).
+// - Onbeoordeelde AI-codering telt niet mee; pas na akkoord van een consultant volledig (punt 17).
 // ===========================================================================
 
 export function assumptionProbabilityV3(
@@ -635,7 +644,7 @@ export function assumptionProbabilityV3(
   overrides: LrOverrides = {},
   caps: EvidenceCaps = DEFAULT_CAPS,
 ): AssumptionProbability {
-  return probabilityCore(claims, observations, prior, overrides, caps, { recruitmentDamping: true });
+  return probabilityCore(claims, observations, prior, overrides, caps, { recruitmentDamping: true, aiNeedsReview: true });
 }
 
 export function explainMerged(m: MergedSource): string {

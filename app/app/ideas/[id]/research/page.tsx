@@ -1,3 +1,4 @@
+import { describeDraftEdit, draftEdit, questionDraftText } from "@/lib/domain/ai-draft";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PageFrame } from "@/components/shell/PageFrame";
@@ -265,6 +266,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                         <span>
                           {METHOD[q.method as keyof typeof METHOD]}
                           {isExpectedSource(q.expected_source) ? ` · Brontype: ${EXPECTED_SOURCES[q.expected_source]}` : ""} · {qClaims.length} bevinding{qClaims.length === 1 ? "" : "en"}
+                          {q.ai_original ? ` · AI-concept · ${describeDraftEdit(draftEdit(q.ai_original, questionDraftText(q))).toLowerCase()}` : ""}
                         </span>
                       </div>
                       <span className={`pill ${pill}`}>{label}</span>

@@ -16,7 +16,8 @@ import { loadAiQuality } from "@/lib/ai-quality";
 import { auditGuide, auditTranscript, guideSummary } from "@/lib/domain/interview-audit";
 import { codingIsProposalOnly } from "@/lib/domain/ai-quality";
 import { supabaseServer } from "@/lib/supabase/server";
-import { experimentMetrics, type InterviewConfig, type LandingConfig, type PricingConfig } from "@/lib/experiment-metrics";
+import { experimentMetrics, surveyConfigOf, type InterviewConfig, type LandingConfig, type PricingConfig } from "@/lib/experiment-metrics";
+import { describeDraftEdit, draftEdit, surveyDraftText } from "@/lib/domain/ai-draft";
 import { aiConfigured, env, trackingConfigured } from "@/lib/env";
 import { pct } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
@@ -46,6 +47,14 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
       ? await supabase.from("experiments").select("state").eq("id", primaryOf.primary_experiment_id).maybeSingle()
       : { data: null };
   const designate = canDesignatePrimary(exp, currentPrimary);
+  // AI-opzet van de enquête (golf A, punt 17): wat heeft de mens eraan veranderd?
+  const surveyDraft = await (async () => {
+    if (type !== "survey" || !exp.ai_draft_id) return null;
+    const { data: d } = await supabase.from("ai_drafts").select("content").eq("id", exp.ai_draft_id).maybeSingle();
+    const original = d ? surveyConfigOf(d.content) : null;
+    const current = surveyConfigOf(exp.config);
+    return original && current ? draftEdit(surveyDraftText(original), surveyDraftText(current)) : null;
+  })();
   const interviews =
     type === "interview" && canWrite
       ? (await supabase.from("interviews").select("*, observations(*)").eq("experiment_id", expId).order("held_on")).data ?? []
@@ -174,6 +183,12 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
                   : "Niet vastgelegd (telt als onbekend)"}
             </strong>
           </div>
+          {surveyDraft && (
+            <div className="data-row">
+              <span>Enquête</span>
+              <strong style={{ textAlign: "right" }}>AI-concept · {describeDraftEdit(surveyDraft)}</strong>
+            </div>
+          )}
           {h.expected_biases && <div className="note">Verwachte vertekeningen: {h.expected_biases}</div>}
         </div>
 

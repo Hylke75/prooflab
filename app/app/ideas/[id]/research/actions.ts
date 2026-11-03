@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { questionDraftText } from "@/lib/domain/ai-draft";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { requireWritableIdea } from "@/lib/data";
@@ -95,7 +96,10 @@ export async function aiPlan(ideaId: string, _: ActionState): Promise<ActionStat
     const manual = (existing ?? []).filter((q) => q.origin === "manual");
     await supabase.from("research_questions").delete().eq("idea_id", ideaId).neq("origin", "manual");
     const free = [1, 2, 3, 4, 5].filter((p) => !manual.some((m) => m.position === p));
-    const rows = res.data.questions.slice(0, free.length).map((q, i) => ({ ...q, idea_id: ideaId, position: free[i], origin: "ai" }));
+    // Het AI-origineel blijft bewaard (golf A, punt 17), zodat zichtbaar is wat de consultant aanpaste.
+    const rows = res.data.questions
+      .slice(0, free.length)
+      .map((q, i) => ({ ...q, idea_id: ideaId, position: free[i], origin: "ai", ai_original: questionDraftText(q).slice(0, 4000) }));
     if (rows.length) await supabase.from("research_questions").insert(rows);
     return done(ideaId, "De onderzoekskaart is opnieuw opgesteld. Controleer de vragen.");
   } catch (e) {

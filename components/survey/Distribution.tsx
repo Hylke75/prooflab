@@ -30,7 +30,7 @@ export async function Distribution({ ideaId, exp, canWrite, plan }: { ideaId: st
   const slug = exp.public_slug;
 
   const [{ data: posts }, { data: invitations }, { data: hook }, job] = await Promise.all([
-    open ? supabase.from("promo_posts").select("id, platform, body, origin, code").eq("experiment_id", exp.id).order("created_at") : Promise.resolve({ data: [] }),
+    open ? supabase.from("promo_posts").select("id, platform, body, origin, code, ai_original").eq("experiment_id", exp.id).order("created_at") : Promise.resolve({ data: [] }),
     survey ? supabase.from("survey_invitations").select("status, sent_at, reminded_at, error, delivery_issue").eq("experiment_id", exp.id).limit(20000) : Promise.resolve({ data: [] }),
     open ? supabase.from("expandi_campaign_hooks").select("url, pushed_count, last_push_at").eq("experiment_id", exp.id).maybeSingle() : Promise.resolve({ data: null }),
     survey ? latestSurveyJob(exp.id) : Promise.resolve(null),

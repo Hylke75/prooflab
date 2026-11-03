@@ -265,4 +265,59 @@ d("golf A", () => {
     const n = await as(client, async (c) => (await c.query("update public.assumptions set primary_experiment_id = $2 where id = $1", [t4.assumption, t4.experiment])).rowCount);
     expect(n).toBe(0);
   });
+
+  it("punt 17: het AI-origineel blijft bewaard en onveranderd; een enquête-origineel hoort bij hetzelfde dossier", async () => {
+    const q = await as(owner, async (c) =>
+      (
+        await c.query(
+          "insert into public.research_questions (idea_id, position, question, done_criterion, origin, ai_original) values ($1, 5, 'Hoeveel bureaus?', 'Eén aantal', 'ai', $2) returning id",
+          [A.idea, "Hoeveel bureaus?\nEén aantal"],
+        )
+      ).rows[0].id as string,
+    );
+    await as(owner, (c) => c.query("update public.research_questions set question = 'Hoeveel eventbureaus in NL?', origin = 'manual', ai_original = 'vervalst' where id = $1", [q]));
+    const row = (await db.query("select question, ai_original from public.research_questions where id = $1", [q])).rows[0];
+    expect(row).toEqual({ question: "Hoeveel eventbureaus in NL?", ai_original: "Hoeveel bureaus?\nEén aantal" });
+
+    // AI-opzet van een enquête: alleen schrijvers maken hem, iedereen die meeleest ziet hem, niemand wijzigt hem.
+    const draft = await as(owner, async (c) => (await c.query("insert into public.ai_drafts (idea_id, kind, content) values ($1, 'survey', $2) returning id, created_by", [A.idea, JSON.stringify({ title: "AI" })])).rows[0]);
+    expect(draft.created_by).toBe(owner.id);
+    await expect(as(owner, (c) => c.query("update public.ai_drafts set content = '{}' where id = $1", [draft.id]))).rejects.toThrow(/permission denied/);
+    await expect(as(owner, (c) => c.query("delete from public.ai_drafts where id = $1", [draft.id]))).rejects.toThrow(/permission denied/);
+    expect((await db.query("select count(*)::int as n from public.ai_drafts where id = $1", [draft.id])).rows[0].n).toBe(1);
+    const viewer = await user(`klant7-${randomUUID()}@example.com`);
+    await as(owner, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_viewer')", [A.idea, viewer.email]));
+    await as(viewer, (c) => c.query("select public.claim_invitations()"));
+    expect((await as(viewer, (c) => c.query("select id from public.ai_drafts where id = $1", [draft.id]))).rowCount).toBe(1);
+    await expect(as(viewer, (c) => c.query("insert into public.ai_drafts (idea_id, kind, content) values ($1, 'survey', '{}')", [A.idea]))).rejects.toThrow(/row-level security/);
+    expect((await as(await user(`buiten3-${randomUUID()}@example.com`), (c) => c.query("select id from public.ai_drafts where id = $1", [draft.id]))).rowCount).toBe(0);
+
+    // Gekoppeld aan een test van hetzelfde dossier, en daarna vast.
+    const t = await testFor(owner, A.idea, "survey", { recruitment: "cold" });
+    await as(owner, (c) => c.query("update public.experiments set ai_draft_id = $2 where id = $1", [t.experiment, draft.id]));
+    expect((await db.query("select ai_draft_id from public.experiments where id = $1", [t.experiment])).rows[0].ai_draft_id).toBeNull();
+    const B = await newIdea(owner);
+    const foreign = await as(owner, async (c) => (await c.query("insert into public.ai_drafts (idea_id, kind, content) values ($1, 'survey', '{}') returning id", [B.idea])).rows[0].id);
+    const h = (await db.query("select hypothesis_id from public.experiments where id = $1", [t.experiment])).rows[0].hypothesis_id;
+    await expect(
+      as(owner, (c) => c.query("insert into public.experiments (idea_id, hypothesis_id, type, title, ai_draft_id) values ($1, $2, 'survey', 'Enquête', $3)", [A.idea, h, foreign])),
+    ).rejects.toThrow(/AI_DRAFT/);
+    const ok = await as(owner, async (c) => (await c.query("insert into public.experiments (idea_id, hypothesis_id, type, title, ai_draft_id) values ($1, $2, 'survey', 'Enquête', $3) returning ai_draft_id", [A.idea, h, draft.id])).rows[0]);
+    expect(ok.ai_draft_id).toBe(draft.id);
+  });
+
+  it("een dossier met hoofdtest, vergrendelde startkans en AI-origineel kan nog steeds worden verwijderd", async () => {
+    const D = await newIdea(owner);
+    const draft = await as(owner, async (c) => (await c.query("insert into public.ai_drafts (idea_id, kind, content) values ($1, 'survey', '{}') returning id", [D.idea])).rows[0].id as string);
+    const t = await testFor(owner, D.idea, "survey", { recruitment: "cold" });
+    await as(owner, async (c) => {
+      await c.query("update public.assumptions set primary_experiment_id = $2 where id = $1", [t.assumption, t.experiment]);
+      const o = (await c.query("insert into public.observations (idea_id, kind, summary) values ($1, 'opinion', 'x') returning id", [D.idea])).rows[0].id;
+      await c.query("insert into public.assumption_observations (assumption_id, observation_id, idea_id, relation) values ($1, $2, $3, 'supports')", [t.assumption, o, D.idea]);
+      const h = (await c.query("select hypothesis_id from public.experiments where id = $1", [t.experiment])).rows[0].hypothesis_id;
+      await c.query("insert into public.experiments (idea_id, hypothesis_id, type, title, ai_draft_id) values ($1, $2, 'survey', 'Enquête', $3)", [D.idea, h, draft]);
+    });
+    await as(owner, (c) => c.query("delete from public.ideas where id = $1", [D.idea]));
+    expect((await db.query("select count(*)::int as n from public.ideas where id = $1", [D.idea])).rows[0].n).toBe(0);
+  });
 });

@@ -281,7 +281,8 @@ function ProbabilityDetail({
   const rawBand = bandFromShift(prior, a.probability.shift);
   const band = { low: applyCap(rawBand.low, capMax), high: applyCap(rawBand.high, capMax) };
   const capped = !!cap && p < rawP;
-  const ignored = a.probability.ignored.synthetic + a.probability.ignored.rejected;
+  const unreviewed = a.probability.ignored.unreviewed ?? 0;
+  const ignored = a.probability.ignored.synthetic + a.probability.ignored.rejected + unreviewed;
   return (
     <div className="mt-12" style={{ background: "var(--color-surface-muted)", borderRadius: "var(--radius-inner)", padding: "12px 14px" }}>
       <div className="row between">
@@ -328,7 +329,9 @@ function ProbabilityDetail({
         <p className="tiny mt-8">
           Niet meegeteld: {a.probability.ignored.synthetic ? `${a.probability.ignored.synthetic} synthetische observatie(s)` : ""}
           {a.probability.ignored.synthetic && a.probability.ignored.rejected ? " en " : ""}
-          {a.probability.ignored.rejected ? `${a.probability.ignored.rejected} afgekeurde AI-codering(en)` : ""}.
+          {a.probability.ignored.rejected ? `${a.probability.ignored.rejected} afgekeurde AI-codering(en)` : ""}
+          {(a.probability.ignored.synthetic || a.probability.ignored.rejected) && unreviewed ? " en " : ""}
+          {unreviewed ? `${unreviewed} AI-codering(en) die nog op beoordeling wachten (tellen pas mee na akkoord)` : ""}.
         </p>
       )}
       <div className="row mt-8">

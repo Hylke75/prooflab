@@ -8,6 +8,7 @@
 --   5. Startkans van een aanname: onderbouwing bij een afwijking van 50%, vergrendeld bij het eerste bewijs,
 --      daarna alleen wijzigen met een reden (change_assumption_prior), elke wijziging in het auditspoor.
 --   11. Hoofdtest per aanname (assumptions.primary_experiment_id), aan te wijzen vóór de goedkeuring.
+--   17. AI-concepten: het AI-origineel van onderzoeksvragen, promoberichten en enquêtes (ai_drafts) blijft bewaard.
 --
 -- Bestaande dossiers houden hun methodeversie en rekenen dus niet anders.
 
@@ -281,3 +282,82 @@ create trigger assumptions_primary_guard before insert or update of primary_expe
   for each row execute function public.guard_assumption_primary();
 
 revoke execute on function public.guard_assumption_primary() from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 17. AI-concepten: het AI-origineel bewaren
+-- ---------------------------------------------------------------------------
+
+-- Bij AI-concepten blijft het origineel bewaard, zodat zichtbaar is wat de mens heeft aangepast
+-- (lib/domain/ai-draft.ts). Onderzoeksvragen en promoberichten krijgen het origineel als tekst bij het aanmaken;
+-- een AI-opzet voor een enquête wordt bij het voorstellen als ai_draft bewaard en bij het opslaan van de Test Card
+-- aan de test gekoppeld. Het origineel verandert nooit meer.
+alter table public.research_questions
+  add column if not exists ai_original text check (char_length(ai_original) <= 4000);
+alter table public.promo_posts
+  add column if not exists ai_original text check (char_length(ai_original) <= 4000);
+
+create table if not exists public.ai_drafts (
+  id uuid primary key default gen_random_uuid(),
+  idea_id uuid not null references public.ideas(id) on delete cascade,
+  kind text not null check (kind in ('survey')),
+  content jsonb not null,
+  created_by uuid default auth.uid() references auth.users(id),
+  created_at timestamptz not null default now()
+);
+create index if not exists ai_drafts_idea_fk on public.ai_drafts(idea_id);
+create index if not exists ai_drafts_created_by_fk on public.ai_drafts(created_by);
+alter table public.ai_drafts enable row level security;
+drop policy if exists ai_drafts_select on public.ai_drafts;
+create policy ai_drafts_select on public.ai_drafts for select to authenticated using (public.can_read_idea(idea_id));
+drop policy if exists ai_drafts_insert on public.ai_drafts;
+create policy ai_drafts_insert on public.ai_drafts for insert to authenticated with check (public.can_write_idea(idea_id));
+-- Geen update- of verwijderbeleid: een AI-origineel is onveranderlijk.
+revoke all on public.ai_drafts from public, anon, authenticated;
+grant select, insert on public.ai_drafts to authenticated;
+
+alter table public.experiments
+  add column if not exists ai_draft_id uuid references public.ai_drafts(id) on delete set null;
+create index if not exists experiments_ai_draft_fk on public.experiments(ai_draft_id);
+
+create or replace function public.stamp_ai_draft()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  new.created_by := auth.uid();
+  new.created_at := now();
+  return new;
+end $$;
+drop trigger if exists ai_drafts_stamp on public.ai_drafts;
+create trigger ai_drafts_stamp before insert on public.ai_drafts
+  for each row execute function public.stamp_ai_draft();
+
+-- Het AI-origineel wordt bij het aanmaken vastgelegd en daarna nooit meer gewijzigd. Een gekoppeld enquête-
+-- origineel hoort bij hetzelfde dossier.
+create or replace function public.keep_ai_original()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  if tg_table_name = 'experiments' then
+    if tg_op = 'UPDATE' then
+      -- Alleen als het origineel nog bestaat (bij het verwijderen van een dossier valt het weg).
+      if old.ai_draft_id is null or exists (select 1 from public.ai_drafts d where d.id = old.ai_draft_id) then
+        new.ai_draft_id := old.ai_draft_id;
+      end if;
+    elsif new.ai_draft_id is not null
+          and not exists (select 1 from public.ai_drafts d where d.id = new.ai_draft_id and d.idea_id = new.idea_id and d.kind = 'survey') then
+      raise exception 'AI_DRAFT: dit AI-concept hoort niet bij dit dossier' using errcode = 'P0001';
+    end if;
+  elsif tg_op = 'UPDATE' then
+    new.ai_original := old.ai_original;
+  end if;
+  return new;
+end $$;
+drop trigger if exists research_questions_ai_original on public.research_questions;
+create trigger research_questions_ai_original before update on public.research_questions
+  for each row execute function public.keep_ai_original();
+drop trigger if exists promo_posts_ai_original on public.promo_posts;
+create trigger promo_posts_ai_original before update on public.promo_posts
+  for each row execute function public.keep_ai_original();
+drop trigger if exists experiments_ai_draft on public.experiments;
+create trigger experiments_ai_draft before insert or update on public.experiments
+  for each row execute function public.keep_ai_original();
+
+revoke execute on function public.stamp_ai_draft(), public.keep_ai_original() from public, anon, authenticated;

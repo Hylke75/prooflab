@@ -107,6 +107,33 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_drafts: {
+        Row: {
+          id: string
+          idea_id: string
+          kind: string
+          content: Json
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          idea_id: string
+          kind: string
+          content: Json
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          idea_id?: string
+          kind?: string
+          content?: Json
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       promo_posts: {
         Row: {
           id: string
@@ -118,6 +145,7 @@ export type Database = {
           code: string
           created_by: string
           created_at: string
+          ai_original: string | null
         }
         Insert: {
           id?: string
@@ -129,6 +157,7 @@ export type Database = {
           code?: string
           created_by?: string
           created_at?: string
+          ai_original?: string | null
         }
         Update: {
           id?: string
@@ -140,6 +169,7 @@ export type Database = {
           code?: string
           created_by?: string
           created_at?: string
+          ai_original?: string | null
         }
         Relationships: []
       }
@@ -1253,6 +1283,7 @@ export type Database = {
           owner_id: string
           public_slug: string | null
           recruitment_group: string | null
+          ai_draft_id: string | null
           started_at: string | null
           state: string
           title: string
@@ -1274,6 +1305,7 @@ export type Database = {
           owner_id?: string
           public_slug?: string | null
           recruitment_group?: string | null
+          ai_draft_id?: string | null
           started_at?: string | null
           state?: string
           title: string
@@ -1295,6 +1327,7 @@ export type Database = {
           owner_id?: string
           public_slug?: string | null
           recruitment_group?: string | null
+          ai_draft_id?: string | null
           started_at?: string | null
           state?: string
           title?: string
@@ -2081,6 +2114,7 @@ export type Database = {
           origin: string
           position: number
           question: string
+          ai_original: string | null
           status: string
           suggested_sources: string | null
           why_it_matters: string | null
@@ -2097,6 +2131,7 @@ export type Database = {
           origin?: string
           position: number
           question: string
+          ai_original?: string | null
           status?: string
           suggested_sources?: string | null
           why_it_matters?: string | null
@@ -2113,6 +2148,7 @@ export type Database = {
           origin?: string
           position?: number
           question?: string
+          ai_original?: string | null
           status?: string
           suggested_sources?: string | null
           why_it_matters?: string | null

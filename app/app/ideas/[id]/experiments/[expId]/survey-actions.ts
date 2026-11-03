@@ -350,7 +350,8 @@ export async function generatePromo(ideaId: string, expId: string, raw: unknown)
     const codes = Object.fromEntries(platforms.map((k) => [k, newPostCode(k)])) as Record<PromoPlatform, string>;
     const links = Object.fromEntries(platforms.map((k) => [k, postLink(base[k], codes[k])])) as Record<PromoPlatform, string>;
 
-    let posts: { platform: PromoPlatform; body: string }[];
+    // ai: deze tekst komt van AI (en niet van het sjabloon dat invalt als AI voor een platform niets bruikbaars gaf).
+    let posts: { platform: PromoPlatform; body: string; ai?: boolean }[];
     let origin: "ai" | "template" = "template";
     let note: string | null = null;
     if (v.mode === "ai" && aiConfigured()) {
@@ -360,7 +361,9 @@ export async function generatePromo(ideaId: string, expId: string, raw: unknown)
         const fallback = templatePosts(input, links, platforms);
         posts = platforms.map((k) => {
           const body = byPlatform.get(k);
-          return body && body.trim().length >= PROMO_MIN ? { platform: k, body: finalizePost(k, body, links[k], { includeLink: input.dmIncludesLink }) } : fallback.find((f) => f.platform === k)!;
+          return body && body.trim().length >= PROMO_MIN
+            ? { platform: k, body: finalizePost(k, body, links[k], { includeLink: input.dmIncludesLink }), ai: true }
+            : fallback.find((f) => f.platform === k)!;
         });
         origin = "ai";
       } catch (e) {
@@ -376,7 +379,20 @@ export async function generatePromo(ideaId: string, expId: string, raw: unknown)
     if (delError) return fail("De vorige berichten konden niet worden vervangen.");
     const { error } = await supabase
       .from("promo_posts")
-      .insert(posts.filter((p) => p.body.length >= PROMO_MIN).map((p) => ({ experiment_id: expId, idea_id: ideaId, platform: p.platform, code: codes[p.platform], body: p.body.slice(0, 3000), origin })));
+      .insert(
+        posts
+          .filter((p) => p.body.length >= PROMO_MIN)
+          .map((p) => ({
+            experiment_id: expId,
+            idea_id: ideaId,
+            platform: p.platform,
+            code: codes[p.platform],
+            body: p.body.slice(0, 3000),
+            origin,
+            // Het AI-origineel blijft bewaard (golf A, punt 17); sjabloonteksten zijn geen AI-concept.
+            ai_original: p.ai ? p.body.slice(0, 3000) : null,
+          })),
+      );
     if (error) return fail("De berichten konden niet worden opgeslagen.");
     refresh(ideaId, expId);
     return { ok: note ?? (origin === "ai" ? "AI-concepten gemaakt. Lees ze na voor je ze plaatst." : "Berichten gemaakt.") };

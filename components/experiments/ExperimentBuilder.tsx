@@ -113,6 +113,8 @@ export function ExperimentBuilder({
   const [channels, setChannels] = useState<string[]>(["linkedin", "network"]);
   // Wervingsgroep (golf A, punt 13): verplicht bij enquête-, landing- en prijstests, zonder vooraf gekozen waarde.
   const [recruitment, setRecruitment] = useState<string>("");
+  // Het bewaarde AI-origineel van de enquête (golf A, punt 17), zodat zichtbaar blijft wat de mens aanpaste.
+  const [surveyDraftId, setSurveyDraftId] = useState<string | null>(null);
   const recruitmentRequired = (RECRUITMENT_REQUIRED_TYPES as readonly string[]).includes(type);
   const [reach, setReach] = useState("");
   const [guide, setGuide] = useState(NEUTRAL_INTERVIEW_GUIDE.join("\n"));
@@ -366,6 +368,7 @@ export function ExperimentBuilder({
           {type === "survey" ? (
             <>
               <input type="hidden" name="survey_config" value={JSON.stringify(survey)} />
+              {surveyDraftId && <input type="hidden" name="survey_ai_draft_id" value={surveyDraftId} />}
               <SurveyEditor
                 value={survey}
                 onChange={updateSurvey}
@@ -374,6 +377,7 @@ export function ExperimentBuilder({
                 targetGroup={card.target_group}
                 aiConnected={aiConnected}
                 draftAction={surveyDraftAction}
+                onDraftId={setSurveyDraftId}
               />
             </>
           ) : type === "interview" ? (

@@ -193,6 +193,8 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       channels: channels.map((c) => ({ channel: c, expected_reach: v.expected_reach ? Math.round(v.expected_reach / channels.length) : null })),
       cost_estimate_eur: v.cost_estimate_eur ?? 0,
       recruitment_group: v.recruitment_group ?? null,
+      // Het AI-origineel van de enquête (de database controleert dat het bij dit dossier hoort).
+      ai_draft_id: v.type === "survey" && typeof raw.survey_ai_draft_id === "string" && /^[0-9a-f-]{36}$/i.test(raw.survey_ai_draft_id) ? raw.survey_ai_draft_id : null,
     })
     .select("id")
     .single();
@@ -600,7 +602,7 @@ export async function proposeCopyVariants(ideaId: string, input: z.input<typeof 
 // Surveys: the AI coach's first draft and open answers as customer signals
 // ---------------------------------------------------------------------------
 
-export type SurveyDraftState = { error: string | null; draft: DraftResult | null };
+export type SurveyDraftState = { error: string | null; draft: DraftResult | null; draftId?: string | null };
 
 const DraftInput = z.object({ assumption_id: z.string().uuid(), target_group: text(300).optional() });
 
@@ -622,7 +624,11 @@ export async function draftSurveyWithCoach(ideaId: string, input: z.input<typeof
     const res = await runAi(ideaId, "survey_draft", (p) =>
       draftSurvey({ idea: ideaContext(idea), assumption: a.statement, audience, decisionQuestion: idea.decision_question, dossier }, p),
     );
-    return { error: null, draft: sanitiseDraft(res.data, ctx) };
+    const draft = sanitiseDraft(res.data, ctx);
+    // Het AI-origineel blijft bewaard (golf A, punt 17): na het opslaan van de Test Card is zichtbaar wat de mens
+    // eraan veranderde. Lukt bewaren niet, dan werkt de opzet gewoon, alleen zonder vergelijking.
+    const { data: saved } = await supabase.from("ai_drafts").insert({ idea_id: ideaId, kind: "survey", content: draft.config as unknown as Json }).select("id").single();
+    return { error: null, draft, draftId: saved?.id ?? null };
   } catch (e) {
     if (e instanceof AiBudgetError) return { error: null, draft: templateDraft(ctx, `${e.message} Daarom staat hieronder het sjabloon van ProofLab, geen AI-opzet.`) };
     return { error: null, draft: templateDraft(ctx, `${aiErrorMessage(e, "De coach kon geen opzet maken.")} Daarom staat hieronder het sjabloon van ProofLab, geen AI-opzet.`) };
