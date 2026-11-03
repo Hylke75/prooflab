@@ -423,6 +423,7 @@ d("row level security and integrity rules", () => {
     // Forecasts are never rewritten, and the outcome definition is fixed once forecasts exist.
     await expect(as(alice, (c) => c.query("update public.forecasts set probability = 0.9 where idea_id = $1", [P.idea]))).rejects.toThrow(/permission denied/);
     await expect(as(alice, (c) => c.query("update public.ideas set outcome_target = 5 where id = $1", [P.idea]))).rejects.toThrow(/OUTCOME_LOCKED/);
+    await expect(as(alice, (c) => c.query("update public.ideas set outcome_due = current_date + 400 where id = $1", [P.idea]))).rejects.toThrow(/OUTCOME_LOCKED/);
     await as(alice, (c) => c.query("insert into public.idea_outcomes (idea_id, achieved, actual_value, evidence) values ($1, 'no', 4, 'Vier betalende klanten na zes maanden')", [P.idea]));
     await expect(
       as(alice, (c) => c.query("insert into public.forecasts (idea_id, moment, forecaster_kind, forecaster_id, probability, rationale) values ($1, 'decision', 'consultant', $2, 0.5, 'Te laat')", [P.idea, alice.id])),

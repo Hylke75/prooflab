@@ -155,8 +155,10 @@ create trigger forecasts_guard before insert on public.forecasts
 create or replace function public.guard_outcome_definition()
 returns trigger language plpgsql security definer set search_path = '' as $$
 begin
-  if (new.outcome_statement, new.outcome_metric, new.outcome_target, new.outcome_due)
-     is distinct from (old.outcome_statement, old.outcome_metric, old.outcome_target, old.outcome_due)
+  -- The due date (six months after the decision) may be filled in once, when the decision is taken.
+  if ((new.outcome_statement, new.outcome_metric, new.outcome_target)
+      is distinct from (old.outcome_statement, old.outcome_metric, old.outcome_target)
+      or (old.outcome_due is not null and new.outcome_due is distinct from old.outcome_due))
      and exists (select 1 from public.forecasts f where f.idea_id = new.id) then
     raise exception 'OUTCOME_LOCKED: de uitkomstdefinitie ligt vast zodra er een voorspelling is' using errcode = 'P0001';
   end if;
