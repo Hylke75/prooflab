@@ -25,6 +25,8 @@ import { DMU_ROLES, EXPERIMENT_STATES, EXPERIMENT_TYPES, OBSERVATION_KINDS, type
 import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, reviewObservation, setPrimaryTest, transitionExperiment } from "../actions";
 import { canDesignatePrimary, TEST_ROLES, testRole } from "@/lib/domain/primary-test";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
+import { assumptionKind, assumptionKindLabel, metricFitsAssumption } from "@/lib/domain/assumption-kind";
+import { belowMinSample, END_BELOW_SAMPLE_CONFIRM, END_REASON_MAX, END_REASON_MIN, thresholdBlock } from "@/lib/domain/experiment-gates";
 
 export const metadata: Metadata = { title: "Experiment" };
 
@@ -32,7 +34,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
   const { id, expId } = await params;
   const { idea, canWrite } = await getIdea(id);
   const supabase = await supabaseServer();
-  const { data: exp } = await supabase.from("experiments").select("*, hypotheses(*, assumptions(statement, category))").eq("id", expId).eq("idea_id", id).maybeSingle();
+  const { data: exp } = await supabase.from("experiments").select("*, hypotheses(*, assumptions(statement, category, kind))").eq("id", expId).eq("idea_id", id).maybeSingle();
   if (!exp || !exp.hypotheses) notFound();
   const h = exp.hypotheses;
   const type = exp.type as ExperimentType;
@@ -74,6 +76,21 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
   const publicUrl = exp.public_slug ? `${env.appUrl}/t/${exp.public_slug}` : null;
   const running = state === "live" || state === "paused";
   const v = m.verdict;
+  // B0 punt 3: past de maatstaf bij de soort aanname? Zo niet, dan kan de Test Card niet ter review of goedgekeurd.
+  const kind = h.assumptions ? assumptionKind(h.assumptions) : null;
+  const fit = kind ? metricFitsAssumption(kind, { type, metric_label: h.metric_label, metric_numerator: h.metric_numerator, decision_rule: h.decision_rule }) : { ok: true };
+  // B0 punt 6: en meldt ProofLab "drempel niet haalbaar", dan evenmin. De server dwingt beide af.
+  const approvalBlocks = [fit.ok ? null : (fit.reason ?? "De maatstaf past niet bij de aanname."), thresholdBlock(h)].filter((x): x is string => !!x);
+  const blocked = approvalBlocks.length > 0;
+  const blockNote = (prefix: string) =>
+    blocked ? (
+      <div className="form-error" id="approval-block" role="status">
+        <p style={{ margin: 0 }}>{prefix}</p>
+        <ul style={{ margin: "6px 0 0 18px", padding: 0, fontWeight: 400 }}>{approvalBlocks.map((b) => <li key={b}>{b}</li>)}</ul>
+      </div>
+    ) : null;
+  // B0 punt 6: afronden onder de minimale steekproef vraagt een reden en een bevestiging.
+  const endBelowSample = belowMinSample(m.n, h.min_sample);
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Experimenten", exp.title]} coach="experiments" ideaId={id}>
@@ -149,6 +166,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
               <span className="tiny">Alleen de hoofdtest beslist over de aanname. Na goedkeuring ligt deze keuze vast.</span>
             </ActionForm>
           )}
+          {kind && <div className="data-row"><span>Soort aanname</span><strong style={{ textAlign: "right" }}>{assumptionKindLabel(kind)}</strong></div>}
           <div className="data-row"><span>Wij denken dat</span><strong style={{ textAlign: "right" }}>{h.we_believe}</strong></div>
           <div className="data-row"><span>Bij</span><strong style={{ textAlign: "right" }}>{h.target_group}</strong></div>
           <div className="data-row"><span>Dat toetsen we door</span><strong style={{ textAlign: "right" }}>{h.test_method}</strong></div>
@@ -198,13 +216,15 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           {canWrite && state === "draft" && (
             <>
               <p className="sub">Controleer de Test Card. Daarna bied je het experiment aan voor review.</p>
-              <ActionForm action={transitionExperiment.bind(null, id, expId, "ready_for_review")} submitLabel="Ter review aanbieden" footer={<button formAction={deleteDraft.bind(null, id, expId)} className="text-link" style={{ color: "var(--color-risk-text)" }}>Concept verwijderen</button>}>
+              {blockNote("Ter review aanbieden kan niet: deze Test Card kan zo niet worden goedgekeurd. Maak een nieuwe Test Card.")}
+              <ActionForm action={transitionExperiment.bind(null, id, expId, "ready_for_review")} submitLabel="Ter review aanbieden" disabled={blocked} describedBy={blocked ? "approval-block" : undefined} footer={<button formAction={deleteDraft.bind(null, id, expId)} className="text-link" style={{ color: "var(--color-risk-text)" }}>Concept verwijderen</button>}>
                 <span />
               </ActionForm>
             </>
           )}
           {canWrite && state === "ready_for_review" && (
-            <ActionForm action={transitionExperiment.bind(null, id, expId, "approved")} submitLabel="Akkoord: keur goed en vergrendel">
+            <ActionForm action={transitionExperiment.bind(null, id, expId, "approved")} submitLabel="Akkoord: keur goed en vergrendel" disabled={blocked} describedBy={blocked ? "approval-block" : undefined}>
+              {blockNote("Goedkeuren kan niet:")}
               <p className="sub">Goedkeuren vergrendelt de hypothese en drempels. Bevestig:</p>
               {type === "survey" ? (
                 <>
@@ -238,7 +258,25 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           {canWrite && running && (
             <div className="row">
               <ActionForm action={transitionExperiment.bind(null, id, expId, state === "live" ? "paused" : "live")} submitLabel={state === "live" ? "Pauzeer" : "Hervat"} submitClass="btn white sm"><span /></ActionForm>
-              <ActionForm action={transitionExperiment.bind(null, id, expId, "ended")} submitLabel="Rond af" submitClass="btn dark sm"><span /></ActionForm>
+              {!endBelowSample && <ActionForm action={transitionExperiment.bind(null, id, expId, "ended")} submitLabel="Rond af" submitClass="btn dark sm"><span /></ActionForm>}
+            </div>
+          )}
+          {canWrite && running && endBelowSample && (
+            <ActionForm action={transitionExperiment.bind(null, id, expId, "ended")} submitLabel="Rond af onder de minimale steekproef" submitClass="btn dark sm" className="mt-12">
+              <div className="note" style={{ marginTop: 0 }}>
+                Er zijn {m.n} van minimaal {h.min_sample} deelnemers. Afronden kan, maar de uitkomst telt dan niet mee in kans en rangorde.
+              </div>
+              <div className="form-line">
+                <label htmlFor="end-reason">Waarom rond je nu af?</label>
+                <textarea className="field" id="end-reason" name="end_reason" rows={3} required minLength={END_REASON_MIN} maxLength={END_REASON_MAX} aria-describedby="end-reason-hint" />
+                <p className="field-hint" id="end-reason-hint">Minstens {END_REASON_MIN} tekens. De reden wordt bewaard bij het experiment en komt op de Learning Card.</p>
+              </div>
+              <label className="check-row"><input type="checkbox" name="confirm_below_sample" required /> {END_BELOW_SAMPLE_CONFIRM}</label>
+            </ActionForm>
+          )}
+          {exp.end_reason && (
+            <div className="note" style={{ marginTop: 0 }}>
+              <strong>Afgerond onder de minimale steekproef.</strong> De uitkomst telt niet mee in kans en rangorde. Reden: {exp.end_reason}
             </div>
           )}
           {canWrite && state === "ended" && (cards ?? []).length === 0 && (

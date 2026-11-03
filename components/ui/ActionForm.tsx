@@ -18,6 +18,8 @@ export function ActionForm({
   resetOnSuccess = false,
   submitClass = "btn primary",
   footer,
+  disabled = false,
+  describedBy,
 }: {
   action: (state: FormState, form: FormData) => Promise<FormState>;
   children: React.ReactNode;
@@ -27,6 +29,9 @@ export function ActionForm({
   resetOnSuccess?: boolean;
   submitClass?: string;
   footer?: React.ReactNode;
+  // Nooit stil uitgeschakeld: wie disabled zet, toont de reden ernaast en verwijst ernaar met describedBy.
+  disabled?: boolean;
+  describedBy?: string;
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(action, { error: null, ok: null });
   const ref = useRef<HTMLFormElement>(null);
@@ -45,7 +50,7 @@ export function ActionForm({
       )}
       {children}
       <div className="row mt-12">
-        <button className={submitClass} disabled={pending}>{pending ? pendingLabel : submitLabel}</button>
+        <button className={submitClass} disabled={pending || disabled} aria-describedby={describedBy}>{pending ? pendingLabel : submitLabel}</button>
         {footer}
       </div>
       <SavingOverlay active={pending} label={pendingLabel} />

@@ -29,6 +29,8 @@ export type AssumptionWithEvidence = {
   priorLocked: boolean;
   // Golf A, punt 11: de vooraf aangewezen hoofdtest (experiment-id) of null.
   primaryExperimentId: string | null;
+  // Fase B0: vastgelegde soort (markt, prijs, gedrag, technisch) of null; zie lib/domain/assumption-kind.ts.
+  kind?: string | null;
 };
 
 type ObsLink = {
@@ -170,6 +172,7 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
       priorRationale: a.prior_rationale ?? null,
       priorLocked: !!a.prior_locked_at,
       primaryExperimentId: a.primary_experiment_id ?? null,
+      kind: a.kind ?? null,
     };
   });
 }
