@@ -2221,6 +2221,9 @@ span.lp-source {
 }
 
 .lp-outcome div span {
+  display: block;
+  margin-top: 2px;
+  line-height: 1.45;
   font-size: 13px;
   color: var(--muted);
 }
