@@ -1,17 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { auditGuide, auditQuestion, auditTranscript, guideSummary } from "@/lib/domain/interview-audit";
 import { codingAcceptance, codingIsProposalOnly, supportAgreement } from "@/lib/domain/ai-quality";
-import {
-  claimStatusWithSupport,
-  encodeOverrideNote,
-  isLiveMissing,
-  keepAfterSupportCheck,
-  parseOverrideNote,
-  parseRecheckNote,
-  recheckNote,
-  withRecheckNote,
-  type EvidenceWithSupport,
-} from "@/lib/domain/support";
+import { claimStatusWithSupport, keepAfterSupportCheck, type EvidenceWithSupport } from "@/lib/domain/support";
 import { isSignalSource, painAsAssumption, topPains, verifySignalGroups, type SignalExcerpt } from "@/lib/domain/customer-signals";
 import { priceOnPage, recheckChanges, recheckDue, recheckQuotes } from "@/lib/domain/recheck";
 import { honestyWarnings, prepareVariants } from "@/lib/domain/copy-honesty";
@@ -105,14 +95,14 @@ describe("transcript audit", () => {
 });
 
 describe("AI quality measures", () => {
-  const row = (ai: string, consultant: string) => ({ support_check: consultant, support_checked_by: "consultant", support_note: encodeOverrideNote(ai as "supports", "") });
+  const row = (ai: string, consultant: string) => ({ support_check: consultant, support_checked_by: "consultant", ai_support_check: ai });
 
   it("measures support agreement only where both AI and consultant judged", () => {
     const rows = [
       ...Array.from({ length: 9 }, () => row("supports", "supports")),
       row("supports", "not_supported"),
-      { support_check: "supports", support_checked_by: "consultant", support_note: "eigen controle" },
-      { support_check: "partial", support_checked_by: "ai", support_note: "AI-reden" },
+      { support_check: "supports", support_checked_by: "consultant", ai_support_check: null },
+      { support_check: "partial", support_checked_by: "ai", ai_support_check: "partial" },
     ];
     const m = supportAgreement(rows);
     expect(m.reviewed).toBe(10);
@@ -142,13 +132,6 @@ describe("AI quality measures", () => {
     expect(few.message).toContain("AI-codering blijft een voorstel");
   });
 
-  it("keeps the AI's verdict in the override note", () => {
-    const note = encodeOverrideNote("partial", "Citaat gaat over 2019");
-    expect(parseOverrideNote(note)).toEqual({ aiVerdict: "partial", note: "Citaat gaat over 2019" });
-    expect(parseOverrideNote(encodeOverrideNote("partial", note)).note).toBe("Citaat gaat over 2019");
-    expect(parseOverrideNote("gewone notitie")).toEqual({ aiVerdict: null, note: "gewone notitie" });
-    expect(encodeOverrideNote(null, "")).toBe("");
-  });
 });
 
 const ev = (o: Partial<EvidenceWithSupport>): EvidenceWithSupport => ({
@@ -219,18 +202,6 @@ describe("competitor recheck", () => {
     expect(priceOnPage(null, page)).toBeNull();
   });
 
-  it("marks missing quotes on the source note and keeps the original note", () => {
-    const line = recheckNote("2026-11-03", 2, ["Basis-pakket kost € 39 per maand"]);
-    const note = withRecheckNote("Gevonden via live webzoekopdracht.", line);
-    expect(note.split("\n")[1]).toBe("Gevonden via live webzoekopdracht.");
-    expect(parseRecheckNote(note)?.date).toBe("2026-11-03");
-    expect(isLiveMissing(note, "basis-pakket kost €  39 per maand")).toBe(true);
-    expect(isLiveMissing(note, "Basis-pakket kost € 49 per maand")).toBe(false);
-    // A newer recheck replaces the older line.
-    const again = withRecheckNote(note, recheckNote("2026-12-03", 2, []));
-    expect(again.split("\n")).toHaveLength(2);
-    expect(isLiveMissing(again, "Basis-pakket kost € 39 per maand")).toBe(false);
-  });
 });
 
 describe("customer signals", () => {

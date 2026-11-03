@@ -553,6 +553,9 @@ export type Database = {
       }
       claim_sources: {
         Row: {
+          ai_support_check: string | null
+          live_found: boolean | null
+          live_checked_at: string | null
           support_check: string
           support_checked_by: string | null
           support_note: string | null
@@ -567,6 +570,9 @@ export type Database = {
           stance: string
         }
         Insert: {
+          ai_support_check?: string | null
+          live_found?: boolean | null
+          live_checked_at?: string | null
           support_check?: string
           support_checked_by?: string | null
           support_note?: string | null
@@ -581,6 +587,9 @@ export type Database = {
           stance?: string
         }
         Update: {
+          ai_support_check?: string | null
+          live_found?: boolean | null
+          live_checked_at?: string | null
           support_check?: string
           support_checked_by?: string | null
           support_note?: string | null
@@ -1955,6 +1964,8 @@ export type Database = {
       }
       sources: {
         Row: {
+          live_checked_at: string | null
+          live_error: string | null
           access_note: string | null
           content_hash: string | null
           created_at: string
@@ -1972,6 +1983,8 @@ export type Database = {
           url: string | null
         }
         Insert: {
+          live_checked_at?: string | null
+          live_error?: string | null
           access_note?: string | null
           content_hash?: string | null
           created_at?: string
@@ -1989,6 +2002,8 @@ export type Database = {
           url?: string | null
         }
         Update: {
+          live_checked_at?: string | null
+          live_error?: string | null
           access_note?: string | null
           content_hash?: string | null
           created_at?: string

@@ -215,7 +215,16 @@ alter table public.claim_sources
   add column if not exists support_check text not null default 'unchecked'
     check (support_check in ('supports', 'partial', 'not_supported', 'unchecked')),
   add column if not exists support_checked_by text check (support_checked_by in ('ai', 'consultant')),
-  add column if not exists support_note text check (char_length(support_note) <= 600);
+  add column if not exists support_note text check (char_length(support_note) <= 600),
+  -- What the AI said, kept next to the consultant's verdict so their agreement can be measured.
+  add column if not exists ai_support_check text check (ai_support_check in ('supports', 'partial', 'not_supported')),
+  -- Result of the last live recheck of this quote on its page (null = never rechecked).
+  add column if not exists live_found boolean,
+  add column if not exists live_checked_at timestamptz;
+
+alter table public.sources
+  add column if not exists live_checked_at timestamptz,
+  add column if not exists live_error text check (char_length(live_error) <= 200);
 
 alter table public.observations
   add column if not exists review_status text check (review_status in ('accepted', 'rejected')),

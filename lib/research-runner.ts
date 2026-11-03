@@ -353,6 +353,7 @@ export async function storeExtractedClaims(
       stance,
       quote_check: check,
       support_check: support.verdict,
+      ai_support_check: support.verdict === "unchecked" ? null : support.verdict,
       support_checked_by: support.verdict === "unchecked" ? null : "ai",
       support_note: support.reason,
     });

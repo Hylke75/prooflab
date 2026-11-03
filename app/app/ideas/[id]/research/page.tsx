@@ -14,7 +14,7 @@ import { AiQualityCard } from "@/components/research/AiQualityCard";
 import { CustomerSignals, type SignalView } from "@/components/research/CustomerSignals";
 import { loadAiQuality } from "@/lib/ai-quality";
 import { isSignalSource, parseSignalQuotes, type SignalKind } from "@/lib/domain/customer-signals";
-import { SUPPORT_LABEL, isLiveMissing, isSupportCheck, parseRecheckNote, type SupportCheck } from "@/lib/domain/support";
+import { SUPPORT_LABEL, isSupportCheck, type SupportCheck } from "@/lib/domain/support";
 import { UnitEconomicsPanel } from "@/components/research/UnitEconomicsPanel";
 import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
@@ -43,11 +43,11 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     supabase.from("research_questions").select("*").eq("idea_id", id).order("position"),
     supabase
       .from("claims")
-      .select("*, claim_sources(id, source_id, quote, stance, quote_check, support_check, support_checked_by, support_note, sources(title, url, publisher, published_on, source_type, domain, access_note))")
+      .select("*, claim_sources(id, source_id, quote, stance, quote_check, support_check, support_checked_by, support_note, live_found, live_checked_at, sources(title, url, publisher, published_on, source_type, domain, access_note))")
       .eq("idea_id", id)
       .order("created_at"),
     supabase.from("sources").select("*, source_excerpts(id, text, location)").eq("idea_id", id).order("created_at", { ascending: false }),
-    supabase.from("competitors").select("*, claims(statement, status, claim_sources(quote, sources(url, access_note)))").eq("idea_id", id).order("created_at"),
+    supabase.from("competitors").select("*, claims(statement, status, claim_sources(quote, live_found, live_checked_at, sources(url, live_error)))").eq("idea_id", id).order("created_at"),
     supabase.from("segments").select("*").eq("idea_id", id).order("created_at"),
     supabase.from("sizing_scenarios").select("*, sizing_factors(*)").eq("idea_id", id),
     supabase.from("unit_economics").select("*").eq("idea_id", id).maybeSingle(),
@@ -86,6 +86,8 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
       support_check: e.support_check,
       support_checked_by: e.support_checked_by,
       support_note: e.support_note,
+      live_found: e.live_found,
+      live_checked_at: e.live_checked_at,
       quote: e.quote,
       stance: e.stance,
       quote_check: e.quote_check,
@@ -99,10 +101,11 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     kind: c.kind as CompetitorKind,
     claim: c.claims ? { statement: c.claims.statement, status: c.claims.status } : null,
     checks: [...new Map((c.claims?.claim_sources ?? []).flatMap((l) => {
-      const mark = parseRecheckNote(l.sources?.access_note);
-      if (!l.sources?.url || !mark) return [];
-      const missing = isLiveMissing(l.sources.access_note, l.quote);
-      return [[l.sources.url, { url: l.sources.url, note: `hercontrole ${new Date(mark.date).toLocaleDateString("nl-NL")}: ${missing ? "citaat niet meer gevonden op de pagina" : mark.text}`, missing }] as const];
+      if (!l.sources?.url || !l.live_checked_at) return [];
+      const missing = l.live_found === false;
+      const when = new Date(l.live_checked_at).toLocaleDateString("nl-NL");
+      const text = l.sources.live_error ? `pagina niet bereikbaar (${l.sources.live_error})` : missing ? "citaat niet meer gevonden op de pagina" : "citaat teruggevonden";
+      return [[l.sources.url, { url: l.sources.url, note: `hercontrole ${when}: ${text}`, missing }] as const];
     })).values()],
   }));
   const signals: SignalView[] = (signalsRes.data ?? []).map((s) => ({ id: s.id, kind: s.kind as SignalKind, label: s.label, mentions: s.mentions, origin: s.origin, quotes: parseSignalQuotes(s.quotes) }));
@@ -457,7 +460,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
             {sources.map((s) => {
               const used = claims.filter((c) => c.evidence.some((e) => e.source_id === s.id)).length;
               const sc = supportCounts(s.id);
-              const recheck = parseRecheckNote(s.access_note);
+              const missingHere = claims.some((c) => c.evidence.some((e) => e.source_id === s.id && e.live_found === false));
               return (
                 <div className="source-item" key={s.id}>
                   <span className="source-icon" aria-hidden="true">{s.source_type === "official_statistic" ? "▣" : s.url ? "↗" : "◉"}</span>
@@ -475,7 +478,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                         {(Object.keys(sc) as SupportCheck[]).filter((k) => sc[k] > 0).map((k) => (
                           <span key={k} className={`pill ${SUPPORT_LABEL[k].pill}`} title={SUPPORT_LABEL[k].explain}>{sc[k]}× {SUPPORT_LABEL[k].label.toLowerCase()}</span>
                         ))}
-                        {recheck && recheck.missing.length > 0 && <span className="pill coral">citaat niet meer op de pagina</span>}
+                        {missingHere && <span className="pill coral">citaat niet meer op de pagina</span>}
                       </p>
                     )}
                     <details>

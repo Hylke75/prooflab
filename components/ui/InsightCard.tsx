@@ -1,4 +1,4 @@
-import { SUPPORT_LABEL, isLiveMissing, isSupportCheck, parseOverrideNote, parseRecheckNote } from "@/lib/domain/support";
+import { SUPPORT_LABEL, isSupportCheck } from "@/lib/domain/support";
 import { CLAIM_STATUS, EVIDENCE_TYPES, SOURCE_TYPES, type ClaimStatus, type EvidenceType, type SourceType } from "@/lib/domain/labels";
 
 export type ClaimView = {
@@ -20,6 +20,8 @@ export type ClaimView = {
     support_check?: string;
     support_checked_by?: string | null;
     support_note?: string | null;
+    live_found?: boolean | null;
+    live_checked_at?: string | null;
     quote: string;
     stance: string;
     quote_check: string;
@@ -108,21 +110,21 @@ export function InsightCard({
 
 // Second check: does the literal quote carry the claim? AI verdicts are labelled as proposals.
 export function SupportLine({ e }: { e: ClaimView["evidence"][number] }) {
-  const recheck = parseRecheckNote(e.source?.access_note);
-  if (!e.support_check && !recheck) return null;
+  const rechecked = e.live_checked_at != null && e.live_found != null;
+  if (!e.support_check && !rechecked) return null;
   const sc = isSupportCheck(e.support_check) ? e.support_check : "unchecked";
   const s = SUPPORT_LABEL[sc];
-  const { note } = parseOverrideNote(e.support_note);
+  const note = e.support_note;
   return (
     <div className="tiny" style={{ marginTop: 4, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
       <span className={`pill ${s.pill}`} title={s.explain}>{s.label}</span>
       {e.support_checked_by === "ai" && <span>AI-voorstel, nog niet door een consultant bevestigd</span>}
       {e.support_checked_by === "consultant" && <span>Beoordeeld door consultant</span>}
       {note && <span>· {note}</span>}
-      {recheck && (
+      {rechecked && (
         <span>
-          · Hercontrole {new Date(recheck.date).toLocaleDateString("nl-NL")}:{" "}
-          {isLiveMissing(e.source?.access_note, e.quote) ? <strong>citaat niet meer gevonden op de pagina</strong> : recheck.text}
+          · Hercontrole {new Date(e.live_checked_at!).toLocaleDateString("nl-NL")}:{" "}
+          {e.live_found ? "citaat teruggevonden op de live pagina" : <strong>citaat niet meer gevonden op de pagina</strong>}
         </span>
       )}
     </div>

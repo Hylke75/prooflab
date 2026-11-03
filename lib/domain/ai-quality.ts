@@ -1,7 +1,7 @@
 // How good is the AI at its own tasks (research chapter 7.9)? Each measure compares AI output with
 // what a consultant decided. Below the threshold, or with too few reviews, AI stays a proposal.
 
-import { parseOverrideNote, type SupportCheck } from "./support";
+import type { SupportCheck } from "./support";
 
 export const SUPPORT_AGREEMENT_THRESHOLD = 0.9;
 export const CODING_ACCEPTANCE_THRESHOLD = 0.7;
@@ -27,12 +27,12 @@ const pct = (x: number) => `${Math.round(x * 100)}%`;
 
 // Support check: of the claim sources where a consultant gave a verdict after the AI did, how often
 // did they agree? Rows without an AI verdict (manual checks) do not count.
-export function supportAgreement(rows: { support_check: SupportCheck | string; support_checked_by: string | null; support_note: string | null }[]): QualityMeasure {
+export function supportAgreement(rows: { support_check: SupportCheck | string; support_checked_by: string | null; ai_support_check: string | null }[]): QualityMeasure {
   let agreed = 0;
   let reviewed = 0;
   for (const r of rows) {
     if (r.support_checked_by !== "consultant") continue;
-    const { aiVerdict } = parseOverrideNote(r.support_note);
+    const aiVerdict = r.ai_support_check;
     if (!aiVerdict) continue;
     reviewed++;
     if (aiVerdict === r.support_check) agreed++;

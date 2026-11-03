@@ -10,7 +10,7 @@ import { checkQuote, normalizeText, numericFromInput, registrableDomain, valueIn
 import { aiConfigured, env } from "@/lib/env";
 import { analyzeSignals, planResearch } from "@/lib/ai/research";
 import { aiSupportCheck } from "@/lib/research-runner";
-import { encodeOverrideNote, isSupportCheck, parseOverrideNote, recheckNote, withRecheckNote, type SupportCheck } from "@/lib/domain/support";
+import { isSupportCheck } from "@/lib/domain/support";
 import { priceOnPage, recheckChanges, recheckQuotes, type CompetitorRecheck, type PageRecheck } from "@/lib/domain/recheck";
 import { isSignalSource, painAsAssumption, verifySignalGroups, type SignalExcerpt } from "@/lib/domain/customer-signals";
 import { ideaContext } from "@/lib/idea-context";
@@ -473,7 +473,7 @@ export async function checkClaimSupport(ideaId: string, claimSourceId: string, _
   if (res.verdict === "unchecked") return { error: "De AI-steuncontrole is niet gelukt. Beoordeel het citaat zelf." };
   await supabase
     .from("claim_sources")
-    .update({ support_check: res.verdict, support_checked_by: "ai", support_note: res.reason })
+    .update({ support_check: res.verdict, ai_support_check: res.verdict, support_checked_by: "ai", support_note: res.reason })
     .eq("id", claimSourceId)
     .eq("idea_id", ideaId);
   const r = await recomputeClaim(link.claim_id);
@@ -490,17 +490,15 @@ export async function overrideSupport(ideaId: string, claimSourceId: string, _: 
   const supabase = await supabaseServer();
   const { data: link } = await supabase
     .from("claim_sources")
-    .select("id, claim_id, support_check, support_checked_by, support_note")
+    .select("id, claim_id")
     .eq("id", claimSourceId)
     .eq("idea_id", ideaId)
     .single();
   if (!link) return { error: "Bronkoppeling niet gevonden." };
-  // Keep what the AI said, so agreement between consultant and AI can be measured (7.9).
-  const aiVerdict: SupportCheck | null =
-    link.support_checked_by === "ai" ? (link.support_check as SupportCheck) : link.support_checked_by === "consultant" ? parseOverrideNote(link.support_note).aiVerdict : null;
+  // The AI's own verdict stays in ai_support_check, so agreement can be measured (7.9).
   const { error } = await supabase
     .from("claim_sources")
-    .update({ support_check: verdict, support_checked_by: "consultant", support_note: encodeOverrideNote(aiVerdict, note.data) || null })
+    .update({ support_check: verdict, support_checked_by: "consultant", support_note: note.data || null })
     .eq("id", claimSourceId)
     .eq("idea_id", ideaId);
   if (error) return { error: "Opslaan mislukt." };
@@ -517,12 +515,11 @@ type CompetitorRow = { id: string; name: string; website: string | null; visible
 
 async function recheckCompetitorRow(ideaId: string, comp: CompetitorRow) {
   const supabase = await supabaseServer();
-  const today = new Date().toISOString().slice(0, 10);
   const pages: PageRecheck[] = [];
   const affectedClaims = new Set<string>();
   if (comp.claim_id) {
     affectedClaims.add(comp.claim_id);
-    const { data: links } = await supabase.from("claim_sources").select("source_id, sources(id, url, access_note)").eq("claim_id", comp.claim_id).eq("idea_id", ideaId);
+    const { data: links } = await supabase.from("claim_sources").select("source_id, sources(id, url)").eq("claim_id", comp.claim_id).eq("idea_id", ideaId);
     const seen = new Set<string>();
     for (const l of links ?? []) {
       const src = l.sources;
@@ -534,21 +531,16 @@ async function recheckCompetitorRow(ideaId: string, comp: CompetitorRow) {
         const page = await fetchPageText(src.url);
         const result = recheckQuotes((quotes ?? []).map((q) => ({ id: q.id, quote: q.quote })), page.text);
         pages.push({ url: src.url, reachable: true, quotes: result });
-        const missing = result.filter((r) => !r.found).map((r) => r.quote);
-        await supabase
-          .from("sources")
-          .update({ access_note: withRecheckNote(src.access_note, recheckNote(today, result.length, missing)) })
-          .eq("id", src.id)
-          .eq("idea_id", ideaId);
+        const checkedAt = new Date().toISOString();
+        for (const r of result) {
+          await supabase.from("claim_sources").update({ live_found: r.found, live_checked_at: checkedAt }).eq("id", r.id).eq("idea_id", ideaId);
+        }
+        await supabase.from("sources").update({ live_checked_at: checkedAt, live_error: null }).eq("id", src.id).eq("idea_id", ideaId);
         for (const q of quotes ?? []) affectedClaims.add(q.claim_id);
       } catch (e) {
         const message = e instanceof Error ? e.message.slice(0, 120) : "onbekende fout";
         pages.push({ url: src.url, reachable: false, error: message });
-        await supabase
-          .from("sources")
-          .update({ access_note: withRecheckNote(src.access_note, `Hercontrole ${today}: pagina niet bereikbaar (${message}).`) })
-          .eq("id", src.id)
-          .eq("idea_id", ideaId);
+        await supabase.from("sources").update({ live_checked_at: new Date().toISOString(), live_error: message }).eq("id", src.id).eq("idea_id", ideaId);
       }
     }
   }
