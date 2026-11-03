@@ -86,12 +86,13 @@ export function createAnthropicAdapter(cfg: { apiKey: string; model: string; fet
     },
   };
 
-  // Web search with server-side page fetching; continues after pause_turn (at most four turns).
+  // Web search with server-side page fetching; continues after pause_turn (at most four turns). Fetched pages are
+// capped at 8,000 tokens each: every extra turn re-sends them, which is what made searches expensive.
   async function searchLoop(req: GenerateRequest): Promise<GenerateResult> {
     const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: req.user }];
     const tools = [
       { type: "web_search_20260209" as const, name: "web_search" as const, max_uses: req.webSearch!.maxUses },
-      { type: "web_fetch_20260209" as const, name: "web_fetch" as const, max_uses: 4, citations: { enabled: true }, max_content_tokens: 20000 },
+      { type: "web_fetch_20260209" as const, name: "web_fetch" as const, max_uses: 3, citations: { enabled: true }, max_content_tokens: 8000 },
     ];
     const usage: TokenUsage = { inputTokens: 0, outputTokens: 0, searches: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
     const searchResults: SearchResult[] = [];

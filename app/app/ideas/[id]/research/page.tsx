@@ -204,7 +204,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
             </div>
             <div className="card tight">
               <div className="tiny">Bevindingen met bron</div>
-              <div className="mini-kpi num">{String(claims.length).padStart(2, "0")}</div>
+              <div className="mini-kpi num">{claims.length}</div>
               <span className="stat-caption">{verified} geverifieerd · {claims.filter((c) => c.status === "insufficient").length} onvoldoende bewijs</span>
             </div>
             <div className="card tight">

@@ -5,7 +5,7 @@ import { RESEARCH_SYSTEM, type AiUsage } from "./client";
 import { generate, generateJson, generateText } from "./generate";
 import type { ProviderId } from "./providers/config";
 import { fetchPageText } from "@/lib/fetch-page";
-import { parseQuotedSources, verifyQuotedSources, widen, type FoundSource, type PageFetcher } from "./web-evidence";
+import { parseQuotedSources, relevantPassages, verifyQuotedSources, widen, type FoundSource, type PageFetcher } from "./web-evidence";
 
 export type { FoundSource } from "./web-evidence";
 
@@ -83,6 +83,9 @@ statistiek (zoals CBS of Eurostat), primaire documenten (prijspagina's, jaarvers
 
 // Claude fetches pages itself (web_fetch) and cites verbatim text; ChatGPT and Gemini name the page and copy the
 // literal sentence, which ProofLab then looks up on the page it fetches itself (lib/ai/web-evidence.ts).
+// Search results ProofLab opens itself when the model did not (no AI cost; only verbatim paragraphs are kept).
+const FALLBACK_PAGES = 6;
+
 export async function searchQuestion(
   idea: IdeaContext,
   question: string,
@@ -99,8 +102,8 @@ export async function searchQuestion(
 Open de belangrijkste pagina's met web_fetch. Zoek ook naar tegenbewijs.
 Vat daarna in maximaal tien zinnen samen wat de bronnen letterlijk zeggen, met een citaat bij elke feitelijke bewering.
 Schrijf "onbekend" als je iets niet kunt vinden.`,
-        maxTokens: 16000,
-        effort: "medium",
+        maxTokens: 8000,
+        effort: "low",
         webSearch: { maxUses: maxSearches },
       },
       "Het model weigerde deze zoekopdracht.",
@@ -121,8 +124,37 @@ Schrijf "onbekend" als je iets niet kunt vinden.`,
       const passage = doc ? widen(doc.text, c.citedText) : c.citedText;
       if (passage && !src.excerpts.includes(passage)) src.excerpts.push(passage.slice(0, 1500));
     }
+    const cited = [...bySource.values()].filter((s) => s.excerpts.length > 0).length;
+    // Pages Claude read but did not cite (for example when it ran out of turns before writing its answer): keep
+    // their most relevant paragraphs, verbatim.
+    for (const doc of res.fetched) {
+      if (bySource.get(doc.url)?.excerpts.length) continue;
+      const passages = relevantPassages(doc.text, question);
+      if (passages.length) bySource.set(doc.url, { url: doc.url, title: doc.title ?? meta.get(doc.url)?.title ?? doc.url, pageAge: meta.get(doc.url)?.pageAge ?? null, excerpts: passages, foundBy: [provider] });
+    }
+    // Search results that were never opened: ProofLab opens the most promising ones itself (SSRF-safe fetch).
+    const unopened = res.searchResults.filter((r) => !bySource.has(r.url)).slice(0, FALLBACK_PAGES);
+    let fetchedByUs = 0;
+    for (const r of unopened) {
+      if ([...bySource.values()].filter((x) => x.excerpts.length).length >= 8) break;
+      try {
+        const page = await (deps.fetchPage ?? fetchPageText)(r.url);
+        const passages = relevantPassages(page.text, question);
+        if (passages.length) {
+          bySource.set(page.url, { url: page.url, title: page.title ?? r.title, pageAge: r.pageAge, excerpts: passages, foundBy: [provider] });
+          fetchedByUs++;
+        }
+      } catch {
+        // Unreachable or blocked page: skip.
+      }
+    }
     const sources = [...bySource.values()].filter((s) => s.excerpts.length > 0);
-    return { sources, usage, detail: `${sources.length} bronnen` };
+    const extra = sources.length - cited;
+    return {
+      sources,
+      usage,
+      detail: `${sources.length} bronnen${extra > 0 ? ` (${cited} met citaat van het model, ${extra} met de meest relevante alinea's${fetchedByUs ? `, waarvan ${fetchedByUs} door ProofLab zelf geopend` : ""})` : ""}`,
+    };
   }
 
   const { res, usage } = await generate(

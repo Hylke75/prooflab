@@ -140,3 +140,40 @@ export function mergeFoundSources(lists: FoundSource[][]): FoundSource[] {
   for (const m of merged.values()) m.foundBy.sort((a, b) => PROVIDERS.indexOf(a) - PROVIDERS.indexOf(b));
   return [...merged.values()];
 }
+
+// ---------------------------------------------------------------------------
+// Fallback passages: when a model searched and read pages but did not cite them in a final answer, ProofLab still
+// keeps the most relevant paragraphs of those pages. They stay verbatim slices of the page; the extraction step
+// afterwards only accepts claims whose quote appears word for word in such a passage.
+// ---------------------------------------------------------------------------
+
+const STOPWORDS = new Set(
+  "de het een en van in op te voor met aan door dat die dit is zijn wordt worden of als bij om tot uit over naar hoe wat wie welke waar hoeveel hoe groot er niet ook nog al the a an and of in on to for with by is are what how which who".split(" "),
+);
+
+function keywords(question: string): string[] {
+  return [...new Set(question.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}\s-]/gu, " ").split(/\s+/))].filter((w) => w.length > 3 && !STOPWORDS.has(w));
+}
+
+// The paragraphs of a page that best match the question: word overlap, with a bonus for numbers (sizes, prices,
+// percentages). Only paragraphs of 60–MAX_PASSAGE characters; navigation crumbs and cookie banners are too short.
+export function relevantPassages(pageText: string, question: string, max = 4): string[] {
+  const keys = keywords(question);
+  if (keys.length === 0) return [];
+  const paras = pageText
+    .split(/\n{1,}/)
+    .map((p) => p.trim())
+    .filter((p) => p.length >= 60 && p.length <= MAX_PASSAGE && !/cookie|javascript|inloggen|log in|subscribe/i.test(p));
+  const scored = paras
+    .map((p, i) => {
+      const low = p.toLowerCase();
+      const hits = keys.filter((k) => low.includes(k.slice(0, Math.max(5, k.length - 2)))).length;
+      const numbers = /\d[\d.,]*\s*(%|procent|miljoen|mln|miljard|€|eur|bedrijven|ondernemingen|organisaties)/i.test(p) ? 1.5 : /\d/.test(p) ? 0.5 : 0;
+      return { p, i, score: hits + numbers };
+    })
+    .filter((x) => x.score >= 2)
+    .sort((a, b) => b.score - a.score || a.i - b.i)
+    .slice(0, max)
+    .sort((a, b) => a.i - b.i);
+  return scored.map((x) => x.p);
+}
