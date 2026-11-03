@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { SIGNAL_KINDS, topPains, type SignalKind, type SignalQuote } from "@/lib/domain/customer-signals";
 import { SOURCE_TYPES, type SourceType } from "@/lib/domain/labels";
@@ -24,11 +25,14 @@ export function CustomerSignals({
   const pains = new Set(topPains(signals).map((s) => s.id));
   const excerpts = sources.flatMap((s) => s.excerpts.map((e) => ({ ...e, title: s.title })));
   return (
-    <div className="card" style={{ marginTop: 18 }}>
+    <div className="card" id="klantsignalen" style={{ marginTop: 18, scrollMarginTop: 100 }}>
       <div className="section-title">
         <div>
           <h2 className="as-h3">Klantsignalen</h2>
-          <p className="sub" style={{ marginTop: 4 }}>Wat klanten zelf schrijven in reviews, fora en antwoorden op outreach.</p>
+          <p className="sub" style={{ marginTop: 4 }}>
+            Wat klanten zelf schrijven in reviews, fora en antwoorden op outreach.{" "}
+            {canWrite && <Link className="text-link" href={`/app/ideas/${ideaId}/integrations`}>Signalen importeren →</Link>}
+          </p>
         </div>
         <span className="pill orange">Kwalitatieve signalen, geen gedrag</span>
       </div>
@@ -93,7 +97,7 @@ export function CustomerSignals({
             {sources.length === 0 ? (
               <p className="sub mt-8">
                 Voeg eerst bronnen toe onder Bronnen met type Reviewsite, Forum / community, Blog, Nieuws of Overig, met het letterlijke fragment
-                (bijv. reviews van een concurrent). Antwoorden uit LinkedIn-outreach verschijnen hier vanzelf.
+                (bijv. reviews van een concurrent). LinkedIn-antwoorden neem je op via Bronnen & koppelingen.
               </p>
             ) : aiConnected ? (
               <ActionForm action={analyzeCustomerSignals.bind(null, ideaId)} submitLabel="Analyseer klantsignalen" pendingLabel="Analyseren…" submitClass="btn ai sm">

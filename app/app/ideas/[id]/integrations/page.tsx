@@ -9,7 +9,6 @@ import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { trackingConfigured } from "@/lib/env";
 import { pct } from "@/lib/domain/stats";
-import { SOURCE_TYPES, type SourceType } from "@/lib/domain/labels";
 import { campaignStats } from "@/lib/integrations/outreach-stats";
 import { createExpandiEndpoint, deactivateEndpoint, fetchPageSource, importFragments, importOutreachReplies } from "./actions";
 
@@ -35,33 +34,32 @@ export default async function IntegrationsPage({ params }: PageProps<"/app/ideas
       .not("message", "is", null)
       .order("received_at", { ascending: false })
       .limit(10),
-    supabase
-      .from("sources")
-      .select("id, title, source_type, publisher, created_at, source_excerpts(count)")
-      .eq("idea_id", id)
-      .in("source_type", SIGNAL_TYPES)
-      .order("created_at", { ascending: false })
-      .limit(30),
+    supabase.from("sources").select("id", { count: "exact", head: true }).eq("idea_id", id).in("source_type", SIGNAL_TYPES),
   ]);
   const endpoints = endpointsRes.data ?? [];
   const stats = campaignStats(eventsRes.data ?? []);
   const replies = repliesRes.data ?? [];
-  const signalSources = sourcesRes.data ?? [];
+  const signalSourceCount = sourcesRes.count ?? 0;
   const configured = trackingConfigured();
   const missingSchema = !!endpointsRes.error;
+  // Klantsignalen hebben één vaste plek: Marktverkenning → Doelgroepen. Deze pagina is alleen de plek om ze binnen te halen.
+  const signalsHref = `/app/ideas/${id}/research?tab=customers#klantsignalen`;
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Bronnen & koppelingen"]} coach="research" ideaId={id}>
       <div className="section-row">
         <div>
-          <div className="eyebrow">Klantsignalen · Bronnen & koppelingen</div>
+          <div className="eyebrow">Bronnen & koppelingen</div>
           <h1>Hoor de klant, uit zoveel mogelijk bronnen.</h1>
           <p className="sub">
             Reviews, forumdraden, enquête-antwoorden en LinkedIn-reacties laten zien welke problemen klanten zelf noemen. Ze tellen als
             kwalitatieve observatie, niet als gedrag: ze verbeteren aannames en interviewvragen.
           </p>
         </div>
-        <Link className="btn white" href={`/app/ideas/${id}/research?tab=sources`}>Naar alle bronnen →</Link>
+        <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+          <Link className="btn white" href={signalsHref}>Bekijk de klantsignalen →</Link>
+          <Link className="btn white" href={`/app/ideas/${id}/research?tab=sources`}>Naar alle bronnen →</Link>
+        </div>
       </div>
 
       {missingSchema && (
@@ -207,25 +205,13 @@ export default async function IntegrationsPage({ params }: PageProps<"/app/ideas
           </ActionForm>
           <div className="divider" />
           <h3 style={{ fontSize: 15, marginBottom: 6 }}>Geïmporteerde klantsignalen</h3>
-          {signalSources.length === 0 ? (
-            <p className="sub" style={{ fontSize: 14 }}>Nog geen bronnen van dit soort.</p>
-          ) : (
-            <ul className="reply-list">
-              {signalSources.map((s) => {
-                const n = (s.source_excerpts as unknown as { count: number }[] | null)?.[0]?.count ?? 0;
-                return (
-                  <li key={s.id}>
-                    <strong>{s.title}</strong>
-                    <br />
-                    <span className="tiny">
-                      {SOURCE_TYPES[s.source_type as SourceType] ?? s.source_type}
-                      {s.publisher ? ` · ${s.publisher}` : ""} · {n} {n === 1 ? "fragment" : "fragmenten"} · {date(s.created_at)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          <p className="sub" style={{ fontSize: 14 }}>
+            {signalSourceCount === 0
+              ? "Nog geen bronnen van dit soort."
+              : `${signalSourceCount} ${signalSourceCount === 1 ? "bron" : "bronnen"} met klantsignalen geïmporteerd.`}{" "}
+            Je bekijkt en analyseert ze bij Marktverkenning → Doelgroepen.
+          </p>
+          <Link className="text-link" href={signalsHref}>Bekijk de klantsignalen →</Link>
         </div>
       </div>
     </PageFrame>
