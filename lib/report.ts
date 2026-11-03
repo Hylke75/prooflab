@@ -3,6 +3,8 @@ import type { Dossier } from "@/lib/dossier";
 import { CLAIM_STATUS, COMPETITOR_KINDS, DECISIONS, EVIDENCE_TYPES, EXPERIMENT_TYPES, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type DecisionAction, type EvidenceType, type ExperimentType, type SourceType } from "@/lib/domain/labels";
 import type { Finding } from "@/lib/domain/reality-check";
 import { asEvidenceLevel, testEvidenceLevel } from "@/lib/domain/evidence";
+import { buildAllTests } from "@/lib/domain/all-tests";
+import { testRole } from "@/lib/domain/primary-test";
 import { ACHIEVED_LABELS, FORECAST_MOMENTS, FORECASTER_LABELS, MOMENT_LABELS, ON_TRACK_LABELS, aggregate, brier, type Achieved, type ForecasterKind, type OnTrack } from "@/lib/domain/forecast";
 import { ensembleMean } from "@/lib/ai/providers/select";
 import { PROVIDER_LABELS, providerOfModel } from "@/lib/ai/providers/config";
@@ -178,6 +180,24 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
           ? { invitation: { n: e.metrics.survey.invitation.n, successes: e.metrics.survey.invitation.successes }, openLink: { n: e.metrics.survey.openLink.n, successes: e.metrics.survey.openLink.successes } }
           : null,
       })),
+    // Verplichte lijst "Alle tests" (golf A, punt 12): ook afgebroken, mislukte en verkennende tests, met het aantal
+    // tests per aanname.
+    allTests: buildAllTests(
+      d.experiments.map((e) => ({
+        title: e.title,
+        type: EXPERIMENT_TYPES[e.type as ExperimentType]?.label ?? e.type,
+        state: e.state,
+        assumptionId: e.hypotheses?.assumption_id ?? null,
+        assumption: e.hypotheses?.assumptions?.statement ?? null,
+        role: testRole(e.id, e.hypotheses?.assumption_id, d.assumptions.map((a) => ({ id: a.id, primary_experiment_id: a.primaryExperimentId }))),
+        locked: !!e.hypotheses?.locked_at,
+        endedEarly: !!e.ended_early,
+        label: e.metrics?.verdict.label ?? null,
+        level: testEvidenceLevel(e.type, { decisionRule: e.hypotheses?.decision_rule }),
+        n: e.metrics?.n ?? 0,
+        successes: e.metrics?.successes ?? 0,
+      })),
+    ),
     learningCards: d.learningCards
       .filter((c) => c.status === "approved")
       .map((c) => {

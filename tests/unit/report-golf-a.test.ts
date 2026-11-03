@@ -125,3 +125,27 @@ describe("rapport: bewijsniveau naast de uitkomst (punt 14)", () => {
     expect(out).toContain("Learning Card: Enquête · Geslaagd · niveau: mening");
   });
 });
+
+describe("rapport: alle tests (punt 12)", () => {
+  it("de lijst staat in de PDF, met rol, status, uitkomst en het aantal per aanname", () => {
+    const out = all(
+      fixture({
+        allTests: {
+          rows: [
+            { title: "Landing", type: "Landingpage-test", assumption: "A1", role: "Hoofdtest", status: "afgerond", outcome: "niet geslaagd · niveau: kleine handeling", result: "2 van 40", aborted: false, failed: true },
+            { title: "Enquête", type: "Enquête", assumption: "A1", role: "Verkennend", status: "afgebroken · afgerond", outcome: "geslaagd · niveau: mening", result: "14 van 40", aborted: true, failed: false },
+          ],
+          perAssumption: [{ assumption: "A1", total: 2, primary: 1, exploratory: 1 }],
+        },
+      }),
+    );
+    expect(out).toContain("Alle tests");
+    expect(out).toContain("2 tests vooraf vastgelegd: 1 niet geslaagd, 1 afgebroken, 1 verkennend.");
+    expect(out).toContain("niet geslaagd · niveau: kleine handeling");
+    expect(out).toContain("A1: 2 tests (1 hoofdtest, 1 verkennend)");
+  });
+
+  it("oudere rapporten zeggen eerlijk dat de lijst ontbreekt", () => {
+    expect(all(fixture())).toContain('Dit rapport is gemaakt vóór de lijst "Alle tests" bestond.');
+  });
+});

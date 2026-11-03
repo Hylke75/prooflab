@@ -15,6 +15,7 @@ import { Icon } from "@/components/Icon";
 import { Probability } from "@/components/ui/Probability";
 import { explainRecruitment } from "@/lib/domain/recruitment";
 import { asEvidenceLevel, outcomeWithLevel } from "@/lib/domain/evidence";
+import { allTestsSummary } from "@/lib/domain/all-tests";
 import { CALIBRATION_MIN_RESOLVED } from "@/lib/domain/probability-display";
 
 export const metadata: Metadata = { title: "Rapportage" };
@@ -323,6 +324,44 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               Een Learning Card legt per test vast wat we verwachtten, wat we zagen, wat we daaruit leren en wat we daarom doen. Het 95%-interval is de
               bandbreedte waarbinnen de werkelijke waarde vrijwel zeker ligt; bij kleine aantallen is die breed.
             </p>
+            <div className="mt-12" style={{ breakInside: "avoid" }}>
+              <strong style={{ fontSize: 13 }}>Alle tests</strong>
+              {"allTests" in r && r.allTests ? (
+                <>
+                  <p className="tiny">
+                    {allTestsSummary(r.allTests.rows)} Deze lijst is verplicht: ook afgebroken, mislukte en verkennende tests staan erin, zodat niet achteraf
+                    gekozen kan worden welke test telt.
+                  </p>
+                  {r.allTests.rows.length > 0 && (
+                    <div style={{ overflowX: "auto" }}>
+                      <table className="table">
+                        <caption className="sr-only">Alle vooraf vastgelegde tests met rol, status en uitkomst</caption>
+                        <thead><tr><th scope="col">Test</th><th scope="col">Aanname</th><th scope="col">Rol</th><th scope="col">Status</th><th scope="col">Resultaat</th><th scope="col">Uitkomst</th></tr></thead>
+                        <tbody>
+                          {r.allTests.rows.map((t, i) => (
+                            <tr key={i}>
+                              <td>{t.title} <span className="tiny">({t.type})</span></td>
+                              <td>{t.assumption}</td>
+                              <td>{t.role}</td>
+                              <td>{t.status}</td>
+                              <td className="num">{t.result}</td>
+                              <td>{t.outcome}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {r.allTests.perAssumption.length > 0 && (
+                    <p className="tiny">
+                      Tests per aanname: {r.allTests.perAssumption.map((a) => `${a.assumption}: ${a.total} (${a.primary} hoofdtest, ${a.exploratory} verkennend)`).join(" · ")}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="tiny">Dit rapport is gemaakt vóór de lijst &quot;Alle tests&quot; bestond; maak een nieuwe rapportversie voor de volledige lijst.</p>
+              )}
+            </div>
             {r.experiments.length === 0 && <p>Er zijn nog geen experimenten uitgevoerd.</p>}
             {r.experiments.map((e, i) => (
               <div key={i} className="mt-12" style={{ breakInside: "avoid" }}>

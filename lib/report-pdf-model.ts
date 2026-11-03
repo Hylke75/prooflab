@@ -10,6 +10,7 @@ import { describeMethodology, ruleLabelText } from "@/lib/domain/method/describe
 import { CALIBRATION_MIN_RESOLVED, formatProbability, formatProbabilityRange } from "@/lib/domain/probability-display";
 import { explainRecruitment } from "@/lib/domain/recruitment";
 import { asEvidenceLevel, outcomeWithLevel } from "@/lib/domain/evidence";
+import { allTestsSummary, type AllTestsPerAssumption, type AllTestsRow } from "@/lib/domain/all-tests";
 
 export type Tone = "blue" | "green" | "coral" | "lime" | "gray";
 export type Block =
@@ -220,6 +221,25 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
   const exps: Block[] = [
     { t: "p", small: true, muted: true, text: "Het 95%-interval is de bandbreedte waarbinnen de werkelijke waarde vrijwel zeker ligt; bij kleine aantallen is die breed. Drempels zijn vóór de start vergrendeld." },
   ];
+  // Verplichte lijst "Alle tests" (golf A, punt 12). Rapporten van daarvoor hebben hem niet.
+  const allTests = (r as { allTests?: { rows: AllTestsRow[]; perAssumption: AllTestsPerAssumption[] } }).allTests;
+  exps.push({ t: "h", text: "Alle tests" });
+  if (allTests) {
+    exps.push({ t: "p", small: true, text: `${allTestsSummary(allTests.rows)} Deze lijst is verplicht: ook afgebroken, mislukte en verkennende tests staan erin.` });
+    if (allTests.rows.length) {
+      exps.push({
+        t: "table",
+        head: ["Test", "Aanname", "Rol", "Status", "Resultaat", "Uitkomst"],
+        widths: [20, 24, 11, 17, 10, 18],
+        rows: allTests.rows.map((t) => [`${t.title} (${t.type})`, t.assumption, t.role, t.status, t.result, t.outcome]),
+      });
+    }
+    if (allTests.perAssumption.length) {
+      exps.push({ t: "list", small: true, items: allTests.perAssumption.map((a) => `${a.assumption}: ${a.total} ${a.total === 1 ? "test" : "tests"} (${a.primary} hoofdtest, ${a.exploratory} verkennend)`) });
+    }
+  } else {
+    exps.push({ t: "p", small: true, muted: true, text: 'Dit rapport is gemaakt vóór de lijst "Alle tests" bestond.' });
+  }
   if (!r.experiments.length) exps.push({ t: "p", text: "Er zijn nog geen experimenten uitgevoerd.", muted: true });
   for (const e of r.experiments) {
     exps.push({ t: "h", text: `${e.title} (${e.type})` });
