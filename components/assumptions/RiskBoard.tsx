@@ -11,6 +11,7 @@ import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 import { Probability } from "@/components/ui/Probability";
 import { formatProbability } from "@/lib/domain/probability-display";
 import { explainRecruitment } from "@/lib/domain/recruitment";
+import { explainIndirect } from "@/lib/domain/claim-scope";
 import { priorNeedsRationale, PRIOR_TEXT_MAX, PRIOR_TEXT_MIN } from "@/lib/domain/prior";
 
 export type BoardAssumption = {
@@ -325,6 +326,7 @@ function ProbabilityDetail({
           {a.probability.recruitment!.map((r) => <li key={r.group}>{explainRecruitment(r)}</li>)}
         </ul>
       )}
+      {(a.probability.indirect ?? 0) > 0 && <p className="tiny mt-8">{explainIndirect(a.probability.indirect!)}</p>}
       {ignored > 0 && (
         <p className="tiny mt-8">
           Niet meegeteld: {a.probability.ignored.synthetic ? `${a.probability.ignored.synthetic} synthetische observatie(s)` : ""}

@@ -16,6 +16,7 @@ import { Probability } from "@/components/ui/Probability";
 import { explainRecruitment } from "@/lib/domain/recruitment";
 import { asEvidenceLevel, outcomeWithLevel } from "@/lib/domain/evidence";
 import { allTestsSummary } from "@/lib/domain/all-tests";
+import { formatGroups } from "@/lib/domain/report-counts";
 import { CALIBRATION_MIN_RESOLVED } from "@/lib/domain/probability-display";
 
 export const metadata: Metadata = { title: "Rapportage" };
@@ -428,7 +429,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                           <td className="num">{t.successes}</td>
                           <td className="tiny">{t.bySource.map((x) => `${x.source} ${x.successes}/${x.n}`).join(" · ") || "—"}</td>
                           <td className="tiny">{t.byChannel.map((x) => `${CHANNELS[x.channel as keyof typeof CHANNELS] ?? x.channel} ${x.successes}/${x.n}`).join(" · ") || "—"}</td>
-                          <td className="tiny">{t.byGroup.map((x) => `${x.group} ${x.n}`).join(" · ") || "—"}</td>
+                          <td className="tiny">{formatGroups(t.byGroup) || "—"}</td>
                         </tr>
                       ))}
                     </tbody>

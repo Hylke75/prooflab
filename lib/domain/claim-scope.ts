@@ -230,3 +230,8 @@ export function groundedScope(field: "population" | "region" | "referenceDate", 
   const found = significant.some((w) => hayWords.has(w) || hay.includes(w));
   return found ? scopeValue(value, field === "population" ? 200 : 120) : UNKNOWN;
 }
+
+// Toelichting bij een aanname (methode 2026-11-c): hoeveel meetellende bevindingen half tellen omdat ze indirect zijn.
+export function explainIndirect(n: number): string {
+  return `Telt half: indirect bewijs (${n} ${n === 1 ? "bevinding gaat" : "bevindingen gaan"} over een andere populatie, een andere regio of een te oude peildatum dan de intake).`;
+}

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { requireWritableIdea } from "@/lib/data";
 import { ruleProblem } from "@/lib/domain/decision-rule";
+import { rulePrimaryProblem } from "@/lib/domain/primary-test";
 import { parseDutchNumber } from "@/lib/forecast-schemas";
 import type { Json } from "@/lib/database.types";
 
@@ -18,7 +19,7 @@ const LOCKED = "De beslisregel ligt vast sinds de eerste goedgekeurde test. Zo k
 export async function saveDecisionRule(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
   await requireWritableIdea(ideaId);
   const supabase = await supabaseServer();
-  const { data: assumptions } = await supabase.from("assumptions").select("id").eq("idea_id", ideaId);
+  const { data: assumptions } = await supabase.from("assumptions").select("id, primary_experiment_id").eq("idea_id", ideaId);
   const conditions: { assumption_id: string; min_probability: number }[] = [];
   for (const a of assumptions ?? []) {
     if (form.get(`cond_${a.id}`) !== "on") continue;
@@ -31,6 +32,13 @@ export async function saveDecisionRule(ideaId: string, _: ActionState, form: For
   const note = String(form.get("note") ?? "").trim().slice(0, 600);
   const problem = ruleProblem({ conditions: conditions.map((c) => ({ minProbability: c.min_probability })), primaryExperimentId: primaryId });
   if (problem) return { error: problem };
+  // De hoofdtest van de regel moet bij een gekozen aanname als hoofdtest zijn aangewezen (golf A, punt 11).
+  const primaryProblem = rulePrimaryProblem(
+    primaryId,
+    conditions.map((c) => c.assumption_id),
+    assumptions ?? [],
+  );
+  if (primaryProblem) return { error: primaryProblem };
 
   const { data, error } = await supabase.rpc("save_decision_rule", { p_idea: ideaId, p_primary: primaryId, p_note: note, p_conditions: conditions as unknown as Json });
   if (error) {

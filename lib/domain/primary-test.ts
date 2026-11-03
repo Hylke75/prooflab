@@ -51,6 +51,30 @@ export function assumptionStatusFromCards(
   return cards.length ? "testing" : "untested";
 }
 
+// Golf B tegenover golf A: de hoofdtest in de beslisregel (decision_rules.primary_experiment_id) moet een test zijn
+// die bij een gekozen aanname van die regel als hoofdtest is aangewezen. Anders zou de regel het besluit kunnen laten
+// afhangen van een verkennende test.
+
+// De tests die als hoofdtest in de beslisregel kunnen staan: per gekozen aanname haar hoofdtest (zonder dubbelen).
+export function rulePrimaryOptions(chosenAssumptionIds: string[], assumptions: PrimaryRef[]): { experimentId: string; assumptionId: string }[] {
+  const out: { experimentId: string; assumptionId: string }[] = [];
+  for (const id of chosenAssumptionIds) {
+    const experimentId = primaryTestFor(id, assumptions);
+    if (experimentId && !out.some((o) => o.experimentId === experimentId)) out.push({ experimentId, assumptionId: id });
+  }
+  return out;
+}
+
+// Controle bij het opslaan van de beslisregel (null = in orde). Zonder hoofdtest in de regel is er niets te controleren.
+export function rulePrimaryProblem(primaryExperimentId: string | null, chosenAssumptionIds: string[], assumptions: PrimaryRef[]): string | null {
+  if (!primaryExperimentId) return null;
+  if (rulePrimaryOptions(chosenAssumptionIds, assumptions).some((o) => o.experimentId === primaryExperimentId)) return null;
+  if (assumptions.some((a) => a.primary_experiment_id === primaryExperimentId)) {
+    return "Deze test is de hoofdtest van een aanname die niet in de beslisregel staat. Kies die aanname ook, of kies een andere hoofdtest.";
+  }
+  return "Kies als hoofdtest een test die bij een gekozen aanname als hoofdtest is aangewezen. Een verkennende test kan het besluit niet beslissen.";
+}
+
 // Kans op toeval bij een geslaagde kansregel: 1 − P(echte waarde > drempel). Null voor andere regels of uitkomsten.
 export function chanceOfLuck(o: { rule: string; label: string; probability: number | null }): number | null {
   if (o.rule !== "probability" || o.probability == null) return null;

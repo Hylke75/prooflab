@@ -5,6 +5,7 @@ import { methodOf, type MethodVersion } from "@/lib/domain/method";
 import { ideaMethodVersion } from "@/lib/method-data";
 import { QUALITY_VALUES, SurveyConfigSchema, type Answers, type Quality, type SurveyConfig, type SurveyCountRow } from "@/lib/domain/survey";
 import { surveySplitFromCounts, type ExportRow, type SurveySplit } from "@/lib/domain/survey-results";
+import { interviewRecruitment, type RecruitmentGroup } from "@/lib/domain/recruitment";
 
 export type LandingConfig = {
   headline: string;
@@ -48,6 +49,9 @@ export type ExperimentMetrics = {
   warnings: string[];
   // Surveys only: the key metric per source (invitation vs open link) and channel. Self-reported answers.
   survey: SurveySplit | null;
+  // Interviews only: n en successen per wervingsgroep van het gesprek (golf A; een bekende is eigen netwerk).
+  // Alleen aantallen, voor de momentopname in het rapport (golf C, punt 19).
+  byRecruitment?: { group: RecruitmentGroup; n: number; successes: number }[];
 };
 
 // The key metric per source × channel, counted in the database (survey_key_counts) from the quality flags the
@@ -122,6 +126,8 @@ type Exp = {
   started_at: string | null;
   idea_id?: string;
   ended_at?: string | null;
+  // Wervingsgroep van de test (golf A); de standaard voor gesprekken zonder eigen groep.
+  recruitment_group?: string | null;
 };
 
 // Earlier ended tests of the same type in the same organisation, as far as this user can see them
@@ -180,6 +186,7 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
   let byVariant: VariantRow[] = [];
   let byContent: ContentRow[] = [];
   let survey: SurveySplit | null = null;
+  let byRecruitment: ExperimentMetrics["byRecruitment"];
 
   if (exp.type === "survey") {
     // The verdict uses every believable response (all sources), as pre-registered; the split per source shows
@@ -199,7 +206,7 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
     }
   } else if (exp.type === "interview") {
     const [{ data: interviews }, { data: obs }] = await Promise.all([
-      supabase.from("interviews").select("id, consent_recorded, is_acquaintance, dmu_role, recruited_via").eq("experiment_id", exp.id),
+      supabase.from("interviews").select("id, consent_recorded, is_acquaintance, dmu_role, recruited_via, recruitment_group").eq("experiment_id", exp.id),
       supabase.from("observations").select("interview_id, kind, review_status").eq("experiment_id", exp.id).eq("is_synthetic", false),
     ]);
     const valid = (interviews ?? []).filter((i) => i.consent_recorded);
@@ -218,6 +225,15 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
       channels.set(i.recruited_via, row);
     }
     byChannel = [...channels.values()];
+    const groups = new Map<RecruitmentGroup, { group: RecruitmentGroup; n: number; successes: number }>();
+    for (const i of valid) {
+      const g = interviewRecruitment(i.is_acquaintance, i.recruitment_group, exp.recruitment_group);
+      const row = groups.get(g) ?? { group: g, n: 0, successes: 0 };
+      row.n++;
+      if ((obs ?? []).some((o) => o.interview_id === i.id && counts(o))) row.successes++;
+      groups.set(g, row);
+    }
+    byRecruitment = [...groups.values()];
     const excluded = (interviews ?? []).length - valid.length;
     if (excluded) warnings.push(`${excluded} interview(s) zonder vastgelegde toestemming tellen niet mee.`);
     if (valid.length && valid.filter((i) => i.is_acquaintance).length / valid.length > 0.5) warnings.push("Meer dan de helft van de geïnterviewden zijn bekenden.");
@@ -273,5 +289,5 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
     endConditionReached,
   });
   const bayes = endConditionReached ? betaBinomial(await priorFor(exp), successes, n, Number(h.success_threshold_pct)) : null;
-  return { n, successes, label: h.metric_label, byChannel, byVariant, byContent, endConditionReached, verdict: v, bayes, warnings, survey };
+  return { n, successes, label: h.metric_label, byChannel, byVariant, byContent, endConditionReached, verdict: v, bayes, warnings, survey, ...(byRecruitment ? { byRecruitment } : {}) };
 }

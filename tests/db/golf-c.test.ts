@@ -76,6 +76,26 @@ d("punt 7: populatie, regio en peildatum per bevinding", () => {
     await expect(insert("relevance", ["half"])).rejects.toThrow();
     await expect(insert("reference_date, relevance", ["2025-06", "indirect"])).resolves.toBeTruthy();
   });
+
+  it("een opdrachtgever leest de relevantie van gekoppelde bevindingen via RLS (methode 2026-11-c rekent ermee)", async () => {
+    const a = await as(alice, async (c) => {
+      const claim = (await c.query("insert into public.claims (idea_id, statement, evidence_type, region, relevance) values ($1, 'Europees cijfer', 'official_statistic', 'Europa', 'indirect') returning id", [idea])).rows[0].id;
+      const assumption = (await c.query("insert into public.assumptions (idea_id, statement, category, importance) values ($1, 'Bureaus hebben dit probleem', 'desirability', 4) returning id", [idea])).rows[0].id;
+      await c.query("insert into public.assumption_claims (assumption_id, claim_id, idea_id, relation) values ($1, $2, $3, 'supports')", [assumption, claim, idea]);
+      return assumption as string;
+    });
+    const client = await user(`klant-c-${randomUUID()}@example.com`);
+    await as(alice, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_viewer')", [idea, client.email]));
+    await as(client, (c) => c.query("select public.claim_invitations()"));
+    // Dezelfde gegevens als de embed assumption_claims → claims(status, relevance) in lib/progress.ts.
+    const read = (who: Who) =>
+      as(who, async (c) =>
+        (await c.query("select ac.relation, cl.status, cl.relevance from public.assumption_claims ac join public.claims cl on cl.id = ac.claim_id where ac.assumption_id = $1", [a])).rows,
+      );
+    const mine = await read(alice);
+    expect(mine).toEqual([{ relation: "supports", status: expect.any(String), relevance: "indirect" }]);
+    expect(await read(client)).toEqual(mine);
+  });
 });
 
 d("punt 8: jaar en regio per sizing-factor", () => {
@@ -123,7 +143,7 @@ d("punt 10: zoekopdracht naar tegenbewijs", () => {
 d("punt 19: momentopname van aantallen valt niet onder de bewaartermijn", () => {
   it("purge_expired_personal_data wist verlopen persoonsgegevens maar laat de momentopname in het rapport staan", async () => {
     const tallies = {
-      version: 1,
+      version: 2,
       note: "Geanonimiseerde aantallen op het moment van dit rapport.",
       tests: [
         {
@@ -134,7 +154,7 @@ d("punt 19: momentopname van aantallen valt niet onder de bewaartermijn", () => 
           successes: 1,
           byChannel: [{ channel: "network", n: 1, successes: 1 }],
           bySource: [{ source: "network", n: 1, successes: 1 }],
-          byGroup: [{ group: "bekenden", n: 1, successes: null }],
+          byGroup: [{ group: "own_network", label: "Eigen netwerk", n: 1, successes: 1 }],
           keyQuestion: null,
         },
       ],

@@ -517,7 +517,8 @@ bandbreedte wordt op dezelfde manier begrensd.
 ## 10. Onderzoek en herleidbaarheid (golf C, 7 november 2026)
 
 Golf C van het verbeterplan (`docs/VERBETERPLAN_WERKWIJZE.md`) maakt bureauonderzoek beter toetsbaar en houdt
-rapporten herleidbaar na de bewaartermijn. Geen van deze punten verandert de rekenwijze van 2026-11-a of 2026-11-b.
+rapporten herleidbaar na de bewaartermijn. Geen van deze punten verandert de rekenwijze van 2026-11-a of 2026-11-b; de weging van indirect bewijs
+(10.1) hoort bij methode 2026-11-c (11.6).
 
 ### 10.1 Populatie, regio en peildatum per bevinding (punt 7)
 
@@ -536,9 +537,9 @@ Een letterlijk citaat zegt nog niet dat een cijfer over de juiste groep, het jui
     1,5 jaar), gemeten op de beslisdatum, of op vandaag als die ontbreekt.
 - Wijkt een veld af, dan staat er een waarschuwing bij de bevinding en telt ze als **indirect** (`claims.relevance`).
   "Onbekend" is geen afwijking, maar ook geen bevestiging: het blijft zichtbaar als onbekend.
-- **Weging.** In de bewijsberekening telt een indirecte bevinding met halve sterkte (`relevanceWeight()`, factor
-  0,5). Dat geldt pas in een nieuwe methodeversie: bij het samenvoegen van golf A en C komt de weging in die versie
-  (2026-11-c). 2026-11-a en 2026-11-b lezen het veld niet en rekenen ongewijzigd.
+- **Weging.** In de bewijsberekening telt een indirecte bevinding met halve sterkte (`relevanceWeight()`, gewicht
+  0,5 in log-odds). Dat geldt alleen in methode 2026-11-c (zie 11.6); 2026-11-a en 2026-11-b lezen het veld niet en
+  rekenen ongewijzigd (vastgelegd in `tests/unit/evidence-v3.test.ts`).
 
 ### 10.2 Jaar en regio per sizing-factor (punt 8)
 
@@ -581,9 +582,13 @@ transcripten, citaten en open antwoorden weg (`purge_expired_personal_data`).
 
 - Elk rapport bewaart daarom in zijn onveranderlijke momentopname (`reports.snapshot.tallies`,
   `lib/domain/report-counts.ts`) een **geanonimiseerde telling**: per test n en successen, uitgesplitst per bron
-  (bij enquêtes uitnodiging of open link, anders het kanaal), per kanaal en per wervingsgroep (bij interviews:
-  bekenden en onbekenden, alleen het aantal), en bij enquêtes de kernvraag per bron met het aantal opgeslagen
-  antwoorden. Afgebroken en lopende tests staan erin met hun aantallen.
+  (bij enquêtes uitnodiging of open link, anders het kanaal), per kanaal en per wervingsgroep, en bij enquêtes de
+  kernvraag per bron met het aantal opgeslagen antwoorden. Afgebroken en lopende tests staan erin met hun aantallen.
+- **Per wervingsgroep** (golf A, 11.1): n en successen per groep (eigen netwerk, warm contact, koud, betaald panel,
+  onbekend). Bij enquête-, landing- en prijstests geldt de groep van de test voor alle deelnemers; bij interviews de
+  groep per gesprek (een bekende is eigen netwerk, anders de groep van het gesprek of van de test). Een test zonder
+  groep telt als onbekend. Rapporten met de eerste versie van de momentopname (`tallies.version` 1) tellen bij
+  interviews alleen bekenden en onbekenden, zonder successen; die blijven zo zichtbaar.
 - Er staan geen persoonsgegevens in: geen namen, adressen, citaten, open antwoorden of tijdstippen per persoon.
 - De momentopname valt niet onder de bewaartermijn. Rapporten zijn na het maken niet te wijzigen of te verwijderen en
   de opruimtaak raakt ze niet (gecontroleerd in `tests/db/golf-c.test.ts`).
@@ -680,6 +685,25 @@ kans verandert niet.
 - **Brier-scores (16).** Onder 30 uitkomsten staat bij elke Brier-score op de pagina Voorspelkwaliteit: "te weinig
   dossiers voor een betrouwbaar oordeel".
 
+### 11.6 Indirect bewijs telt half (golf C punt 7, rekenwijziging in 2026-11-c)
+
+Bij het samenvoegen van golf A en golf C is de relevantie per bevinding (10.1, `claims.relevance`) aan methode
+2026-11-c toegevoegd. Een bevinding die als **indirect** is gemarkeerd (andere populatie, andere regio of een te oude
+peildatum dan de intake) telt met **halve sterkte**: gewicht 0,5 in log-odds (`relevanceWeight()` in
+`lib/domain/claim-scope.ts`), net zoals niet beoordeelde AI-codering in 2026-11-a en 2026-11-b. Dat geldt voor
+ondersteunend bewijs en voor tegenbewijs. Een bevinding zonder relevantie (gegevens van vóór golf C) telt als direct.
+
+- Indirecte en directe bevindingen van dezelfde status vormen aparte groepen voor het afnemend meetellen (zoals bij
+  ander gewicht); bij het samenvoegen per bron (9.2) blijft het sterkste signaal over, dus een directe bevinding
+  wint van een indirecte uit dezelfde bron.
+- Het plafond (9.3) verandert niet: bevindingen uit bronnen staan al op het laagste niveau.
+- **Weergave**: de aannamepagina toont bij de aanname "Telt half: indirect bewijs" met het aantal bevindingen, en de
+  bijdrage heet "(indirect bewijs)" met "half gewicht". De overstappagina noemt de wijziging (`changesBetween`) en
+  toont vooraf de kans oud/nieuw. Het rapport vermeldt de regel bij de methode.
+- **Gegevens**: `lib/progress.ts` laadt `claims.relevance` mee bij de gekoppelde bevindingen; het dossier en het
+  rapport (`lib/dossier.ts`) rekenen via dezelfde functie. Opdrachtgevers lezen bevindingen via dezelfde RLS
+  (`can_read_idea`) en rekenen dus met dezelfde weging (gecontroleerd in `tests/db/golf-c.test.ts`).
+
 ## 12. Besluit en voorspelling (golf B, 7 november 2026)
 
 Uit de kritische controle van de werkwijze (`docs/VERBETERPLAN_WERKWIJZE.md`, golf B). Zes aanpassingen aan de brug
@@ -718,9 +742,11 @@ van bewijs naar besluit en aan de voorspellus. Migratie `20261107100000_golf_b.s
 
 - Vóór de eerste goedgekeurde test legt het team op de aannamepagina vast wanneer het doorgaat: welke aannames boven
   welke kans (5–95%) moeten uitkomen, en welke hoofdtest moet slagen (`decision_rules`, `decision_rule_assumptions`).
-  De hoofdtest is een experiment-id. Golf A voegt per aanname een hoofdtest toe (`is_primary`); de beslisregel kiest
-  daar los van het experiment dat voor het besluit de doorslag geeft. Na het samenvoegen hoort dat een hoofdtest te
-  zijn.
+  De hoofdtest is een experiment-id. Sinds het samenvoegen met golf A kun je daar alleen een test kiezen die bij een
+  gekozen aanname van de regel als hoofdtest is aangewezen (`assumptions.primary_experiment_id`, `primaryTestFor` en
+  `rulePrimaryProblem` in `lib/domain/primary-test.ts`); een verkennende test kan het besluit niet beslissen. Is er nog
+  geen hoofdtest aangewezen, dan verwijst het formulier naar de experimentenpagina. De keuzelijst en de server-actie
+  controleren dit; de database niet.
 - De regel gaat op slot bij de eerste goedgekeurde test (trigger op `experiments`), en uiterlijk bij het eerste
   definitieve besluit. Wie de regel pas na de eerste goedgekeurde test vastlegt, krijgt een regel die meteen op slot
   zit en in het rapport "achteraf vastgelegd" heet. Vastleggen kan alleen via `save_decision_rule` (regel en

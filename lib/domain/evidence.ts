@@ -3,6 +3,7 @@
 
 import type { ClaimStatus, ObservationKind } from "./labels";
 import type { LrOverrides } from "./calibration";
+import { relevanceWeight } from "./claim-scope";
 
 export type ObservationDims = {
   isFact: boolean;
@@ -161,12 +162,15 @@ export const SENSITIVITY = 0.5;
 
 // sourceKey/sourceLabel: de bron van het signaal (evidenceSourceKey); alleen gebruikt door methode 2026-11-b.
 // recruitmentGroup: de wervingsgroep van het signaal (lib/domain/recruitment.ts); alleen gebruikt door methode 2026-11-c.
+// relevance: 'direct' of 'indirect' (golf C, claims.relevance; lib/domain/claim-scope.ts); alleen gebruikt door
+// methode 2026-11-c, waar een indirecte bevinding met halve sterkte telt.
 export type ProbabilityClaim = {
   status: ClaimStatus;
   relation: "supports" | "contradicts";
   sourceKey?: string | null;
   sourceLabel?: string | null;
   recruitmentGroup?: string | null;
+  relevance?: string | null;
 };
 export type ProbabilityObservation = {
   kind: string;
@@ -209,6 +213,8 @@ export type AssumptionProbability = {
   cap?: CapInfo | null;
   // Alleen methode 2026-11-c: herhaling binnen dezelfde wervingsgroep.
   recruitment?: RecruitmentRepeat[];
+  // Alleen methode 2026-11-c: aantal meetellende bevindingen dat als indirect bewijs met halve sterkte telt.
+  indirect?: number;
 };
 
 const clampP = (p: number) => Math.min(PROBABILITY_CEIL, Math.max(PROBABILITY_FLOOR, p));
@@ -469,7 +475,7 @@ type Item = {
 };
 
 // Wat methode 2026-11-c toevoegt aan de rekenwijze van 2026-11-b. Zonder opties rekent de kern exact als 2026-11-b.
-type CoreOptions = { recruitmentDamping?: boolean; aiNeedsReview?: boolean };
+type CoreOptions = { recruitmentDamping?: boolean; aiNeedsReview?: boolean; relevanceWeighting?: boolean };
 
 export function assumptionProbabilityV2(
   claims: ProbabilityClaim[],
@@ -494,12 +500,15 @@ function probabilityCore(
   let unique = 0;
   const own = () => `eigen:${unique++}`;
   for (const c of claims) {
+    // Methode 2026-11-c: een indirecte bevinding (andere populatie, regio of te oude peildatum) telt half
+    // (gewicht 0,5 in log-odds, zoals niet beoordeelde AI-codering in 2026-11-a en 2026-11-b).
+    const weight = opts.relevanceWeighting ? relevanceWeight(c.relevance) : 1;
     items.push({
       kindKey: `claim:${c.status}`,
-      label: CLAIM_LR[c.status].label,
+      label: `${CLAIM_LR[c.status].label}${weight < 1 ? " (indirect bewijs)" : ""}`,
       entry: CLAIM_LR[c.status],
       supports: c.relation === "supports",
-      weight: 1,
+      weight,
       sourceKey: c.sourceKey || own(),
       sourceLabel: c.sourceLabel || "Bron",
       level: CLAIM_LEVEL,
@@ -551,6 +560,7 @@ function probabilityCore(
     ignored.neutral++;
     return false;
   });
+  const indirect = opts.relevanceWeighting ? counting.filter((i) => i.kindKey.startsWith("claim:") && i.weight < 1).length : 0;
 
   // Ondersteunend bewijs: per bron alleen het sterkste signaal (grootste ln(factor) × gewicht).
   // Tegenbewijs telt volledig per signaal en wordt niet samengevoegd.
@@ -627,6 +637,7 @@ function probabilityCore(
     ignored,
     merged: merged.sort((a, b) => b.signals - a.signals || a.label.localeCompare(b.label)),
     ...(opts.recruitmentDamping ? { recruitment: recruitment.sort((a, b) => b.sources - a.sources || a.group.localeCompare(b.group)) } : {}),
+    ...(opts.relevanceWeighting ? { indirect } : {}),
     cap: { level, levelLabel: EVIDENCE_LEVELS.find((l) => l.level === level)!.label, max, active, uncapped, reason: active ? capReason(level, max) : "" },
   };
 }
@@ -635,6 +646,7 @@ function probabilityCore(
 // Methode 2026-11-c (golf A): bouwt voort op 2026-11-b.
 // - Herhaling binnen dezelfde wervingsgroep over verschillende bronnen heen telt afnemend mee (punt 4).
 // - Onbeoordeelde AI-codering telt niet mee; pas na akkoord van een consultant volledig (punt 17).
+// - Een indirecte bevinding (golf C, punt 7: claims.relevance = 'indirect') telt met halve sterkte (relevanceWeight).
 // ===========================================================================
 
 export function assumptionProbabilityV3(
@@ -644,7 +656,7 @@ export function assumptionProbabilityV3(
   overrides: LrOverrides = {},
   caps: EvidenceCaps = DEFAULT_CAPS,
 ): AssumptionProbability {
-  return probabilityCore(claims, observations, prior, overrides, caps, { recruitmentDamping: true, aiNeedsReview: true });
+  return probabilityCore(claims, observations, prior, overrides, caps, { recruitmentDamping: true, aiNeedsReview: true, relevanceWeighting: true });
 }
 
 export function explainMerged(m: MergedSource): string {

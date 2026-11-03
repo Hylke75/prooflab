@@ -34,7 +34,7 @@ export function describeMethodology(m: Methodology | null | undefined): { title:
 export const METHOD_CHANGES: Record<MethodVersion, string> = {
   "2026-11-a": "De oorspronkelijke rekenwijze: intervalregel per test, geen samenvoegen per bron en geen plafonds.",
   "2026-11-b": "Een beslisregel per testtype (kansregel of vast aantal), bewijs per bron één keer meetellen en een plafond per bewijsniveau.",
-  "2026-11-c": "Herhaling binnen dezelfde wervingsgroep telt afnemend mee, AI-codering telt pas na beoordeling en alleen de hoofdtest per aanname beslist over de status van de aanname.",
+  "2026-11-c": "Herhaling binnen dezelfde wervingsgroep telt afnemend mee, AI-codering telt pas na beoordeling, alleen de hoofdtest per aanname beslist over de status van de aanname en indirect bewijs (een bevinding over een andere populatie, regio of een te oude peildatum) telt half.",
 };
 
 // De veranderingen tussen twee versies (alle versies na `from` tot en met `to`).

@@ -1,14 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  assumptionProbability,
   assumptionProbabilityV2,
   assumptionProbabilityV3,
+  DEFAULT_CAPS,
   diminishing,
   explainContribution,
   OBSERVATION_LR,
   outcomeWithLevel,
   testEvidenceLevel,
+  type ProbabilityClaim,
   type ProbabilityObservation,
 } from "@/lib/domain/evidence";
+import { explainIndirect } from "@/lib/domain/claim-scope";
+import { METHODS } from "@/lib/domain/method";
+import { changesBetween } from "@/lib/domain/method/describe";
 import { explainRecruitment, interviewRecruitment, recruitmentLabel, recruitmentMissing } from "@/lib/domain/recruitment";
 
 // Methode 2026-11-c (golf A). Punt 4: herhaling binnen dezelfde wervingsgroep over verschillende bronnen heen telt
@@ -128,5 +134,67 @@ describe("punt 14: bewijsniveau naast de uitkomst", () => {
     expect(outcomeWithLevel("geslaagd", "opinion")).toBe("Geslaagd · niveau: mening");
     expect(outcomeWithLevel("sterk bewezen", "deposit")).toBe("Sterk bewezen · niveau: aanbetaling");
     expect(outcomeWithLevel("onbeslist", null)).toBe("Onbeslist");
+  });
+});
+
+// Koppeling golf C → methode 2026-11-c: een indirecte bevinding (claims.relevance) telt met halve sterkte.
+describe("relevantie: indirect bewijs telt half in 2026-11-c", () => {
+  const claim = (sourceKey: string, relevance: string | null, relation: "supports" | "contradicts" = "supports"): ProbabilityClaim => ({
+    status: "verified",
+    relation,
+    sourceKey,
+    sourceLabel: `Bron ${sourceKey}`,
+    relevance,
+  });
+
+  it("een indirecte bevinding verschuift de log-odds half zo veel als een directe", () => {
+    const direct = assumptionProbabilityV3([claim("s1", "direct")], []);
+    const indirect = assumptionProbabilityV3([claim("s1", "indirect")], []);
+    expect(direct.shift).toBeCloseTo(Math.log(1.5), 12);
+    expect(indirect.shift).toBeCloseTo(0.5 * Math.log(1.5), 12);
+    expect(indirect.indirect).toBe(1);
+    expect(direct.indirect).toBe(0);
+    expect(indirect.top[0].weight).toBe(0.5);
+    expect(indirect.top[0].label).toMatch(/indirect bewijs/);
+    expect(explainContribution(indirect.top[0])).toMatch(/half gewicht/);
+  });
+
+  it("ook tegenbewijs uit een indirecte bevinding telt half", () => {
+    const p = assumptionProbabilityV3([claim("s1", "indirect", "contradicts")], []);
+    expect(p.shift).toBeCloseTo(-0.5 * Math.log(1.5), 12);
+  });
+
+  it("zonder relevantie (oude gegevens) telt een bevinding als direct", () => {
+    expect(assumptionProbabilityV3([claim("s1", null)], []).shift).toBe(assumptionProbabilityV3([claim("s1", "direct")], []).shift);
+  });
+
+  it("2026-11-a en 2026-11-b rekenen exact ongewijzigd", () => {
+    const list = [claim("s1", "indirect"), claim("s2", "indirect"), claim("s3", "direct"), claim("s4", "indirect", "contradicts")];
+    const plain = list.map((c) => ({ status: c.status, relation: c.relation, sourceKey: c.sourceKey, sourceLabel: c.sourceLabel }));
+    for (const prior of [0.2, 0.5, 0.7]) {
+      expect(assumptionProbability(list, [], prior)).toEqual(assumptionProbability(plain, [], prior));
+      expect(assumptionProbabilityV2(list, [], prior)).toEqual(assumptionProbabilityV2(plain, [], prior));
+      expect(METHODS["2026-11-a"].probability(list, [], prior, {}, DEFAULT_CAPS)).toEqual(METHODS["2026-11-a"].probability(plain, [], prior, {}, DEFAULT_CAPS));
+      expect(METHODS["2026-11-b"].probability(list, [], prior, {}, DEFAULT_CAPS)).toEqual(METHODS["2026-11-b"].probability(plain, [], prior, {}, DEFAULT_CAPS));
+    }
+    // Vaste waarden: drie ondersteunende geverifieerde bevindingen (afnemend) en één tegensprekende.
+    const a = assumptionProbability(list, []);
+    expect(a.shift).toBeCloseTo(Math.log(1.5) * diminishing(3) - Math.log(1.5), 12);
+    expect("indirect" in a).toBe(false);
+    const b = assumptionProbabilityV2(list, []);
+    expect(b.shift).toBeCloseTo(Math.log(1.5) * diminishing(3) - Math.log(1.5), 12);
+    expect("indirect" in b).toBe(false);
+    // 2026-11-c rekent wel anders: twee ondersteunende indirecte bevindingen en één tegensprekende tellen half.
+    const c = assumptionProbabilityV3(list, []);
+    expect(c.shift).toBeCloseTo(Math.log(1.5) * (1 + 0.5 * diminishing(2)) - 0.5 * Math.log(1.5), 12);
+    expect(c.indirect).toBe(3);
+  });
+
+  it("de toelichting op de aannamepagina en de overstappagina", () => {
+    expect(explainIndirect(1)).toMatch(/^Telt half: indirect bewijs \(1 bevinding /);
+    expect(explainIndirect(2)).toMatch(/2 bevindingen gaan/);
+    expect(changesBetween("2026-11-b", "2026-11-c")[0]).toMatch(/indirect bewijs .* telt half/);
+    expect(METHODS["2026-11-c"].rules.some((r) => /indirecte bevinding .* halve sterkte/.test(r))).toBe(true);
+    expect(METHODS["2026-11-b"].rules.some((r) => /indirect/.test(r))).toBe(false);
   });
 });

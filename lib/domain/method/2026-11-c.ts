@@ -2,7 +2,7 @@
 // - Oordeel per test: zoals 2026-11-b (kansregel of aantalregel op de Test Card).
 // - Kans per aanname: zoals 2026-11-b (één factor per bron, plafond per bewijsniveau), met de aanvullingen uit
 //   golf A (lib/domain/evidence.ts assumptionProbabilityV3): afnemende factor binnen dezelfde wervingsgroep en
-//   alleen beoordeelde AI-codering.
+//   alleen beoordeelde AI-codering; uit golf C: een indirecte bevinding (claims.relevance) telt met halve sterkte.
 // - Status van een aanname: alleen de hoofdtest beslist (lib/domain/primary-test.ts).
 
 import { assumptionProbabilityV3 } from "@/lib/domain/evidence";
@@ -20,6 +20,7 @@ export const method2026_11_c: MethodModule = {
     "Herhaling binnen dezelfde wervingsgroep (eigen netwerk, warm contact, koud, betaald panel, onbekend) telt over verschillende bronnen heen afnemend mee: n bronnen uit één groep tellen als log₂(1 + n).",
     "Per aanname één vooraf aangewezen hoofdtest; alleen die beslist over de status van de aanname. De andere tests zijn verkennend.",
     "AI-codering telt pas mee na beoordeling door een consultant; onbeoordeelde AI-codering telt niet.",
+    "Een indirecte bevinding (populatie, regio of peildatum wijkt af van de intake) telt met halve sterkte (gewicht 0,5 in log-odds).",
   ],
   probability: (claims, observations, prior, overrides, caps) => assumptionProbabilityV3(claims, observations, prior, overrides, caps),
   verdict: method2026_11_b.verdict,

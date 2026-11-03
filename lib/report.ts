@@ -227,11 +227,12 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
                 survey: e.metrics.survey
                   ? { invitation: e.metrics.survey.invitation, openLink: e.metrics.survey.openLink, responses: e.metrics.survey.responses }
                   : null,
+                // Interviews: n en successen per wervingsgroep van het gesprek (golf A), alleen aantallen.
+                byRecruitment: e.metrics.byRecruitment,
               }
             : null,
-          interviews: d.interviews
-            .filter((i) => i.experiment_id === e.id)
-            .map((i) => ({ recruitedVia: i.recruited_via, isAcquaintance: i.is_acquaintance, consent: i.consent_recorded })),
+          // De wervingsgroep van de test (golf A); geldt voor alle deelnemers van enquête-, landing- en prijstests.
+          recruitmentGroup: e.recruitment_group ?? null,
         })),
     ),
     // Verplichte lijst "Alle tests" (golf A, punt 12): ook afgebroken, mislukte en verkennende tests, met het aantal
