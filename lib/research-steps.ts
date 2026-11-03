@@ -51,6 +51,9 @@ export function planSteps(questions: Q[], mode: RunMode): PlannedStep[] {
     }
     for (const q of others) steps.push({ kind: "counter", questionId: q.id, label: `Tegenbewijs zoeken: ${qLabel(q, false)}`, core: false });
   }
+  // Punt 6: tot slot weegt de run wat de bevindingen betekenen voor de grootste onzekerheid. Goedkoop, en het budget
+  // ervoor wordt vooraf vastgehouden (reserveUsd), dus hij hoort bij de kern.
+  steps.push({ kind: "uncertainty", questionId: null, label: "Wat dit betekent voor je grootste onzekerheid", core: true });
   return steps;
 }
 
@@ -123,6 +126,12 @@ export function stepEstimateUsd(kind: string, providers: ProviderId[], mode: Run
 // Het plafond van een run: de snelle check hooguit $1,50, diep onderzoek het serverplafond (RESEARCH_BUDGET_USD).
 export function runBudgetUsd(mode: RunMode, serverCapUsd: number): number {
   return mode === "quick" ? Math.min(1.5, serverCapUsd) : serverCapUsd;
+}
+
+// Wat een stap moet overlaten voor stappen die altijd moeten kunnen draaien (de slotstap "grootste onzekerheid").
+export function reserveUsd(kind: string, pendingKinds: string[], providers: ProviderId[], mode: RunMode, models: ModelMap = {}): number {
+  if (kind === "uncertainty" || !pendingKinds.includes("uncertainty")) return 0;
+  return stepEstimateUsd("uncertainty", providers, mode, models);
 }
 
 // Een stap past als wat al is uitgegeven plus zijn bovengrens binnen het plafond blijft.

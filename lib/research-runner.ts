@@ -6,7 +6,7 @@ import { providersFor } from "@/lib/ai/settings";
 import { isProvider, modelFor, PROVIDER_LABELS, PROVIDERS, type ProviderId } from "@/lib/ai/providers/config";
 import { runDoneNote } from "@/lib/research-worker-plan";
 import { FAILURE_TEXT, failureCode, type FailureCode } from "@/lib/research-failures";
-import { fitsBudget, notStartedText, providersForRun, searchesFor, stepEstimateUsd, type ModelMap, type RunMode } from "@/lib/research-steps";
+import { fitsBudget, notStartedText, providersForRun, reserveUsd, searchesFor, stepEstimateUsd, type ModelMap, type RunMode } from "@/lib/research-steps";
 import { assertAiBudget, runAi } from "@/lib/ai/guard";
 import { log } from "@/lib/log";
 import { env } from "@/lib/env";
@@ -21,6 +21,7 @@ import type { Idea } from "@/lib/data";
 import type { Json } from "@/lib/database.types";
 import { isSupportCheck, keepAfterSupportCheck, type SupportCheck } from "@/lib/domain/support";
 import { decideMerge, knownSupportVerdict, type KnownFinding } from "@/lib/research-dedupe";
+import { proposeUncertainty } from "@/lib/research-uncertainty-data";
 import { groundedScope } from "@/lib/domain/claim-scope";
 
 type RunState = { status: string; done: number; total: number; current: string | null; cost: number; budget: number; error: string | null };
@@ -99,8 +100,11 @@ export async function advanceRun(runId: string): Promise<RunState> {
     }
     providers = await runProviders(run.idea_id, mode, budget, candidate.output);
     estimate = stepEstimateUsd(candidate.kind, providers, mode, researchModels());
-    if (!fitsBudget(spent, estimate, budget)) {
-      const why = notStartedText(estimate, spent, budget);
+    // Budget dat vrij moet blijven voor de slotstap "grootste onzekerheid" (punt 6).
+    const { data: pendingKinds } = await supabase.from("research_tasks").select("kind").eq("run_id", runId).eq("status", "pending");
+    const reserve = reserveUsd(candidate.kind, (pendingKinds ?? []).map((t) => t.kind), providers, mode, researchModels());
+    if (!fitsBudget(spent, estimate + reserve, budget)) {
+      const why = notStartedText(estimate + reserve, spent, budget);
       await supabase.from("research_tasks").update({ status: "skipped", detail: why }).eq("id", candidate.id).eq("status", "pending");
       if (!run.error) {
         run.error = `Budget van deze run bereikt: niet elke stap paste binnen max $${budget.toFixed(2)}.`;
@@ -382,6 +386,22 @@ async function runTask(task: TaskRow, idea: Idea, mode: RunMode, runWith: Provid
   }
 
   if (task.kind === "counter") return runCounterTask(task, idea, mode, runWith);
+
+  // Fase B2, punt 6: welke bevindingen de grootste onzekerheid het sterkst raken (AI-voorstel, regel als terugval).
+  if (task.kind === "uncertainty") {
+    const res = await proposeUncertainty(idea, { keepConsultant: true });
+    const risks = res.picks.filter((p) => p.effect === "undermines").length;
+    return {
+      output: { picks: res.picks, origin: res.origin, stored: res.stored } as unknown as Json,
+      detail:
+        res.origin === "consultant"
+          ? res.note
+          : res.picks.length
+            ? `${res.picks.length} bevinding${res.picks.length === 1 ? "" : "en"} geselecteerd${risks ? `, waarvan ${risks} risico` : ""} (${res.origin === "ai" ? "AI-voorstel" : "voorstel op basis van regels"}); pas de selectie gerust aan.`
+            : res.note || "Geen bevinding raakt de grootste onzekerheid.",
+      cost: res.cost,
+    };
+  }
 
   if (task.kind === "reality_check") {
     const { data: claims } = await supabase.from("claims").select("statement, status").eq("idea_id", idea.id).limit(60);

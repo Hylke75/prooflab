@@ -38,6 +38,9 @@ import {
 } from "./actions";
 import { decisiveFirst, isGenericTemplate } from "@/lib/research-questions";
 import { FAILURE_TEXT, failedProviders, retryable } from "@/lib/research-failures";
+import { loadUncertaintyPicks } from "@/lib/research-uncertainty-data";
+import { uncertaintyText } from "@/lib/research-uncertainty";
+import { UncertaintyCard } from "@/components/research/UncertaintyCard";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export const metadata: Metadata = { title: "Marktverkenning" };
@@ -180,6 +183,15 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
       )
     : undefined;
 
+  // Fase B2, punt 6: de bevindingen bij de grootste onzekerheid (alleen bestaande bevindingen met bron).
+  const uncertainty = await loadUncertaintyPicks(supabase, id);
+  const uncertaintyPicks = uncertainty.picks.flatMap((p) => {
+    const c = claims.find((x) => x.id === p.claimId);
+    if (!c) return [];
+    const sources = [...new Set(c.evidence.map((e) => e.source?.publisher || e.source?.title || "").filter(Boolean))];
+    return [{ claimId: p.claimId, effect: p.effect, reason: p.reason, origin: p.origin, statement: c.statement, status: c.status, sources }];
+  });
+
   const tab = typeof sp.tab === "string" ? sp.tab : "overview";
   const evidenceActions = (claim: (typeof claims)[number]) =>
     canWrite
@@ -232,6 +244,18 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
         </div>
         <span className={`pill ${verified ? "green" : "orange"}`}>{verified} geverifieerde bevinding{verified === 1 ? "" : "en"}</span>
       </div>
+
+      <UncertaintyCard
+        ideaId={id}
+        uncertainty={uncertaintyText(idea.key_uncertainty, decisiveQuestion?.question)}
+        picks={uncertaintyPicks}
+        candidates={claims
+          .filter((c) => ["verified", "estimate", "contested"].includes(c.status) && !uncertaintyPicks.some((p) => p.claimId === c.id))
+          .map((c) => ({ id: c.id, statement: c.statement }))}
+        canWrite={canWrite}
+        editable={uncertainty.editable}
+        aiConnected={aiConfigured()}
+      />
 
       <Tabs
         initial={tab}

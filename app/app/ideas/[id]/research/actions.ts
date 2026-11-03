@@ -21,6 +21,7 @@ import { ensureDecisiveQuestion, loadRunQuestions, markDecisive } from "@/lib/re
 import { decisiveFirst } from "@/lib/research-questions";
 import { planSteps, runBudgetUsd } from "@/lib/research-steps";
 import { kickResearchRun } from "@/lib/research-worker";
+import { proposeUncertainty } from "@/lib/research-uncertainty-data";
 import { isProvider, PROVIDER_LABELS, type ProviderId } from "@/lib/ai/providers/config";
 import { isUnknown, normalizeReferenceDate, scopeValue, UNKNOWN } from "@/lib/domain/claim-scope";
 
@@ -518,7 +519,10 @@ export async function startResearchRun(ideaId: string, mode: "quick" | "deep"): 
   const { data: run, error } = await supabase.from("research_runs").insert({ idea_id: ideaId, mode, budget_usd: budget, status: "queued" }).select("id").single();
   if (error || !run) return { error: "De onderzoeksrun kon niet worden gestart." };
   const tasks = planSteps(qs, mode).map((t, i) => ({ run_id: run.id, idea_id: ideaId, position: i + 1, kind: t.kind, question_id: t.questionId, label: t.label }));
-  await supabase.from("research_tasks").insert(tasks);
+  // De slotstap "grootste onzekerheid" bestaat pas met de B2-migratie: apart toevoegen, zodat de run zonder werkt.
+  await supabase.from("research_tasks").insert(tasks.filter((t) => t.kind !== "uncertainty"));
+  const last = tasks.filter((t) => t.kind === "uncertainty");
+  if (last.length) await supabase.from("research_tasks").insert(last);
   // Fase B2, punt 4: de server werkt de stappen af, ook als het tabblad dicht gaat (lib/research-worker.ts).
   await kickResearchRun(run.id, { refresh: true });
   revalidatePath(`/app/ideas/${ideaId}/research`);
@@ -562,6 +566,72 @@ export async function retryResearchStep(ideaId: string, taskId: string, provider
   await kickResearchRun(runId, { refresh: true });
   revalidatePath(`/app/ideas/${ideaId}/research`);
   return { ok: "Opnieuw ingepland; de server pakt het meteen op." };
+}
+
+// ---------------------------------------------------------------------------
+// Fase B2, punt 6: "Wat dit betekent voor je grootste onzekerheid" — AI stelt voor, de consultant past aan
+// ---------------------------------------------------------------------------
+
+const NO_TABLE = "Aanpassen kan pas als de B2-migratie (20261109090000_b2_onderzoek.sql) live staat.";
+
+// Na elke aanpassing is de selectie van de consultant: een volgende run overschrijft hem niet.
+async function ownSelection(supabase: Awaited<ReturnType<typeof supabaseServer>>, ideaId: string) {
+  const { data } = await supabase.from("uncertainty_findings").select("id").eq("idea_id", ideaId).order("rank");
+  for (const [i, row] of (data ?? []).entries()) await supabase.from("uncertainty_findings").update({ origin: "consultant", rank: i + 1 }).eq("id", row.id);
+}
+
+export async function proposeUncertaintyNow(ideaId: string, _: ActionState): Promise<ActionState> {
+  const { idea } = await requireWritableIdea(ideaId);
+  if (!aiConfigured()) return { error: "AI is niet verbonden. Kies zelf de bevindingen die de onzekerheid raken." };
+  try {
+    const res = await proposeUncertainty(idea, { keepConsultant: false });
+    if (!res.stored) return { error: NO_TABLE };
+    if (res.picks.length === 0) return done(ideaId, res.note || "Geen bevinding raakt de grootste onzekerheid.");
+    return done(ideaId, `${res.origin === "ai" ? "AI-voorstel" : "Voorstel op basis van regels"}: ${res.picks.length} bevinding${res.picks.length === 1 ? "" : "en"}. Pas de selectie gerust aan.`);
+  } catch (e) {
+    return { error: aiErrorMessage(e, "Het voorstel kon niet worden gemaakt.") };
+  }
+}
+
+export async function removeUncertaintyPick(ideaId: string, claimId: string) {
+  await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  await supabase.from("uncertainty_findings").delete().eq("idea_id", ideaId).eq("claim_id", claimId);
+  await ownSelection(supabase, ideaId);
+  revalidatePath(`/app/ideas/${ideaId}/research`);
+}
+
+export async function setUncertaintyEffect(ideaId: string, claimId: string, effect: "supports" | "undermines") {
+  await requireWritableIdea(ideaId);
+  if (effect !== "supports" && effect !== "undermines") return;
+  const supabase = await supabaseServer();
+  await supabase.from("uncertainty_findings").update({ effect }).eq("idea_id", ideaId).eq("claim_id", claimId);
+  await ownSelection(supabase, ideaId);
+  revalidatePath(`/app/ideas/${ideaId}/research`);
+}
+
+export async function addUncertaintyPick(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const parsed = z
+    .object({ claim_id: z.string().uuid("Kies een bevinding."), effect: z.enum(["supports", "undermines"]), reason: z.string().trim().max(300).optional() })
+    .safeParse(Object.fromEntries(form));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const supabase = await supabaseServer();
+  const current = await supabase.from("uncertainty_findings").select("claim_id").eq("idea_id", ideaId);
+  if (current.error) return { error: NO_TABLE };
+  if ((current.data ?? []).length >= 3) return { error: "Er staan al drie bevindingen bij de grootste onzekerheid. Haal er eerst één weg." };
+  if ((current.data ?? []).some((p) => p.claim_id === parsed.data.claim_id)) return { error: "Deze bevinding staat er al bij." };
+  const { error } = await supabase.from("uncertainty_findings").insert({
+    idea_id: ideaId,
+    claim_id: parsed.data.claim_id,
+    effect: parsed.data.effect,
+    rank: (current.data ?? []).length + 1,
+    reason: parsed.data.reason || "Gekozen door de consultant.",
+    origin: "consultant",
+  });
+  if (error) return { error: "Opslaan mislukt." };
+  await ownSelection(supabase, ideaId);
+  return done(ideaId, "Bevinding toegevoegd aan de grootste onzekerheid.");
 }
 
 export async function cancelResearchRun(ideaId: string, runId: string) {

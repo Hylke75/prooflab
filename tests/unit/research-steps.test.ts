@@ -32,7 +32,9 @@ describe("volgorde van een run", () => {
     expect(steps.slice(3, 11).map((s) => `${s.kind}:${s.questionId}`)).toEqual([
       "search:q1", "extract:q1", "search:q2", "extract:q2", "search:q3", "extract:q3", "search:q5", "extract:q5",
     ]);
-    expect(steps.slice(11).every((s) => s.kind === "counter" && !s.core)).toBe(true);
+    expect(steps.slice(11, -1).every((s) => s.kind === "counter" && !s.core)).toBe(true);
+    // Tot slot: wat dit betekent voor de grootste onzekerheid.
+    expect(steps.at(-1)).toMatchObject({ kind: "uncertainty", questionId: null, core: true });
     expect(steps.some((s) => s.kind === "reality_check")).toBe(false);
   });
 
@@ -40,7 +42,8 @@ describe("volgorde van een run", () => {
     const steps = planSteps(decisiveFirst(QS), "deep");
     expect(steps[0]).toMatchObject({ kind: "search", questionId: "q4", core: true });
     expect(steps.filter((s) => s.kind === "counter")).toHaveLength(5);
-    expect(steps.at(-1)?.kind).toBe("reality_check");
+    expect(steps.at(-2)?.kind).toBe("reality_check");
+    expect(steps.at(-1)?.kind).toBe("uncertainty");
   });
 
   it("zonder beslissende vraag gaat de eerste vraag voor", () => {

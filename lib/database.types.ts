@@ -2243,6 +2243,20 @@ export type Database = {
           },
         ]
       }
+      uncertainty_findings: {
+        Row: { id: string; idea_id: string; claim_id: string; effect: string; rank: number; reason: string | null; origin: string; created_by: string | null; created_at: string }
+        Insert: { id?: string; idea_id: string; claim_id: string; effect: string; rank?: number; reason?: string | null; origin: string; created_by?: string | null; created_at?: string }
+        Update: { id?: string; idea_id?: string; claim_id?: string; effect?: string; rank?: number; reason?: string | null; origin?: string; created_by?: string | null; created_at?: string }
+        Relationships: [
+          {
+            foreignKeyName: "uncertainty_findings_claim_id_fkey"
+            columns: ["claim_id"]
+            isOneToOne: false
+            referencedRelation: "claims"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       research_run_leases: {
         Row: { run_id: string; idea_id: string; lease_id: string; lease_until: string }
         Insert: { run_id: string; idea_id: string; lease_id: string; lease_until: string }
