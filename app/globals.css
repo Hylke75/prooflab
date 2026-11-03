@@ -390,3 +390,5 @@ details.quickline[open]>summary::after{transform:rotate(180deg)}
 /* ---- Redesign: tabellen met rijkoppen breken niet per letter af binnen smalle kaarten ---- */
 .table th[scope=row]{min-width:9em;font-size:14px;font-weight:600;color:var(--color-heading);overflow-wrap:normal;word-break:normal;hyphens:auto}
 .table .pill{white-space:normal}
+/* Coach als slide-over/bottom-sheet boven de overlay (die ligt op z-index 28). */
+@media(max-width:1160px){.coach.open{z-index:29}}
