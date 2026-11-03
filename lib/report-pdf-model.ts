@@ -7,6 +7,7 @@ import type { ReportSnapshot } from "@/lib/report";
 import { pct } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { describeMethodology, ruleLabelText } from "@/lib/domain/method/describe";
+import { CALIBRATION_MIN_RESOLVED, formatProbability, formatProbabilityRange } from "@/lib/domain/probability-display";
 
 export type Tone = "blue" | "green" | "coral" | "lime" | "gray";
 export type Block =
@@ -173,6 +174,8 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
 
   // 06 Assumptions
   const withProb = r.assumptions.some((a) => a.probability);
+  // Rapporten van vóór golf A hebben geen kalibratie: dan de voorzichtige weergave in banden.
+  const calibrated = !!(r as { calibration?: { calibrated?: boolean } }).calibration?.calibrated;
   chapters.push({
     id: "assumptions",
     eyebrow: "06 / AANNAMES EN RISICO'S",
@@ -181,17 +184,30 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
       ? [
           {
             t: "table",
-            head: ["Aanname", "Belang", withProb ? "Geschatte kans" : "Bewijs", "Status"],
+            head: ["Aanname", "Belang", withProb ? (calibrated ? "Geschatte kans" : "Geschatte kans (niet gekalibreerd)") : "Bewijs", "Status"],
             widths: [54, 10, 18, 18],
             rows: r.assumptions.map((a) => [
               `${a.statement}${a.premortem ? " (uit de pre-mortem)" : ""}`,
               `${a.importance}/5`,
-              withProb && a.probability ? `${pct0(a.probability.point)} (${pct0(a.probability.low)}–${pct0(a.probability.high)})` : `${a.evidence}%`,
+              withProb && a.probability
+                ? `${formatProbability(a.probability.point, calibrated).text} (${formatProbabilityRange(a.probability.low, a.probability.high, calibrated).text})`
+                : `${a.evidence}%`,
               ASSUMPTION_STATUS[a.status] ?? a.status,
             ]),
           },
           ...(withProb
-            ? [{ t: "p" as const, small: true, muted: true, text: "Geschatte kans dat de aanname klopt: een beginwaarde (meestal 50%), bijgewerkt met een vaste factor per soort bewijs. Uitspraken tellen nauwelijks, gedrag en betalingen sterk." }]
+            ? [
+                {
+                  t: "p" as const,
+                  small: true,
+                  muted: true,
+                  text:
+                    "Geschatte kans dat de aanname klopt: een beginwaarde (meestal 50%), bijgewerkt met een vaste factor per soort bewijs. Uitspraken tellen nauwelijks, gedrag en betalingen sterk." +
+                    (calibrated
+                      ? ""
+                      : ` Niet gekalibreerd: bij dit rapport had de werkruimte minder dan ${CALIBRATION_MIN_RESOLVED} opgeloste dossiers om deze kansen aan te toetsen. Daarom staan ze in banden van 10 procentpunt.`),
+                },
+              ]
             : []),
         ]
       : [{ t: "p", text: "Er zijn nog geen aannames vastgelegd.", muted: true }],

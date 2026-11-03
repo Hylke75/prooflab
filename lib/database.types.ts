@@ -2894,6 +2894,7 @@ export type Database = {
         Returns: { opinion: number; problem: number; small_action: number; quote: number; deposit: number }[]
       }
       switch_method_version: { Args: { p_idea: string; p_to: string; p_preview: Json }; Returns: string }
+      resolved_dossiers_for_idea: { Args: { p_idea: string }; Returns: number }
       evidence_source_refs: {
         Args: { p_idea: string }
         Returns: {

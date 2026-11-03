@@ -8,6 +8,8 @@ import { ASSUMPTION_CATEGORIES, ASSUMPTION_STATUS, type AssumptionCategory, type
 import { applyCap, bandFromShift, capReason, explainContribution, explainMerged, probabilityFromShift, type AssumptionProbability } from "@/lib/domain/evidence";
 import type { VoiResult } from "@/lib/domain/recommend";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
+import { Probability } from "@/components/ui/Probability";
+import { formatProbability } from "@/lib/domain/probability-display";
 
 export type BoardAssumption = {
   id: string;
@@ -44,7 +46,9 @@ export function RiskBoard({
   importanceActions,
   priorActions,
   deleteActions,
+  calibrated = false,
 }: {
+  calibrated?: boolean;
   ideaId: string;
   assumptions: BoardAssumption[];
   claims: { id: string; statement: string; status: string }[];
@@ -135,7 +139,7 @@ export function RiskBoard({
                 className={`risk-dot${hot ? " hot" : ""}`}
                 style={{ ...pos(p.x, p.y, p.dx, p.dy), outline: a.id === current.id ? "3px solid var(--color-heading)" : undefined }}
                 onClick={() => select(a.id)}
-                aria-label={`Aanname ${p.index + 1}: ${a.statement}. Geschatte kans dat dit klopt: ${pctR(a.probability.probability)}.`}
+                aria-label={`Aanname ${p.index + 1}: ${a.statement}. Geschatte kans dat dit klopt: ${formatProbability(a.probability.probability, calibrated).text}${calibrated ? "" : " (niet gekalibreerd)"}.`}
                 aria-pressed={a.id === current.id}
               >
                 {p.index + 1}
@@ -184,8 +188,8 @@ export function RiskBoard({
           <button key={a.id} type="button" className={`assumption-item${a.id === current.id ? " active" : ""}`} onClick={() => select(a.id)} aria-pressed={a.id === current.id}>
             <span className="count">{i + 1}</span>
             <span>{a.statement}</span>
-            <small aria-label={`Informatiewaarde ${a.voi.index} van 100, geschatte kans ${pctR(a.probability.probability)}${a.probability.cap?.active ? ", begrensd" : ""}`}>
-              {pctR(a.probability.probability)}{a.probability.cap?.active ? " (begrensd)" : ""} · IW {a.voi.index}
+            <small aria-label={`Informatiewaarde ${a.voi.index} van 100, geschatte kans ${formatProbability(a.probability.probability, calibrated).text}${calibrated ? "" : " (niet gekalibreerd)"}${a.probability.cap?.active ? ", begrensd" : ""}`}>
+              {formatProbability(a.probability.probability, calibrated).text}{a.probability.cap?.active ? " (begrensd)" : ""} · IW {a.voi.index}
             </small>
           </button>
         ))}
@@ -198,7 +202,7 @@ export function RiskBoard({
           {current.origin === "premortem" && <span className="pill coral">Uit de pre-mortem</span>}
           <span className="pill gray">Bewijsscore {Math.round(current.evidence * 100)} van 100</span>
         </div>
-        <ProbabilityDetail a={current} prior={prior} setPrior={setPrior} save={canWrite ? priorActions[current.id] : undefined} />
+        <ProbabilityDetail a={current} prior={prior} setPrior={setPrior} save={canWrite ? priorActions[current.id] : undefined} calibrated={calibrated} />
         <p className="sub mt-12">
           <strong>Waarom nu testen (informatiewaarde {current.voi.index} van 100):</strong> {current.voi.why}
         </p>
@@ -252,7 +256,19 @@ export function RiskBoard({
 }
 
 // Probability with its band, the three largest contributions and a what-if starting value.
-function ProbabilityDetail({ a, prior, setPrior, save }: { a: BoardAssumption; prior: number; setPrior: (p: number) => void; save?: (f: FormData) => Promise<void> }) {
+function ProbabilityDetail({
+  a,
+  prior,
+  setPrior,
+  save,
+  calibrated,
+}: {
+  a: BoardAssumption;
+  prior: number;
+  setPrior: (p: number) => void;
+  save?: (f: FormData) => Promise<void>;
+  calibrated: boolean;
+}) {
   // Methode 2026-11-b: het plafond van het hoogste bewijsniveau geldt ook voor een andere beginwaarde.
   const cap = a.probability.cap ?? null;
   const capMax = cap ? cap.max : null;
@@ -265,15 +281,22 @@ function ProbabilityDetail({ a, prior, setPrior, save }: { a: BoardAssumption; p
   return (
     <div className="mt-12" style={{ background: "var(--color-surface-muted)", borderRadius: "var(--radius-inner)", padding: "12px 14px" }}>
       <div className="row between">
-        <strong style={{ font: "700 24px var(--font-heading),sans-serif", letterSpacing: "-.04em" }} className="num">{pctR(p)}</strong>
-        <span className="pill gray">Geschat · bandbreedte {pctR(band.low)}–{pctR(band.high)}</span>
+        <strong style={{ font: "700 24px var(--font-heading),sans-serif", letterSpacing: "-.04em" }}>
+          <Probability p={p} calibrated={calibrated} showLabel={false} />
+        </strong>
+        <span className="pill gray">
+          {calibrated ? "Geschat" : "Niet gekalibreerd"} · bandbreedte <Probability p={band.low} high={band.high} calibrated={calibrated} showLabel={false} />
+        </span>
       </div>
       <p className="explain" style={{ marginTop: 2 }}>
         Geschatte kans dat deze aanname klopt. De bandbreedte laat zien wat er gebeurt als de factoren per bewijssoort 50% zwakker of sterker zijn.
+        {calibrated
+          ? ""
+          : " Niet gekalibreerd: je werkruimte heeft nog te weinig opgeloste dossiers om deze kansen te toetsen, daarom tonen we een band van 10 procentpunt. De exacte waarde staat in de tooltip."}
       </p>
       {capped && cap && (
         <p className="tiny mt-8">
-          <span className="pill orange">{capReason(cap.level, cap.max)}</span> Zonder plafond {pctR(rawP)}. Hoogste bewijsniveau tot nu toe: {cap.levelLabel.toLowerCase()}.
+          <span className="pill orange">{capReason(cap.level, cap.max)}</span> Zonder plafond <Probability p={rawP} calibrated={calibrated} showLabel={false} />. Hoogste bewijsniveau tot nu toe: {cap.levelLabel.toLowerCase()}.
         </p>
       )}
       {a.probability.top.length > 0 ? (

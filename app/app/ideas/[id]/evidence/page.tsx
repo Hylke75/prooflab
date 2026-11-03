@@ -12,6 +12,8 @@ import { decisionBlocker } from "@/lib/domain/forecast";
 import { getIdea } from "@/lib/data";
 import { loadDossier } from "@/lib/dossier";
 import { loadProgress } from "@/lib/progress";
+import { loadCalibration } from "@/lib/method-data";
+import { Probability } from "@/components/ui/Probability";
 import { stepsDone } from "@/lib/steps";
 import { explainStrength, strength, strengthLabel } from "@/lib/domain/evidence";
 import { ASSUMPTION_CATEGORIES, DECISIONS, OBSERVATION_KINDS, type DecisionAction, type ObservationKind } from "@/lib/domain/labels";
@@ -33,7 +35,7 @@ const SEV = { blocker: ["Blokkerend", "coral"], warning: ["Let op", "orange"], i
 export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id]/evidence">) {
   const { id } = await params;
   const { idea, canWrite, isClientDecider } = await getIdea(id);
-  const [d, progress] = await Promise.all([loadDossier(idea), loadProgress(id)]);
+  const [d, progress, calibration] = await Promise.all([loadDossier(idea), loadProgress(id), loadCalibration(id)]);
   const obs = d.observations.filter((o) => !o.is_synthetic).sort((a, b) => strength({ isFact: b.is_fact, isBehaviour: b.is_behaviour, isRealContext: b.is_real_context, isCostly: b.is_costly, isSynthetic: false }) - strength({ isFact: a.is_fact, isBehaviour: a.is_behaviour, isRealContext: a.is_real_context, isCostly: a.is_costly, isSynthetic: false }));
   const reached = LADDER.map((r) => ({ ...r, count: obs.filter((o) => r.kinds.includes(o.kind as ObservationKind)).length }));
   const highest = [...reached].reverse().find((r) => r.count > 0);
@@ -135,7 +137,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                   <li key={a.id}>
                     {a.statement}{" "}
                     <span className="tiny">
-                      · belang {a.importance}/5 · geschatte kans dat dit klopt {Math.round(a.probability.probability * 100)}%{a.probability.counted === 0 ? " (nog geen bewijs)" : ""}{a.probability.cap?.active ? ` (${a.probability.cap.reason})` : ""}
+                      · belang {a.importance}/5 · geschatte kans dat dit klopt <Probability p={a.probability.probability} calibrated={calibration.calibrated} />{a.probability.counted === 0 ? " (nog geen bewijs)" : ""}{a.probability.cap?.active ? ` (${a.probability.cap.reason})` : ""}
                     </span>
                   </li>
                 ))}

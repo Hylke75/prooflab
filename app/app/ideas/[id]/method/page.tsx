@@ -9,10 +9,11 @@ import { changesBetween, ruleLabelText } from "@/lib/domain/method/describe";
 import { pct } from "@/lib/domain/stats";
 import { methodPreview } from "@/lib/method-preview";
 import { switchMethod } from "./actions";
+import { loadCalibration } from "@/lib/method-data";
+import { Probability } from "@/components/ui/Probability";
 
 export const metadata: Metadata = { title: "Methode" };
 
-const pct0 = (x: number) => `${Math.round(x * 100)}%`;
 const diff = (a: number, b: number) => {
   const d = Math.round((b - a) * 100);
   return d === 0 ? "gelijk" : `${d > 0 ? "+" : "−"}${Math.abs(d)} punt${Math.abs(d) === 1 ? "" : "en"}`;
@@ -26,6 +27,7 @@ export default async function MethodPage({ params }: PageProps<"/app/ideas/[id]/
   const version = asMethodVersion(idea.method_version);
   const current = METHODS[version];
   const preview = version !== CURRENT_METHOD ? await methodPreview(id, version, CURRENT_METHOD) : null;
+  const calibration = await loadCalibration(id);
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Methode"]} coach="assumptions" ideaId={id}>
@@ -63,7 +65,7 @@ export default async function MethodPage({ params }: PageProps<"/app/ideas/[id]/
           </div>
 
           <div className="card mt-18">
-            <div className="section-title"><h2 className="as-h3">Kans per aanname</h2><span className="pill gray">{preview.assumptions.length} aannames</span></div>
+            <div className="section-title"><h2 className="as-h3">Kans per aanname</h2><span className="pill gray">{preview.assumptions.length} aannames{calibration.calibrated ? "" : " · niet gekalibreerd"}</span></div>
             {preview.assumptions.length === 0 ? (
               <p className="sub">Nog geen aannames.</p>
             ) : (
@@ -75,8 +77,8 @@ export default async function MethodPage({ params }: PageProps<"/app/ideas/[id]/
                     {preview.assumptions.map((a) => (
                       <tr key={a.id}>
                         <td>{a.statement}</td>
-                        <td className="num">{pct0(a.from)}</td>
-                        <td className="num">{pct0(a.to)}</td>
+                        <td className="num"><Probability p={a.from} calibrated={calibration.calibrated} showLabel={false} /></td>
+                        <td className="num"><Probability p={a.to} calibrated={calibration.calibrated} showLabel={false} /></td>
                         <td className="num">{diff(a.from, a.to)}</td>
                         <td className="tiny">
                           {[a.capReason, ...a.merged.map((m) => `${m.signals} signalen uit ${m.label} samengevoegd`)].filter(Boolean).join("; ") || "—"}

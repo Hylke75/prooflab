@@ -97,6 +97,9 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
     }),
     // Default or learned evidence factors (lib/domain/calibration.ts), so every probability can be reproduced.
     weights: d.weights,
+    // Kalibratie op het moment van het rapport: te weinig opgeloste dossiers = kansen in banden van 10 procentpunt
+    // met "niet gekalibreerd" (lib/domain/probability-display.ts). Oudere rapporten hebben dit veld niet.
+    calibration: { resolved: d.calibration.resolved, calibrated: d.calibration.calibrated },
     // Methodeversie, beslisregels en gebruikte plafonds: elke kans en elk oordeel is daarmee te reproduceren.
     methodology: {
       version: d.method.version,

@@ -18,7 +18,7 @@ import { aiConfigured } from "@/lib/env";
 import { ASSUMPTION_CATEGORIES, type AssumptionCategory, type AssumptionStatus } from "@/lib/domain/labels";
 import { asMethodVersion, CURRENT_METHOD, METHODS, type MethodVersion } from "@/lib/domain/method";
 import { EVIDENCE_LEVELS, type EvidenceCaps } from "@/lib/domain/evidence";
-import { loadIdeaCaps } from "@/lib/method-data";
+import { loadCalibration, loadIdeaCaps } from "@/lib/method-data";
 import { addAssumption, deleteAssumption, linkClaim, seedAssumptions, setImportance, setPrior, unlinkClaim } from "./actions";
 
 export const metadata: Metadata = { title: "Aannames" };
@@ -75,13 +75,14 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
   const { idea, canWrite } = await getIdea(id);
   const supabase = await supabaseServer();
   const method = asMethodVersion(idea.method_version);
-  const [ranked, progress, { data: claims }, { data: links }, weights, caps] = await Promise.all([
+  const [ranked, progress, { data: claims }, { data: links }, weights, caps, calibration] = await Promise.all([
     loadInformationValue(id),
     loadProgress(id),
     supabase.from("claims").select("id, statement, status").eq("idea_id", id).order("created_at"),
     supabase.from("assumption_claims").select("assumption_id, claim_id, relation, claims(statement, status)").eq("idea_id", id),
     loadIdeaWeights(id),
     loadIdeaCaps(id),
+    loadCalibration(id),
   ]);
   const board: BoardAssumption[] = ranked.map((a) => ({
     ...a,
@@ -131,6 +132,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
           assumptions={board}
           claims={usable}
           canWrite={canWrite}
+          calibrated={calibration.calibrated}
           linkActions={Object.fromEntries(board.map((a) => [a.id, linkClaim.bind(null, id, a.id)]))}
           unlinkActions={Object.fromEntries(board.map((a) => [a.id, Object.fromEntries(a.claims.map((c) => [c.id, unlinkClaim.bind(null, id, a.id, c.id)]))]))}
           importanceActions={Object.fromEntries(board.map((a) => [a.id, setImportance.bind(null, id, a.id)]))}

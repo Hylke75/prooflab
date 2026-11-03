@@ -81,4 +81,29 @@ d("golf A", () => {
     await expect(db.query("update public.ideas set method_version = '2026-11-a' where id = $1", [b.idea])).rejects.toThrow(/METHOD_VERSION/);
     await expect(db.query("update public.ideas set method_version = '2026-11-d' where id = $1", [A.idea])).rejects.toThrow(/check|METHOD_VERSION/);
   });
+
+  it("punt 3: aantal opgeloste dossiers van de werkruimte, ook voor de opdrachtgever, niet voor buitenstaanders", async () => {
+    const count = async (who: U) => Number(await as(who, async (c) => (await c.query("select public.resolved_dossiers_for_idea($1) as n", [A.idea])).rows[0].n));
+    expect(await count(owner)).toBe(0);
+    // Twee andere dossiers van dezelfde werkruimte met een uitkomst (buiten de triggers om vastgelegd).
+    for (let i = 0; i < 2; i++) {
+      const other = await as(owner, async (c) =>
+        (await c.query(
+          `insert into public.ideas (org_id, title, decision_question, project_type, description, target_audience, region)
+           values ($1, 'Opgelost', 'Vraag?', 'new_product', 'x', 'y', 'Nederland') returning id`,
+          [A.org],
+        )).rows[0].id as string,
+      );
+      await db.query("begin");
+      await db.query("set local session_replication_role = replica");
+      await db.query("insert into public.idea_outcomes (idea_id, achieved, evidence, resolved_by) values ($1, 'yes', 'Tien klanten', $2)", [other, owner.id]);
+      await db.query("commit");
+    }
+    expect(await count(owner)).toBe(2);
+    const client = await user(`klant-${randomUUID()}@example.com`);
+    await as(owner, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_viewer')", [A.idea, client.email]));
+    await as(client, (c) => c.query("select public.claim_invitations()"));
+    expect(await count(client)).toBe(2);
+    expect(await count(await user(`buiten-${randomUUID()}@example.com`))).toBe(0);
+  });
 });

@@ -12,6 +12,8 @@ import { CHANNELS } from "@/lib/domain/tracking";
 import { createReportVersion, shareReportVersion } from "./actions";
 import { PrintButton } from "./PrintButton";
 import { Icon } from "@/components/Icon";
+import { Probability } from "@/components/ui/Probability";
+import { CALIBRATION_MIN_RESOLVED } from "@/lib/domain/probability-display";
 
 export const metadata: Metadata = { title: "Rapportage" };
 
@@ -62,6 +64,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
     supabase.from("decisions").select("decided_at, client_confirmed_at").eq("idea_id", id).order("decided_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const r = row?.snapshot as ReportSnapshot | undefined;
+  // Rapporten van vóór golf A hebben geen kalibratie: dan de voorzichtige weergave (banden).
+  const calibrated = !!(r && "calibration" in r && r.calibration?.calibrated);
   // A client opening a shared version marks it as seen (once; the database keeps the first moment).
   if (!canWrite && current?.shared_at && !current.client_viewed_at) {
     await supabase.rpc("mark_report_viewed", { p_report: current.id });
@@ -275,7 +279,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             <span className="eyebrow">06 / Aannames en risico&apos;s</span>
             <h3>Wat moet waar zijn?</h3>
             <table className="table">
-              <thead><tr><th>Aanname</th><th>Belang</th>{r.assumptions.some((a) => "probability" in a && a.probability) ? <th>Geschatte kans</th> : <th>Bewijs</th>}<th>Status</th></tr></thead>
+              <thead><tr><th>Aanname</th><th>Belang</th>{r.assumptions.some((a) => "probability" in a && a.probability) ? <th>Geschatte kans{calibrated ? "" : " (niet gekalibreerd)"}</th> : <th>Bewijs</th>}<th>Status</th></tr></thead>
               <tbody>
                 {r.assumptions.map((a, i) => (
                   <tr key={i}>
@@ -283,7 +287,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                     <td className="num">{a.importance}/5</td>
                     {"probability" in a && a.probability ? (
                       <td className="num">
-                        {pct0(a.probability.point)} <span className="tiny">({pct0(a.probability.low)}–{pct0(a.probability.high)})</span>
+                        <Probability p={a.probability.point} calibrated={calibrated} showLabel={false} />{" "}
+                        <span className="tiny">(<Probability p={a.probability.low} high={a.probability.high} calibrated={calibrated} showLabel={false} />)</span>
                         {"capReason" in a && a.capReason ? <span className="tiny" style={{ display: "block" }}>{a.capReason}</span> : null}
                         {"merged" in a && a.merged.length ? <span className="tiny" style={{ display: "block" }}>{a.merged.map((m) => `${m.signals} signalen uit ${m.label} samengevoegd`).join("; ")}</span> : null}
                       </td>
@@ -301,6 +306,9 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 tellen nauwelijks, gedrag en betalingen sterk. Tussen haakjes de bandbreedte als die factoren de helft zwakker of sterker zijn.{" "}
                 {"weights" in r && r.weights ? describeWeights(r.weights) : "Gebruikte factoren: de vaste standaardfactoren van ProofLab (rapport gemaakt vóór geleerde factoren bestonden)."}{" "}
                 Rekenwijze: {describeMethodology("methodology" in r ? r.methodology : null).title}.
+                {calibrated
+                  ? ""
+                  : ` Niet gekalibreerd: bij dit rapport had de werkruimte minder dan ${CALIBRATION_MIN_RESOLVED} opgeloste dossiers om deze kansen aan te toetsen. Daarom staan ze in banden van 10 procentpunt; de exacte waarde staat in de tooltip.`}
               </p>
             )}
           </section>
