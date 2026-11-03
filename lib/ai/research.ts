@@ -4,6 +4,7 @@ import { z } from "zod";
 import { RESEARCH_SYSTEM, type AiUsage } from "./client";
 import { generate, generateJson, generateText } from "./generate";
 import type { ModelTier, ProviderId } from "./providers/config";
+import { EXPECTED_SOURCE_KEYS, EXPECTED_SOURCES, splitCompoundQuestions, type PlanQuestion } from "@/lib/domain/research-plan";
 import { fetchPageText, PageFetchError } from "@/lib/fetch-page";
 import {
   pageProblem,
@@ -63,24 +64,38 @@ const PlanSchema = z.object({
         suggested_sources: z.string(),
         method: z.enum(["desk", "customer", "both"]),
         done_criterion: z.string(),
+        meeteenheid: z.string().describe("De eenheid waarin het antwoord wordt gemeten, bijv. 'aantal bedrijven' of 'euro per klant per jaar'"),
+        verwacht_brontype: z
+          .enum(EXPECTED_SOURCE_KEYS)
+          .describe(`Het soort bron dat het antwoord moet leveren: ${Object.entries(EXPECTED_SOURCES).map(([k, v]) => `${k} = ${v}`).join(", ")}`),
       }),
     )
     .min(3)
     .max(5),
 });
 
+// Each question single and measurable; compound questions are split afterwards in code as well (at most five).
 export async function planResearch(idea: IdeaContext, provider: ProviderId) {
-  return parse(
+  const res = await parse(
     provider,
     PlanSchema,
     RESEARCH_SYSTEM,
     `${ideaBlock(idea)}
 Maak een onderzoekskaart met maximaal vijf beslissende marktvragen die samen de beslisvraag beantwoorden.
+Elke vraag is enkelvoudig en meetbaar: precies één vraag met één vraagteken, zonder "en" of "of" tussen twee
+deelvragen. Samengestelde vragen zijn verboden; maak er dan twee vragen van. Noem in de vraag de doelgroep, de regio
+en waar relevant de branche bij naam.
 Per vraag: waarom de vraag de beslissing kan veranderen, welke gegevens nodig zijn, welke soort bronnen geschikt zijn
-(officiële statistiek eerst), of het bureauonderzoek, klantonderzoek of beide vraagt, en een toetsbaar klaar-criterium.
+(officiële statistiek eerst), of het bureauonderzoek, klantonderzoek of beide vraagt, een toetsbaar klaar-criterium,
+de meeteenheid van het antwoord en het verwachte brontype.
 Neem altijd een vraag op over huidige alternatieven (inclusief niets doen) en een over betalingsbereidheid of financiering.`,
     "medium",
   );
+  const questions: PlanQuestion[] = splitCompoundQuestions(
+    res.data.questions.map(({ meeteenheid, verwacht_brontype, ...q }) => ({ ...q, unit: meeteenheid.slice(0, 120), expected_source: verwacht_brontype })),
+    5,
+  );
+  return { ...res, data: { questions } };
 }
 
 // ---------------------------------------------------------------------------

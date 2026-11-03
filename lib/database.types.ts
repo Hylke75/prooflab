@@ -1955,6 +1955,8 @@ export type Database = {
           status: string
           suggested_sources: string | null
           why_it_matters: string | null
+          unit: string | null
+          expected_source: string | null
         }
         Insert: {
           created_at?: string
@@ -1969,6 +1971,8 @@ export type Database = {
           status?: string
           suggested_sources?: string | null
           why_it_matters?: string | null
+          unit?: string | null
+          expected_source?: string | null
         }
         Update: {
           created_at?: string
@@ -1983,6 +1987,8 @@ export type Database = {
           status?: string
           suggested_sources?: string | null
           why_it_matters?: string | null
+          unit?: string | null
+          expected_source?: string | null
         }
         Relationships: [
           {

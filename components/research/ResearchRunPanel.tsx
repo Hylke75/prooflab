@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { cancelResearchRun, startResearchRun } from "@/app/app/ideas/[id]/research/actions";
 import { openSourceForm } from "./source-prefill";
+import { ActionForm, type FormState } from "@/components/ui/ActionForm";
+
+// Tabelnummer van CBS StatLine (zie lib/integrations/cbs.ts; hier los omdat dat bestand server-only is).
+const CBS_TABLE = "81589NED";
 
 type Task = { label: string; status: string; detail: string | null };
 type RunView = { id: string; status: string; mode: string; cost: number; budget: number; tasks: Task[] } | null;
@@ -126,9 +130,12 @@ export function ResearchRunPanel({
   searchWith,
   canWrite,
   searchLog = [],
+  cbsAction,
 }: {
   ideaId: string;
   run: RunView;
+  // "Haal CBS-cijfers op": officiële bedrijventellingen als bron, zonder AI.
+  cbsAction?: (s: FormState, f: FormData) => Promise<FormState>;
   // Zoeklogboek van deze run per onderzoeksvraag (alleen voor het onderzoeksteam).
   searchLog?: QuestionLog[];
   providers: ProviderStatus[];
@@ -227,6 +234,16 @@ export function ResearchRunPanel({
             </div>
           )}
         </>
+      )}
+      {canWrite && cbsAction && (
+        <div className="mt-12">
+          <ActionForm action={cbsAction} submitLabel="Haal CBS-cijfers op" submitClass="btn white sm" pendingLabel="CBS ophalen…">
+            <p className="tiny" style={{ margin: 0 }}>
+              Aantal bedrijven per grootteklasse en branche uit CBS StatLine (tabel {CBS_TABLE}), meest recente periode. Elke tabelregel wordt
+              letterlijk als fragment bewaard; ProofLab maakt er zelf geen bevinding van.
+            </p>
+          </ActionForm>
+        </div>
       )}
       {error && <div className="form-error mt-12">{error}</div>}
       {run && (

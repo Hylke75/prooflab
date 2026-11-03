@@ -6,6 +6,7 @@ import { InsightCard, type ClaimView } from "@/components/ui/InsightCard";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { Tabs } from "@/components/research/Tabs";
 import { ResearchRunPanel, type QuestionLog, type SearchLogUrl } from "@/components/research/ResearchRunPanel";
+import { EXPECTED_SOURCES, isExpectedSource } from "@/lib/domain/research-plan";
 import { AddClaimForm, AddSourceForm } from "@/components/research/SourceForms";
 import { CompetitorPanel, type CompetitorView } from "@/components/research/CompetitorPanel";
 import { SizingPanel } from "@/components/research/SizingPanel";
@@ -27,7 +28,7 @@ import { aiSettingsForOrg } from "@/lib/ai/settings";
 import { CLAIM_STATUS, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type EvidenceType, type SourceType } from "@/lib/domain/labels";
 import { breakEvenRevenue, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import {
-  addClaim, addSource, aiPlan, checkClaimSupport, deleteClaim, deleteCompetitor, deleteQuestion, deleteSegment, deleteSource,
+  addClaim, addSource, aiPlan, fetchCbsFigures, checkClaimSupport, deleteClaim, deleteCompetitor, deleteQuestion, deleteSegment, deleteSource,
   overrideSupport, recheckCompetitors, saveCompetitor, saveQuestion, saveScenario, saveSegment, saveUnitEconomics,
 } from "./actions";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
@@ -228,6 +229,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                 searchWith={canWrite && aiConfigured() ? (await researchProviders(idea.org_id)).map((p) => PROVIDER_LABELS[p].name) : []}
                 run={run ? { id: run.id, status: run.status, mode: run.mode, cost: Number(run.cost_usd), budget: Number(run.budget_usd), tasks: (tasks ?? []).map((t) => ({ label: t.label, status: t.status, detail: t.detail })) } : null}
                 searchLog={groupSearchLog(logRows ?? [], questions)}
+                cbsAction={fetchCbsFigures.bind(null, id)}
               />
               {challenges.length > 0 && (
                 <div className="card">
@@ -260,12 +262,16 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                       <span className="num">{q.position}</span>
                       <div style={{ flex: 1 }}>
                         <strong>{q.question}</strong>
-                        <span>{METHOD[q.method as keyof typeof METHOD]} · {qClaims.length} bevinding{qClaims.length === 1 ? "" : "en"}</span>
+                        <span>
+                          {METHOD[q.method as keyof typeof METHOD]}
+                          {isExpectedSource(q.expected_source) ? ` · Brontype: ${EXPECTED_SOURCES[q.expected_source]}` : ""} · {qClaims.length} bevinding{qClaims.length === 1 ? "" : "en"}
+                        </span>
                       </div>
                       <span className={`pill ${pill}`}>{label}</span>
                     </summary>
                     <div style={{ padding: "10px 0 4px 39px" }}>
                       {q.why_it_matters && <p className="tiny">Waarom: {q.why_it_matters}</p>}
+                      {q.unit && <p className="tiny mt-8">Meeteenheid: {q.unit}</p>}
                       <p className="tiny mt-8">Klaar als: {q.done_criterion}</p>
                       {canWrite && (
                         <ActionForm action={saveQuestion.bind(null, id, q.id)} submitLabel="Vraag opslaan" submitClass="btn white sm" footer={<DeleteQuestion ideaId={id} questionId={q.id} />}>
@@ -284,6 +290,19 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                               <label className="field-label" htmlFor={`s-${q.id}`}>Status</label>
                               <select className="field" id={`s-${q.id}`} name="status" defaultValue={q.status}>
                                 {Object.entries(QSTATUS).map(([k, [v]]) => <option key={k} value={k}>{v}</option>)}
+                              </select>
+                            </div>
+                          </div>
+                          <div className="double-field">
+                            <div>
+                              <label className="field-label" htmlFor={`u-${q.id}`}>Meeteenheid</label>
+                              <input className="field" id={`u-${q.id}`} name="unit" defaultValue={q.unit ?? ""} placeholder="Bijv. aantal bedrijven" />
+                            </div>
+                            <div>
+                              <label className="field-label" htmlFor={`b-${q.id}`}>Verwacht brontype</label>
+                              <select className="field" id={`b-${q.id}`} name="expected_source" defaultValue={q.expected_source ?? ""}>
+                                <option value="">Niet opgegeven</option>
+                                {Object.entries(EXPECTED_SOURCES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                               </select>
                             </div>
                           </div>

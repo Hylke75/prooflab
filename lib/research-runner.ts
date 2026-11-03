@@ -12,6 +12,7 @@ import { contentHash, recomputeClaim } from "@/lib/claims";
 import { aiSourceType, checkQuote, figuresAppearIn, normalizeText, registrableDomain, sourceTypeForDomain } from "@/lib/domain/verify";
 import { AiBudgetError, AiRefusedError } from "@/lib/ai/client";
 import { RunBudget, withRunBudget } from "@/lib/ai/budget";
+import { CBS_STATLINE_URL, CBS_TABLE, cbsKeywords, cbsLine, fetchCbsCompanyCounts, isSizeQuestion, type JsonFetcher } from "@/lib/integrations/cbs";
 import type { Idea } from "@/lib/data";
 import type { Json } from "@/lib/database.types";
 import { keepAfterSupportCheck, type SupportCheck } from "@/lib/domain/support";
@@ -135,24 +136,34 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
   const ctx = ideaContext(idea);
 
   if (task.kind === "search") {
-    const { data: q } = await supabase.from("research_questions").select("question").eq("id", task.question_id!).single();
+    const { data: q } = await supabase.from("research_questions").select("question, expected_source").eq("id", task.question_id!).single();
     const question = q!.question;
+    // Questions about market size that expect an official statistic: CBS company counts first (free, verbatim rows).
+    const cbs = q!.expected_source === "official_statistic" && isSizeQuestion(question) ? await collectCbsFigures(idea, task.run_id, question) : null;
     const providers = await providersFor(idea.id, "research");
     // The same question for the same idea within 7 days: reuse what was found (and paid for) then.
     const cache = await cachedSearch(idea.id, question, providers);
     const fresh = providers.filter((p) => !cache.providers.has(p));
-    const res = fresh.length
-      ? await searchAcrossProviders(idea.id, "research:search", ctx, question, mode === "quick" ? 3 : 6, { providers: fresh, avoidQueries: cache.recentQueries })
-      : null;
+    let res: Awaited<ReturnType<typeof searchAcrossProviders>> | null = null;
+    try {
+      res = fresh.length
+        ? await searchAcrossProviders(idea.id, "research:search", ctx, question, mode === "quick" ? 3 : 6, { providers: fresh, avoidQueries: cache.recentQueries })
+        : null;
+    } catch (e) {
+      // Without CBS rows a failed web search fails the step (and is retried); with them the step keeps those.
+      if (!cbs?.excerptIds.length) throw e;
+      await log.warn("research_search_failed_kept_cbs", { taskId: task.id }, e);
+    }
     const newIds = res ? await storeFoundSources(idea.id, task.run_id, res.sources) : [];
-    const excerptIds = [...new Set([...newIds, ...cache.excerptIds])];
-    await writeSearchLog(task, question, [...(res?.logs ?? []), ...cache.logs]);
+    const excerptIds = [...new Set([...(cbs?.excerptIds ?? []), ...newIds, ...cache.excerptIds])];
+    await writeSearchLog(task, question, [...(cbs ? [cbs.log] : []), ...(res?.logs ?? []), ...cache.logs]);
     const reusedText = cache.providers.size
       ? `Hergebruikt van een zoekopdracht van ${new Date(cache.at!).toLocaleDateString("nl-NL", { timeZone: "Europe/Amsterdam" })} (${[...cache.providers].map((p) => PROVIDER_LABELS[p].short).join(", ")}; niet opnieuw betaald): ${cache.excerptIds.length} passages.`
       : "";
     return {
       output: { excerpt_ids: excerptIds, providers: res?.perProvider ?? [], reused_from: [...cache.taskIds] },
       detail: [
+        cbs?.detail ?? "",
         res ? `${res.sources.length} bronnen, ${newIds.length} letterlijke passages bewaard (${res.searches} zoekopdrachten). ${res.summary}` : "",
         reusedText,
       ]
@@ -300,6 +311,104 @@ export async function searchAcrossProviders(
 }
 
 export type ProviderLog = { provider: ProviderId | "prooflab"; entries: QueryLog[]; reused?: boolean };
+
+// ---------------------------------------------------------------------------
+// CBS StatLine: officiële bedrijventellingen als bron (geen AI, geen kosten)
+// ---------------------------------------------------------------------------
+
+// Haalt het aantal bedrijven per grootteklasse op voor de branches die bij de doelgroep passen, en bewaart elke
+// tabelregel letterlijk als fragment van één bron (type officiële statistiek). Returns the excerpt ids and a log
+// entry for research_search_log. Errors never break a research step; they are logged.
+export async function collectCbsFigures(
+  idea: Pick<Idea, "id" | "target_audience" | "audience_detail">,
+  runId: string | null,
+  question: string | null,
+  deps: { fetchJson?: JsonFetcher } = {},
+): Promise<{ excerptIds: string[]; log: ProviderLog; detail: string }> {
+  const query = `CBS StatLine ${CBS_TABLE}: bedrijven naar bedrijfstak en grootteklasse`;
+  try {
+    const res = await fetchCbsCompanyCounts({ keywords: cbsKeywords(idea.target_audience, idea.audience_detail, question), fetchJson: deps.fetchJson });
+    if (res.rows.length === 0) {
+      return {
+        excerptIds: [],
+        log: { provider: "prooflab", entries: [{ query, passages: 0, urls: [{ url: res.url, title: res.title, status: "geen_relevante_alinea", reason: "CBS gaf geen waarden voor deze branches en periode." }] }] },
+        detail: "CBS gaf geen waarden voor deze branches.",
+      };
+    }
+    const excerptIds = await storeOfficialSource(idea.id, runId, {
+      url: res.url,
+      title: res.title,
+      publisher: "CBS",
+      accessNote: `Automatisch opgehaald uit de open data-API van CBS (tabel ${res.table}, ${res.period.title}${res.period.status ? `, ${res.period.status}` : ""}); elk fragment is een letterlijke tabelregel.`,
+      location: `Tabel ${res.table}, ${res.period.title}`,
+      excerpts: res.rows.map(cbsLine),
+    });
+    return {
+      excerptIds,
+      log: {
+        provider: "prooflab",
+        entries: [{ query, passages: excerptIds.length, urls: [{ url: res.url, title: res.title, status: "bewaard", reason: `${res.rows.length} tabelregels (${res.branches.join("; ")}), ${res.period.title}` }] }],
+      },
+      detail: `CBS: ${res.rows.length} tabelregels over ${res.branches.join("; ")} (${res.period.title}).`,
+    };
+  } catch (e) {
+    await log.warn("cbs_fetch_failed", { ideaId: idea.id }, e);
+    return {
+      excerptIds: [],
+      log: { provider: "prooflab", entries: [{ query, passages: 0, urls: [{ url: CBS_STATLINE_URL, title: CBS_TABLE, status: "geblokkeerd", reason: "CBS open data niet bereikbaar." }] }] },
+      detail: "CBS-cijfers konden niet worden opgehaald.",
+    };
+  }
+}
+
+// One source (official statistic) with verbatim excerpts; an existing source with the same URL is reused and only
+// new excerpts are added.
+async function storeOfficialSource(
+  ideaId: string,
+  runId: string | null,
+  s: { url: string; title: string; publisher: string; accessNote: string; location: string; excerpts: string[] },
+): Promise<string[]> {
+  const supabase = await supabaseServer();
+  const { data: existing } = await supabase.from("sources").select("id").eq("idea_id", ideaId).eq("url", s.url).maybeSingle();
+  let sourceId = existing?.id;
+  if (!sourceId) {
+    const { data: created } = await supabase
+      .from("sources")
+      .insert({
+        idea_id: ideaId,
+        run_id: runId,
+        url: s.url,
+        domain: registrableDomain(s.url),
+        title: s.title.slice(0, 300),
+        publisher: s.publisher,
+        source_type: "official_statistic",
+        is_primary: true,
+        origin: "ai_search",
+        access_note: s.accessNote.slice(0, 500),
+        content_hash: contentHash(s.excerpts.join("\n")),
+      })
+      .select("id")
+      .single();
+    sourceId = created?.id;
+  }
+  if (!sourceId) return [];
+  const { data: known } = await supabase.from("source_excerpts").select("id, text").eq("source_id", sourceId);
+  const byText = new Map((known ?? []).map((k) => [normalizeText(k.text), k.id]));
+  const ids: string[] = [];
+  for (const text of s.excerpts) {
+    const hit = byText.get(normalizeText(text));
+    if (hit) {
+      ids.push(hit);
+      continue;
+    }
+    const { data: ex } = await supabase.from("source_excerpts").insert({ source_id: sourceId, idea_id: ideaId, text: text.slice(0, 6000), location: s.location }).select("id").single();
+    if (ex) {
+      ids.push(ex.id);
+      byText.set(normalizeText(text), ex.id);
+    }
+  }
+  return ids;
+}
 
 const REUSE_DAYS = 7;
 const sameQuestion = (a: string | null, b: string) => !!a && normalizeText(a) === normalizeText(b);

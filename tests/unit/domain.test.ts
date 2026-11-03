@@ -114,7 +114,7 @@ describe("reality check", () => {
 describe("research plan templates", () => {
   it("returns at most five questions with a done criterion", () => {
     for (const t of ["new_business", "new_product", "expansion", "revenue_model", "internal_innovation"] as const) {
-      const p = templatePlan(t, "events");
+      const p = templatePlan(t, "events", { audience: "eventmanagers", region: "Nederland" });
       expect(p.length).toBe(5);
       expect(p.every((q) => q.done_criterion.length > 10)).toBe(true);
     }

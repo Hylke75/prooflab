@@ -108,17 +108,17 @@ export async function createIdea(_: IntakeState, form: FormData): Promise<Intake
     .single();
   if (error || !idea) return { error: "Het idee kon niet worden opgeslagen. Probeer het opnieuw." };
 
-  await seedDossier(idea.id, v.project_type, v.sector_template, v.target_audience);
+  await seedDossier(idea.id, v.project_type, v.sector_template, v.target_audience, v.region);
   revalidatePath("/app", "layout");
   redirect(`/app/ideas/${idea.id}/research`);
 }
 
 // A new dossier starts with a template research map, three visible sizing scenarios built
 // from editable assumptions, and "doing nothing" as the always-present alternative.
-async function seedDossier(ideaId: string, projectType: ProjectType, sector: SectorTemplate, audience: string) {
+async function seedDossier(ideaId: string, projectType: ProjectType, sector: SectorTemplate, audience: string, region: string) {
   const supabase = await supabaseServer();
   await supabase.from("research_questions").insert(
-    templatePlan(projectType, sector).map((q, i) => ({ ...q, idea_id: ideaId, position: i + 1, origin: "template" })),
+    templatePlan(projectType, sector, { audience, region }).map((q, i) => ({ ...q, idea_id: ideaId, position: i + 1, origin: "template" })),
   );
   const model: SizingModel = /consument|particulier|b2c|huishoud/i.test(audience) ? "b2c_people" : "b2b_accounts";
   for (const kind of ["conservative", "realistic", "optimistic"] as ScenarioKind[]) {
