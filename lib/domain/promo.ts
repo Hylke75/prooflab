@@ -20,6 +20,28 @@ export const isPromoPlatform = (s: unknown): s is PromoPlatform => typeof s === 
 
 export const PROMO_MIN = 10; // database minimum
 
+// Short prefix per platform for the post code (utm_content), so a code in a table or export is readable.
+const CODE_PREFIX: Record<PromoPlatform, string> = { linkedin: "li", linkedin_dm: "dm", instagram: "ig", facebook: "fb", x: "x", whatsapp: "wa", newsletter: "nb" };
+const CODE_CHARS = "abcdefghijkmnpqrstuvwxyz23456789";
+
+// A new post code, e.g. "dm-k3f9x". Random so that a regenerated post gets its own code; the database keeps
+// codes unique per experiment.
+export function newPostCode(platform: PromoPlatform, random: (n: number) => Uint8Array = (n) => crypto.getRandomValues(new Uint8Array(n))): string {
+  return `${CODE_PREFIX[platform]}-${Array.from(random(5), (b) => CODE_CHARS[b % CODE_CHARS.length]).join("")}`;
+}
+
+// The platform a code was made for (also for codes of posts that were replaced since), or null.
+export function platformOfCode(code: string): PromoPlatform | null {
+  const prefix = code.split("-")[0];
+  return (Object.keys(CODE_PREFIX) as PromoPlatform[]).find((k) => CODE_PREFIX[k] === prefix || k.replace("_", "") === prefix) ?? null;
+}
+
+// The link of one post: its channel link (utm_source) plus utm_content=<post code>.
+export function postLink(channelLink: string, code: string | null | undefined): string {
+  if (!code) return channelLink;
+  return `${channelLink}${channelLink.includes("?") ? "&" : "?"}utm_content=${encodeURIComponent(code)}`;
+}
+
 export type PromoInput = {
   kind: "survey" | "landing" | "pricing";
   topic: string; // survey title, or the headline of the offer

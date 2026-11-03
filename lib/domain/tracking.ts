@@ -56,3 +56,12 @@ export function assignVariant(hash: string, variants: number): number {
   if (variants <= 1) return 0;
   return parseInt(hash.slice(0, 8), 16) % variants;
 }
+
+// Per-post link tracking: every invitation post carries utm_content=<post code>. Only a clean code is kept
+// (lower-case letters, digits, dash, underscore, at most 40 characters); anything else counts as "no code".
+export const CONTENT_CODE = /^[a-z0-9_-]{1,40}$/;
+
+export function contentFrom(utmContent: string | null | undefined): string | null {
+  const s = (utmContent ?? "").toLowerCase().trim();
+  return CONTENT_CODE.test(s) ? s : null;
+}

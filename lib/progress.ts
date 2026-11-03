@@ -8,6 +8,7 @@ import type { IdeaProgress } from "@/lib/domain/coach";
 import { getUser } from "@/lib/data";
 import { FORECAST_MOMENTS, type ForecastMoment, type ForecastState } from "@/lib/domain/forecast";
 import { todayInNL } from "@/lib/domain/sprint";
+import { loadIdeaWeights } from "@/lib/learning-data";
 
 export type AssumptionWithEvidence = {
   id: string;
@@ -75,10 +76,12 @@ async function loadObservationLinks(ideaId: string): Promise<ObsLink[]> {
 // Computes the evidence axis and the probability of every assumption from linked claims and observations.
 export const loadAssumptions = cache(async (ideaId: string): Promise<AssumptionWithEvidence[]> => {
   const supabase = await supabaseServer();
-  const [{ data: assumptions }, { data: links }, obsLinks] = await Promise.all([
+  const [{ data: assumptions }, { data: links }, obsLinks, weights] = await Promise.all([
     supabase.from("assumptions").select("*").eq("idea_id", ideaId).order("created_at"),
     supabase.from("assumption_claims").select("assumption_id, relation, claims(status)").eq("idea_id", ideaId),
     loadObservationLinks(ideaId),
+    // Default factors unless the organisation switched learned weights on (lib/domain/calibration.ts).
+    loadIdeaWeights(ideaId),
   ]);
   return (assumptions ?? []).map((a) => {
     const claims = (links ?? [])
@@ -110,6 +113,7 @@ export const loadAssumptions = cache(async (ideaId: string): Promise<AssumptionW
           reviewStatus: l.observations!.review_status ?? null,
         })),
       a.prior == null ? 0.5 : Number(a.prior),
+      weights.overrides,
     );
     return {
       probability,

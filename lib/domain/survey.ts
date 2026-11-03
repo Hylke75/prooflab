@@ -267,6 +267,8 @@ export type ResponseRow = {
   source: "invitation" | "open_link";
   channel: string;
   duration_ms: number | null;
+  // The post code (utm_content) of the open link the response came through, if any.
+  content?: string | null;
   // Stored by the submit route (assessResponse) in survey_responses; computed here when absent.
   qualified?: boolean;
   quality?: Quality;
@@ -324,10 +326,11 @@ export function isKeySuccess(config: Pick<SurveyConfig, "key_question" | "succes
 // The key metric
 // ---------------------------------------------------------------------------
 
-// Counts per source and channel: the shape the database function survey_key_counts() returns.
+// Counts per source, channel and post code: the shape the database function survey_key_counts() returns.
 export type SurveyCountRow = {
   source: "invitation" | "open_link";
   channel: string;
+  content: string | null; // post code (utm_content) of an open link; null without one
   responses: number; // all stored responses
   n: number; // believable responses from the target group that answered the key question
   successes: number;
@@ -340,8 +343,8 @@ export type SurveyCountRow = {
 export function countResponses(config: SurveyConfig, rows: ResponseRow[]): SurveyCountRow[] {
   const map = new Map<string, SurveyCountRow>();
   for (const r of rows) {
-    const k = `${r.source}|${r.channel}`;
-    const c = map.get(k) ?? { source: r.source, channel: r.channel, responses: 0, n: 0, successes: 0, too_fast: 0, screened_out: 0, failed_attention: 0, straightlining: 0 };
+    const k = `${r.source}|${r.channel}|${r.content ?? ""}`;
+    const c = map.get(k) ?? { source: r.source, channel: r.channel, content: r.content ?? null, responses: 0, n: 0, successes: 0, too_fast: 0, screened_out: 0, failed_attention: 0, straightlining: 0 };
     c.responses++;
     const status = responseStatus(config, r);
     if (status === "screened_out") c.screened_out++;

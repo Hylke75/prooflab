@@ -26,6 +26,8 @@ export type SurveySplit = {
   invitation: KeyMetric;
   openLink: KeyMetric;
   byChannel: { channel: string; n: number; successes: number }[];
+  // Per post code (utm_content of the open link; null = no code, e.g. invitations or a link without code).
+  byContent: { content: string | null; n: number; successes: number }[];
   responses: number; // all stored responses, believable or not
   openLinkShare: number | null; // share of believable key answers that came through the open link
   warnings: string[];
@@ -41,12 +43,18 @@ export function surveySplitFromCounts(config: SurveyConfig, counts: SurveyCountR
   const invitation = keyMetricFromCounts(counts, "invitation");
   const openLink = keyMetricFromCounts(counts, "open_link");
   const channels = new Map<string, { channel: string; n: number; successes: number }>();
+  const contents = new Map<string | null, { content: string | null; n: number; successes: number }>();
   for (const r of counts) {
     if (r.n === 0) continue;
     const c = channels.get(r.channel) ?? { channel: r.channel, n: 0, successes: 0 };
     c.n += r.n;
     c.successes += r.successes;
     channels.set(r.channel, c);
+    const key = r.content ?? null;
+    const p = contents.get(key) ?? { content: key, n: 0, successes: 0 };
+    p.n += r.n;
+    p.successes += r.successes;
+    contents.set(key, p);
   }
   const openLinkShare = all.n ? openLink.n / all.n : null;
   const warnings: string[] = [];
@@ -67,7 +75,16 @@ export function surveySplitFromCounts(config: SurveyConfig, counts: SurveyCountR
   if (all.responses > 0 && invitation.n < minSample) {
     warnings.push(`Pas ${invitation.n} van de minimaal ${minSample} antwoorden komen van persoonlijk uitgenodigde, bekende respondenten.`);
   }
-  return { all, invitation, openLink, byChannel: [...channels.values()].sort((a, b) => b.n - a.n), responses: all.responses, openLinkShare, warnings };
+  return {
+    all,
+    invitation,
+    openLink,
+    byChannel: [...channels.values()].sort((a, b) => b.n - a.n),
+    byContent: [...contents.values()].sort((a, b) => b.n - a.n),
+    responses: all.responses,
+    openLinkShare,
+    warnings,
+  };
 }
 
 // ---------------------------------------------------------------------------

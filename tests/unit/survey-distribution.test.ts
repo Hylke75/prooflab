@@ -177,7 +177,7 @@ describe("invitation status", () => {
       [row({}), row({ status: "responded" }), row({ status: "failed", sent_at: null, error: "x" }), row({ status: "pending", sent_at: null }), row({ status: "unsubscribed" })],
       now,
     );
-    expect(c).toEqual({ invited: 5, sent: 3, pending: 1, failed: 1, responded: 1, unsubscribed: 1, remindable: 1 });
+    expect(c).toEqual({ invited: 5, sent: 3, pending: 1, failed: 1, responded: 1, unsubscribed: 1, remindable: 1, bounced: 0, complained: 0 });
   });
 
   it("exports personal links as CSV without formula injection", () => {

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useActionState, useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
 import { NOTE_KINDS, type NoteKind } from "@/lib/coach/rules";
-import { resolveCoachNote, reviewNow, type ReviewNowState } from "@/app/app/coach-review-actions";
+import { rateCoachNote, resolveCoachNote, reviewNow, type ReviewNowState } from "@/app/app/coach-review-actions";
 
 export type FeedNote = {
   id: string;
@@ -14,6 +14,7 @@ export type FeedNote = {
   href: string | null;
   source: string;
   created_at: string;
+  helpful?: boolean | null;
 };
 
 const when = (iso: string) => new Date(iso).toLocaleDateString("nl-NL", { day: "numeric", month: "short" });
@@ -21,6 +22,7 @@ const when = (iso: string) => new Date(iso).toLocaleDateString("nl-NL", { day: "
 // "Coach kijkt mee": the open notes of the trajectory coach for this dossier, newest first.
 export function CoachFeed({ ideaId, notes, canWrite, onNavigate }: { ideaId: string; notes: FeedNote[]; canWrite: boolean; onNavigate?: () => void }) {
   const [hidden, setHidden] = useState<string[]>([]);
+  const [votes, setVotes] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [review, reviewAction, reviewing] = useActionState<ReviewNowState, FormData>(reviewNow.bind(null, ideaId), { message: null, error: null });
@@ -33,6 +35,24 @@ export function CoachFeed({ ideaId, notes, canWrite, onNavigate }: { ideaId: str
       const r = await resolveCoachNote(ideaId, id, status);
       if (r.error) {
         setHidden((h) => h.filter((x) => x !== id));
+        setError(r.error);
+      }
+    });
+  };
+
+  const rate = (id: string, helpful: boolean) => {
+    const before = votes[id];
+    setVotes((v) => ({ ...v, [id]: helpful }));
+    setError(null);
+    start(async () => {
+      const r = await rateCoachNote(ideaId, id, helpful);
+      if (r.error) {
+        setVotes((v) => {
+          const next = { ...v };
+          if (before === undefined) delete next[id];
+          else next[id] = before;
+          return next;
+        });
         setError(r.error);
       }
     });
@@ -83,6 +103,7 @@ export function CoachFeed({ ideaId, notes, canWrite, onNavigate }: { ideaId: str
                     </>
                   )}
                 </div>
+                {canWrite && <HelpfulVote title={n.title} value={votes[n.id] ?? n.helpful ?? null} onVote={(v) => rate(n.id, v)} />}
               </li>
             );
           })}
@@ -101,5 +122,16 @@ export function CoachFeed({ ideaId, notes, canWrite, onNavigate }: { ideaId: str
         </form>
       )}
     </section>
+  );
+}
+
+// "Was deze tip nuttig?" ja/nee. The vote feeds the coach statistics on the forecast quality page.
+function HelpfulVote({ title, value, onVote }: { title: string; value: boolean | null; onVote: (v: boolean) => void }) {
+  return (
+    <div className="coach-note-vote tiny" role="group" aria-label={`Was deze tip nuttig: ${title}`}>
+      <span>Was deze tip nuttig?</span>
+      <button type="button" className={`btn ${value === true ? "soft" : "clear"} sm`} aria-pressed={value === true} onClick={() => onVote(true)}>Ja</button>
+      <button type="button" className={`btn ${value === false ? "soft" : "clear"} sm`} aria-pressed={value === false} onClick={() => onVote(false)}>Nee</button>
+    </div>
   );
 }

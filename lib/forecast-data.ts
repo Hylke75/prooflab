@@ -63,6 +63,10 @@ export type ForecastView = {
   followUp: FollowUp;
   today: string;
   aiAvailable: boolean;
+  // Starting calibration (lib/domain/calibration.ts): resolved dossiers of the organisation (null = unknown)
+  // and whether a behaviour test (landing or pricing) of this idea has ended.
+  orgResolved: number | null;
+  behaviourTestEnded: boolean;
 };
 
 const isMoment = (m: string): m is ForecastMoment => (FORECAST_MOMENTS as readonly string[]).includes(m);
@@ -75,7 +79,7 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
   const { idea, canWrite } = access;
   const ws = await getWorkspace();
   const supabase = await supabaseServer();
-  const [classes, forecasts, outcome, checkins, own, anyForecast] = await Promise.all([
+  const [classes, forecasts, outcome, checkins, own, anyForecast, orgResolved, behaviour] = await Promise.all([
     supabase.from("reference_classes").select("*").order("position"),
     supabase.from("forecasts").select("*").eq("idea_id", idea.id).order("created_at"),
     supabase.from("idea_outcomes").select("*").eq("idea_id", idea.id).maybeSingle(),
@@ -83,6 +87,8 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
     canWrite ? supabase.rpc("own_base_rate", { p_org: idea.org_id, p_project_type: idea.project_type, p_min: OWN_BASE_RATE_MIN }) : Promise.resolve({ data: [], error: null }),
     // Also counts forecasts this user may not see yet (blind rule), so the lock is shown correctly.
     supabase.rpc("forecasts_exist", { p_idea: idea.id }),
+    canWrite ? supabase.rpc("own_base_rate", { p_org: idea.org_id, p_project_type: null, p_min: 0 }) : Promise.resolve({ data: null, error: null }),
+    supabase.from("experiments").select("id", { count: "exact", head: true }).eq("idea_id", idea.id).in("type", ["landing", "pricing"]).in("state", ["ended", "analyzed", "decided"]),
   ]);
   if (classes.error || forecasts.error || outcome.error || checkins.error) return null;
 
@@ -148,6 +154,8 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
     followUp: followUp(state),
     today: state.today,
     aiAvailable: canWrite && aiConfigured(),
+    orgResolved: orgResolved.error || !orgResolved.data ? null : Number(orgResolved.data[0]?.resolved ?? 0),
+    behaviourTestEnded: (behaviour.count ?? 0) > 0,
   };
 });
 

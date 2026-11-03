@@ -93,13 +93,15 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
 // Everything the rules need, from the full dossier plus the prediction and signal tables.
 async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today: string): Promise<CoachFacts> {
   const id = d.idea.id;
-  const [sources, forecasts, outcome, checkins, replies, imports] = await Promise.all([
+  const [sources, forecasts, outcome, checkins, replies, imports, orgResolved] = await Promise.all([
     db.from("sources").select("source_type").eq("idea_id", id),
-    db.from("forecasts").select("moment, forecaster_kind").eq("idea_id", id),
+    // Row level security returns only the forecasts this consultant may see (blind rule).
+    db.from("forecasts").select("moment, forecaster_kind, probability").eq("idea_id", id),
     db.from("idea_outcomes").select("idea_id").eq("idea_id", id).maybeSingle(),
     db.from("outcome_checkins").select("created_at").eq("idea_id", id),
     db.from("outreach_events").select("received_at", { count: "exact" }).eq("idea_id", id).eq("event_type", "reply").order("received_at", { ascending: false }).limit(1),
     db.from("sources").select("created_at").eq("idea_id", id).eq("source_type", "outreach").order("created_at", { ascending: false }).limit(1),
+    db.rpc("own_base_rate", { p_org: d.idea.org_id, p_project_type: null, p_min: 0 }),
   ]);
   const idea = d.idea;
   return {
@@ -150,7 +152,10 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
       resolved: !!outcome.data,
       checkins: (checkins.data ?? []).map((c) => c.created_at),
     },
-    forecasts: (forecasts.data ?? []).map((f) => ({ moment: f.moment, kind: f.forecaster_kind })),
+    forecasts: (forecasts.data ?? []).map((f) => ({ moment: f.moment, kind: f.forecaster_kind, probability: Number(f.probability) })),
+    baseRate: idea.base_rate_low != null && idea.base_rate_high != null ? { low: Number(idea.base_rate_low), high: Number(idea.base_rate_high) } : null,
+    // Unknown (schema missing) counts as "enough": then the starting-calibration rule stays quiet.
+    orgResolved: orgResolved.error ? Number.POSITIVE_INFINITY : Number(orgResolved.data?.[0]?.resolved ?? 0),
     outreach: { replies: replies.count ?? 0, latestReplyAt: replies.data?.[0]?.received_at ?? null, latestImportAt: imports.data?.[0]?.created_at ?? null },
   };
 }
@@ -267,10 +272,18 @@ export async function runCoachReview(ideaId: string, opts: { force?: boolean } =
 // Open notes for the coach panel: clients only see notes meant for everyone.
 export async function loadOpenNotes(ideaId: string, audience: "consultant" | "client") {
   const db = await supabaseServer();
-  let q = db.from("coach_notes").select("id, code, kind, title, body, href, source, audience, created_at").eq("idea_id", ideaId).eq("status", "open");
-  if (audience === "client") q = q.eq("audience", "everyone");
-  const { data } = await q.order("created_at", { ascending: false }).limit(30);
-  return data ?? [];
+  const query = (cols: string) => {
+    let q = db.from("coach_notes").select(cols).eq("idea_id", ideaId).eq("status", "open");
+    if (audience === "client") q = q.eq("audience", "everyone");
+    return q.order("created_at", { ascending: false }).limit(30);
+  };
+  type Row = { id: string; code: string; kind: string; title: string; body: string; href: string | null; source: string; audience: string; created_at: string; helpful: boolean | null };
+  const cols = "id, code, kind, title, body, href, source, audience, created_at";
+  // The helpful vote exists from the learning migration on; older databases get the notes without it.
+  const withVote = await query(`${cols}, helpful`).returns<Row[]>();
+  if (!withVote.error) return withVote.data ?? [];
+  const { data } = await query(cols).returns<Omit<Row, "helpful">[]>();
+  return (data ?? []).map((n): Row => ({ ...n, helpful: null }));
 }
 
 export type OpenNote = Awaited<ReturnType<typeof loadOpenNotes>>[number];

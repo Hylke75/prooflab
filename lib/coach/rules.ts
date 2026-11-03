@@ -2,7 +2,8 @@
 // unit-tested. Each rule has a stable code; a rule posts a note while its condition holds and closes its own
 // open note when the condition is gone. Notes are advice about the process, never evidence.
 
-import { openMoment } from "@/lib/domain/forecast";
+import { OWN_BASE_RATE_MIN, openMoment } from "@/lib/domain/forecast";
+import { OVERCONFIDENT_GAP, overconfidence } from "@/lib/domain/calibration";
 
 export type NoteKind = "tip" | "warning" | "question" | "praise";
 export type NoteAudience = "consultant" | "everyone";
@@ -67,7 +68,12 @@ export type CoachFacts = {
   decisionDeadline: string | null;
   clientDeciderInvited: boolean;
   outcome: { defined: boolean; due: string | null; resolved: boolean; checkins: string[]; clockStart?: string | null };
-  forecasts: { moment: string; kind: string }[];
+  // Probabilities only for forecasts the reviewing consultant may see (blind rule, enforced by the database).
+  forecasts: { moment: string; kind: string; probability?: number }[];
+  // Base rate chosen for this dossier (null: none or "no good reference") and the number of resolved dossiers
+  // of the organisation (for the starting calibration before there are enough own outcomes).
+  baseRate?: { low: number; high: number } | null;
+  orgResolved?: number;
   outreach: { replies: number; latestReplyAt: string | null; latestImportAt: string | null };
 };
 
@@ -76,6 +82,8 @@ const DAY = 86_400_000;
 export const SURVEY_SUGGEST_BELOW = 20;
 
 const CUSTOMER_VOICE = ["review_site", "forum", "outreach", "interview", "survey"];
+const BEHAVIOUR_TESTS = ["landing", "pricing"];
+const ENDED = ["ended", "analyzed", "decided"];
 
 function dayNumber(date: string): number {
   const [y, m, d] = date.slice(0, 10).split("-").map(Number);
@@ -342,6 +350,34 @@ export const RULES: Record<string, Rule> = {
     };
   },
 
+  // Starting calibration (research 3.2/3.4): until there are enough own resolved dossiers, the base rate is
+  // the best anchor. A forecast far from it without an ended behaviour test is probably overconfident. The
+  // note names no person, value or direction, so it reveals nothing about blind forecasts.
+  forecast_overconfident: (f, base) => {
+    if (!f.baseRate || f.outcome.resolved || (f.orgResolved ?? 0) >= OWN_BASE_RATE_MIN) return null;
+    if (f.experiments.some((e) => BEHAVIOUR_TESTS.includes(e.type) && ENDED.includes(e.state))) return null;
+    const order = ["intake", "research", "experiment", "decision"];
+    const flagged = f.forecasts
+      .filter((x) => (x.kind === "consultant" || x.kind === "client") && x.probability != null)
+      .filter((x) => overconfidence(x.probability!, f.baseRate, false)?.flagged)
+      .sort((a, b) => order.indexOf(b.moment) - order.indexOf(a.moment))[0];
+    if (!flagged) return null;
+    const m = (flagged.moment in FORECAST_MOMENTS ? flagged.moment : "intake") as ForecastMoment;
+    const pts = Math.round(OVERCONFIDENT_GAP * 100);
+    return {
+      code: `forecast_overconfident:${m}`,
+      kind: "question",
+      title: "Een voorspelling ligt ver van het basispercentage",
+      body:
+        `Minstens één voorspelling ${FORECAST_MOMENTS[m]} ligt meer dan ${pts} procentpunten van het basispercentage ` +
+        `(${Math.round(f.baseRate.low * 100)}–${Math.round(f.baseRate.high * 100)}%), zonder afgeronde landingpage- of prijstest. ` +
+        "Het basispercentage zegt hoe vaak vergelijkbare ideeën slagen; zonder gedragsbewijs blijven goede voorspellers daar dichtbij. " +
+        "Afwijken mag, maar noteer welk bewijs dat rechtvaardigt.",
+      href: `${base}/outcome#kalibratiehulp`,
+      audience: "consultant",
+    };
+  },
+
   outcome_due: (f, base) => {
     if (f.outcome.resolved || !f.outcome.due || f.decisions.length === 0) return null;
     if (daysBetween(f.today, f.outcome.due) > 0) return null;
@@ -438,6 +474,35 @@ export const RULES: Record<string, Rule> = {
       ];
     }),
 };
+
+// Short Dutch names per rule code (the part before ':'), for the learning page.
+export const RULE_LABELS: Record<string, string> = {
+  alternatives_missing: "Huidige alternatieven ontbreken",
+  single_secondary_source: "Eén secundaire bron",
+  opinions_no_behaviour: "Veel meningen, geen gedrag",
+  critical_untested: "Kritieke aanname niet getest",
+  test_pace: "Steekproef niet op tempo",
+  interview_hypothetical: "Hypothetische interviewvragen",
+  survey_suggest: "Enquête voorstellen",
+  acquaintances_majority: "Vooral bekenden geïnterviewd",
+  learning_card_waiting: "Learning Card wacht",
+  reality_check_stale: "Reality Check verouderd",
+  decision_deadline: "Besluitdatum nadert",
+  decision_confirm: "Besluit bevestigen",
+  outcome_undefined: "Uitkomst niet vastgelegd",
+  forecast: "Voorspelling ontbreekt",
+  forecast_overconfident: "Voorspelling ver van basispercentage",
+  outcome_due: "Uitkomst vastleggen",
+  outcome_checkin: "Check-in na drie maanden",
+  sprint_behind: "Sprint loopt achter",
+  no_customer_voice: "Stem van de klant ontbreekt",
+  outreach_unimported: "LinkedIn-antwoorden niet opgenomen",
+  praise_first_behaviour: "Eerste klantgedrag (compliment)",
+  praise_prereg: "Test vooraf vastgelegd (compliment)",
+  ai: "AI-coach",
+};
+
+export const ruleLabel = (rule: string) => RULE_LABELS[rule] ?? rule;
 
 export function evaluateRules(f: CoachFacts): CoachNoteDraft[] {
   const base = `/app/ideas/${f.ideaId}`;

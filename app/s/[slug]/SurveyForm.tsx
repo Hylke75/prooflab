@@ -77,7 +77,9 @@ export function SurveyForm(p: Props) {
       return;
     }
     const website = (e.currentTarget.elements.namedItem("website") as HTMLInputElement | null)?.value ?? "";
-    const utm = new URLSearchParams(window.location.search).get("utm_source") ?? undefined;
+    const search = new URLSearchParams(window.location.search);
+    const utm = search.get("utm_source") ?? undefined;
+    const utmContent = search.get("utm_content") ?? undefined;
     setPending(true);
     try {
       const res = await fetch(`/api/s/${p.slug}`, {
@@ -90,6 +92,7 @@ export function SurveyForm(p: Props) {
           duration_ms: started.current ? Math.max(0, Date.now() - started.current) : undefined,
           token: p.token ?? undefined,
           utm_source: p.token ? undefined : utm?.slice(0, 40),
+          utm_content: p.token ? undefined : utmContent?.slice(0, 40),
           website,
         }),
       });

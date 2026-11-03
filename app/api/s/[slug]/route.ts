@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAnon } from "@/lib/supabase/server";
 import { env, trackingConfigured } from "@/lib/env";
 import { isSameOriginJson, visitorFromRequest } from "@/lib/public-test";
-import { channelFrom } from "@/lib/domain/tracking";
+import { channelFrom, contentFrom } from "@/lib/domain/tracking";
 import { assessResponse, SurveyConfigSchema, validateAnswers, type Answers, type Quality } from "@/lib/domain/survey";
 import { isSlug, parseSubmitBody, SCREENED_OUT, submitMessage } from "@/lib/domain/survey-distribution";
 import { tokenHash } from "@/lib/domain/survey-tokens";
@@ -69,6 +69,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/s/[slug]">)
     p_duration_ms: b.duration_ms ?? 0,
     p_token_hash,
     p_rate_bucket: visitor.bucket,
+    // The post code of an open link (utm_content); invitations have none.
+    p_content: b.token ? null : contentFrom(b.utm_content),
     p_qualified: assessed.qualified,
     p_quality: assessed.quality,
   });

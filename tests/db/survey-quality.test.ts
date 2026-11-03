@@ -209,6 +209,40 @@ d("survey quality: stored flags, counts in SQL and client sharing", () => {
     expect(after).toEqual([{ question_id: "last" }]);
   });
 
+  it("has one submit_survey that stores the post code and the quality flags, counted per post by the same rule", async () => {
+    const overloads = (await db.query("select count(*)::int as n from pg_proc where proname = 'submit_survey' and pronamespace = 'public'::regnamespace")).rows[0].n;
+    expect(overloads).toBe(1);
+    const other = await liveSurvey(alice);
+    const post = async (answers: Answers, content: string, duration = minimumDurationMs(CONFIG) + 5000) => {
+      const a = assessResponse(CONFIG, answers, duration);
+      return as("anon", async (c) =>
+        (
+          await c.query("select public.submit_survey($1, $2, $3, 'linkedin', $4, true, $5, null, $6, $7, $8, $9) as r", [
+            ingestKey,
+            other.slug,
+            randomUUID(),
+            JSON.stringify(answers),
+            duration,
+            `sq-p-${bucket++}`,
+            a.qualified,
+            a.quality,
+            content,
+          ])
+        ).rows[0].r,
+      );
+    };
+    expect(await post(good(), "li-abc12")).toBe("ok");
+    expect(await post(good({ gezocht: "nee" }), "li-abc12")).toBe("ok");
+    expect(await post(good(), "li-abc12", 1000)).toBe("ok"); // too fast: not counted for the post either
+    expect(await post({ laatst: "nooit" }, "li-abc12")).toBe("ok");
+    expect(await post(good(), "Bad Code!")).toBe("ok"); // cleaned to "badcode"
+    const rows = await as(alice, async (c) => (await c.query("select * from public.survey_key_counts($1)", [other.e])).rows);
+    expect(rows.find((r) => r.content === "li-abc12")).toMatchObject({ responses: 4, n: 2, successes: 1, too_fast: 1, screened_out: 1 });
+    expect(rows.find((r) => r.content === "badcode")).toMatchObject({ responses: 1, n: 1, successes: 1 });
+    const stored = await as(alice, async (c) => (await c.query("select content, qualified, quality from public.survey_responses where experiment_id = $1 order by created_at", [other.e])).rows);
+    expect(stored.every((r) => r.quality != null && r.qualified != null)).toBe(true);
+  });
+
   it("rejects a share that points at an experiment of another dossier", async () => {
     const other = await liveSurvey(alice);
     await expect(

@@ -8,6 +8,7 @@ import { GuideAuditList, TranscriptAuditList } from "@/components/experiments/In
 import { AiQualityCard } from "@/components/research/AiQualityCard";
 import { SurveyResults } from "@/components/survey/SurveyResults";
 import { Distribution } from "@/components/survey/Distribution";
+import { PerPostResults } from "@/components/survey/PerPostResults";
 import { getIdea, getWorkspace } from "@/lib/data";
 import { loadAiQuality } from "@/lib/ai-quality";
 import { auditGuide, auditTranscript, guideSummary } from "@/lib/domain/interview-audit";
@@ -223,6 +224,8 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           )}
         </div>
       )}
+
+      {canWrite && type !== "interview" && <PerPostResults expId={expId} type={type} rows={m.byContent} metricLabel={h.metric_label} />}
 
       <Distribution ideaId={id} exp={exp} canWrite={canWrite} plan={h} />
 
