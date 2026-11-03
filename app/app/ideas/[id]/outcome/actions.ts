@@ -16,7 +16,7 @@ import { ensembleMean } from "@/lib/ai/providers/select";
 import { dossierSummaryForAi, loadDossier } from "@/lib/dossier";
 import { ideaContext } from "@/lib/idea-context";
 import { todayInNL } from "@/lib/domain/sprint";
-import { OutcomeDefinitionSchema, optionalAmount as number, outcomeValueProblem } from "@/lib/forecast-schemas";
+import { EffortSchema, ExclusionSchema, OutcomeDefinitionSchema, optionalAmount as number, outcomeValueProblem } from "@/lib/forecast-schemas";
 import {
   FORECAST_MOMENTS,
   NO_REFERENCE,
@@ -321,13 +321,24 @@ export async function resolveOutcome(ideaId: string, _: ActionState, form: FormD
   const { idea } = await requireWritableIdea(ideaId);
   const p = OutcomeSchema.safeParse(Object.fromEntries(form));
   if (!p.success) return { error: p.error.issues[0].message };
+  // Golf B, punt 2: de inzet hoort bij elke nieuwe uitkomst.
+  const effort = EffortSchema.safeParse(Object.fromEntries(form));
+  if (!effort.success) return { error: effort.error.issues[0].message };
   if (!idea.outcome_statement) return { error: "Leg eerst vast wanneer dit idee geslaagd is." };
   if (!idea.outcome_due) return { error: "De uitkomst wordt gemeten zes maanden na het besluit. Neem eerst het besluit." };
   if (idea.outcome_question === "stop_review") return { error: STOPPED_MESSAGE };
   if (todayInNL() < idea.outcome_due && p.data.confirm_early !== "on")
     return { error: `De uitkomstdatum is ${idea.outcome_due}. Eerder vastleggen kan alleen als de uitkomst al zeker is; vink dat dan expliciet aan.` };
   const supabase = await supabaseServer();
-  const { error } = await supabase.from("idea_outcomes").insert({ idea_id: ideaId, achieved: p.data.achieved, actual_value: p.data.actual_value ?? null, evidence: p.data.evidence });
+  const { error } = await supabase.from("idea_outcomes").insert({
+    idea_id: ideaId,
+    achieved: p.data.achieved,
+    actual_value: p.data.actual_value ?? null,
+    evidence: p.data.evidence,
+    started: effort.data.started === "yes",
+    effort_hours: effort.data.started === "yes" ? (effort.data.effort_hours ?? null) : null,
+    budget_pct_of_plan: effort.data.started === "yes" ? (effort.data.budget_pct_of_plan ?? null) : null,
+  });
   if (error) {
     if (error.code === "23505") return { error: "De uitkomst is al vastgelegd. Een uitkomst is een vast feit en wordt niet herschreven." };
     if (error.message.includes("OUTCOME_UNDEFINED")) return { error: "Leg eerst vast wanneer dit idee geslaagd is." };
@@ -336,6 +347,34 @@ export async function resolveOutcome(ideaId: string, _: ActionState, form: FormD
   }
   refresh(ideaId);
   return { error: null, ok: "Uitkomst vastgelegd. De voorspellingen zijn nu gescoord." };
+}
+
+// ---------------------------------------------------------------------------
+// Golf B, punt 2: een dossier met onvoldoende uitvoering uit de kalibratie halen (consultant, met reden, geaudit)
+// ---------------------------------------------------------------------------
+
+export async function excludeFromCalibration(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const p = ExclusionSchema.safeParse(Object.fromEntries(form));
+  if (!p.success) return { error: p.error.issues[0].message };
+  const supabase = await supabaseServer();
+  const { error } = await supabase.from("calibration_exclusions").insert({ idea_id: ideaId, reason: p.data.reason });
+  if (error) {
+    if (error.code === "23505") return { error: "Dit dossier telt al niet mee in de kalibratie." };
+    if (error.message.includes("EXCLUSION_NOT_ALLOWED")) return { error: "Alleen een uitkomst met onvoldoende uitvoering kan uit de kalibratie worden gehaald." };
+    return { error: "Uitsluiten is niet gelukt." };
+  }
+  refresh(ideaId);
+  return { error: null, ok: "Dit dossier telt niet meer mee in de kalibratie. De reden staat in het auditspoor." };
+}
+
+export async function includeInCalibration(ideaId: string, _: ActionState): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  const { error } = await supabase.from("calibration_exclusions").delete().eq("idea_id", ideaId);
+  if (error) return { error: "Weer meetellen is niet gelukt." };
+  refresh(ideaId);
+  return { error: null, ok: "Dit dossier telt weer mee in de kalibratie. Ook dat staat in het auditspoor." };
 }
 
 // ---------------------------------------------------------------------------

@@ -43,3 +43,21 @@ export function outcomeValueProblem(v: Pick<OutcomeDefinition, "outcome_min_valu
   if ((per === null || per <= 0) && (rev === null || rev <= 0)) return "Vul ook een minimumbedrag per klant of een omzetdoel in (minstens één van beide).";
   return null;
 }
+
+// Inzet bij de uitkomst (golf B, punt 2): gestart ja/nee is verplicht; uren en budget t.o.v. plan zijn optioneel
+// (leeg = onbekend). Budget als percentage van het plan, 100 = volgens plan.
+export const EffortSchema = z.object({
+  started: z.enum(["yes", "no"], { message: "Geef aan of het besluit is uitgevoerd (gestart ja of nee)." }),
+  effort_hours: optionalAmount("De bestede uren moeten een getal van 0 of hoger zijn.")
+    .refine((n) => n === null || n <= 100000, "Vul de bestede uren in als aantal uren.")
+    .optional(),
+  budget_pct_of_plan: optionalAmount("Het budget ten opzichte van het plan moet een percentage van 0 of hoger zijn.")
+    .refine((n) => n === null || n <= 1000, "Het budget ten opzichte van het plan is een percentage, bijvoorbeeld 80.")
+    .optional(),
+});
+
+export type EffortInput = z.infer<typeof EffortSchema>;
+
+export const ExclusionSchema = z.object({
+  reason: z.string().trim().min(10, "Geef in minstens één zin de reden waarom dit dossier niet meetelt.").max(600),
+});

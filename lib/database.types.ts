@@ -517,6 +517,10 @@ export type Database = {
           evidence: string
           resolved_by: string
           resolved_at: string
+          started: boolean | null
+          effort_hours: number | null
+          budget_pct_of_plan: number | null
+          execution_insufficient: boolean | null
         }
         Insert: {
           idea_id: string
@@ -525,6 +529,10 @@ export type Database = {
           evidence: string
           resolved_by?: string
           resolved_at?: string
+          started?: boolean | null
+          effort_hours?: number | null
+          budget_pct_of_plan?: number | null
+          execution_insufficient?: boolean | null
         }
         Update: {
           idea_id?: string
@@ -533,7 +541,18 @@ export type Database = {
           evidence?: string
           resolved_by?: string
           resolved_at?: string
+          started?: boolean | null
+          effort_hours?: number | null
+          budget_pct_of_plan?: number | null
+          execution_insufficient?: boolean | null
         }
+        Relationships: []
+      }
+      // Golf B (punt 2): dossier met onvoldoende uitvoering uit de kalibratie gehaald, met reden.
+      calibration_exclusions: {
+        Row: { idea_id: string; reason: string; excluded_by: string; excluded_at: string }
+        Insert: { idea_id: string; reason: string; excluded_by?: string; excluded_at?: string }
+        Update: { idea_id?: string; reason?: string; excluded_by?: string; excluded_at?: string }
         Relationships: []
       }
       // Golf B (punt 1): "Was stoppen achteraf terecht?"

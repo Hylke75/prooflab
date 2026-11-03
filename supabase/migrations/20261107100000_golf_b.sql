@@ -2,6 +2,8 @@
 --
 --   1. Na een stop- of pauzebesluit vervalt de uitkomstvraag; na zes maanden volgt "Was stoppen achteraf terecht?".
 --      Deze dossiers tellen niet mee in de kalibratie van slagingskansen en de eigen basisrate.
+--   2. Bij de uitkomst ook de inzet: gestart ja/nee, uren en budget ten opzichte van plan. Onvoldoende uitvoering wordt
+--      gemarkeerd; een consultant kan zo'n dossier met reden uit de kalibratie halen (calibration_exclusions, geaudit).
 --
 -- De kalibratiefuncties staan onderaan (laatste sectie), omdat ze naar tabellen uit meerdere punten verwijzen.
 
@@ -155,10 +157,109 @@ revoke execute on function public.stamp_outcome_question(), public.guard_stop_re
 grant execute on function public.stop_review_counts(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------
--- Kalibratie: alleen dossiers met de succesvraag
+-- 2. Inzet bij de uitkomst
+-- ---------------------------------------------------------------------------
+-- De uitkomst meet ook uitvoering: een goed idee dat nooit is gestart, zegt niets over de voorspelling. Nullable, zodat
+-- bestaande uitkomsten geldig blijven (inzet onbekend); de app vraagt de inzet bij elke nieuwe uitkomst.
+--   started            : is het besluit uitgevoerd (gestart)?
+--   effort_hours       : bestede uren
+--   budget_pct_of_plan : besteed budget als percentage van het plan (100 = volgens plan)
+--   execution_insufficient : berekend door de database (zelfde regel als lib/domain/effort.ts)
+
+alter table public.idea_outcomes
+  add column if not exists started boolean,
+  add column if not exists effort_hours numeric check (effort_hours >= 0 and effort_hours <= 100000),
+  add column if not exists budget_pct_of_plan numeric check (budget_pct_of_plan >= 0 and budget_pct_of_plan <= 1000),
+  add column if not exists execution_insufficient boolean;
+
+-- Onvoldoende uitvoering: niet gestart, minder dan de helft van het geplande budget besteed, of (als de inzet in de
+-- intake in uren is opgegeven) minder dan de helft van die uren. Onbekend (null) als niet is vastgelegd of er is gestart.
+create or replace function public.execution_insufficient(p_started boolean, p_hours numeric, p_budget_pct numeric, p_stake_kind text, p_stake_value numeric)
+returns boolean language sql immutable set search_path = '' as $$
+  select case
+    when p_started is null then null
+    when not p_started then true
+    when p_budget_pct is not null and p_budget_pct < 50 then true
+    when p_stake_kind = 'time' and p_stake_value > 0 and p_hours is not null and p_hours < p_stake_value / 2 then true
+    else false
+  end;
+$$;
+
+create or replace function public.stamp_outcome_effort()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  v_kind text;
+  v_value numeric;
+begin
+  select stake_kind, stake_value into v_kind, v_value from public.ideas where id = new.idea_id;
+  new.execution_insufficient := public.execution_insufficient(new.started, new.effort_hours, new.budget_pct_of_plan, v_kind, v_value);
+  return new;
+end $$;
+drop trigger if exists idea_outcomes_effort on public.idea_outcomes;
+create trigger idea_outcomes_effort before insert on public.idea_outcomes
+  for each row execute function public.stamp_outcome_effort();
+
+-- Uit de kalibratie halen: alleen bij een uitkomst met onvoldoende uitvoering, alleen door een consultant van de
+-- werkruimte, met reden. Weer meetellen kan (delete); beide staan in het auditspoor (audit_row, met de reden).
+create table if not exists public.calibration_exclusions (
+  idea_id uuid primary key references public.ideas(id) on delete cascade,
+  reason text not null check (char_length(btrim(reason)) between 10 and 600),
+  excluded_by uuid not null default auth.uid() references auth.users(id),
+  excluded_at timestamptz not null default now()
+);
+create index if not exists calibration_exclusions_excluded_by_fk on public.calibration_exclusions(excluded_by);
+alter table public.calibration_exclusions enable row level security;
+drop policy if exists calibration_exclusions_select on public.calibration_exclusions;
+create policy calibration_exclusions_select on public.calibration_exclusions for select to authenticated using (public.can_read_idea(idea_id));
+drop policy if exists calibration_exclusions_insert on public.calibration_exclusions;
+create policy calibration_exclusions_insert on public.calibration_exclusions for insert to authenticated with check (public.can_write_idea(idea_id));
+drop policy if exists calibration_exclusions_delete on public.calibration_exclusions;
+create policy calibration_exclusions_delete on public.calibration_exclusions for delete to authenticated using (public.can_write_idea(idea_id));
+
+create or replace function public.guard_calibration_exclusion()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if not exists (select 1 from public.idea_outcomes o where o.idea_id = new.idea_id and o.execution_insufficient) then
+    raise exception 'EXCLUSION_NOT_ALLOWED: alleen een uitkomst met onvoldoende uitvoering kan uit de kalibratie worden gehaald' using errcode = 'P0001';
+  end if;
+  new.reason := btrim(new.reason);
+  new.excluded_by := auth.uid();
+  new.excluded_at := now();
+  return new;
+end $$;
+drop trigger if exists calibration_exclusions_guard on public.calibration_exclusions;
+create trigger calibration_exclusions_guard before insert on public.calibration_exclusions
+  for each row execute function public.guard_calibration_exclusion();
+
+-- audit_row legt bij een insert alleen wie en wanneer vast; de reden moet ook in het spoor, ook na weer meetellen.
+create or replace function public.audit_calibration_exclusion()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  r public.calibration_exclusions;
+begin
+  r := case when tg_op = 'DELETE' then old else new end;
+  insert into public.audit_events (idea_id, org_id, actor_id, table_name, row_id, action, detail)
+  values (r.idea_id, (select i.org_id from public.ideas i where i.id = r.idea_id), auth.uid(), 'calibration_exclusions', r.idea_id::text,
+          case when tg_op = 'DELETE' then 'calibration_include' else 'calibration_exclude' end,
+          jsonb_build_object('reason', r.reason, 'excluded_by', r.excluded_by, 'excluded_at', r.excluded_at));
+  return null;
+end $$;
+drop trigger if exists calibration_exclusions_audit on public.calibration_exclusions;
+create trigger calibration_exclusions_audit after insert or delete on public.calibration_exclusions
+  for each row execute function public.audit_calibration_exclusion();
+
+revoke all on public.calibration_exclusions from anon;
+grant select, insert, delete on public.calibration_exclusions to authenticated;
+revoke execute on function public.stamp_outcome_effort(), public.guard_calibration_exclusion(), public.audit_calibration_exclusion() from public, anon, authenticated;
+revoke execute on function public.execution_insufficient(boolean, numeric, numeric, text, numeric) from public, anon;
+grant execute on function public.execution_insufficient(boolean, numeric, numeric, text, numeric) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Kalibratie: alleen dossiers met de succesvraag en zonder uitsluiting
 -- ---------------------------------------------------------------------------
 -- Dossiers met de stopvraag hebben geen slagingskans om te scoren: hun voorspellingen worden niet gescoord en ze tellen
--- niet mee in de eigen basisrate. Bestaande grants blijven staan (create or replace behoudt ze).
+-- niet mee in de eigen basisrate. Hetzelfde geldt voor dossiers die een consultant wegens onvoldoende uitvoering uit
+-- de kalibratie heeft gehaald. Bestaande grants blijven staan (create or replace behoudt ze).
 
 create or replace function public.forecast_scores(p_org uuid)
 returns table (forecaster_kind text, forecaster_id uuid, forecasts bigint, brier numeric, mean_probability numeric, hit_rate numeric)
@@ -171,6 +272,7 @@ language sql stable security definer set search_path = '' as $$
   join public.idea_outcomes o on o.idea_id = f.idea_id
   join public.ideas i on i.id = f.idea_id
   where i.org_id = p_org and public.is_org_member(p_org) and i.outcome_question = 'success'
+    and not exists (select 1 from public.calibration_exclusions x where x.idea_id = i.id)
   group by f.forecaster_kind, f.forecaster_id;
 $$;
 
@@ -183,6 +285,7 @@ language sql stable security definer set search_path = '' as $$
   join public.idea_outcomes o on o.idea_id = f.idea_id
   join public.ideas i on i.id = f.idea_id
   where i.org_id = p_org and public.is_org_member(p_org) and i.outcome_question = 'success'
+    and not exists (select 1 from public.calibration_exclusions x where x.idea_id = i.id)
   group by 1 order by 1;
 $$;
 
@@ -193,5 +296,6 @@ language sql stable security definer set search_path = '' as $$
   from public.idea_outcomes o join public.ideas i on i.id = o.idea_id
   where i.org_id = p_org and public.is_org_member(p_org) and (p_project_type is null or i.project_type = p_project_type)
     and i.outcome_question = 'success'
+    and not exists (select 1 from public.calibration_exclusions x where x.idea_id = i.id)
   having count(*) >= p_min;
 $$;

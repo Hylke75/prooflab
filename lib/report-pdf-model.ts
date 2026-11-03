@@ -329,7 +329,11 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
         t: "p",
         text: `Dit dossier is gestopt of gepauzeerd. De oorspronkelijke uitkomstvraag is daarmee vervallen en de voorspellingen worden niet gescoord als slagingskans. Zes maanden na het besluit volgt de vraag: was stoppen achteraf terecht? ${p.stop.review ? `Vastgelegd op ${nlDate(p.stop.review.at)}: ${p.stop.review.justified.toLowerCase()}. ${p.stop.review.evidence}` : "Nog niet beantwoord."}`,
       });
-    if (p.result) blocks.push({ t: "p", text: `Vastgelegd op ${nlDate(p.result.at)}: ${p.result.achieved.toLowerCase()}${p.result.value != null ? ` (werkelijk: ${p.result.value})` : ""}. ${p.result.evidence}` });
+    if (p.result)
+      blocks.push({
+        t: "p",
+        text: `Vastgelegd op ${nlDate(p.result.at)}: ${p.result.achieved.toLowerCase()}${p.result.value != null ? ` (werkelijk: ${p.result.value})` : ""}. ${p.result.evidence}${p.result.effort ? ` Inzet: ${p.result.effort.toLowerCase()}.` : ""}${p.result.insufficient ? " Onvoldoende uitgevoerd: de uitkomst zegt vooral iets over de uitvoering." : ""}`,
+      });
     chapters.push({ id: "prediction", eyebrow: "11 / VOORSPELLING EN UITKOMST", title: p.result ? `Uitkomst: ${p.result.achieved.toLowerCase()}.` : "Wat verwachten we, en hoe toetsen we dat?", blocks });
   }
 

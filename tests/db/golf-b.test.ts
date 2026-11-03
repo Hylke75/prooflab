@@ -141,4 +141,57 @@ d("golf B: besluit en voorspelling", () => {
       expect(await as(alice, async (c) => (await c.query("select stopped::int from public.stop_review_counts($1)", [o])).rows[0].stopped)).toBe(0);
     });
   });
+
+  describe("punt 2: inzet bij de uitkomst", () => {
+    async function resolvedIdea(owner: Who, o: string, effort: { started: boolean; hours?: number; budget?: number }, p = 0.7): Promise<string> {
+      const idea = await newIdea(owner, o);
+      await realityCheck(owner, idea);
+      await as(owner, (c) => forecast(c, idea, "decision", owner.id, p));
+      await decide(owner, idea, "continue");
+      await startClock(owner, idea);
+      await as(owner, (c) =>
+        c.query("insert into public.idea_outcomes (idea_id, achieved, evidence, started, effort_hours, budget_pct_of_plan) values ($1, 'no', 'Geen klanten in de boekhouding', $2, $3, $4)", [
+          idea,
+          effort.started,
+          effort.hours ?? null,
+          effort.budget ?? null,
+        ]),
+      );
+      return idea;
+    }
+
+    it("markeert onvoldoende uitvoering en laat alleen dan uitsluiten, met reden en audit", async () => {
+      const owner = await user(`owner-${randomUUID()}@example.com`);
+      const o = await newOrg(owner);
+      const done = await resolvedIdea(owner, o, { started: true, hours: 200, budget: 90 }, 0.4);
+      const lazy = await resolvedIdea(owner, o, { started: true, budget: 20 }, 0.8);
+      const flags = await as(owner, async (c) => (await c.query("select idea_id, execution_insufficient from public.idea_outcomes where idea_id = any($1)", [[done, lazy]])).rows);
+      expect(Object.fromEntries(flags.map((r) => [r.idea_id, r.execution_insufficient]))).toEqual({ [done]: false, [lazy]: true });
+
+      await expect(as(owner, (c) => c.query("insert into public.calibration_exclusions (idea_id, reason) values ($1, 'Volgens plan uitgevoerd, toch uitsluiten')", [done]))).rejects.toThrow(/EXCLUSION_NOT_ALLOWED/);
+      await expect(as(owner, (c) => c.query("insert into public.calibration_exclusions (idea_id, reason) values ($1, 'kort')", [lazy]))).rejects.toThrow(/check constraint/);
+      // Twee voorspellingen meten mee zolang niemand uitsluit.
+      expect(await as(owner, async (c) => (await c.query("select sum(forecasts)::int as n from public.forecast_scores($1)", [o])).rows[0].n)).toBe(2);
+      await as(owner, (c) => c.query("insert into public.calibration_exclusions (idea_id, reason) values ($1, 'Budget ging na twee maanden naar een ander project')", [lazy]));
+      expect(await as(owner, async (c) => (await c.query("select sum(forecasts)::int as n from public.forecast_scores($1)", [o])).rows[0].n)).toBe(1);
+      expect(await as(owner, async (c) => (await c.query("select resolved::int from public.own_base_rate($1, null, 0)", [o])).rows[0].resolved)).toBe(1);
+      const audit = await as(owner, async (c) => (await c.query("select action, actor_id, detail->>'reason' as reason from public.audit_events where table_name = 'calibration_exclusions' and idea_id = $1", [lazy])).rows);
+      expect(audit).toContainEqual({ action: "calibration_exclude", actor_id: owner.id, reason: "Budget ging na twee maanden naar een ander project" });
+      // Weer meetellen kan, en staat ook in het spoor.
+      await as(owner, (c) => c.query("delete from public.calibration_exclusions where idea_id = $1", [lazy]));
+      expect(await as(owner, async (c) => (await c.query("select sum(forecasts)::int as n from public.forecast_scores($1)", [o])).rows[0].n)).toBe(2);
+      expect(await as(owner, async (c) => (await c.query("select count(*)::int as n from public.audit_events where action = 'calibration_include' and idea_id = $1", [lazy])).rows[0].n)).toBe(1);
+    });
+
+    it("laat alleen een consultant van de werkruimte uitsluiten", async () => {
+      const owner = await user(`owner-${randomUUID()}@example.com`);
+      const client = await user(`klant-${randomUUID()}@example.com`);
+      const o = await newOrg(owner);
+      const idea = await resolvedIdea(owner, o, { started: false });
+      await as(owner, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_decider')", [idea, client.email]));
+      await as(client, (c) => c.query("select public.claim_invitations()"));
+      await expect(as(client, (c) => c.query("insert into public.calibration_exclusions (idea_id, reason) values ($1, 'De opdrachtgever wil dit niet meetellen')", [idea]))).rejects.toThrow(/row-level security/);
+      await expect(as(alice, (c) => c.query("insert into public.calibration_exclusions (idea_id, reason) values ($1, 'Een buitenstaander probeert het ook')", [idea]))).rejects.toThrow(/row-level security/);
+    });
+  });
 });

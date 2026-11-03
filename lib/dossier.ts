@@ -123,7 +123,8 @@ export async function loadDossier(idea: Idea) {
   const stopped = idea.outcome_question === "stop_review";
   const [forecastsRes, outcomeRes, checkinsRes, refRes, signalsRes, stopRes] = await Promise.all([
     supabase.from("forecasts").select("moment, forecaster_kind, probability, rationale, model, created_at").eq("idea_id", id).order("created_at"),
-    supabase.from("idea_outcomes").select("achieved, actual_value, evidence, resolved_at").eq("idea_id", id).maybeSingle(),
+    // "*": de inzetkolommen (golf B) ontbreken in oudere databases.
+    supabase.from("idea_outcomes").select("*").eq("idea_id", id).maybeSingle(),
     supabase.from("outcome_checkins").select("on_track, current_value, note, created_at").eq("idea_id", id).order("created_at"),
     idea.reference_class?.startsWith(PROPOSAL_REFERENCE_PREFIX)
       ? supabase

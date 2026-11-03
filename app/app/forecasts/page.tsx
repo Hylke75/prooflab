@@ -34,12 +34,13 @@ export default async function ForecastsPage() {
   if (!ws.org) redirect("/app");
   const org = ws.org.id;
   const supabase = await supabaseServer();
-  const [caps, learning, stops, questions, scores, calibration, allOutcomes, upcoming, ...baseRates] = await Promise.all([
+  const [caps, learning, stops, questions, exclusions, scores, calibration, allOutcomes, upcoming, ...baseRates] = await Promise.all([
     loadOrgCaps(org),
     loadLearningView(org),
     // Golf B: zonder deze functie of kolom (oudere database) is er geen stopvraag en tellen alle uitkomsten mee.
     supabase.rpc("stop_review_counts", { p_org: org }),
     supabase.from("ideas").select("id, outcome_question").eq("org_id", org).eq("outcome_question", "stop_review"),
+    supabase.from("calibration_exclusions").select("idea_id"),
     supabase.rpc("forecast_scores", { p_org: org }),
     supabase.rpc("forecast_calibration", { p_org: org }),
     supabase.from("idea_outcomes").select("idea_id, achieved"),
@@ -54,7 +55,9 @@ export default async function ForecastsPage() {
   const stopped = new Set((questions.error ? [] : questions.data ?? []).map((q) => q.id));
   const stopRow = stops.error ? null : stops.data?.[0] ?? null;
   const stopCounts = stopRow ? { stopped: Number(stopRow.stopped), justified: Number(stopRow.justified), notJustified: Number(stopRow.not_justified), unknown: Number(stopRow.unknown), open: Number(stopRow.open) } : null;
-  const resolved = (allOutcomes.data ?? []).filter((o) => orgIdeas.has(o.idea_id) && !stopped.has(o.idea_id));
+  // Punt 2: dossiers die een consultant wegens onvoldoende uitvoering uit de kalibratie haalde, tellen ook niet mee.
+  const excluded = new Set((exclusions.error ? [] : exclusions.data ?? []).map((x) => x.idea_id).filter((id) => orgIdeas.has(id)));
+  const resolved = (allOutcomes.data ?? []).filter((o) => orgIdeas.has(o.idea_id) && !stopped.has(o.idea_id) && !excluded.has(o.idea_id));
   const resolvedIds = new Set(resolved.map((o) => o.idea_id));
 
   // Per moment, from the raw forecasts of resolved ideas (visible to everyone once the outcome is known).
@@ -93,7 +96,7 @@ export default async function ForecastsPage() {
     return { type: t, label: PROJECT_TYPES[t].label, resolved: row ? Number(row.resolved) : 0, achieved: row ? Number(row.achieved) : null };
   });
   const today = todayInNL();
-  const pending = (upcoming.data ?? []).filter((i) => !resolvedIds.has(i.id) && !stopped.has(i.id));
+  const pending = (upcoming.data ?? []).filter((i) => !resolvedIds.has(i.id) && !stopped.has(i.id) && !excluded.has(i.id));
 
   return (
     <PageFrame crumbs={["Werkruimte", "Voorspelkwaliteit"]} coach="forecasts">
@@ -124,6 +127,11 @@ export default async function ForecastsPage() {
               <div className="tiny">Afgeronde dossiers</div>
               <div className="mini-kpi num">{resolved.length}</div>
               <span className="pill gray">{resolved.filter((o) => o.achieved === "yes").length} gehaald · {resolved.filter((o) => o.achieved === "partial").length} deels</span>
+              {excluded.size > 0 && (
+                <p className="tiny mt-8">
+                  {excluded.size} {excluded.size === 1 ? "dossier telt" : "dossiers tellen"} niet mee: onvoldoende uitgevoerd en met reden uit de kalibratie gehaald.
+                </p>
+              )}
             </div>
             <div className="card tight">
               <div className="tiny">Gescoorde voorspellingen</div>

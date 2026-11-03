@@ -438,6 +438,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 <p className="mt-8">
                   Vastgelegd op {date(r.prediction.result.at)}: {r.prediction.result.achieved.toLowerCase()}
                   {r.prediction.result.value != null ? ` (werkelijk: ${r.prediction.result.value})` : ""}. {r.prediction.result.evidence}
+                  {r.prediction.result.effort ? ` Inzet: ${r.prediction.result.effort.toLowerCase()}.` : ""}
+                  {r.prediction.result.insufficient ? " Onvoldoende uitgevoerd: de uitkomst zegt vooral iets over de uitvoering." : ""}
                 </p>
               )}
             </section>

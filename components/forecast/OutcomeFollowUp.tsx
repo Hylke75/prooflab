@@ -1,6 +1,7 @@
 import { ActionForm } from "@/components/ui/ActionForm";
 import { calendarDate } from "@/components/sprint/SprintCard";
-import { resolveOutcome, resolveStopReview, saveCheckin } from "@/app/app/ideas/[id]/outcome/actions";
+import { excludeFromCalibration, includeInCalibration, resolveOutcome, resolveStopReview, saveCheckin } from "@/app/app/ideas/[id]/outcome/actions";
+import { effortSummary, insufficientReason } from "@/lib/domain/effort";
 import type { ForecastView } from "@/lib/forecast-data";
 import { ACHIEVED_LABELS, JUSTIFIED_LABELS, ON_TRACK_LABELS, STOP_REVIEW_QUESTION, brier, explainBrier, MOMENT_LABELS, pct, type Achieved, type Justified, type OnTrack } from "@/lib/domain/forecast";
 
@@ -86,6 +87,7 @@ export function OutcomeFollowUp({ view }: { view: ForecastView }) {
               </div>
             )}
             <div className="data-row"><span>Vastgelegd op</span><strong>{new Date(view.resolved.resolvedAt).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" })}</strong></div>
+            <div className="data-row"><span>Inzet</span><strong>{effortSummary(view.resolved.effort)}</strong></div>
             <p className="sub">Bewijs: {view.resolved.evidence}</p>
           </>
         ) : !fu.outcomeDate ? (
@@ -108,6 +110,33 @@ export function OutcomeFollowUp({ view }: { view: ForecastView }) {
             </fieldset>
             <label className="field-label" htmlFor="oc-value">Werkelijke waarde{o.metric ? ` (${o.metric})` : ""} (optioneel)</label>
             <input className="field" id="oc-value" name="actual_value" inputMode="decimal" placeholder={o.target != null ? `Doel: ${fmt(o.target)}` : undefined} />
+            <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+              <legend className="field-label">Is het besluit uitgevoerd?</legend>
+              <div className="choice-grid" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+                <Choice name="started" value="yes" label="Ja, er is gestart" id="oc-started-yes" />
+                <Choice name="started" value="no" label="Nee, niet gestart" id="oc-started-no" />
+              </div>
+            </fieldset>
+            <div className="double-field">
+              <div>
+                <label className="field-label" htmlFor="oc-hours">Bestede uren (optioneel)</label>
+                <input
+                  className="field"
+                  id="oc-hours"
+                  name="effort_hours"
+                  inputMode="decimal"
+                  placeholder={view.plannedStake.kind === "time" && view.plannedStake.value != null ? `Gepland: ${fmt(view.plannedStake.value)} uur` : "Bijv. 120"}
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="oc-budget">Budget t.o.v. plan in % (optioneel)</label>
+                <input className="field" id="oc-budget" name="budget_pct_of_plan" inputMode="decimal" placeholder="100 = volgens plan" />
+              </div>
+            </div>
+            <p className="field-hint">
+              De uitkomst meet ook uitvoering. Is er niet gestart, of minder dan de helft van het plan uitgevoerd, dan markeert ProofLab het dossier en kan een
+              consultant het met reden uit de kalibratie halen.
+            </p>
             <label className="field-label" htmlFor="oc-evidence">Bewijs</label>
             <textarea className="field" id="oc-evidence" name="evidence" rows={3} style={{ minHeight: 90 }} maxLength={2000} required minLength={10} placeholder="Waar blijkt de uitkomst uit? Bijv. export uit het boekhoudsysteem met 12 betalende klanten op 3 mei." />
             {early && (
@@ -122,8 +151,46 @@ export function OutcomeFollowUp({ view }: { view: ForecastView }) {
         )}
       </div>
 
+      {view.resolved && view.resolved.insufficient && <ExecutionCard view={view} />}
       {view.resolved && <ForecastScores view={view} achieved={view.resolved.achieved} />}
     </>
+  );
+}
+
+// Golf B, punt 2: onvoldoende uitvoering. Een consultant beslist of het dossier uit de kalibratie gaat (met reden, geaudit).
+function ExecutionCard({ view }: { view: ForecastView }) {
+  const r = view.resolved!;
+  const reason = insufficientReason(r.effort, view.plannedStake);
+  return (
+    <div className="card" id="uitvoering" style={{ scrollMarginTop: 100 }}>
+      <div className="section-title">
+        <h3>Onvoldoende uitgevoerd</h3>
+        <span className={`pill ${r.exclusion ? "gray" : "orange"}`}>{r.exclusion ? "Telt niet mee in de kalibratie" : "Telt mee in de kalibratie"}</span>
+      </div>
+      <p className="sub">
+        {reason} Dan zegt de uitkomst vooral iets over de uitvoering, niet over de voorspelling. Een consultant kan het dossier daarom met een reden uit de kalibratie
+        halen; dat staat in het auditspoor.
+      </p>
+      {r.exclusion ? (
+        <>
+          <p className="sub mt-8">
+            Uitgesloten op {new Date(r.exclusion.excludedAt).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" })}. Reden: {r.exclusion.reason}
+          </p>
+          {view.canWrite && (
+            <ActionForm action={includeInCalibration.bind(null, view.ideaId)} submitLabel="Laat weer meetellen" submitClass="btn white sm">
+              <span />
+            </ActionForm>
+          )}
+        </>
+      ) : view.canWrite ? (
+        <ActionForm action={excludeFromCalibration.bind(null, view.ideaId)} submitLabel="Haal uit de kalibratie" submitClass="btn white sm">
+          <label className="field-label" htmlFor="ex-reason">Reden</label>
+          <textarea className="field" id="ex-reason" name="reason" rows={2} style={{ minHeight: 70 }} maxLength={600} required minLength={10} placeholder="Bijv. de opdrachtgever heeft het budget na twee maanden naar een ander project verschoven." />
+        </ActionForm>
+      ) : (
+        <p className="tiny mt-8">Het onderzoeksteam beslist of dit dossier meetelt in de kalibratie.</p>
+      )}
+    </div>
   );
 }
 

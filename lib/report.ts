@@ -4,6 +4,7 @@ import { CLAIM_STATUS, COMPETITOR_KINDS, DECISIONS, EVIDENCE_TYPES, EXPERIMENT_T
 import type { Finding } from "@/lib/domain/reality-check";
 import { ACHIEVED_LABELS, FORECAST_MOMENTS, FORECASTER_LABELS, JUSTIFIED_LABELS, MOMENT_LABELS, ON_TRACK_LABELS, aggregate, brier, type Achieved, type ForecasterKind, type Justified, type OnTrack } from "@/lib/domain/forecast";
 import { ensembleMean } from "@/lib/ai/providers/select";
+import { effortSummary } from "@/lib/domain/effort";
 import { PROVIDER_LABELS, providerOfModel } from "@/lib/ai/providers/config";
 
 // "AI · Gemini" for an AI forecast whose provider is known; null otherwise.
@@ -138,7 +139,19 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       }).filter((m) => m.count > 0),
       checkins: d.prediction.checkins.map((c) => ({ at: c.created_at, onTrack: ON_TRACK_LABELS[c.on_track as OnTrack], value: c.current_value, note: c.note })),
       result: d.prediction.result
-        ? { achieved: ACHIEVED_LABELS[d.prediction.result.achieved as Achieved], value: d.prediction.result.actual_value, evidence: d.prediction.result.evidence, at: d.prediction.result.resolved_at }
+        ? {
+            achieved: ACHIEVED_LABELS[d.prediction.result.achieved as Achieved],
+            value: d.prediction.result.actual_value,
+            evidence: d.prediction.result.evidence,
+            at: d.prediction.result.resolved_at,
+            // Golf B, punt 2: de inzet bij de uitkomst.
+            effort: d.prediction.result.started == null ? null : effortSummary({
+              started: d.prediction.result.started ?? null,
+              hours: d.prediction.result.effort_hours == null ? null : Number(d.prediction.result.effort_hours),
+              budgetPctOfPlan: d.prediction.result.budget_pct_of_plan == null ? null : Number(d.prediction.result.budget_pct_of_plan),
+            }),
+            insufficient: d.prediction.result.execution_insufficient === true,
+          }
         : null,
       // Na een stop of pauze: "Was stoppen achteraf terecht?" (null bij de succesvraag en in oudere rapporten).
       stop:

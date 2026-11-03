@@ -7,6 +7,7 @@ import { aiSettingsForOrg } from "@/lib/ai/settings";
 import { PROVIDER_LABELS, providerOfModel, type ProviderId } from "@/lib/ai/providers/config";
 import { ensembleProviders } from "@/lib/ai/providers/select";
 import type { IdeaProgress } from "@/lib/domain/coach";
+import type { Effort } from "@/lib/domain/effort";
 import { PROJECT_TYPES, type ProjectType } from "@/lib/domain/labels";
 import { PROPOSAL_REFERENCE_PREFIX } from "@/lib/domain/reference-proposal";
 import {
@@ -51,7 +52,16 @@ export type ForecastRow = {
   createdAt: string;
 };
 
-export type OutcomeRow = { achieved: Achieved; actualValue: number | null; evidence: string; resolvedAt: string };
+export type OutcomeRow = {
+  achieved: Achieved;
+  actualValue: number | null;
+  evidence: string;
+  resolvedAt: string;
+  // Golf B, punt 2: de inzet bij de uitkomst en of het dossier uit de kalibratie is gehaald.
+  effort: Effort;
+  insufficient: boolean | null;
+  exclusion: { reason: string; excludedAt: string } | null;
+};
 export type CheckinRow = { id: string; onTrack: OnTrack; currentValue: number | null; note: string; createdAt: string };
 export type StopReviewRow = { justified: Justified; evidence: string; reviewedAt: string };
 
@@ -72,6 +82,8 @@ export type ForecastView = {
   baseRate: BaseRateView | null;
   referenceClasses: ReferenceClass[];
   ownBaseRate: OwnBaseRate | null;
+  // Geplande inzet uit de intake, om de bestede uren mee te vergelijken (golf B, punt 2).
+  plannedStake: { kind: string | null; value: number | null };
   forecasts: ForecastRow[];
   openMoment: ForecastMoment | null;
   ownMoments: ForecastMoment[];
@@ -103,7 +115,7 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
   const { idea, canWrite } = access;
   const ws = await getWorkspace();
   const supabase = await supabaseServer();
-  const [classes, forecasts, outcome, checkins, own, anyForecast, orgResolved, behaviour, proposals, stopReview] = await Promise.all([
+  const [classes, forecasts, outcome, checkins, own, anyForecast, orgResolved, behaviour, proposals, stopReview, exclusion] = await Promise.all([
     supabase.from("reference_classes").select("*").order("position"),
     supabase.from("forecasts").select("*").eq("idea_id", idea.id).order("created_at"),
     supabase.from("idea_outcomes").select("*").eq("idea_id", idea.id).maybeSingle(),
@@ -117,6 +129,7 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
     supabase.from("reference_proposals").select("id, label, rate, source_url, source_title, quote").eq("idea_id", idea.id).order("created_at", { ascending: false }).limit(10),
     // Ontbreekt de tabel (oudere database), dan is er geen stopvraag.
     state.question === "stop_review" ? supabase.from("stop_reviews").select("justified, evidence, reviewed_at").eq("idea_id", idea.id).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    state.resolved ? supabase.from("calibration_exclusions").select("reason, excluded_at").eq("idea_id", idea.id).maybeSingle() : Promise.resolve({ data: null, error: null }),
   ]);
   if (classes.error || forecasts.error || outcome.error || checkins.error) return null;
 
@@ -190,6 +203,7 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
     decisionDate: idea.outcome_clock_start ?? idea.decision_deadline,
     baseRate,
     referenceClasses,
+    plannedStake: { kind: idea.stake_kind, value: idea.stake_value == null ? null : Number(idea.stake_value) },
     ownBaseRate: ownRow ? { resolved: Number(ownRow.resolved), achieved: Number(ownRow.achieved), projectTypeLabel: PROJECT_TYPES[idea.project_type as ProjectType]?.label ?? idea.project_type } : null,
     forecasts: rows
       .filter((f) => isMoment(f.moment))
@@ -208,7 +222,19 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
     ownMoments: state.ownMoments,
     definitionLocked: rows.length > 0 || anyForecast.data === true,
     resolved: outcome.data
-      ? { achieved: outcome.data.achieved as Achieved, actualValue: outcome.data.actual_value == null ? null : Number(outcome.data.actual_value), evidence: outcome.data.evidence, resolvedAt: outcome.data.resolved_at }
+      ? {
+          achieved: outcome.data.achieved as Achieved,
+          actualValue: outcome.data.actual_value == null ? null : Number(outcome.data.actual_value),
+          evidence: outcome.data.evidence,
+          resolvedAt: outcome.data.resolved_at,
+          effort: {
+            started: outcome.data.started ?? null,
+            hours: outcome.data.effort_hours == null ? null : Number(outcome.data.effort_hours),
+            budgetPctOfPlan: outcome.data.budget_pct_of_plan == null ? null : Number(outcome.data.budget_pct_of_plan),
+          },
+          insufficient: outcome.data.execution_insufficient ?? null,
+          exclusion: exclusion.data ? { reason: exclusion.data.reason, excludedAt: exclusion.data.excluded_at } : null,
+        }
       : null,
     question: state.question ?? "success",
     stopReview: stopReview.data ? { justified: stopReview.data.justified as Justified, evidence: stopReview.data.evidence, reviewedAt: stopReview.data.reviewed_at } : null,
