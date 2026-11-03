@@ -461,3 +461,7 @@ details.quickline[open]>summary::after{transform:rotate(180deg)}
 @media(prefers-reduced-motion:reduce){.coach.collapsed,.coach.collapsed.open{transition:none}}
 dialog.modal{border:0;color:var(--color-text);max-height:calc(100vh - 40px);overflow:auto}
 dialog.modal::backdrop{background:var(--color-overlay)}
+.label-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin:22px 0 8px}
+.label-row .field-label{margin:0}
+.opt-tag{font-size:12px;line-height:18px;font-weight:600;color:var(--color-text-muted);background:var(--color-surface-muted);border-radius:var(--radius-pill);padding:1px 8px}
+.intake-required{margin:10px 0 0}
