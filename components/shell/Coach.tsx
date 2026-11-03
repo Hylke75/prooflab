@@ -5,10 +5,11 @@ import { useActionState } from "react";
 import { Icon } from "@/components/Icon";
 import { Drawer } from "@/components/ui/Drawer";
 import { askCoach, type CoachAnswerState } from "@/app/app/coach-actions";
+import { CoachFeed, type FeedNote } from "@/components/coach/CoachFeed";
 import type { CoachData } from "@/lib/domain/coach";
 import { useShell } from "./ShellProvider";
 
-export function Coach({ data, aiConnected }: { data: CoachData; aiConnected: boolean }) {
+export function Coach({ data, aiConnected, notes }: { data: CoachData; aiConnected: boolean; notes?: FeedNote[] }) {
   const { coachOpen, openCoach, close } = useShell();
   const [state, action, pending] = useActionState<CoachAnswerState, FormData>(askCoach, { answer: null, error: null });
   return (
@@ -44,6 +45,7 @@ export function Coach({ data, aiConnected }: { data: CoachData; aiConnected: boo
             </div>
           </>
         )}
+        {data.ideaId && notes && <CoachFeed ideaId={data.ideaId} notes={notes} canWrite={data.audience === "consultant"} onNavigate={close} />}
         <div className="coach-bottom">
           <div className="divider" />
           {aiConnected ? (

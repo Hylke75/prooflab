@@ -7,6 +7,8 @@ import { getIdea, getWorkspace } from "@/lib/data";
 import { loadProgress } from "@/lib/progress";
 import { aiConfigured } from "@/lib/env";
 import { supabaseServer } from "@/lib/supabase/server";
+import { loadOpenNotes } from "@/lib/coach/review";
+import { CoachWatch } from "@/components/coach/CoachWatch";
 
 const IDEA_PAGES: CoachPage[] = ["research", "assumptions", "experiments", "evidence", "report"];
 
@@ -34,6 +36,8 @@ export async function PageFrame({
   const name = profile.data?.full_name?.trim() || null;
   const initials = (name ? name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2) : ws.user.email.slice(0, 2)).toUpperCase();
   const audience = access ? (access.canWrite ? "consultant" : "client") : ws.org ? "consultant" : "client";
+  // The trajectory coach's open notes for this dossier; consultants also trigger a (throttled) review.
+  const notes = ideaId && access ? await loadOpenNotes(ideaId, audience) : undefined;
   return (
     <>
       <main className="main" id="main" tabIndex={-1}>
@@ -43,7 +47,8 @@ export async function PageFrame({
           <section className="screen active">{children}</section>
         </div>
       </main>
-      <Coach data={coachFor(coach, progress, { audience, isClientDecider: access?.isClientDecider })} aiConnected={aiConfigured()} />
+      <Coach data={coachFor(coach, progress, { audience, isClientDecider: access?.isClientDecider })} aiConnected={aiConfigured()} notes={notes} />
+      {ideaId && access?.canWrite && <CoachWatch ideaId={ideaId} />}
     </>
   );
 }

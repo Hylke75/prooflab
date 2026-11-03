@@ -18,6 +18,11 @@ const IDEA_NAV: { suffix: string; label: string; icon: IconName }[] = [
   { suffix: "/outcome", label: "Voorspelling & uitkomst", icon: "trend" },
 ];
 
+// Consultant-only pages of the current idea.
+const IDEA_TEAM_NAV: { suffix: string; label: string; icon: IconName }[] = [
+  { suffix: "/integrations", label: "Bronnen & koppelingen", icon: "users" },
+];
+
 export function Sidebar({
   workspaceName,
   isConsultant,
@@ -67,6 +72,7 @@ export function Sidebar({
           )}
           <nav className="side-nav" aria-label="Huidig idee">
             {IDEA_NAV.map((n) => link(`/app/ideas/${currentId}${n.suffix}`, n.label, n.icon, sub === n.suffix || (sub.startsWith(n.suffix) && n.suffix !== "")))}
+            {isConsultant && IDEA_TEAM_NAV.map((n) => link(`/app/ideas/${currentId}${n.suffix}`, n.label, n.icon, sub === n.suffix))}
           </nav>
         </>
       )}
