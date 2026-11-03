@@ -3,6 +3,8 @@ import { cache } from "react";
 import { supabaseServer } from "@/lib/supabase/server";
 import { assumptionEvidence, type AssumptionProbability, type ObservationDims } from "@/lib/domain/evidence";
 import { METHODS, type MethodVersion } from "@/lib/domain/method";
+import { dedupeByPerson } from "@/lib/domain/per-person";
+import { excludedTests, experimentFromSourceKey, isStarted, testOutcomesFrom, withoutExcludedTests, type TestExclusion } from "@/lib/domain/test-counts";
 import { ideaMethodVersion, loadIdeaCaps, loadSourceRefs } from "@/lib/method-data";
 import type { AssumptionCategory, ClaimStatus } from "@/lib/domain/labels";
 import { rankByInformationValue, type VoiResult } from "@/lib/domain/recommend";
@@ -11,6 +13,8 @@ import { getUser } from "@/lib/data";
 import { FORECAST_MOMENTS, type ForecastMoment, type ForecastState } from "@/lib/domain/forecast";
 import { todayInNL } from "@/lib/domain/sprint";
 import { loadIdeaWeights } from "@/lib/learning-data";
+import { withPracticeFlag } from "@/lib/domain/practice";
+import { loadRealInterviewIds, realObservationFilter } from "@/lib/practice-data";
 
 export type AssumptionWithEvidence = {
   id: string;
@@ -29,6 +33,10 @@ export type AssumptionWithEvidence = {
   priorLocked: boolean;
   // Golf A, punt 11: de vooraf aangewezen hoofdtest (experiment-id) of null.
   primaryExperimentId: string | null;
+  // Fase B0: vastgelegde soort (markt, prijs, gedrag, technisch) of null; zie lib/domain/assumption-kind.ts.
+  kind?: string | null;
+  // Fase B0, punt 4: gestarte tests van deze aanname die niet meetellen in kans en rangorde, met de reden.
+  excludedTests: TestExclusion[];
 };
 
 type ObsLink = {
@@ -44,20 +52,27 @@ type ObsLink = {
     kind: string;
     origin: string;
     review_status?: string | null;
+    interview_id?: string | null;
+    experiment_id?: string | null;
   } | null;
 };
 
 // Observations come through observations_for_idea, so a client scores with the same evidence as the
 // consultant (raw observations are consultant-only; the function leaves out the literal quote). Older
 // databases without that function fall back to the direct embed.
+// B0: waarnemingen uit een interview dat niet als echt gesprek is aangegeven (oefening of onbekend) tellen als
+// synthetisch, dus nergens als bewijs.
 async function loadObservationLinks(ideaId: string): Promise<ObsLink[]> {
+  const realIds = await loadRealInterviewIds(ideaId);
+  const practice = (rows: ObsLink[]): ObsLink[] =>
+    rows.map((l) => (l.observations ? { ...l, observations: withPracticeFlag({ ...l.observations, interview_id: l.observations.interview_id ?? null }, realIds) } : l));
   const supabase = await supabaseServer();
   const [links, obs] = await Promise.all([
     supabase.from("assumption_observations").select("assumption_id, relation, observation_id").eq("idea_id", ideaId),
     supabase.rpc("observations_for_idea", { p_idea: ideaId }),
   ]);
   if (!links.error && !obs.error) {
-    const byId = new Map((obs.data ?? []).map((o) => [o.id, o]));
+    const byId = new Map((obs.data ?? []).map((o) => [o.id, withPracticeFlag(o, realIds)]));
     return (links.data ?? []).map((l) => {
       const o = byId.get(l.observation_id);
       return {
@@ -65,28 +80,39 @@ async function loadObservationLinks(ideaId: string): Promise<ObsLink[]> {
         observation_id: l.observation_id,
         relation: l.relation,
         observations: o
-          ? { is_fact: o.is_fact, is_behaviour: o.is_behaviour, is_real_context: o.is_real_context, is_costly: o.is_costly, is_synthetic: o.is_synthetic, kind: o.kind, origin: o.origin, review_status: o.review_status ?? null }
+          ? {
+              is_fact: o.is_fact,
+              is_behaviour: o.is_behaviour,
+              is_real_context: o.is_real_context,
+              is_costly: o.is_costly,
+              is_synthetic: o.is_synthetic,
+              kind: o.kind,
+              origin: o.origin,
+              review_status: o.review_status ?? null,
+              interview_id: o.interview_id,
+              experiment_id: o.experiment_id,
+            }
           : null,
       };
     });
   }
   const full = await supabase
     .from("assumption_observations")
-    .select("assumption_id, observation_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin, review_status)")
+    .select("assumption_id, observation_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin, review_status, interview_id, experiment_id)")
     .eq("idea_id", ideaId);
-  if (!full.error) return full.data ?? [];
+  if (!full.error) return practice(full.data ?? []);
   const plain = await supabase
     .from("assumption_observations")
-    .select("assumption_id, observation_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin)")
+    .select("assumption_id, observation_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin, interview_id, experiment_id)")
     .eq("idea_id", ideaId);
-  return plain.data ?? [];
+  return practice(plain.data ?? []);
 }
 
 // Everything the probabilities of one idea are computed from, loaded once: assumptions, linked claims and
 // observations, evidence factors (default or learned), the source of every signal and the caps (method 2026-11-b).
 export const loadAssumptionInputs = cache(async (ideaId: string) => {
   const supabase = await supabaseServer();
-  const [{ data: assumptions }, { data: links }, obsLinks, weights, refs, caps, method] = await Promise.all([
+  const [{ data: assumptions }, { data: links }, obsLinks, weights, refs, caps, method, { data: experiments }, { data: cards }, { data: interviewObs }] = await Promise.all([
     supabase.from("assumptions").select("*").eq("idea_id", ideaId).order("created_at"),
     // claims.relevance (golf C): indirect bewijs telt half in methode 2026-11-c. Opdrachtgevers lezen claims via
     // dezelfde RLS (can_read_idea), dus ze rekenen met dezelfde weging.
@@ -97,19 +123,53 @@ export const loadAssumptionInputs = cache(async (ideaId: string) => {
     loadSourceRefs(ideaId),
     loadIdeaCaps(ideaId),
     ideaMethodVersion(ideaId),
+    // Fase B0, punt 4: uitkomst en n per test, om onbesliste tests en tests onder de steekproef niet mee te tellen.
+    // Experimenten, hypotheses, Learning Cards en observaties (zonder citaat) zijn ook voor opdrachtgevers leesbaar.
+    supabase.from("experiments").select("id, title, type, state, hypotheses(assumption_id, min_sample)").eq("idea_id", ideaId),
+    supabase.from("learning_cards").select("experiment_id, status, verdict, metrics").eq("idea_id", ideaId),
+    supabase.from("observations").select("experiment_id, interview_id, is_synthetic").eq("idea_id", ideaId).not("interview_id", "is", null),
   ]);
-  return { assumptions: assumptions ?? [], links: links ?? [], obsLinks: obsLinks ?? [], weights, refs, caps, method };
+  // B0 punt 2: waarnemingen uit oefengesprekken of nog niet aangegeven gesprekken tellen ook niet als deelnemer of
+  // ontdekkingsbewijs.
+  const realIds = await loadRealInterviewIds(ideaId);
+  const realInterviewObs = (interviewObs ?? []).filter((o) => o.interview_id && realIds.has(o.interview_id));
+  return {
+    assumptions: assumptions ?? [],
+    links: links ?? [],
+    obsLinks: obsLinks ?? [],
+    weights,
+    refs,
+    caps,
+    method,
+    tests: testOutcomesFrom(experiments ?? [], cards ?? [], realInterviewObs),
+    interviewObs: realInterviewObs,
+  };
 });
 export type AssumptionInputs = Awaited<ReturnType<typeof loadAssumptionInputs>>;
+
+const obsDims = (o: NonNullable<ObsLink["observations"]>): ObservationDims => ({
+  isFact: o.is_fact,
+  isBehaviour: o.is_behaviour,
+  isRealContext: o.is_real_context,
+  isCostly: o.is_costly,
+  isSynthetic: o.is_synthetic,
+});
 
 // Computes the evidence axis and the probability of every assumption with the calculation module of a method
 // version (lib/domain/method): the dossier's own version, or another one for the comparison before a switch.
 export function computeAssumptions(inputs: AssumptionInputs, version: MethodVersion): AssumptionWithEvidence[] {
   const method = METHODS[version];
-  const { links, obsLinks, weights, refs, caps } = inputs;
+  const { links, weights, refs, caps } = inputs;
+  // Fase B0, punt 4: waarnemingen (en enquêtebevindingen) uit een onbesliste test of een test onder de minimale
+  // steekproef blijven bestaan, maar tellen niet mee in de bewijsas, de kans en dus de rangorde.
+  const excluded = excludedTests(inputs.tests);
+  const obsLinks = withoutExcludedTests(inputs.obsLinks, (l) => l.observations?.experiment_id, excluded);
   return inputs.assumptions.map((a) => {
-    const claims = links
-      .filter((l) => l.assumption_id === a.id && l.claims)
+    const claims = withoutExcludedTests(
+      links.filter((l) => l.assumption_id === a.id && l.claims),
+      (l) => experimentFromSourceKey(refs.get(`claim:${l.claim_id}`)?.key),
+      excluded,
+    )
       .map((l) => {
         const ref = refs.get(`claim:${l.claim_id}`);
         return {
@@ -121,19 +181,12 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
           relevance: l.claims!.relevance ?? null,
         };
       });
-    const observations = obsLinks
-      .filter((l) => l.assumption_id === a.id && l.observations)
-      .map((l) => {
-        const o = l.observations!;
-        const dims: ObservationDims = {
-          isFact: o.is_fact,
-          isBehaviour: o.is_behaviour,
-          isRealContext: o.is_real_context,
-          isCostly: o.is_costly,
-          isSynthetic: o.is_synthetic,
-        };
-        return { ...dims, relation: l.relation as "supports" | "contradicts" };
-      });
+    // Bewijsas en aantallen per persoon (fase B0, punt 1): één interview levert per bewijsniveau en richting maximaal
+    // één waarneming. De kans zelf voegt per bron samen in de rekenmodule van de methode.
+    const observations = dedupeByPerson(
+      obsLinks.filter((l) => l.assumption_id === a.id && l.observations),
+      (l) => ({ interviewId: l.observations!.interview_id, kind: l.observations!.kind, relation: l.relation, dims: obsDims(l.observations!) }),
+    ).map((l) => ({ ...obsDims(l.observations!), relation: l.relation as "supports" | "contradicts" }));
     const e = assumptionEvidence(claims, observations);
     const probability = method.probability(
       claims,
@@ -170,9 +223,23 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
       priorRationale: a.prior_rationale ?? null,
       priorLocked: !!a.prior_locked_at,
       primaryExperimentId: a.primary_experiment_id ?? null,
+      kind: a.kind ?? null,
+      excludedTests: inputs.tests
+        .filter((t) => t.assumptionId === a.id && isStarted(t.state))
+        .map((t) => excluded.get(t.experimentId))
+        .filter((x): x is TestExclusion => !!x),
     };
   });
 }
+
+// Er is kwalitatief bewijs uit interviews (voor de informatiewaarde), zonder interviews uit tests die niet meetellen.
+export function hasDiscoveryEvidence(inputs: Pick<AssumptionInputs, "tests" | "interviewObs">): boolean {
+  const excluded = excludedTests(inputs.tests);
+  return inputs.interviewObs.some((o) => !o.experiment_id || !excluded.has(o.experiment_id));
+}
+
+// Per test waarom hij niet meetelt in kans en rangorde (voor de testpagina).
+export const loadTestExclusions = cache(async (ideaId: string): Promise<Map<string, TestExclusion>> => excludedTests((await loadAssumptionInputs(ideaId)).tests));
 
 // Computes the evidence axis and the probability of every assumption from linked claims and observations,
 // with the method version of the dossier.
@@ -190,12 +257,9 @@ export type AssumptionWithVoi = AssumptionWithEvidence & { voi: VoiResult };
 
 // Research 3.9: assumptions in order of information value (what to test next and why).
 export const loadInformationValue = cache(async (ideaId: string): Promise<AssumptionWithVoi[]> => {
-  const supabase = await supabaseServer();
-  const [list, { count: interviewObs }] = await Promise.all([
-    loadAssumptions(ideaId),
-    supabase.from("observations").select("id", { count: "exact", head: true }).eq("idea_id", ideaId).not("interview_id", "is", null),
-  ]);
-  return orderByInformationValue(list, (interviewObs ?? 0) > 0);
+  // B0: alleen waarnemingen uit echte gesprekken (zie loadAssumptionInputs) en uit tests die meetellen.
+  const [list, inputs] = await Promise.all([loadAssumptions(ideaId), loadAssumptionInputs(ideaId)]);
+  return orderByInformationValue(list, hasDiscoveryEvidence(inputs));
 });
 
 export function orderByInformationValue(list: AssumptionWithEvidence[], hasDiscoveryEvidence: boolean): AssumptionWithVoi[] {
@@ -259,6 +323,8 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
   const supabase = await supabaseServer();
   const count = { count: "exact" as const, head: true };
   const forecastState = loadForecastState(ideaId);
+  // B0: waarnemingen uit oefen- of niet-aangegeven gesprekken tellen niet mee.
+  const realObs = realObservationFilter(await loadRealInterviewIds(ideaId));
   const [questions, claims, verified, weak, competitors, alternatives, segments, experiments, cards, checks, decisions, behaviour, sizing, reports] = await Promise.all([
     supabase.from("research_questions").select("id, status, position").eq("idea_id", ideaId).order("position").order("created_at"),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId),
@@ -271,7 +337,7 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     supabase.from("learning_cards").select("experiment_id, status, approved_at").eq("idea_id", ideaId),
     supabase.from("reality_checks").select("created_at").eq("idea_id", ideaId).order("created_at", { ascending: false }).limit(1),
     supabase.from("decisions").select("decided_at, client_confirmed_at").eq("idea_id", ideaId).order("decided_at", { ascending: false }),
-    supabase.from("observations").select("id", count).eq("idea_id", ideaId).eq("is_behaviour", true).eq("is_synthetic", false),
+    supabase.from("observations").select("id", count).eq("idea_id", ideaId).eq("is_behaviour", true).eq("is_synthetic", false).or(realObs),
     supabase.from("sizing_factors").select("key, claims(status)").eq("idea_id", ideaId).eq("key", "base_count"),
     loadReportMeta(ideaId),
   ]);
@@ -282,7 +348,7 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     decisive
       ? supabase.from("claims").select("id", count).eq("idea_id", ideaId).eq("question_id", decisive.id).eq("status", "verified")
       : Promise.resolve({ count: 0 }),
-    supabase.from("observations").select("id", count).eq("idea_id", ideaId).eq("is_synthetic", false).not("experiment_id", "is", null),
+    supabase.from("observations").select("id", count).eq("idea_id", ideaId).eq("is_synthetic", false).not("experiment_id", "is", null).or(realObs),
   ]);
   const forecast = await forecastState;
   const assumptions = rankAssumptions(await loadAssumptions(ideaId));

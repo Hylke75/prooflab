@@ -20,6 +20,7 @@ export const FINGERPRINT_LABELS: Record<string, string> = {
   experiment_states: "Status van experimenten",
   test_events: "Meetgebeurtenissen in tests",
   interviews: "Interviews",
+  interviews_real: "Interviews aangegeven als echt gesprek",
   observations: "Observaties",
   observations_at: "Laatste observatie",
   learning_cards: "Learning Cards",

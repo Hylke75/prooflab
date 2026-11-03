@@ -22,8 +22,7 @@ import {
   NO_REFERENCE,
   OWN_BASE_RATE_MIN,
   OWN_REFERENCE_PREFIX,
-  PROBABILITY_MAX,
-  PROBABILITY_MIN,
+  checkProbabilityInput,
   followUp,
   measureWindowProblem,
   openMomentFor,
@@ -162,10 +161,15 @@ export async function proposeReferenceWithSource(ideaId: string, _: ActionState)
 
 const ForecastSchema = z.object({
   moment: z.enum(FORECAST_MOMENTS),
-  probability: z.coerce
-    .number({ message: "Geef een kans tussen 5 en 95%." })
-    .min(PROBABILITY_MIN * 100, "Geef een kans van minstens 5%.")
-    .max(PROBABILITY_MAX * 100, "Geef een kans van hooguit 95%."),
+  // B0 punt 5: dezelfde controle als op het scherm, geen stille afronding of standaardwaarde.
+  probability: z.string().transform((raw, ctx) => {
+    const c = checkProbabilityInput(raw);
+    if (!c.ok) {
+      ctx.addIssue({ code: "custom", message: c.message });
+      return z.NEVER;
+    }
+    return c.pct;
+  }),
   rationale: z.string().trim().min(10, "Schrijf in één zin waarom.").max(300, "Houd het bij één zin (hooguit 300 tekens)."),
 });
 

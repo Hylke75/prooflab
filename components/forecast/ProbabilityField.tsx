@@ -1,75 +1,50 @@
 "use client";
 
 import { useId, useState } from "react";
+import { checkProbabilityInput } from "@/lib/domain/forecast";
 
-// A probability between 5 and 95%, as a slider and a number field that stay in sync.
-export function ProbabilityField({ initial, describedBy }: { initial: number; describedBy?: string }) {
-  const clamp = (n: number) => Math.min(95, Math.max(5, Math.round(n)));
-  const [value, setValue] = useState(clamp(initial));
-  // The typed text is kept as typed (so "30" can be typed digit by digit); it is clamped when leaving the field.
-  const [text, setText] = useState(String(clamp(initial)));
+// Fase B0, punt 5: een voorspelling start leeg. Geen schuif en geen vooringevulde waarde (het basispercentage
+// staat erboven als referentie), zodat niemand op een voorgezet getal ankert. Het getal wordt gecontroleerd
+// (0–100, zie checkProbabilityInput) en vóór het vastleggen staat er wat er precies wordt vastgelegd.
+export function ProbabilityField({ describedBy }: { describedBy?: string }) {
+  const [text, setText] = useState("");
+  const [touched, setTouched] = useState(false);
   const id = useId();
-  const fromSlider = (raw: string) => {
-    const n = clamp(Number(raw));
-    setValue(n);
-    setText(String(n));
-  };
-  const fromText = (raw: string) => {
-    setText(raw);
-    const n = Number(raw);
-    if (raw.trim() !== "" && Number.isFinite(n) && n >= 5 && n <= 95) setValue(Math.round(n));
-  };
-  const commit = () => {
-    const n = Number(text);
-    const v = text.trim() === "" || !Number.isFinite(n) ? value : clamp(n);
-    setValue(v);
-    setText(String(v));
-  };
+  const check = checkProbabilityInput(text);
+  const showError = touched && text.trim() !== "" && !check.ok;
   return (
-    <div>
-      <div className="range-label" style={{ marginTop: 18 }}>
-        <label htmlFor={`${id}-range`} style={{ fontWeight: 700 }}>
-          Kans dat het doel wordt gehaald
-        </label>
-        <strong aria-hidden="true">{value}%</strong>
-      </div>
-      <div className="row" style={{ alignItems: "center", gap: 12, flexWrap: "nowrap" }}>
-        <input
-          id={`${id}-range`}
-          type="range"
-          min={5}
-          max={95}
-          step={1}
-          value={value}
-          onChange={(e) => fromSlider(e.target.value)}
-          aria-describedby={describedBy}
-          aria-valuetext={`${value} procent`}
-          style={{ flex: 1, minHeight: 44 }}
-        />
-        <label className="sr-only" htmlFor={`${id}-num`}>
-          Kans in procenten
-        </label>
+    <div className="form-line" style={{ marginTop: 18 }}>
+      <label htmlFor={`${id}-num`} style={{ fontWeight: 700 }}>
+        Kans dat het doel wordt gehaald (%)
+      </label>
+      <div className="row" style={{ alignItems: "center", gap: 8, flexWrap: "nowrap" }}>
         <input
           id={`${id}-num`}
           className="field num"
           name="probability"
           type="number"
           inputMode="numeric"
-          min={5}
-          max={95}
+          min={0}
+          max={100}
           step={1}
+          required
           value={text}
-          onChange={(e) => fromText(e.target.value)}
-          onBlur={commit}
-          style={{ width: 86, minHeight: 44, padding: "10px 12px" }}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={() => setTouched(true)}
+          aria-invalid={showError || undefined}
+          aria-describedby={[describedBy, `${id}-msg`].filter(Boolean).join(" ")}
+          placeholder="Bijv. 35"
+          style={{ width: 120, minHeight: 44, padding: "10px 12px" }}
         />
         <span aria-hidden="true" className="tiny">%</span>
       </div>
-      <div className="chart-labels" aria-hidden="true">
-        <span>5% · vrijwel zeker niet</span>
-        <span>50%</span>
-        <span>95% · vrijwel zeker wel</span>
-      </div>
+      <p id={`${id}-msg`} aria-live="polite" className={showError ? "field-error" : "field-hint"}>
+        {showError
+          ? check.message
+          : check.ok
+            ? <strong>Je legt {check.pct}% vast. Dit kan daarna niet meer veranderen.</strong>
+            : "Vul een getal in. Er staat bewust niets voor: begin bij het basispercentage hierboven en pas het aan."}
+      </p>
     </div>
   );
 }

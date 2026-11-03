@@ -1,5 +1,7 @@
 // Report labels follow checkable rules per dossier, never an LLM score or a % "chance of success".
 
+import { countPerPerson, dedupeByPerson, type PersonRef } from "./per-person";
+
 export type DossierLabel = "Verkenning" | "Onderbouwd marktbeeld" | "Eerste gedragsbewijs" | "Herhaald marktgedragsbewijs";
 
 export type LabelInput = {
@@ -33,4 +35,55 @@ export function dossierLabel(i: LabelInput): { label: DossierLabel; missing: str
   const distinct = new Set(passes.map((c) => `${c.endedOn?.slice(0, 7)}|${[...c.channels].sort().join(",")}`));
   if (passes.length >= 2 && distinct.size >= 2) return { label: "Herhaald marktgedragsbewijs", missing: [] };
   return { label: "Eerste gedragsbewijs", missing: ["een tweede geslaagd gedragsexperiment in een andere periode of via een ander kanaal"] };
+}
+
+// ---------------------------------------------------------------------------
+// Sterkste klantbewijs van het dossier (Bewijs & besluit en het rapport). Telt per persoon (fase B0, punt 1):
+// één interview levert per bewijsniveau en richting maximaal één waarneming (lib/domain/per-person.ts).
+// ---------------------------------------------------------------------------
+
+export const EVIDENCE_LADDER: { kinds: string[]; label: string }[] = [
+  { kinds: ["opinion"], label: "Uitgesproken belangstelling" },
+  { kinds: ["problem_confirmed", "current_behaviour", "current_spend"], label: "Probleem in eigen gedrag" },
+  { kinds: ["waitlist_signup"], label: "Kleine handeling (aanmelding)" },
+  { kinds: ["demo_request", "quote_request"], label: "Concrete aanvraag of keuze bij prijs" },
+  { kinds: ["deposit"], label: "Aanbetaling" },
+  { kinds: ["repeat_purchase"], label: "Herhaalde aankoop" },
+];
+
+export type LadderObservation = PersonRef & { isSynthetic: boolean };
+
+export type EvidenceLadder = {
+  rungs: { label: string; count: number }[];
+  highest: { label: string; count: number } | null;
+  paymentShown: boolean; // aanbetaling of herhaalaankoop gezien
+  counted: number; // niet-synthetische waarnemingen, per persoon
+  quotes: number; // niet-synthetische waarnemingen zoals vastgelegd (losse citaten)
+  people: number; // verschillende geïnterviewden
+};
+
+export function evidenceLadder(observations: LadderObservation[]): EvidenceLadder {
+  const real = observations.filter((o) => !o.isSynthetic);
+  const counted = dedupeByPerson(real, (o) => o);
+  const rungs = EVIDENCE_LADDER.map((r) => ({ label: r.label, count: counted.filter((o) => r.kinds.includes(o.kind)).length }));
+  const totals = countPerPerson(real, (o) => o);
+  return {
+    rungs,
+    highest: [...rungs].reverse().find((r) => r.count > 0) ?? null,
+    paymentShown: rungs.slice(4).some((r) => r.count > 0),
+    counted: totals.counted,
+    quotes: totals.quotes,
+    people: totals.people,
+  };
+}
+
+// Eén zin voor het rapport: "Klantbewijs: 4 waarnemingen (per persoon), uit 9 vastgelegde uitspraken; 3 geïnterviewden.
+// Sterkste: probleem in eigen gedrag (2× per persoon)." Leeg voor rapporten van vóór deze telling.
+export function ladderSummary(l: EvidenceLadder | undefined): string {
+  if (!l) return "";
+  if (l.counted === 0) return "Klantbewijs: nog geen waarnemingen.";
+  const quotes = l.quotes > l.counted ? `, uit ${l.quotes} vastgelegde uitspraken` : "";
+  const people = l.people ? `; ${l.people} ${l.people === 1 ? "geïnterviewde" : "geïnterviewden"}` : "";
+  const strongest = l.highest ? ` Sterkste: ${l.highest.label.toLowerCase()} (${l.highest.count}× per persoon).` : "";
+  return `Klantbewijs: ${l.counted} ${l.counted === 1 ? "waarneming" : "waarnemingen"} (per persoon)${quotes}${people}.${strongest}`;
 }

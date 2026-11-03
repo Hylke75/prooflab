@@ -11,6 +11,7 @@ import { CALIBRATION_MIN_RESOLVED, formatProbability, formatProbabilityRange } f
 import { explainRecruitment } from "@/lib/domain/recruitment";
 import { asEvidenceLevel, outcomeWithLevel } from "@/lib/domain/evidence";
 import { allTestsSummary, type AllTestsPerAssumption, type AllTestsRow } from "@/lib/domain/all-tests";
+import { ladderSummary } from "@/lib/domain/dossier-label";
 
 export type Tone = "blue" | "green" | "coral" | "lime" | "gray";
 export type Block =
@@ -83,7 +84,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
     blocks: [
       {
         t: "p",
-        text: `${r.decision?.rationale ?? r.realityCheck?.reason ?? "Het onderzoek loopt nog."} Bewijsniveau: ${r.label}.${r.labelMissing.length ? ` Voor een hoger niveau ontbreekt: ${r.labelMissing.join("; ")}.` : ""}`,
+        text: `${r.decision?.rationale ?? r.realityCheck?.reason ?? "Het onderzoek loopt nog."} Bewijsniveau: ${r.label}.${r.labelMissing.length ? ` Voor een hoger niveau ontbreekt: ${r.labelMissing.join("; ")}.` : ""}${r.observationCounts ? ` ${ladderSummary(r.observationCounts)}` : ""}`,
       },
       {
         t: "kpis",

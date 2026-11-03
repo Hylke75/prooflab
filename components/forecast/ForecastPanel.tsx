@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { ProbabilityField } from "./ProbabilityField";
-import { BaseRateSummary, baseRateStart } from "./BaseRate";
+import { BaseRateSummary } from "./BaseRate";
 import { requestAiForecast, submitForecast } from "@/app/app/ideas/[id]/outcome/actions";
 import type { ForecastRow, ForecastView } from "@/lib/forecast-data";
 import { aggregate, aiAsOneVote, FORECAST_MOMENTS, MOMENT_LABELS, pct, type ForecastMoment } from "@/lib/domain/forecast";
@@ -113,12 +113,12 @@ export function ForecastPanel({ view, compact = false }: { view: ForecastView; c
       <>
         <p className="sub">
           <strong>{MOMENT_LABELS[m].label}.</strong> Hoe groot is de kans dat het doel wordt gehaald? Begin bij het basispercentage en pas het aan op wat dit
-          dossier anders maakt.
+          dossier anders maakt. Het veld is bewust leeg.
         </p>
         <BaseRateSummary baseRate={view.baseRate} id={hintId} />
         <ActionForm action={submitForecast.bind(null, view.ideaId)} submitLabel="Leg mijn voorspelling vast" pendingLabel="Vastleggen…">
           <input type="hidden" name="moment" value={m} />
-          <ProbabilityField initial={baseRateStart(view.baseRate)} describedBy={hintId} />
+          <ProbabilityField describedBy={hintId} />
           <label className="field-label" htmlFor={`rationale-${compact ? "c" : "f"}`}>Waarom? (één zin)</label>
           <input className="field" id={`rationale-${compact ? "c" : "f"}`} name="rationale" maxLength={300} required minLength={10} placeholder="Bijv. Weinig gedragsbewijs, dus dicht bij het basispercentage." />
           <p className="field-hint" role="note">

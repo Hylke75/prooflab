@@ -1,7 +1,7 @@
 import "server-only";
 import { PROVIDER_KEY_ENV, PROVIDER_LABELS, type ProviderId } from "./providers/config";
 
-export const PROMPT_VERSION = "2026-11-05.1";
+export const PROMPT_VERSION = "2026-11-08.1";
 
 export class AiNotConfiguredError extends Error {
   constructor(readonly provider?: ProviderId) {
