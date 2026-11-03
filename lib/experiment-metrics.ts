@@ -27,6 +27,8 @@ export type InterviewConfig = {
 
 export type ChannelRow = { channel: string; visitors: number; actions: number };
 export type VariantRow = { variant: string; label: string; visitors: number; actions: number };
+// Per invitation post (utm_content). content null = no post code (invitation, plain channel link, direct).
+export type ContentRow = { content: string | null; visitors: number; actions: number };
 
 export type ExperimentMetrics = {
   n: number;
@@ -34,6 +36,7 @@ export type ExperimentMetrics = {
   label: string;
   byChannel: ChannelRow[];
   byVariant: VariantRow[];
+  byContent: ContentRow[];
   endConditionReached: boolean;
   verdict: Verdict;
   // Bayesian estimate with a prior from earlier tests (research 3.6). Null until the end condition
@@ -57,6 +60,7 @@ export async function loadSurveyKeyAnswers(expId: string, keyQuestion: string): 
       channel: r.channel,
       duration_ms: r.duration_ms,
       created_at: r.created_at,
+      content: r.content ?? null,
     })),
     error: false,
   };
@@ -152,6 +156,7 @@ export async function experimentMetrics(exp: Exp, h: Hyp): Promise<ExperimentMet
   let successes = 0;
   let byChannel: ChannelRow[] = [];
   let byVariant: VariantRow[] = [];
+  let byContent: ContentRow[] = [];
   let survey: SurveySplit | null = null;
 
   if (exp.type === "survey") {
@@ -167,6 +172,7 @@ export async function experimentMetrics(exp: Exp, h: Hyp): Promise<ExperimentMet
       n = survey.all.n;
       successes = survey.all.successes;
       byChannel = survey.byChannel.map((c) => ({ channel: c.channel, visitors: c.n, actions: c.successes }));
+      byContent = survey.byContent.map((c) => ({ content: c.content, visitors: c.n, actions: c.successes }));
       warnings.push(...survey.warnings);
     }
   } else if (exp.type === "interview") {
@@ -214,6 +220,10 @@ export async function experimentMetrics(exp: Exp, h: Hyp): Promise<ExperimentMet
       va.set(r.variant, v);
     }
     byChannel = [...ch.values()].sort((a, b) => b.visitors - a.visitors);
+    const { data: perPost } = await supabase.rpc("experiment_content_counts", { p_experiment: exp.id });
+    byContent = (perPost ?? [])
+      .map((r) => ({ content: r.content, visitors: Number(r.viewers), actions: Number(useSubmit ? r.submitters : r.clickers) }))
+      .sort((a, b) => b.visitors - a.visitors);
     byVariant = exp.type === "pricing" ? [...va.values()].sort((a, b) => a.variant.localeCompare(b.variant)) : [];
     if (byChannel.length === 1 && byChannel[0].channel === "network") warnings.push("Alle bezoekers komen uit het eigen netwerk; dat is warm verkeer.");
     if (byChannel.some((c) => c.channel === "direct") && n > 0 && (byChannel.find((c) => c.channel === "direct")!.visitors / n) > 0.5) {
@@ -235,5 +245,5 @@ export async function experimentMetrics(exp: Exp, h: Hyp): Promise<ExperimentMet
     endConditionReached,
   });
   const bayes = endConditionReached ? betaBinomial(await priorFor(exp), successes, n, Number(h.success_threshold_pct)) : null;
-  return { n, successes, label: h.metric_label, byChannel, byVariant, endConditionReached, verdict: v, bayes, warnings, survey };
+  return { n, successes, label: h.metric_label, byChannel, byVariant, byContent, endConditionReached, verdict: v, bayes, warnings, survey };
 }

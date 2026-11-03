@@ -11,6 +11,8 @@ export type SurveySplit = {
   invitation: KeyMetric;
   openLink: KeyMetric;
   byChannel: { channel: string; n: number; successes: number }[];
+  // Per post code (utm_content of the open link; null = no code, e.g. invitations or a link without code).
+  byContent: { content: string | null; n: number; successes: number }[];
   responses: number; // all stored responses, believable or not
   openLinkShare: number | null; // share of believable key answers that came through the open link
   warnings: string[];
@@ -23,14 +25,21 @@ export function surveySplit(config: SurveyConfig, rows: ResponseRow[], minSample
   const invitation = keyMetric(config, rows, "invitation");
   const openLink = keyMetric(config, rows, "open_link");
   const channels = new Map<string, { channel: string; n: number; successes: number }>();
+  const contents = new Map<string | null, { content: string | null; n: number; successes: number }>();
   for (const r of rows) {
     if (tooFastRow(config, r)) continue;
     const a = r.answers[config.key_question];
     if (a == null) continue;
+    const success = (Array.isArray(a) ? a : [String(a)]).some((x) => config.success_options.includes(x));
     const c = channels.get(r.channel) ?? { channel: r.channel, n: 0, successes: 0 };
     c.n++;
-    if ((Array.isArray(a) ? a : [String(a)]).some((x) => config.success_options.includes(x))) c.successes++;
+    if (success) c.successes++;
     channels.set(r.channel, c);
+    const key = r.content ?? null;
+    const p = contents.get(key) ?? { content: key, n: 0, successes: 0 };
+    p.n++;
+    if (success) p.successes++;
+    contents.set(key, p);
   }
   const openLinkShare = all.n ? openLink.n / all.n : null;
   const warnings: string[] = [];
@@ -45,7 +54,13 @@ export function surveySplit(config: SurveyConfig, rows: ResponseRow[], minSample
   if (rows.length > 0 && invitation.n < minSample) {
     warnings.push(`Pas ${invitation.n} van de minimaal ${minSample} antwoorden komen van persoonlijk uitgenodigde, bekende respondenten.`);
   }
-  return { all, invitation, openLink, byChannel: [...channels.values()].sort((a, b) => b.n - a.n), responses: rows.length, openLinkShare, warnings };
+  return {
+    all,
+    invitation,
+    openLink,
+    byChannel: [...channels.values()].sort((a, b) => b.n - a.n),
+    byContent: [...contents.values()].sort((a, b) => b.n - a.n),
+    responses: rows.length, openLinkShare, warnings };
 }
 
 // ---------------------------------------------------------------------------

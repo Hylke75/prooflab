@@ -39,7 +39,9 @@ npm run dev                  # http://localhost:3000
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | ja | Supabase-project (publishable key is browser-veilig) |
 | `NEXT_PUBLIC_APP_URL` | ja | Basis-URL voor inloglinks en deelbare testlinks |
 | `INGEST_SECRET` | voor live tests | Gedeeld geheim tussen app-server en de ingest-RPC's van testpagina's |
-| `TRACKING_SALT` | voor live tests | Geheim voor de cookieloze, per test verschillende bezoekerscode (HMAC) |
+| `TRACKING_SALT` | voor live tests | Geheim voor de cookieloze, per test verschillende bezoekerscode (HMAC); geldt als sleutelversie `v1` |
+| `TRACKING_SALTS` | nee | Geheimen met versie, voor rotatie: `v2:nieuwgeheim,v1:oudgeheim` (eerste = huidige, elk geheim ≥ 16 tekens, geen komma's). Zonder deze variabele is `TRACKING_SALT` de enige versie (`v1`) |
+| `RESEND_WEBHOOK_SECRET` | nee | Ondertekeningsgeheim (`whsec_...`) van de Resend-webhook naar `/api/email/resend` voor harde bounces en spammeldingen |
 | `ANTHROPIC_API_KEY` | nee | Zet AI-onderzoek, AI-aannames, interviewcodering en AI-vragen in de Reality Check aan |
 | `RESEARCH_BUDGET_USD` | nee | Maximum per diepe onderzoeksrun (standaard 3) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | nee | Verstuurt persoonlijke enquête-uitnodigingen via Resend (afzender op een geverifieerd domein); zonder deze twee download je de persoonlijke links als CSV |
@@ -48,9 +50,28 @@ Zonder `ANTHROPIC_API_KEY` toont de app overal "AI niet verbonden" en werkt alle
 toevoegen, interviews coderen, aannames vanuit een sjabloon. Er worden nooit gesimuleerde resultaten getoond als echt.
 
 Enquêtes verspreiden: persoonlijke links (`/s/<slug>?u=<token>`) en afmeldlinks (`/s/afmelden?u=<token>&e=<hash>`) zijn
-afgeleid van `TRACKING_SALT` (token = HMAC van het willekeurige uitnodigings-id, alleen de sha256 wordt opgeslagen; e = HMAC
-van het e-mailadres voor de afmeldlijst per organisatie). Wissel `TRACKING_SALT` daarom niet terwijl er uitnodigingen lopen:
-herinneringen en de afmeldlijst werken dan niet meer voor eerder gemailde adressen. Zet in Resend open- en kliktracking uit.
+afgeleid van het trackinggeheim (token = HMAC van het willekeurige uitnodigings-id, alleen de sha256 wordt opgeslagen; e = HMAC
+van het e-mailadres voor de afmeldlijst per organisatie). Zet in Resend open- en kliktracking uit.
+
+Geheim roteren: elke uitnodiging bewaart zijn sleutelversie (`survey_invitations.salt_version`, standaard `v1`). Zet het
+nieuwe geheim vooraan in `TRACKING_SALTS` en laat het oude erachter staan, bijv. `TRACKING_SALTS=v2:<nieuw>,v1:<oud>`. Nieuwe
+uitnodigingen gebruiken `v2`; herinneringen, CSV-export en afmeldlinks van oude uitnodigingen blijven werken met `v1`, en de
+afmeldlijst wordt onder alle versies gecontroleerd. Haal een oude versie pas weg als er geen lopende uitnodigingen meer onder
+vallen. Beperking: bezoekerscodes van testpagina's (`lib/domain/tracking.ts`) en contactcodes van Expandi gebruiken altijd
+de huidige versie. Roteer daarom tussen tests: tijdens een lopende test telt een terugkerende bezoeker na de rotatie
+opnieuw mee en kan hij een ander prijspunt zien.
+
+Bounces en spammeldingen: maak in Resend → Webhooks een endpoint `<NEXT_PUBLIC_APP_URL>/api/email/resend` voor de events
+`email.bounced` en `email.complained` (`email.delivered` en `email.delivery_delayed` worden geaccepteerd en genegeerd) en zet
+het ondertekeningsgeheim in `RESEND_WEBHOOK_SECRET`. De handtekening (Svix: `svix-id`, `svix-timestamp`, `svix-signature`)
+wordt gecontroleerd, tijdstempels ouder dan vijf minuten worden geweigerd en elk `svix-id` wordt één keer verwerkt. Een
+harde bounce of klacht zet de uitnodiging op mislukt (met reden) en het adres op de afmeldlijst van de organisatie.
+
+Expandi: per experiment kan een consultant de "Assign people by using a webhook"-URL van een Expandi-campagne opslaan en
+bij het LinkedIn-DM-bericht contacten (profiel-URL, voornaam) naar die campagne sturen, met de placeholders
+`{prooflab_message}` en `{prooflab_link}` (link met `utm_source=outreach&utm_content=<postcode>`). Expandi kan via deze
+webhook geen berichtsjabloon instellen; zet de placeholders zelf in het campagnebericht. Alternatief: CSV voor de
+Expandi-import. Uitgaande verzoeken gaan alleen via https naar `api.liaufa.com` of `*.expandi.io`.
 
 ### Database
 
