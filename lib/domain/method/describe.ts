@@ -1,4 +1,5 @@
 import { EVIDENCE_LEVELS, type EvidenceCaps } from "@/lib/domain/evidence";
+import { METHOD_VERSIONS, type MethodVersion } from "./types";
 
 export type Methodology = {
   version: string;
@@ -27,6 +28,20 @@ export function describeMethodology(m: Methodology | null | undefined): { title:
     lines.push("Geen plafonds per bewijsniveau (die horen bij methode 2026-11-b).");
   }
   return { title: m.label, lines };
+}
+
+// Wat elke versie toevoegt aan de vorige, voor de overstappagina.
+export const METHOD_CHANGES: Record<MethodVersion, string> = {
+  "2026-11-a": "De oorspronkelijke rekenwijze: intervalregel per test, geen samenvoegen per bron en geen plafonds.",
+  "2026-11-b": "Een beslisregel per testtype (kansregel of vast aantal), bewijs per bron één keer meetellen en een plafond per bewijsniveau.",
+  "2026-11-c": "Herhaling binnen dezelfde wervingsgroep telt afnemend mee, AI-codering telt pas na beoordeling en alleen de hoofdtest per aanname beslist over de status van de aanname.",
+};
+
+// De veranderingen tussen twee versies (alle versies na `from` tot en met `to`).
+export function changesBetween(from: MethodVersion, to: MethodVersion): string[] {
+  const i = METHOD_VERSIONS.indexOf(from);
+  const j = METHOD_VERSIONS.indexOf(to);
+  return METHOD_VERSIONS.slice(i + 1, j + 1).map((v) => `${v}: ${METHOD_CHANGES[v]}`);
 }
 
 export function ruleLabelText(rule: string | null | undefined): string {

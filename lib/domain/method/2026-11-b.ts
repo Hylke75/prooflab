@@ -14,6 +14,8 @@ export const method2026_11_b: MethodModule = {
   version: "2026-11-b",
   label: "Methode 2026-11-b",
   usesCaps: true,
+  usesRules: true,
+  primaryDecides: false,
   rules: [
     `Percentagetests (landingpagina, prijstest op klikniveau, enquête, interviews): kansregel. Geslaagd als de kans dat het echte percentage boven de succesdrempel ligt minstens ${PASS_PROBABILITY * 100}% is (Beta-binomiaal, prior Beta(1,1)); niet geslaagd als de kans boven de faaldrempel hoogstens ${FAIL_PROBABILITY * 100}% is; anders onbeslist.`,
     "Sterke handelingen (aanbetaling, herhaalaankoop): aantalregel. Geslaagd als het vooraf afgesproken aantal na de eindconditie is gehaald.",

@@ -37,7 +37,7 @@ function HowWeCalculate({ weights, method, caps }: { weights: WeightsInUse; meth
         AI-gecodeerde observaties tellen voor {AI_UNREVIEWED_WEIGHT * 100}% zolang niemand ze heeft beoordeeld, volledig na akkoord en niet na afkeuren. Synthetische data telt nooit mee.
         De kans blijft altijd tussen 1% en 99%.
       </p>
-      {method === "2026-11-b" ? (
+      {METHODS[method].usesCaps ? (
         <p className="sub mt-12">
           {METHODS[method].label}: ondersteunend bewijs uit dezelfde bron (dezelfde enquête of test, hetzelfde interview, dezelfde bron of outreach-campagne) telt
           één keer, met de sterkste factor; tegenbewijs telt per signaal. De kans is begrensd door het hoogste bewijsniveau:{" "}

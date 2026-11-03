@@ -8,7 +8,7 @@ import { checkHypothesis } from "@/lib/domain/hypothesis";
 import { testCardDefaults, type Option } from "@/lib/domain/recommend";
 import { DECISION_RULES, PASS_PROBABILITY, FAIL_PROBABILITY, requiredSample, sampleFeasibility, wilson, type DecisionRule } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
-import type { MethodVersion } from "@/lib/domain/method";
+import { METHODS, type MethodVersion } from "@/lib/domain/method";
 import { auditGuide, guideSummary } from "@/lib/domain/interview-audit";
 import { honestyWarnings, type PreparedVariant } from "@/lib/domain/copy-honesty";
 import { GuideAuditList } from "@/components/experiments/InterviewAudit";
@@ -41,7 +41,7 @@ export function ExperimentBuilder({
   initialType,
   researcher = "",
   surveyDraftAction,
-  method = "2026-11-b",
+  method = "2026-11-c",
 }: {
   method?: MethodVersion;
   initialType?: ExperimentType;
@@ -134,7 +134,7 @@ export function ExperimentBuilder({
   const needed = n > 0 ? minSuccesses(n, Number(card.success_threshold_pct)) : null;
   // Beslisregel (methode 2026-11-b): vooraf rekenen hoeveel deelnemers nodig zijn bij de verwachte uitkomst.
   // Dossiers met methode 2026-11-a houden de intervalregel: geen beslisregel en geen vooraf berekend aantal.
-  const v2 = method === "2026-11-b";
+  const v2 = METHODS[method].usesRules;
   const absoluteAllowed = v2 && type === "interview";
   const activeRule: DecisionRule = absoluteAllowed ? rule : "probability";
   const countN = Number(successCount) || 0;

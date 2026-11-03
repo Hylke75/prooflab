@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { asMethodVersion, CURRENT_METHOD, LEGACY_METHOD, METHODS, methodOf } from "@/lib/domain/method";
-import { describeMethodology } from "@/lib/domain/method/describe";
+import { asMethodVersion, CURRENT_METHOD, isLaterMethod, LEGACY_METHOD, METHODS, methodOf } from "@/lib/domain/method";
+import { changesBetween, describeMethodology } from "@/lib/domain/method/describe";
 import { assumptionProbability, DEFAULT_CAPS, type ProbabilityObservation } from "@/lib/domain/evidence";
 import { verdict } from "@/lib/domain/stats";
 
@@ -9,11 +9,12 @@ const obs = (kind: string, sourceKey: string): ProbabilityObservation => ({ kind
 const input = { successes: 6, n: 20, successThresholdPct: 20, failThresholdPct: null, minSample: 20, endConditionReached: true };
 
 describe("methodeversies", () => {
-  it("onbekende of lege versie = 2026-11-a; nieuwe dossiers 2026-11-b", () => {
+  it("onbekende of lege versie = 2026-11-a; nieuwe dossiers 2026-11-c", () => {
     expect(asMethodVersion(undefined)).toBe("2026-11-a");
     expect(asMethodVersion("2099-01-z")).toBe(LEGACY_METHOD);
     expect(asMethodVersion("2026-11-b")).toBe("2026-11-b");
-    expect(CURRENT_METHOD).toBe("2026-11-b");
+    expect(CURRENT_METHOD).toBe("2026-11-c");
+    expect(asMethodVersion("2026-11-c")).toBe("2026-11-c");
     expect(methodOf(null).version).toBe("2026-11-a");
   });
 
@@ -40,6 +41,18 @@ describe("methodeversies", () => {
     const r = b.probability([], [obs("demo_request", "e1"), obs("demo_request", "e1"), obs("demo_request", "e2"), obs("demo_request", "e3")], 0.5, {}, DEFAULT_CAPS);
     expect(r.merged?.[0].signals).toBe(2);
     expect(r.probability).toBe(0.6);
+  });
+
+  it("2026-11-c: overstappen alleen vooruit, met de veranderingen per versie", () => {
+    expect(isLaterMethod("2026-11-a", "2026-11-c")).toBe(true);
+    expect(isLaterMethod("2026-11-b", "2026-11-c")).toBe(true);
+    expect(isLaterMethod("2026-11-c", "2026-11-b")).toBe(false);
+    expect(isLaterMethod("2026-11-c", "2026-11-c")).toBe(false);
+    expect(changesBetween("2026-11-a", "2026-11-c")).toHaveLength(2);
+    expect(changesBetween("2026-11-b", "2026-11-c")[0]).toMatch(/^2026-11-c: /);
+    const c = METHODS["2026-11-c"];
+    expect(c.usesRules && c.usesCaps).toBe(true);
+    expect(c.verdict({}, input).kind).toBe(METHODS["2026-11-b"].verdict({}, input).kind);
   });
 
   it("beschrijft de methode, regels en plafonds voor het rapport", () => {

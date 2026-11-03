@@ -522,6 +522,20 @@ export function assumptionProbabilityV2(
   };
 }
 
+// ===========================================================================
+// Methode 2026-11-c (golf A): bouwt voort op 2026-11-b.
+// ===========================================================================
+
+export function assumptionProbabilityV3(
+  claims: ProbabilityClaim[],
+  observations: ProbabilityObservation[],
+  prior = 0.5,
+  overrides: LrOverrides = {},
+  caps: EvidenceCaps = DEFAULT_CAPS,
+): AssumptionProbability {
+  return assumptionProbabilityV2(claims, observations, prior, overrides, caps);
+}
+
 export function explainMerged(m: MergedSource): string {
   return `${m.signals} signalen uit ${m.label} samengevoegd: alleen het sterkste telt (${m.kept}).`;
 }

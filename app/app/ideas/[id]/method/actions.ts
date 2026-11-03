@@ -8,7 +8,7 @@ import { methodPreview, previewForAudit } from "@/lib/method-preview";
 import type { FormState } from "@/components/ui/ActionForm";
 import type { Json } from "@/lib/database.types";
 
-// Overstappen naar methode 2026-11-b na bevestiging. Het overzicht wordt op de server opnieuw berekend en met
+// Overstappen naar de nieuwste methodeversie na bevestiging. Het overzicht wordt op de server opnieuw berekend en met
 // de overstap in het auditspoor bewaard. Goedgekeurde Learning Cards blijven ongewijzigd.
 export async function switchMethod(ideaId: string, _: FormState, form: FormData): Promise<FormState> {
   const { idea } = await requireWritableIdea(ideaId);
