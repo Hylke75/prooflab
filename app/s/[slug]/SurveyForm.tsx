@@ -152,8 +152,8 @@ export function SurveyForm(p: Props) {
         const describedBy = [q.help ? helpId : null, err ? errId : null].filter(Boolean).join(" ") || undefined;
         const value = answers[q.id];
         const legend = (
-          <legend style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.45, padding: 0, marginBottom: 8 }}>
-            <span className="tiny" style={{ display: "block", fontSize: 12 }}>Vraag {i + 1}</span>
+          <legend style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.45, padding: 0, marginBottom: 8 }}>
+            <span className="tiny" style={{ display: "block", fontSize: 14 }}>Vraag {i + 1}</span>
             {q.text}
             {q.required && <span aria-hidden="true"> *</span>}
             {q.required && <span className="sr-only"> (verplicht)</span>}
@@ -161,7 +161,7 @@ export function SurveyForm(p: Props) {
         );
         const help = q.help ? <p id={helpId} className="field-hint" style={{ fontSize: 13, margin: "0 0 8px" }}>{q.help}</p> : null;
         const error = err ? <p id={errId} className="field-error" style={{ fontSize: 13 }}>{err}</p> : null;
-        const box: React.CSSProperties = { border: 0, padding: "18px 0", margin: 0, borderTop: "1px solid var(--line)", minWidth: 0 };
+        const box: React.CSSProperties = { border: 0, padding: "18px 0", margin: 0, borderTop: "1px solid var(--color-border)", minWidth: 0 };
 
         if (q.type === "single" || q.type === "multi") {
           const chosen = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
@@ -184,7 +184,7 @@ export function SurveyForm(p: Props) {
                           if (q.type === "single") set(q.id, o.id);
                           else set(q.id, e.target.checked ? [...chosen, o.id] : chosen.filter((x) => x !== o.id));
                         }}
-                        style={{ width: 18, height: 18, accentColor: "var(--blue)", flex: "none" }}
+                        style={{ width: 18, height: 18, accentColor: "var(--color-primary)", flex: "none" }}
                       />
                       {o.label}
                     </label>
@@ -201,14 +201,14 @@ export function SurveyForm(p: Props) {
             <fieldset key={q.id} id={`q-${q.id}`} style={box} aria-describedby={describedBy} aria-invalid={err ? true : undefined} tabIndex={-1}>
               {legend}
               {help}
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#4c5566", marginBottom: 6 }} aria-hidden="true">
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--color-text-muted)", marginBottom: 6 }} aria-hidden="true">
                 <span>{q.scale.min} = {q.scale.minLabel}</span>
                 <span>{q.scale.max} = {q.scale.maxLabel}</span>
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {values.map((n) => (
                   <label key={n} className={`choice${value === n ? " selected" : ""}`} style={{ ...choiceStyle, justifyContent: "center", minWidth: 48, padding: "10px 12px" }}>
-                    <input type="radio" name={q.id} value={n} checked={value === n} onChange={() => set(q.id, n)} style={{ width: 18, height: 18, accentColor: "var(--blue)" }} />
+                    <input type="radio" name={q.id} value={n} checked={value === n} onChange={() => set(q.id, n)} style={{ width: 18, height: 18, accentColor: "var(--color-primary)" }} />
                     {n}
                     <span className="sr-only">{n === q.scale!.min ? ` (${q.scale!.minLabel})` : n === q.scale!.max ? ` (${q.scale!.maxLabel})` : ""}</span>
                   </label>
@@ -221,8 +221,8 @@ export function SurveyForm(p: Props) {
         const inputId = `q-${q.id}-input`;
         return (
           <div key={q.id} id={`q-${q.id}`} style={box} tabIndex={-1}>
-            <label htmlFor={inputId} style={{ display: "block", fontWeight: 800, fontSize: 16, lineHeight: 1.45, marginBottom: 8 }}>
-              <span className="tiny" style={{ display: "block", fontSize: 12 }}>Vraag {i + 1}</span>
+            <label htmlFor={inputId} style={{ display: "block", fontWeight: 700, fontSize: 16, lineHeight: 1.45, marginBottom: 8 }}>
+              <span className="tiny" style={{ display: "block", fontSize: 14 }}>Vraag {i + 1}</span>
               {q.text}
               {q.required && <span aria-hidden="true"> *</span>}
               {q.required && <span className="sr-only"> (verplicht)</span>}
@@ -266,7 +266,7 @@ export function SurveyForm(p: Props) {
         <input id="sv-website" type="text" name="website" tabIndex={-1} autoComplete="off" />
       </div>
 
-      <div id="q-consent" style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }} tabIndex={-1}>
+      <div id="q-consent" style={{ borderTop: "1px solid var(--color-border)", paddingTop: 14 }} tabIndex={-1}>
         <label className="check-row" style={{ fontSize: 14 }}>
           <input
             type="checkbox"

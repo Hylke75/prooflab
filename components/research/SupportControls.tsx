@@ -34,7 +34,7 @@ export function SupportControls({
           ))}
         <ActionForm action={overrideAction} submitLabel="Oordeel vastleggen" submitClass="btn white sm">
           <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
-            <legend className="tiny" style={{ fontWeight: 800 }}>Jouw oordeel als consultant</legend>
+            <legend className="tiny" style={{ fontWeight: 700 }}>Jouw oordeel als consultant</legend>
             {[
               ["supports", "Draagt de bewering"],
               ["partial", "Draagt de bewering deels"],

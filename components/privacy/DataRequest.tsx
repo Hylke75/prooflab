@@ -107,7 +107,7 @@ export function DataRequest({ hashReady, saltVersions }: { hashReady: boolean; s
             <thead><tr><th>Gegevens</th><th>Gevonden</th><th>Toelichting</th></tr></thead>
             <tbody>
               {lines.map((l) => (
-                <tr key={l.key}><td>{l.label}</td><td className="num">{l.count}</td><td style={{ fontSize: 12 }}>{l.explain}</td></tr>
+                <tr key={l.key}><td>{l.label}</td><td className="num">{l.count}</td><td style={{ fontSize: 14 }}>{l.explain}</td></tr>
               ))}
             </tbody>
           </table>
@@ -129,7 +129,7 @@ export function DataRequest({ hashReady, saltVersions }: { hashReady: boolean; s
             <p className="tiny mt-8">Interviews: {result.interviews.map((i) => `${i.participant_label} (${i.idea}, ${nlDate(i.held_on)})`).join("; ")}.</p>
           )}
 
-          <div className="mt-18" style={{ borderTop: "1px solid var(--line)", paddingTop: 16 }}>
+          <div className="mt-18" style={{ borderTop: "1px solid var(--color-border)", paddingTop: 16 }}>
             <h3>Verwijderen</h3>
             {erasable === 0 ? (
               <p className="sub" style={{ fontSize: 13 }}>Er is niets dat dit formulier kan verwijderen. Zie de toelichting hierboven voor interviews en accounts.</p>

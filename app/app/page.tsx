@@ -56,7 +56,7 @@ function Hero({ client }: { client: boolean }) {
   return (
     <div className="hero">
       <div>
-        <div className="eyebrow">{client ? "MEEKIJKEN ALS OPDRACHTGEVER" : "JOUW IDEEËN. ONDERBOUWD."}</div>
+        <div className="eyebrow">{client ? "Meekijken als opdrachtgever" : "Jouw ideeën. Onderbouwd."}</div>
         <h1>
           Van goed idee naar
           <br />
@@ -173,7 +173,7 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
             return (
               <Link key={idea.id} href={next.href} className="card idea" style={{ textDecoration: "none" }} aria-label={`${idea.title}: ${next.title}`}>
                 <div className="idea-top">
-                  <span className="idea-symbol" style={idx % 2 ? { background: "#fff0e8", color: "#bd6246" } : undefined}>
+                  <span className="idea-symbol" style={idx % 2 ? { background: "var(--color-warning-soft)", color: "var(--color-warning-text)" } : undefined}>
                     {SYMBOLS[idx % SYMBOLS.length]}
                   </span>
                   <span className="row" style={{ gap: 6 }}>
@@ -186,7 +186,7 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
                 <h3>{idea.title}</h3>
                 <p>{idea.description.length > 140 ? `${idea.description.slice(0, 137)}…` : idea.description}</p>
                 <div className="progress" role="img" aria-label={`${done} van 5 stappen met bewijs afgerond`}>
-                  <div style={{ width: `${(done / 5) * 100}%`, background: idx % 2 ? "var(--coral)" : undefined }} />
+                  <div style={{ width: `${(done / 5) * 100}%`, background: idx % 2 ? "var(--color-risk)" : undefined }} />
                 </div>
                 <div className="idea-foot">
                   <span>
@@ -244,10 +244,10 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
             </div>
           ))}
         </div>
-        <div className="card" style={{ background: "#e3f0e8", borderColor: "#d5e8dc" }}>
-          <div className="eyebrow" style={{ color: "#2b7159" }}>ZO WERKT PROOFLAB</div>
+        <div className="card" style={{ background: "var(--color-surface-soft)", boxShadow: "none" }}>
+          <div className="eyebrow">Zo werkt ProofLab</div>
           <h3 style={{ fontSize: 25, maxWidth: 370, margin: "9px 0" }}>Eén heldere stap tegelijk. Zonder ingewikkelde modellen.</h3>
-          <p className="sub" style={{ color: "#3f5f52", marginBottom: 22 }}>
+          <p className="sub" style={{ marginBottom: 22 }}>
             ProofLab denkt kritisch mee en helpt je de juiste onderbouwing te vinden. Jij houdt de regie.
           </p>
           <Link className="btn white" href="/app/help">
@@ -333,7 +333,7 @@ async function ClientHome({ ws, list, progresses }: { ws: Workspace; list: IdeaR
           return (
             <article key={idea.id} className="card idea">
               <div className="idea-top">
-                <span className="idea-symbol" style={idx % 2 ? { background: "#fff0e8", color: "#bd6246" } : undefined} aria-hidden="true">
+                <span className="idea-symbol" style={idx % 2 ? { background: "var(--color-warning-soft)", color: "var(--color-warning-text)" } : undefined} aria-hidden="true">
                   {SYMBOLS[idx % SYMBOLS.length]}
                 </span>
                 <span className="pill blue">{ideaStatusLabel(idea.status, p)}</span>
@@ -385,10 +385,10 @@ async function ClientHome({ ws, list, progresses }: { ws: Workspace; list: IdeaR
         })}
       </div>
 
-      <div className="card mt-24" style={{ background: "#e3f0e8", borderColor: "#d5e8dc" }}>
-        <div className="eyebrow" style={{ color: "#2b7159" }}>ZO WERKT MEEKIJKEN</div>
+      <div className="card mt-24" style={{ background: "var(--color-surface-soft)", boxShadow: "none" }}>
+        <div className="eyebrow">Zo werkt meekijken</div>
         <h3 style={{ fontSize: 22, maxWidth: 520, margin: "9px 0" }}>U ziet wat bewezen is, en wat nog niet.</h3>
-        <p className="sub" style={{ color: "#3f5f52", marginBottom: 18 }}>
+        <p className="sub" style={{ marginBottom: 18 }}>
           Het onderzoeksteam voert het onderzoek en de tests uit. U leest de gedeelde rapportversies en bevestigt het besluit. Ruwe interviewcitaten en
           gegevens van testdeelnemers blijven bij het onderzoeksteam.
         </p>

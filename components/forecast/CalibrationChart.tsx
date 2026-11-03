@@ -23,23 +23,23 @@ export function CalibrationChart({ rows }: { rows: CalibrationRow[] }) {
         </desc>
         {TICKS.map((t) => (
           <g key={t}>
-            <line x1={x(0)} x2={x(1)} y1={y(t)} y2={y(t)} stroke="#eceef0" />
-            <text x={M.left - 8} y={y(t) + 3} textAnchor="end" fontSize="10" fill="#5f6879">{pct(t)}</text>
-            <text x={x(t)} y={H - M.bottom + 16} textAnchor="middle" fontSize="10" fill="#5f6879">{pct(t)}</text>
+            <line x1={x(0)} x2={x(1)} y1={y(t)} y2={y(t)} style={{ stroke: "var(--color-border)" }} />
+            <text x={M.left - 8} y={y(t) + 3} textAnchor="end" fontSize="10" style={{ fill: "var(--color-text-muted)" }}>{pct(t)}</text>
+            <text x={x(t)} y={H - M.bottom + 16} textAnchor="middle" fontSize="10" style={{ fill: "var(--color-text-muted)" }}>{pct(t)}</text>
           </g>
         ))}
-        <line x1={x(0)} x2={x(1)} y1={y(0)} y2={y(0)} stroke="#dce1e2" />
-        <line x1={x(0)} x2={x(0)} y1={y(0)} y2={y(1)} stroke="#dce1e2" />
-        <line x1={x(0)} y1={y(0)} x2={x(1)} y2={y(1)} stroke="#747d8e" strokeDasharray="4 4" />
-        <text x={x(0.98)} y={y(0.98) + 14} textAnchor="end" fontSize="10" fill="#747d8e">perfect gekalibreerd</text>
+        <line x1={x(0)} x2={x(1)} y1={y(0)} y2={y(0)} style={{ stroke: "var(--color-border-strong)" }} />
+        <line x1={x(0)} x2={x(0)} y1={y(0)} y2={y(1)} style={{ stroke: "var(--color-border-strong)" }} />
+        <line x1={x(0)} y1={y(0)} x2={x(1)} y2={y(1)} style={{ stroke: "var(--color-text-muted)" }} strokeDasharray="4 4" />
+        <text x={x(0.98)} y={y(0.98) + 14} textAnchor="end" fontSize="10" style={{ fill: "var(--color-text-muted)" }}>perfect gekalibreerd</text>
         {rows.map((r) => (
           <g key={r.bucket}>
-            <circle cx={x(r.meanProbability)} cy={y(r.observed)} r={radius(r.forecasts)} fill="#4557f4" fillOpacity={0.85} stroke="#fff" strokeWidth={1.5} />
-            <text x={x(r.meanProbability)} y={y(r.observed) - radius(r.forecasts) - 4} textAnchor="middle" fontSize="10" fontWeight="700" fill="#151b28">n={r.forecasts}</text>
+            <circle cx={x(r.meanProbability)} cy={y(r.observed)} r={radius(r.forecasts)} style={{ fill: "var(--color-primary)", stroke: "var(--color-surface)" }} fillOpacity={0.85} strokeWidth={1.5} />
+            <text x={x(r.meanProbability)} y={y(r.observed) - radius(r.forecasts) - 4} textAnchor="middle" fontSize="10" fontWeight="700" style={{ fill: "var(--color-heading)" }}>n={r.forecasts}</text>
           </g>
         ))}
-        <text x={M.left + IW / 2} y={H - 8} textAnchor="middle" fontSize="11" fontWeight="700" fill="#5f6879">Gegeven kans (gemiddeld per groep, %)</text>
-        <text transform={`translate(13 ${M.top + IH / 2}) rotate(-90)`} textAnchor="middle" fontSize="11" fontWeight="700" fill="#5f6879">Werkelijk gehaald (%)</text>
+        <text x={M.left + IW / 2} y={H - 8} textAnchor="middle" fontSize="11" fontWeight="700" style={{ fill: "var(--color-text-muted)" }}>Gegeven kans (gemiddeld per groep, %)</text>
+        <text transform={`translate(13 ${M.top + IH / 2}) rotate(-90)`} textAnchor="middle" fontSize="11" fontWeight="700" style={{ fill: "var(--color-text-muted)" }}>Werkelijk gehaald (%)</text>
       </svg>
       <figcaption className="tiny" style={{ marginTop: 6 }}>
         Een punt onder de stippellijn: te optimistisch. Boven de lijn: te voorzichtig. Grotere punten bevatten meer voorspellingen. Deels gehaald telt als 50%.

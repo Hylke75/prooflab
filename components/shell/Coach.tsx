@@ -25,7 +25,7 @@ export function Coach({ data, aiConnected, notes }: { data: CoachData; aiConnect
             <Icon name="close" />
           </button>
         </div>
-        <div className="eyebrow">{data.audience === "client" ? "PROOFLAB UITLEG" : "PROOFLAB COACH"}</div>
+        <div className="eyebrow">{data.audience === "client" ? "ProofLab uitleg" : "ProofLab coach"}</div>
         <h2 className="coach-lead">{data.title}</h2>
         <p className="coach-copy">{data.copy}</p>
         <div className="insight-card">
@@ -34,7 +34,7 @@ export function Coach({ data, aiConnected, notes }: { data: CoachData; aiConnect
         </div>
         {data.suggestions.length > 0 && (
           <>
-            <div className="tiny" style={{ fontWeight: 800, letterSpacing: ".09em", textTransform: "uppercase" }}>
+            <div className="tiny" style={{ fontWeight: 600 }}>
               {data.audience === "client" ? "Lees verder" : "Misschien wil je..."}
             </div>
             <div className="chat-suggestions">

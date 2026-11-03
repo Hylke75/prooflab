@@ -24,7 +24,7 @@ export default async function ClientsPage() {
     <PageFrame crumbs={["Werkruimte", "Klanten"]} coach="clients">
       <div className="section-row">
         <div>
-          <div className="eyebrow">OPDRACHTGEVERS</div>
+          <div className="eyebrow">Opdrachtgevers</div>
           <h1>Klanten en meekijkers.</h1>
           <p className="sub">Opdrachtgevers kijken mee in hun dossier en bevestigen besluiten. Ruwe interviewdata en e-mailadressen van testdeelnemers zien zij niet.</p>
         </div>
@@ -51,7 +51,7 @@ export default async function ClientsPage() {
               {list.map((i) => {
                 const mem = (members ?? []).filter((m) => m.idea_id === i.id);
                 return (
-                  <div key={i.id} style={{ borderTop: "1px solid var(--line)", paddingTop: 14, marginTop: 14 }}>
+                  <div key={i.id} style={{ borderTop: "1px solid var(--color-border)", paddingTop: 14, marginTop: 14 }}>
                     <div className="row between">
                       <Link className="text-link" href={`/app/ideas/${i.id}/research`} style={{ fontSize: 13 }}>{i.title}</Link>
                       <span className="tiny">{mem.length} meekijker(s)</span>
@@ -68,7 +68,7 @@ export default async function ClientsPage() {
                             <span />
                           </ActionForm>
                           <form action={removeStakeholder.bind(null, i.id, m.email)}>
-                            <button className="text-link" style={{ color: "#a43c42" }} aria-label={`Verwijder ${m.email}`}>Verwijderen</button>
+                            <button className="text-link" style={{ color: "var(--color-risk-text)" }} aria-label={`Verwijder ${m.email}`}>Verwijderen</button>
                             <FormPendingOverlay />
                           </form>
                         </div>

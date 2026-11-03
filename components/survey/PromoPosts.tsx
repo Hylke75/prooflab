@@ -65,7 +65,7 @@ function PostCard({ p, platform, post, incentive, dmIncludesLink, busy, run }: {
             aria-describedby={`${id}-count${warnings.length ? ` ${id}-warn` : ""}`}
             style={{ fontSize: 13 }}
           />
-          <p id={`${id}-count`} className="field-hint num" style={{ color: draft.length > meta.max ? "#a43c42" : undefined, fontWeight: draft.length > meta.max ? 800 : undefined }}>
+          <p id={`${id}-count`} className="field-hint num" style={{ color: draft.length > meta.max ? "var(--color-risk-text)" : undefined, fontWeight: draft.length > meta.max ? 800 : undefined }}>
             {draft.length} / {meta.max} tekens
           </p>
           {warnings.length > 0 && (

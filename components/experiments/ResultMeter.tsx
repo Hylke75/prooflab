@@ -12,7 +12,7 @@ export function ResultMeter({ v, success, fail, bayes }: { v: Verdict; success: 
         <div className="ci" style={{ left: x(v.interval.low), width: `calc(${x(v.interval.high)} - ${x(v.interval.low)})` }} />
         <div className="pt" style={{ left: x(v.interval.point) }} />
         <div className="th" style={{ left: x(success / 100) }}><span>succes {success}%</span></div>
-        {fail != null && <div className="th" style={{ left: x(fail / 100), background: "#a43c42" }}><span style={{ color: "#a43c42" }}>faal {fail}%</span></div>}
+        {fail != null && <div className="th" style={{ left: x(fail / 100), background: "var(--color-risk)" }}><span style={{ color: "var(--color-risk-text)" }}>faal {fail}%</span></div>}
       </div>
       <p className="tiny">Gemeten {pct(v.interval.point)} · 95%-interval {pct(v.interval.low)} – {pct(v.interval.high)}</p>
       <p className="explain">
@@ -20,13 +20,13 @@ export function ResultMeter({ v, success, fail, bayes }: { v: Verdict; success: 
       </p>
       {showBayes && bayes && (
         <div className="mt-12">
-          <div className="eyebrow">SCHATTING MET VOORKENNIS</div>
+          <div className="eyebrow">Schatting met voorkennis</div>
           <div
             className="meter"
             role="img"
             aria-label={`Geschat ${pct(bayes.mean)} rekening houdend met eerdere tests, 90%-interval ${pct(bayes.low)} tot ${pct(bayes.high)}`}
           >
-            <div className="ci" style={{ left: x(bayes.low), width: `calc(${x(bayes.high)} - ${x(bayes.low)})`, background: "#c5df93" }} />
+            <div className="ci" style={{ left: x(bayes.low), width: `calc(${x(bayes.high)} - ${x(bayes.low)})`, background: "var(--color-success-soft)" }} />
             <div className="pt" style={{ left: x(bayes.mean) }} />
             <div className="th" style={{ left: x(success / 100) }}><span>succes {success}%</span></div>
           </div>

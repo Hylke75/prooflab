@@ -79,7 +79,7 @@ export function CompetitorPanel({
         ))}
       </div>
       <div className="card">
-        <div className="competitor-row" style={{ fontSize: 10, fontWeight: 800, color: "#5f6879", textTransform: "uppercase", letterSpacing: ".08em" }}>
+        <div className="competitor-row" style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-muted)" }}>
           <div>Aanbieder / type</div>
           <div>Positionering</div>
           <div className="comp-col-hidden">Prijs</div>
@@ -163,7 +163,7 @@ export function CompetitorPanel({
             )}
             {canWrite && current && (
               <form action={deleteActions[current.id]} className="mt-18">
-                <button className="text-link" style={{ color: "#a43c42" }}>Verwijderen</button>
+                <button className="text-link" style={{ color: "var(--color-risk-text)" }}>Verwijderen</button>
                 <FormPendingOverlay />
               </form>
             )}

@@ -86,7 +86,7 @@ export async function SurveyResults({ ideaId, exp, h, m, canWrite }: { ideaId: s
 
       <div className="grid-2">
         <div className="card">
-          <div className="eyebrow">KERNVRAAG (VOORAF VASTGELEGD)</div>
+          <div className="eyebrow">Kernvraag (vooraf vastgelegd)</div>
           <h3 style={{ fontSize: 16 }}>{key?.text}</h3>
           <p className="tiny mt-8">Telt als succes: {successLabels.map((l) => `“${l}”`).join(", ")}</p>
           {s && (
@@ -106,7 +106,7 @@ export async function SurveyResults({ ideaId, exp, h, m, canWrite }: { ideaId: s
           )}
         </div>
         <div className="card">
-          <div className="eyebrow">HERKOMST VAN DE ANTWOORDEN</div>
+          <div className="eyebrow">Herkomst van de antwoorden</div>
           {s ? (
             <>
               <table className="table">
@@ -172,14 +172,14 @@ export async function SurveyResults({ ideaId, exp, h, m, canWrite }: { ideaId: s
 function Excluded({ k }: { k: KeyMetric }) {
   const x = notBelievable(k);
   return (
-    <dl className="mt-8" style={{ margin: "8px 0 0", fontSize: 12 }}>
+    <dl className="mt-8" style={{ margin: "8px 0 0", fontSize: 14 }}>
       <div className="data-row">
         <dt>Buiten doelgroep</dt>
-        <dd className="num" style={{ margin: 0, fontWeight: 800 }}>{k.screenedOut}</dd>
+        <dd className="num" style={{ margin: 0, fontWeight: 700 }}>{k.screenedOut}</dd>
       </div>
       <div className="data-row">
         <dt>Niet geloofwaardig{x > 0 ? `: ${notBelievableText(k)}` : ""}</dt>
-        <dd className="num" style={{ margin: 0, fontWeight: 800 }}>{x}</dd>
+        <dd className="num" style={{ margin: 0, fontWeight: 700 }}>{x}</dd>
       </div>
     </dl>
   );
@@ -242,8 +242,8 @@ function QuestionBlock({ q, index, config }: { q: QuestionSummary; index: number
   const def = config.questions.find((x) => x.id === q.id);
   const isKey = q.id === config.key_question;
   return (
-    <section className="mt-18" style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }} aria-labelledby={`sr-${q.id}`}>
-      <div className="tiny" style={{ fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em" }}>
+    <section className="mt-18" style={{ borderTop: "1px solid var(--color-border)", paddingTop: 14 }} aria-labelledby={`sr-${q.id}`}>
+      <div className="tiny" style={{ fontWeight: 600 }}>
         Vraag {index + 1}{isKey ? " · kernvraag" : ""} · {q.n} {q.n === 1 ? "antwoord" : "antwoorden"}
       </div>
       <h3 id={`sr-${q.id}`} style={{ fontSize: 14, margin: "4px 0 8px" }}>{q.text}</h3>

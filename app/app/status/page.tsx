@@ -61,7 +61,7 @@ export default async function StatusPage() {
     <PageFrame crumbs={["Werkruimte", "Systeemstatus"]} coach="other">
       <div className="section-row">
         <div>
-          <div className="eyebrow">BEHEER</div>
+          <div className="eyebrow">Beheer</div>
           <h1>Systeemstatus</h1>
           <p className="sub">Staat de database op de laatste versie, draait de opschoontaak en zijn de koppelingen ingesteld? Alleen zichtbaar voor eigenaren van de werkruimte.</p>
         </div>
@@ -82,7 +82,7 @@ export default async function StatusPage() {
               <div className="tiny">AI-uitgaven deze maand</div>
               <div className="mini-kpi num">{usd(spent)}</div>
               <div className="progress" role="img" aria-label={`${share}% van het maandbudget gebruikt`}>
-                <div style={{ width: `${share}%`, background: share >= 90 ? "var(--red)" : share >= 70 ? "var(--amber)" : undefined }} />
+                <div style={{ width: `${share}%`, background: share >= 90 ? "var(--color-risk)" : share >= 70 ? "var(--color-warning)" : undefined }} />
               </div>
               <span className={`pill ${share >= 90 ? "coral" : share >= 70 ? "orange" : "gray"}`}>Plafond {usd(cap)} · {share}%</span>
             </div>
