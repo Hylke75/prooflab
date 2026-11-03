@@ -55,7 +55,7 @@ export function Sidebar({
         <Icon name="close" />
       </button>
       <div className="brand">
-        <span className="mark" aria-hidden="true">◉</span>ProofLab<span style={{ color: "var(--lime)" }}>.</span>
+        <span className="mark" aria-hidden="true">◉</span>ProofLab<span style={{ color: "var(--color-accent)" }}>.</span>
       </div>
       <div className="nav-heading">Werkruimte</div>
       <nav className="side-nav" aria-label="Werkruimte">
@@ -93,11 +93,11 @@ export function Sidebar({
           <div>
             {workspaceName}
             <br />
-            <span style={{ fontSize: 10, color: "#8791a5", fontWeight: 400 }}>{isConsultant ? "Consultancy-werkruimte" : "Meekijken als opdrachtgever"}</span>
+            <span style={{ fontSize: 12, color: "var(--color-text-muted)", fontWeight: 400 }}>{isConsultant ? "Consultancy-werkruimte" : "Meekijken als opdrachtgever"}</span>
           </div>
         </div>
         <div className="site-status">
-          <i style={aiConnected ? undefined : { background: "#e5b25d" }} /> {aiConnected ? "AI-onderzoek verbonden" : "AI niet verbonden · handmatige modus"}
+          <i style={aiConnected ? undefined : { background: "var(--color-warning)" }} /> {aiConnected ? "AI-onderzoek verbonden" : "AI niet verbonden · handmatige modus"}
         </div>
       </div>
     </Drawer>

@@ -46,7 +46,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
     <PageFrame crumbs={["Werkruimte", idea.title, "Experimenten"]} coach="experiments" ideaId={id}>
       <div className="section-row">
         <div>
-          <div className="eyebrow">STAP 4 VAN 5 · TESTEN</div>
+          <div className="eyebrow">Stap 4 van 5 · Testen</div>
           <h1>Niet raden. Testen.</h1>
           <p className="sub">Kies een kleine proef waarmee je snel echt gedrag kunt observeren.</p>
         </div>
@@ -57,7 +57,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
         <div className="kpi-row" style={{ marginBottom: 20 }}>
           {COLUMNS.map((col) => (
             <div key={col.label} className="card tight">
-              <div className="tiny" style={{ fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em" }}>{col.label}</div>
+              <div className="tiny" style={{ fontWeight: 600 }}>{col.label}</div>
               {(experiments ?? []).filter((e) => col.states.includes(e.state as ExperimentState)).map((e) => (
                 <Link key={e.id} href={`/app/ideas/${id}/experiments/${e.id}`} className="assumption-item" style={{ textDecoration: "none", marginTop: 10 }}>
                   <span className="count">{EXPERIMENT_TYPES[e.type as ExperimentType].icon}</span>

@@ -359,8 +359,8 @@ export function Invitations(p: Props) {
                 {templateProblem && <p className="field-error">{templateProblem}</p>}
               </div>
               <div>
-                <div className="eyebrow">VOORBEELD{sample.name ? ` · AAN ${sample.name.toUpperCase()}` : ""}</div>
-                <div className="quote" style={{ whiteSpace: "pre-wrap", fontSize: 12, maxHeight: 420, overflow: "auto" }} aria-label="Voorbeeld van de e-mail">
+                <div className="eyebrow">Voorbeeld{sample.name ? ` · aan ${sample.name}` : ""}</div>
+                <div className="quote" style={{ whiteSpace: "pre-wrap", fontSize: 14, maxHeight: 420, overflow: "auto" }} aria-label="Voorbeeld van de e-mail">
                   <strong>Onderwerp: {preview.subject}</strong>
                   {"\n\n"}
                   {preview.text}
@@ -393,7 +393,7 @@ export function Invitations(p: Props) {
             {job.progress.failed ? ` · ${job.progress.failed} mislukt` : ""}
             {job.progress.skipped ? ` · ${job.progress.skipped} overgeslagen` : ""}
           </label>
-          <progress id="inv-progress" max={Math.max(1, job.progress.total)} value={job.progress.done} style={{ width: "100%", accentColor: "var(--blue)" }} />
+          <progress id="inv-progress" max={Math.max(1, job.progress.total)} value={job.progress.done} style={{ width: "100%", accentColor: "var(--color-primary)" }} />
           {active && (
             <p className="tiny mt-8">
               ProofLab verstuurt op de achtergrond; je kunt dit tabblad sluiten.{" "}
@@ -409,7 +409,7 @@ export function Invitations(p: Props) {
       )}
 
       <div className="divider" />
-      <div className="eyebrow">HERINNERING</div>
+      <div className="eyebrow">Herinnering</div>
       {!p.emailReady ? (
         <p className="sub" style={{ fontSize: 13 }}>Herinneringen kan ProofLab alleen versturen met een e-mailkoppeling.</p>
       ) : c.remindable === 0 ? (

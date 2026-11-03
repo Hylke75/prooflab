@@ -16,7 +16,7 @@ export function baseRateStart(b: BaseRateView | null): number {
 export function BaseRateSummary({ baseRate, id }: { baseRate: BaseRateView; id?: string }) {
   return (
     <div className="note" id={id} style={{ marginTop: 12 }}>
-      <strong style={{ color: "var(--ink)" }}>
+      <strong style={{ color: "var(--color-heading)" }}>
         Basispercentage: {baseRateRange(baseRate)}
       </strong>
       {baseRate.kind === "class" && (

@@ -15,7 +15,7 @@ export function LoginForm({ next }: { next: string }) {
 
   return (
     <div className="card login-card" style={{ padding: 30 }}>
-      <div className="eyebrow">INLOGGEN</div>
+      <div className="eyebrow">Inloggen</div>
       <h2 style={{ marginBottom: 6 }}>Welkom.</h2>
       <p className="sub" style={{ marginBottom: 18 }}>
         {mode === "magic"

@@ -114,7 +114,7 @@ export function RiskBoard({
                   key={p.key}
                   type="button"
                   className={`risk-dot cluster${hot ? " hot" : ""}`}
-                  style={{ ...pos(p.x, p.y), outline: containsCurrent ? "3px solid var(--ink)" : undefined }}
+                  style={{ ...pos(p.x, p.y), outline: containsCurrent ? "3px solid var(--color-heading)" : undefined }}
                   onClick={(e) => {
                     clusterBtn.current = e.currentTarget;
                     setCluster(cluster === p.key ? null : p.key);
@@ -133,7 +133,7 @@ export function RiskBoard({
                 key={a.id}
                 type="button"
                 className={`risk-dot${hot ? " hot" : ""}`}
-                style={{ ...pos(p.x, p.y, p.dx, p.dy), outline: a.id === current.id ? "3px solid var(--ink)" : undefined }}
+                style={{ ...pos(p.x, p.y, p.dx, p.dy), outline: a.id === current.id ? "3px solid var(--color-heading)" : undefined }}
                 onClick={() => select(a.id)}
                 aria-label={`Aanname ${p.index + 1}: ${a.statement}. Geschatte kans dat dit klopt: ${pctR(a.probability.probability)}.`}
                 aria-pressed={a.id === current.id}
@@ -190,7 +190,7 @@ export function RiskBoard({
           </button>
         ))}
         <div className="divider" />
-        <div className="eyebrow">GESELECTEERDE AANNAME</div>
+        <div className="eyebrow">Geselecteerde aanname</div>
         <h3 style={{ margin: "6px 0 10px" }}>{current.statement}</h3>
         <div className="row">
           <span className="pill blue">{ASSUMPTION_CATEGORIES[current.category]}</span>
@@ -209,7 +209,7 @@ export function RiskBoard({
         {current.claims.length > 0 && (
           <div className="mt-12">
             {current.claims.map((c) => (
-              <div className="row between" key={c.id} style={{ fontSize: 12, padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
+              <div className="row between" key={c.id} style={{ fontSize: 14, padding: "6px 0", borderBottom: "1px solid var(--color-border)" }}>
                 <span>{c.relation === "contradicts" ? "✕ " : "✓ "}{c.statement}</span>
                 {canWrite && (
                   <form action={unlinkActions[current.id]?.[c.id]}><button className="text-link">Ontkoppel</button><FormPendingOverlay /></form>
@@ -238,7 +238,7 @@ export function RiskBoard({
                 {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n} {n === 5 ? "(kritiek)" : ""}</option>)}
               </select>
               <button className="btn white sm">Opslaan</button>
-              <button formAction={deleteActions[current.id]} className="text-link" style={{ color: "#a43c42" }}>Verwijderen</button>
+              <button formAction={deleteActions[current.id]} className="text-link" style={{ color: "var(--color-risk-text)" }}>Verwijderen</button>
               <FormPendingOverlay />
             </form>
           </>
@@ -257,19 +257,19 @@ function ProbabilityDetail({ a, prior, setPrior, save }: { a: BoardAssumption; p
   const band = bandFromShift(prior, a.probability.shift);
   const ignored = a.probability.ignored.synthetic + a.probability.ignored.rejected;
   return (
-    <div className="mt-12" style={{ background: "var(--soft)", borderRadius: 14, padding: "12px 14px" }}>
+    <div className="mt-12" style={{ background: "var(--color-surface-muted)", borderRadius: "var(--radius-inner)", padding: "12px 14px" }}>
       <div className="row between">
-        <strong style={{ font: "700 24px var(--font-space-grotesk),sans-serif", letterSpacing: "-.04em" }} className="num">{pctR(p)}</strong>
+        <strong style={{ font: "700 24px var(--font-heading),sans-serif", letterSpacing: "-.04em" }} className="num">{pctR(p)}</strong>
         <span className="pill gray">Geschat · bandbreedte {pctR(band.low)}–{pctR(band.high)}</span>
       </div>
       <p className="explain" style={{ marginTop: 2 }}>
         Geschatte kans dat deze aanname klopt. De bandbreedte laat zien wat er gebeurt als de factoren per bewijssoort 50% zwakker of sterker zijn.
       </p>
       {a.probability.top.length > 0 ? (
-        <ul style={{ margin: "8px 0 0 18px", fontSize: 12, lineHeight: 1.7 }} aria-label="Grootste bijdragen aan de kans">
+        <ul style={{ margin: "8px 0 0 18px", fontSize: 14, lineHeight: 1.7 }} aria-label="Grootste bijdragen aan de kans">
           {a.probability.top.map((c) => (
             <li key={c.key}>
-              <span style={{ color: c.direction === "supports" ? "var(--green)" : "#a43c42", fontWeight: 800 }}>{c.direction === "supports" ? "↑" : "↓"}</span> {explainContribution(c)}
+              <span style={{ color: c.direction === "supports" ? "var(--color-success)" : "var(--color-risk-text)", fontWeight: 700 }}>{c.direction === "supports" ? "↑" : "↓"}</span> {explainContribution(c)}
             </li>
           ))}
         </ul>

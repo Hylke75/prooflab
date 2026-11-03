@@ -42,7 +42,7 @@ export function CustomerSignals({
             if (!list.length) return null;
             return (
               <div key={kind}>
-                <div className="eyebrow" style={{ marginBottom: 6 }}>{SIGNAL_KINDS[kind].label.toUpperCase()}</div>
+                <div className="eyebrow" style={{ marginBottom: 6 }}>{SIGNAL_KINDS[kind].label}</div>
                 {list.map((s) => (
                   <details key={s.id} className="quickline" style={{ display: "block" }}>
                     <summary style={{ display: "flex", gap: 11, alignItems: "center", cursor: "pointer", listStyle: "none" }}>
@@ -68,7 +68,7 @@ export function CustomerSignals({
                             </ActionForm>
                           )}
                           <form action={deleteCustomerSignal.bind(null, ideaId, s.id)}>
-                            <button className="text-link" style={{ color: "#a43c42", marginTop: 12 }}>Signaal verwijderen</button>
+                            <button className="text-link" style={{ color: "var(--color-risk-text)", marginTop: 12 }}>Signaal verwijderen</button>
                             <FormPendingOverlay />
                           </form>
                         </div>
@@ -98,7 +98,7 @@ export function CustomerSignals({
             ) : aiConnected ? (
               <ActionForm action={analyzeCustomerSignals.bind(null, ideaId)} submitLabel="Analyseer klantsignalen" pendingLabel="Analyseren…" submitClass="btn soft sm">
                 <fieldset style={{ border: 0, padding: 0, margin: "8px 0 0" }}>
-                  <legend className="tiny" style={{ fontWeight: 800 }}>Bronnen met klantsignalen</legend>
+                  <legend className="tiny" style={{ fontWeight: 700 }}>Bronnen met klantsignalen</legend>
                   {sources.map((s) => (
                     <label key={s.id} className="check-row" style={{ margin: "2px 0" }}>
                       <input type="checkbox" name="source_id" value={s.id} defaultChecked /> {s.title} ({SOURCE_TYPES[s.source_type as SourceType] ?? s.source_type}, {s.excerpts.length} fragment{s.excerpts.length === 1 ? "" : "en"})

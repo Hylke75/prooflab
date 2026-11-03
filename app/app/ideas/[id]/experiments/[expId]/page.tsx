@@ -59,7 +59,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
     <PageFrame crumbs={["Werkruimte", idea.title, "Experimenten", exp.title]} coach="experiments" ideaId={id}>
       <div className="section-row">
         <div>
-          <div className="eyebrow">{EXPERIMENT_TYPES[type].label.toUpperCase()} · {EXPERIMENT_TYPES[type].phase.toUpperCase()}</div>
+          <div className="eyebrow">{EXPERIMENT_TYPES[type].label} · {EXPERIMENT_TYPES[type].phase}</div>
           <h1>{exp.title}</h1>
           <p className="sub">Toetst: {h.assumptions?.statement}</p>
         </div>
@@ -129,7 +129,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           {canWrite && state === "draft" && (
             <>
               <p className="sub">Controleer de Test Card. Daarna bied je het experiment aan voor review.</p>
-              <ActionForm action={transitionExperiment.bind(null, id, expId, "ready_for_review")} submitLabel="Ter review aanbieden" footer={<button formAction={deleteDraft.bind(null, id, expId)} className="text-link" style={{ color: "#a43c42" }}>Concept verwijderen</button>}>
+              <ActionForm action={transitionExperiment.bind(null, id, expId, "ready_for_review")} submitLabel="Ter review aanbieden" footer={<button formAction={deleteDraft.bind(null, id, expId)} className="text-link" style={{ color: "var(--color-risk-text)" }}>Concept verwijderen</button>}>
                 <span />
               </ActionForm>
             </>
@@ -181,7 +181,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
 
           {publicUrl && running && type !== "interview" && type !== "survey" && (
             <div className="mt-18">
-              <div className="eyebrow">DEEL PER KANAAL</div>
+              <div className="eyebrow">Deel per kanaal</div>
               {channels.map((c) => (
                 <div key={c.channel} className="form-line">
                   <label htmlFor={`link-${c.channel}`}>{CHANNELS[c.channel as keyof typeof CHANNELS] ?? c.channel}</label>
@@ -234,7 +234,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
         <>
           <div className="section-title mt-24"><h2>Interviews</h2><span className="pill gray">{interviews.length} gesprekken</span></div>
           <div className="card">
-            <div className="eyebrow">GESPREKSLEIDRAAD</div>
+            <div className="eyebrow">Gespreksleidraad</div>
             <ol style={{ margin: "6px 0 0 18px", fontSize: 13, lineHeight: 1.8 }}>
               {(exp.config as InterviewConfig).guide?.map((q) => <li key={q}>{q}</li>)}
             </ol>
@@ -313,7 +313,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
                     {aiConfigured() && (
                       <ActionForm action={analyzeInterviewWithAi.bind(null, id, expId, iv.id)} submitLabel="Laat AI uitspraken markeren" submitClass="btn soft sm" pendingLabel="Analyseren…"><span /></ActionForm>
                     )}
-                    <form action={deleteInterview.bind(null, id, iv.id)}><button className="text-link" style={{ color: "#a43c42", marginTop: 12 }}>Interview verwijderen</button><FormPendingOverlay /></form>
+                    <form action={deleteInterview.bind(null, id, iv.id)}><button className="text-link" style={{ color: "var(--color-risk-text)", marginTop: 12 }}>Interview verwijderen</button><FormPendingOverlay /></form>
                   </div>
                 </div>
               )}

@@ -271,9 +271,9 @@ function QuestionEditor({
   const set = (patch: Partial<SurveyQuestion>) => onChange(updateQuestion(c, q.id, patch));
 
   return (
-    <li className="card tight mt-12" style={isKey ? { borderColor: "#a5adfa", boxShadow: "inset 0 0 0 1px #9faafd" } : undefined}>
+    <li className="card tight mt-12" style={isKey ? { boxShadow: "inset 0 0 0 2px var(--color-primary)" } : undefined}>
       <fieldset style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-        <legend className="tiny" style={{ fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", padding: 0 }}>
+        <legend className="tiny" style={{ fontWeight: 600, padding: 0 }}>
           Vraag {n}{isKey ? " · kernvraag" : ""}{isScreen ? " · screeningsvraag" : ""}{isCheck ? " · controlevraag" : ""}
         </legend>
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end", marginTop: 6 }}>
@@ -286,7 +286,7 @@ function QuestionEditor({
           <div className="row" style={{ gap: 6 }}>
             <button type="button" id={`${p}-up`} className="btn white sm" onClick={() => onMove(-1)} disabled={index === 0} aria-label={`Vraag ${n} omhoog`}>↑</button>
             <button type="button" id={`${p}-down`} className="btn white sm" onClick={() => onMove(1)} disabled={index === c.questions.length - 1} aria-label={`Vraag ${n} omlaag`}>↓</button>
-            <button type="button" className="btn white sm" onClick={onRemove} disabled={c.questions.length <= 1} aria-label={`Vraag ${n} verwijderen`} style={{ color: "#a43c42" }}>Verwijder</button>
+            <button type="button" className="btn white sm" onClick={onRemove} disabled={c.questions.length <= 1} aria-label={`Vraag ${n} verwijderen`} style={{ color: "var(--color-risk-text)" }}>Verwijder</button>
           </div>
         </div>
         <div className="form-line mt-8">
@@ -365,7 +365,7 @@ function QuestionEditor({
               Tegen de voorkeur voor de eerste optie. Zet uit bij opties met een vaste volgorde (week, maand, jaar). Opties met ‘vast’ blijven op hun plek.
             </p>
             <fieldset style={{ border: 0, padding: 0, margin: "6px 0 0", minWidth: 0 }}>
-              <legend style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+              <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
                 Antwoordopties{isKey ? " (vink aan wat als succes telt)" : isScreen ? " (vink aan wat bij de doelgroep hoort)" : isCheck ? " (kies het juiste antwoord)" : ""}
               </legend>
               {(q.options ?? []).map((o, k) => (

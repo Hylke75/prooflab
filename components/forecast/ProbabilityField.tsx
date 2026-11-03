@@ -28,7 +28,7 @@ export function ProbabilityField({ initial, describedBy }: { initial: number; de
   return (
     <div>
       <div className="range-label" style={{ marginTop: 18 }}>
-        <label htmlFor={`${id}-range`} style={{ fontWeight: 800 }}>
+        <label htmlFor={`${id}-range`} style={{ fontWeight: 700 }}>
           Kans dat het doel wordt gehaald
         </label>
         <strong aria-hidden="true">{value}%</strong>

@@ -144,11 +144,11 @@ export function ExperimentBuilder({
           ))}
         </div>
         <div className="grid-3" style={{ gap: 12 }}>
-          <div><div className="tiny">Wat leer je?</div><p style={{ fontSize: 12 }}>{options[tier].learn}</p></div>
-          <div><div className="tiny">Wat kun je níét concluderen?</div><p style={{ fontSize: 12 }}>{options[tier].cannotConclude}</p></div>
+          <div><div className="tiny">Wat leer je?</div><p style={{ fontSize: 14 }}>{options[tier].learn}</p></div>
+          <div><div className="tiny">Wat kun je níét concluderen?</div><p style={{ fontSize: 14 }}>{options[tier].cannotConclude}</p></div>
           <div>
             <div className="tiny">Inzet · looptijd · kosten · bewijs</div>
-            <p style={{ fontSize: 12 }}>{options[tier].effort} · {options[tier].duration} · {options[tier].cost} · {options[tier].strength}</p>
+            <p style={{ fontSize: 14 }}>{options[tier].effort} · {options[tier].duration} · {options[tier].cost} · {options[tier].strength}</p>
           </div>
         </div>
         <p className="tiny mt-8">Kan de uitkomst de beslissing veranderen? {options[tier].canChangeDecision}</p>
@@ -196,7 +196,7 @@ export function ExperimentBuilder({
           )}
           <div className="form-line"><label htmlFor="tc-bias">Verwachte vertekeningen</label><input className="field" id="tc-bias" name="expected_biases" value={card.expected_biases} onChange={(e) => set("expected_biases", e.target.value)} /></div>
           <fieldset className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }}>
-            <legend style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>Wervingskanalen</legend>
+            <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Wervingskanalen</legend>
             <div className="row">
               {Object.entries(CHANNELS).filter(([k]) => k !== "direct").map(([k, v]) => (
                 <label key={k} className="check-row" style={{ margin: "2px 10px 2px 0" }}>
@@ -308,7 +308,7 @@ export function ExperimentBuilder({
                         <p className="sub" style={{ fontSize: 13 }}>{v.subline}</p>
                         <p className="tiny mt-8">{v.offer}</p>
                         {[...v.ai_honesty_notes, ...v.warnings].length > 0 && (
-                          <ul className="tiny" style={{ margin: "6px 0 0 16px", padding: 0, color: "#976022" }}>
+                          <ul className="tiny" style={{ margin: "6px 0 0 16px", padding: 0, color: "var(--color-warning-text)" }}>
                             {[...v.ai_honesty_notes, ...v.warnings].map((w) => <li key={w}>Let op: {w}</li>)}
                           </ul>
                         )}

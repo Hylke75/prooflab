@@ -58,7 +58,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
     <PageFrame crumbs={["Werkruimte", idea.title, "Rapportage"]} coach="report" ideaId={id}>
       <div className="section-row report-controls">
         <div>
-          <div className="eyebrow">UITKOMST · ONDERZOEKSDOSSIER</div>
+          <div className="eyebrow">Uitkomst · Onderzoeksdossier</div>
           <h1>Een helder verhaal.<br />Met bewijs.</h1>
           <p className="sub">
             {canWrite
@@ -145,10 +145,10 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
         <article className="report-paper">
           <div className="report-head">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <strong style={{ font: "700 20px var(--font-space-grotesk),sans-serif", letterSpacing: "-.06em" }}>◉ ProofLab.</strong>
+              <strong style={{ font: "700 20px var(--font-heading),sans-serif", letterSpacing: "-.06em" }}>◉ ProofLab.</strong>
               <span className={`pill ${r.idea.isDemo ? "orange" : "blue"}`}>{r.idea.isDemo ? "DEMO · GEEN ECHT ONDERZOEK" : r.label.toUpperCase()}</span>
             </div>
-            <div className="eyebrow" style={{ marginTop: 35 }}>VALIDATIEDOSSIER · VERSIE {r.version} · {date(r.generatedAt).toUpperCase()}</div>
+            <div className="eyebrow" style={{ marginTop: 35 }}>Validatiedossier · Versie {r.version} · {date(r.generatedAt)}</div>
             <h2 className="report-title">{r.idea.title}</h2>
             <p className="sub">
               {r.client ? `Opgesteld door ${r.preparedBy} voor ${r.client}.` : `Opgesteld door ${r.preparedBy}.`} Beslisvraag: {r.idea.decisionQuestion}
@@ -156,24 +156,24 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           </div>
 
           <section className="report-section">
-            <span className="eyebrow">01 / MANAGEMENTSAMENVATTING</span>
+            <span className="eyebrow">01 / Managementsamenvatting</span>
             <h3>{r.decision ? `Besluit: ${r.decision.action}.` : r.realityCheck ? `Advies: ${r.realityCheck.advice}.` : "Nog geen besluit."}</h3>
             <p>
               {r.decision?.rationale ?? r.realityCheck?.reason ?? "Het onderzoek loopt nog."} Bewijsniveau: <strong>{r.label}</strong>.
               {r.labelMissing.length ? ` Voor een hoger niveau ontbreekt: ${r.labelMissing.join("; ")}.` : ""}
             </p>
             <div className="grid-3" style={{ margin: "20px 0" }}>
-              <div style={{ background: "#e7eaff", padding: 16, borderRadius: 12 }}>
+              <div style={{ background: "var(--color-surface-soft)", padding: 16, borderRadius: "var(--radius-inner)" }}>
                 <div className="tiny">Bevindingen met bron</div>
                 <div className="report-number">{r.counts.claims}</div>
                 <div className="tiny">{r.counts.verified} geverifieerd · {r.counts.insufficient} onvoldoende</div>
               </div>
-              <div style={{ background: "#e3f3e8", padding: 16, borderRadius: 12 }}>
+              <div style={{ background: "var(--color-success-soft)", padding: 16, borderRadius: "var(--radius-inner)" }}>
                 <div className="tiny">Experimenten</div>
                 <div className="report-number">{String(r.experiments.length).padStart(2, "0")}</div>
                 <div className="tiny">{r.learningCards.length} met goedgekeurde Learning Card</div>
               </div>
-              <div style={{ background: "#fff0e6", padding: 16, borderRadius: 12 }}>
+              <div style={{ background: "var(--color-warning-soft)", padding: 16, borderRadius: "var(--radius-inner)" }}>
                 <div className="tiny">Bereikbare jaaromzet (realistisch)</div>
                 <div className="report-number">{r.sizing.find((s) => s.label === "Realistisch") ? eur(r.sizing.find((s) => s.label === "Realistisch")!.somRevenue) : "?"}</div>
                 <div className="tiny">{r.sizing.find((s) => s.label === "Realistisch")?.status ?? "niet berekend"}</div>
@@ -182,7 +182,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           </section>
 
           <section className="report-section">
-            <span className="eyebrow">02 / BESLISVRAAG EN AANPAK</span>
+            <span className="eyebrow">02 / Beslisvraag en aanpak</span>
             <h3>Wat moest dit onderzoek beslissen?</h3>
             <p>{r.idea.decisionQuestion} Het idee: {r.idea.description} Doelgroep: {r.idea.audience}. Regio: {r.idea.region}.{r.idea.budget ? ` Bedrag op het spel: ${eur(r.idea.budget)}.` : ""}</p>
             <table className="table mt-12">
@@ -192,7 +192,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           </section>
 
           <section className="report-section">
-            <span className="eyebrow">03 / MARKTBEELD</span>
+            <span className="eyebrow">03 / Marktbeeld</span>
             <h3>Wat we weten, en op basis waarvan</h3>
             {Object.entries(SECTIONS).map(([key, label]) => {
               const list = r.claims.filter((c) => c.section === key);
@@ -200,7 +200,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               return (
                 <div key={key} className="mt-12">
                   <strong style={{ fontSize: 13 }}>{label}</strong>
-                  <ul style={{ margin: "6px 0 0 18px", fontSize: 13, lineHeight: 1.7, color: "#3d4657" }}>
+                  <ul style={{ margin: "6px 0 0 18px", fontSize: 13, lineHeight: 1.7, color: "var(--color-text)" }}>
                     {list.map((c, i) => (
                       <li key={i}>
                         {c.statement} <Notes n={c.notes} /> <em className="tiny">({c.status}{c.contradicted ? ", tegengesproken" : ""})</em>
@@ -215,7 +215,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           </section>
 
           <section className="report-section">
-            <span className="eyebrow">04 / CONCURRENTIE EN ALTERNATIEVEN</span>
+            <span className="eyebrow">04 / Concurrentie en alternatieven</span>
             <h3>Hoe lossen klanten het nu op?</h3>
             <table className="table">
               <thead><tr><th>Aanbieder</th><th>Type</th><th>Positionering</th><th>Prijs</th></tr></thead>
@@ -232,7 +232,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           </section>
 
           <section className="report-section">
-            <span className="eyebrow">05 / MARKTPOTENTIEEL</span>
+            <span className="eyebrow">05 / Marktpotentieel</span>
             <h3>Van onderaf berekend, met zichtbare aannames</h3>
             <table className="table">
               <thead><tr><th>Scenario</th><th>TAM</th><th>SAM</th><th>SOM-klanten</th><th>SOM-omzet</th><th>Onderbouwing</th></tr></thead>
@@ -258,7 +258,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           </section>
 
           <section className="report-section">
-            <span className="eyebrow">06 / AANNAMES EN RISICO&apos;S</span>
+            <span className="eyebrow">06 / Aannames en risico&apos;s</span>
             <h3>Wat moet waar zijn?</h3>
             <table className="table">
               <thead><tr><th>Aanname</th><th>Belang</th>{r.assumptions.some((a) => "probability" in a && a.probability) ? <th>Geschatte kans</th> : <th>Bewijs</th>}<th>Status</th></tr></thead>
@@ -287,7 +287,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           </section>
 
           <section className="report-section">
-            <span className="eyebrow">07 / EXPERIMENTEN EN RESULTATEN</span>
+            <span className="eyebrow">07 / Experimenten en resultaten</span>
             <h3>Van mening naar meetbaar gedrag</h3>
             <p className="explain">
               Een Learning Card legt per test vast wat we verwachtten, wat we zagen, wat we daaruit leren en wat we daarom doen. Het 95%-interval is de
@@ -327,13 +327,13 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           </section>
 
           <section className="report-section">
-            <span className="eyebrow">08 / REALITY CHECK: TEGENARGUMENTEN EN BEPERKINGEN</span>
+            <span className="eyebrow">08 / Reality check: tegenargumenten en beperkingen</span>
             <h3>Wat dit onderzoek níét bewijst</h3>
             <p className="explain">De Reality Check zoekt vóór elk besluit bewust naar tegenbewijs, zwakke data en conclusies die het bewijs niet draagt.</p>
             {r.realityCheck ? (
               <>
                 <p>Uitgevoerd {date(r.realityCheck.at)}{r.realityCheck.aiUsed ? ", aangevuld met kritische vragen van AI" : ""}. Advies: {r.realityCheck.advice}. {r.realityCheck.reason}</p>
-                <ul style={{ margin: "6px 0 0 18px", fontSize: 13, lineHeight: 1.7, color: "#3d4657" }}>
+                <ul style={{ margin: "6px 0 0 18px", fontSize: 13, lineHeight: 1.7, color: "var(--color-text)" }}>
                   {r.realityCheck.findings.map((f, i) => <li key={i}><strong>{f.title}</strong>{f.source === "ai" ? " (AI-vraag)" : ""}: {f.detail}</li>)}
                 </ul>
               </>
@@ -343,7 +343,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           </section>
 
           <section className="report-section">
-            <span className="eyebrow">09 / BESLUIT EN VOLGENDE STAP</span>
+            <span className="eyebrow">09 / Besluit en volgende stap</span>
             <h3>{r.decision ? `${r.decision.action}.` : "Nog geen besluit."}</h3>
             {r.decision && (
               <p>
@@ -356,7 +356,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
 
           {r.prediction && (
             <section className="report-section">
-              <span className="eyebrow">10 / VOORSPELLING EN UITKOMST</span>
+              <span className="eyebrow">10 / Voorspelling en uitkomst</span>
               <h3>{r.prediction.result ? `Uitkomst: ${r.prediction.result.achieved.toLowerCase()}.` : "Wat verwachten we, en hoe toetsen we dat?"}</h3>
               {r.prediction.outcome.statement ? (
                 <p>
@@ -414,8 +414,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           )}
 
           <section className="report-section" style={{ breakBefore: "page" }}>
-            <span className="eyebrow">BRONNEN</span>
-            <ol style={{ margin: "6px 0 0 18px", fontSize: 11, lineHeight: 1.7, color: "#3d4657" }}>
+            <span className="eyebrow">Bronnen</span>
+            <ol style={{ margin: "6px 0 0 18px", fontSize: 13, lineHeight: 1.7, color: "var(--color-text)" }}>
               {r.sources.map((s) => (
                 <li key={s.n}>
                   {s.publisher ? `${s.publisher}, ` : ""}
@@ -431,7 +431,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             </p>
           </section>
 
-          <div style={{ borderTop: "1px solid #e1e4e5", paddingTop: 16, display: "flex", justifyContent: "space-between", color: "#5f6879", fontSize: 10 }}>
+          <div style={{ borderTop: "1px solid var(--color-border)", paddingTop: 16, display: "flex", justifyContent: "space-between", color: "var(--color-text-muted)", fontSize: 12 }}>
             <span>ProofLab · {r.preparedBy}</span>
             <span>Versie {r.version} · {date(r.generatedAt)}</span>
           </div>
