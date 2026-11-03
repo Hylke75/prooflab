@@ -276,3 +276,15 @@ describe("sprint", () => {
     expect(todayInNL(new Date("2026-10-29T23:30:00Z"))).toBe("2026-10-30");
   });
 });
+
+describe("dossieroverzicht", () => {
+  it("toont vijf stappen met aantallen en markeert de eerste open stap", async () => {
+    const { stepOverview } = await import("@/lib/steps");
+    const steps = stepOverview(progress());
+    expect(steps.map((s) => s.key)).toEqual(["idea", "market", "assumptions", "test", "decide"]);
+    expect(steps.filter((s) => s.current).map((s) => s.key)).toEqual(["test"]);
+    expect(steps[1].counts).toBe("6 bevindingen (3 onderbouwd) · 3 concurrenten en alternatieven");
+    expect(steps[3]).toMatchObject({ done: false, counts: "0 tests · 0 lopend · 0 afgerond", href: `${base}/experiments` });
+    expect(stepOverview(progress({ claims: 0 })).find((s) => s.current)?.key).toBe("market");
+  });
+});

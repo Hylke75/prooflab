@@ -10,7 +10,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { loadOpenNotes } from "@/lib/coach/review";
 import { CoachWatch } from "@/components/coach/CoachWatch";
 
-const IDEA_PAGES: CoachPage[] = ["research", "assumptions", "experiments", "evidence", "report"];
+const IDEA_PAGES: CoachPage[] = ["overview", "research", "assumptions", "experiments", "evidence", "report"];
 
 // Main column + coach column of the three-column grid from the reference design.
 export async function PageFrame({

@@ -75,6 +75,8 @@ export function Sidebar({
             </div>
           )}
           <nav className="side-nav" aria-label="Huidig idee">
+            {/* Dossieroverzicht: alleen voor het team; opdrachtgevers gaan vanaf de dossierlink naar het rapport. */}
+            {isConsultant && link(`/app/ideas/${currentId}`, "Dossieroverzicht", "home", sub === "")}
             {IDEA_NAV.map((n) => link(`/app/ideas/${currentId}${n.suffix}`, n.label, n.icon, sub === n.suffix || (sub.startsWith(n.suffix) && n.suffix !== "")))}
             {isConsultant && IDEA_TEAM_NAV.map((n) => link(`/app/ideas/${currentId}${n.suffix}`, n.label, n.icon, sub === n.suffix))}
           </nav>

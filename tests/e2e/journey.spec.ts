@@ -68,6 +68,11 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.waitForURL(/\/research/);
   await expect(page.getByRole("heading", { name: "Begrijp je markt." })).toBeVisible();
   const ideaUrl = page.url().replace(/\/research.*$/, "");
+  // Het dossieroverzicht toont de volgende stap (week 1: onderzoek, niet de voorspelling).
+  await page.goto(ideaUrl);
+  await expect(page.getByRole("heading", { name: "Volgende stap" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Verzamel de eerste bronnen/ })).toBeVisible();
+  await page.goto(`${ideaUrl}/research`);
 
   // 2. Source + verified claim
   await page.getByRole("tab", { name: "Bronnen" }).click();

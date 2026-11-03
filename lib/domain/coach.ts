@@ -4,7 +4,7 @@ import type { IconName } from "@/components/Icon";
 import type { SprintStage } from "@/lib/domain/sprint";
 import { followUpFor, forecastDue, MOMENT_LABELS, openMomentFor, type ForecastState } from "@/lib/domain/forecast";
 
-export type CoachPage = "dashboard" | "intake" | "research" | "assumptions" | "experiments" | "evidence" | "report" | "outcome" | "forecasts" | "clients" | "other";
+export type CoachPage = "dashboard" | "overview" | "intake" | "research" | "assumptions" | "experiments" | "evidence" | "report" | "outcome" | "forecasts" | "clients" | "other";
 
 export type ExperimentSummary = {
   id: string;
@@ -64,6 +64,7 @@ export type NextAction = { title: string; detail: string; href: string; icon: Ic
 
 const PAGE_COPY: Record<CoachPage, [string, string]> = {
   dashboard: ["Wat gaan we vandaag bewijzen?", "Je hoeft geen expert in marktonderzoek te zijn. Ik help je de juiste vragen te stellen en de volgende stap te kiezen."],
+  overview: ["Waar staat dit dossier?", "Eén volgende stap tegelijk. Hier zie je hoe ver elke stap is en wat de coach opviel."],
   intake: ["Begin bij de beslissing.", "Welke beslissing moet dit onderzoek ondersteunen? Daarmee krijgt elk onderzoek een doel en een moment waarop het genoeg is."],
   research: ["Kijk verder dan de concurrent.", "Ook Excel, je eigen netwerk of helemaal niets doen kan de grootste concurrent zijn."],
   assumptions: ["Begin met je grootste risico.", "Welke aanname zou het hele idee onderuit halen als die niet klopt? Daar beginnen we."],
@@ -79,6 +80,7 @@ const PAGE_COPY: Record<CoachPage, [string, string]> = {
 // What a client stakeholder reads on each screen: explanation, not a to-do list.
 const CLIENT_COPY: Record<CoachPage, [string, string, string]> = {
   dashboard: ["Welkom bij uw dossier.", "Hier volgt u het onderzoek dat voor u wordt uitgevoerd. U kijkt mee; het onderzoeksteam doet het werk.", "U ziet per dossier in welke sprintweek het onderzoek zit, het laatst gedeelde rapport en of er een besluit op uw bevestiging wacht."],
+  overview: ["Uw dossier.", "Hier volgt u het onderzoek.", "Het onderzoeksteam werkt stap voor stap van marktverkenning naar besluit."],
   intake: ["Begin bij de beslissing.", "Elk onderzoek start met de beslissing die u wilt nemen.", "Het onderzoeksteam legt de beslisvraag met u vast."],
   research: ["Wat weten we over de markt?", "Elke bevinding verwijst naar een bron met een letterlijk citaat. ProofLab controleert dat citaat zelf.", "Een bevinding met 'onvoldoende bewijs' is een open vraag, geen feit. Een AI-tekst telt nooit als bron."],
   assumptions: ["Wat moet waar zijn?", "De risicokaart zet af hoe belangrijk een aanname is tegen hoeveel bewijs er al voor is.", "Rechtsboven staan de aannames die het meest belangrijk zijn en het minst bewezen. Die worden als eerste getest."],
