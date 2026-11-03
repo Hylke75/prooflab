@@ -44,6 +44,9 @@ export async function PageFrame({
   const audience = access ? (access.canWrite ? "consultant" : "client") : ws.org ? "consultant" : "client";
   // The trajectory coach's open notes for this dossier; consultants also trigger a (throttled) review.
   const notes = ideaId && access ? await loadOpenNotes(ideaId, audience) : undefined;
+  // Op werkruimtepagina's verwijst de coach naar het lopende idee (het laatst bijgewerkte van de werkruimte).
+  const currentIdea =
+    !ideaId && ws.org ? ((await supabase.from("ideas").select("id, title").eq("org_id", ws.org.id).order("updated_at", { ascending: false }).limit(1).maybeSingle()).data ?? null) : null;
   // Tabbladen onder een stap (Markt: Marktverkenning | Bronnen & koppelingen; Besluit: Bewijs & besluit |
   // Voorspelling & uitkomst). Het zijn gewone links tussen de bestaande adressen.
   const stepKey = ideaId && section !== undefined ? stepForPath(section) : null;
@@ -76,7 +79,7 @@ export async function PageFrame({
           <section className="screen active">{children}</section>
         </div>
       </main>
-      <Coach data={coachFor(coach, progress, { audience, isClientDecider: access?.isClientDecider })} aiConnected={aiConfigured()} notes={notes} />
+      <Coach data={coachFor(coach, progress, { audience, isClientDecider: access?.isClientDecider, currentIdea })} aiConnected={aiConfigured()} notes={notes} />
       {ideaId && access?.canWrite && <CoachWatch ideaId={ideaId} />}
       {ideaId && progress && <SyncIdeaSteps ideaId={ideaId} states={stepStates(progress)} />}
     </>

@@ -4,7 +4,7 @@ import type { IconName } from "@/components/Icon";
 import type { SprintStage } from "@/lib/domain/sprint";
 import { followUpFor, forecastDue, MOMENT_LABELS, openMomentFor, type ForecastState } from "@/lib/domain/forecast";
 
-export type CoachPage = "dashboard" | "overview" | "intake" | "research" | "assumptions" | "experiments" | "evidence" | "report" | "outcome" | "forecasts" | "clients" | "other";
+export type CoachPage = "dashboard" | "overview" | "intake" | "research" | "integrations" | "assumptions" | "experiments" | "evidence" | "report" | "outcome" | "forecasts" | "clients" | "other";
 
 export type ExperimentSummary = {
   id: string;
@@ -72,6 +72,7 @@ const PAGE_COPY: Record<CoachPage, [string, string]> = {
   overview: ["Waar staat dit dossier?", "Eén volgende stap tegelijk. Hier zie je hoe ver elke stap is en wat de coach opviel."],
   intake: ["Begin bij de beslissing.", "Welke beslissing moet dit onderzoek ondersteunen? Daarmee krijgt elk onderzoek een doel en een moment waarop het genoeg is."],
   research: ["Kijk verder dan de concurrent.", "Ook Excel, je eigen netwerk of helemaal niets doen kan de grootste concurrent zijn."],
+  integrations: ["Hoor de klant in zijn eigen woorden.", "Reviews, forumdraden, enquête-antwoorden en LinkedIn-reacties laten zien welke problemen klanten zelf noemen. Haal ze hier binnen; ze verschijnen bij Doelgroepen."],
   assumptions: ["Begin met je grootste risico.", "Welke aanname zou het hele idee onderuit halen als die niet klopt? Daar beginnen we."],
   experiments: ["Test gedrag, geen complimenten.", "Een enthousiaste reactie is prettig. Een echte afspraak of betaling zegt vaak meer."],
   evidence: ["Wat zegt dit bewijs echt?", "Het doel is leren, niet gelijk krijgen. Kijk ook naar wat een resultaat niet aantoont."],
@@ -87,6 +88,7 @@ const CLIENT_COPY: Record<CoachPage, [string, string, string]> = {
   dashboard: ["Welkom bij uw dossier.", "Hier volgt u het onderzoek dat voor u wordt uitgevoerd. U kijkt mee; het onderzoeksteam doet het werk.", "U ziet per dossier in welke sprintweek het onderzoek zit, het laatst gedeelde rapport en of er een besluit op uw bevestiging wacht."],
   overview: ["Uw dossier.", "Hier volgt u het onderzoek.", "Het onderzoeksteam werkt stap voor stap van marktverkenning naar besluit."],
   intake: ["Begin bij de beslissing.", "Elk onderzoek start met de beslissing die u wilt nemen.", "Het onderzoeksteam legt de beslisvraag met u vast."],
+  integrations: ["Wat zeggen klanten zelf?", "Het onderzoeksteam verzamelt hier reacties uit reviews, forums en LinkedIn.", "Klantreacties zijn kwalitatieve signalen: ze maken vragen scherper, maar bewijzen geen gedrag."],
   research: ["Wat weten we over de markt?", "Elke bevinding verwijst naar een bron met een letterlijk citaat. ProofLab controleert dat citaat zelf.", "Een bevinding met 'onvoldoende bewijs' is een open vraag, geen feit. Een AI-tekst telt nooit als bron."],
   assumptions: ["Wat moet waar zijn?", "De risicokaart zet af hoe belangrijk een aanname is tegen hoeveel bewijs er al voor is.", "Rechtsboven staan de aannames die het meest belangrijk zijn en het minst bewezen. Die worden als eerste getest."],
   experiments: ["Hoe wordt er getest?", "Elke test heeft vooraf vastgelegde drempels. Na goedkeuring kunnen die niet meer stil worden aangepast.", "Tijdens een lopende test ziet u voortgang, maar nog geen conclusie. Een uitspraak volgt pas na de afgesproken eindconditie."],
@@ -257,6 +259,13 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
       if (items.length === 0) add("Ga door naar de aannames", `${base}/assumptions`, "layers");
       break;
     }
+    case "integrations": {
+      add("Importeer reviews of forumdraden in bulk", `${base}/integrations#bulk-import`, "users");
+      add("Haal één pagina met klantreacties op", `${base}/integrations#pagina-ophalen`, "compass");
+      add("Bekijk de klantsignalen bij Doelgroepen", `${base}/research?tab=customers#klantsignalen`, "users");
+      insight = ["Goed om te weten", "Klantsignalen tellen als kwalitatieve observatie, niet als gedrag. Gebruik ze om aannames en interviewvragen scherper te maken; voor bewijs is een test nodig."];
+      break;
+    }
     case "assumptions": {
       if (p.assumptions === 0) add("Schrijf de eerste aanname op", `${base}/assumptions#nieuwe-aanname`, "layers");
       if (p.topAssumption && p.untestedCritical > 0)
@@ -325,10 +334,29 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
   return { items, insight };
 }
 
-export function coachFor(page: CoachPage, p: IdeaProgress | null, opts: { audience?: "consultant" | "client"; isClientDecider?: boolean } = {}): CoachData {
+export function coachFor(
+  page: CoachPage,
+  p: IdeaProgress | null,
+  opts: { audience?: "consultant" | "client"; isClientDecider?: boolean; currentIdea?: { id: string; title: string } | null } = {},
+): CoachData {
   const audience = opts.audience ?? "consultant";
   if (audience === "client") return clientCoach(page, p, !!opts.isClientDecider);
   const [title, copy] = PAGE_COPY[page];
+  // Werkruimtepagina's (geen idee open): verwijs naar het lopende idee. Alleen zonder ideeën: begin met één idee.
+  if (!p && opts.currentIdea) {
+    const href = `/app/ideas/${opts.currentIdea.id}`;
+    return {
+      title,
+      copy,
+      insightTitle: "Je lopende idee",
+      insight: `Je werkt aan "${opts.currentIdea.title}". Ga verder waar je gebleven was; het overzicht van dit idee toont de volgende stap.`,
+      suggestions: [
+        { label: `Verder met ${opts.currentIdea.title}`, href, icon: "arrow" },
+        { label: "Nieuw idee onderzoeken", href: "/app/ideas/new", icon: "plus" },
+      ],
+      audience,
+    };
+  }
   if (!p) {
     return {
       title,

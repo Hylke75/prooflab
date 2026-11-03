@@ -47,7 +47,7 @@ export default async function IntegrationsPage({ params }: PageProps<"/app/ideas
   const signalsHref = `/app/ideas/${id}/research?tab=customers#klantsignalen`;
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Bronnen & koppelingen"]} coach="research" ideaId={id} section="/integrations">
+    <PageFrame crumbs={["Werkruimte", idea.title, "Bronnen & koppelingen"]} coach="integrations" ideaId={id} section="/integrations">
       <div className="section-row">
         <div>
           <div className="eyebrow">Bronnen & koppelingen</div>
@@ -180,7 +180,7 @@ export default async function IntegrationsPage({ params }: PageProps<"/app/ideas
       </div>
 
       <div className="grid-2" style={{ marginTop: 18 }}>
-        <div className="card">
+        <div className="card" id="bulk-import" style={{ scrollMarginTop: 100 }}>
           <div className="section-title"><h2 className="as-h3">Signalen in bulk importeren</h2></div>
           <p className="sub" style={{ fontSize: 13, marginBottom: 12 }}>
             Plak reviews, forumposts of enquête-antwoorden, of upload een CSV-export. Elk fragment wordt een letterlijk bronfragment; dubbele
@@ -188,7 +188,7 @@ export default async function IntegrationsPage({ params }: PageProps<"/app/ideas
           </p>
           <BulkImportForm action={importFragments.bind(null, id)} />
         </div>
-        <div className="card">
+        <div className="card" id="pagina-ophalen" style={{ scrollMarginTop: 100 }}>
           <div className="section-title"><h2 className="as-h3">Eén pagina ophalen</h2></div>
           <p className="sub" style={{ fontSize: 13, marginBottom: 12 }}>
             ProofLab haalt de tekst van een openbare pagina op (bijvoorbeeld een forumdraad of reviewpagina) en bewaart die in fragmenten van
