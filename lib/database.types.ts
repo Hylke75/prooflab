@@ -1107,6 +1107,7 @@ export type Database = {
       }
       ideas: {
         Row: {
+          outcome_clock_start: string | null
           outcome_statement: string | null
           outcome_metric: string | null
           outcome_target: number | null
@@ -1141,6 +1142,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          outcome_clock_start?: string | null
           outcome_statement?: string | null
           outcome_metric?: string | null
           outcome_target?: number | null
@@ -1175,6 +1177,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          outcome_clock_start?: string | null
           outcome_statement?: string | null
           outcome_metric?: string | null
           outcome_target?: number | null
@@ -2236,6 +2239,7 @@ export type Database = {
         Args: { p_campaign: string | null; p_contact_hash: string; p_dedupe: string; p_event: string; p_key: string; p_message: string | null; p_token_hash: string }
         Returns: boolean
       }
+      forecasts_exist: { Args: { p_idea: string }; Returns: boolean }
       forecast_scores: {
         Args: { p_org: string }
         Returns: { forecaster_kind: string; forecaster_id: string | null; forecasts: number; brier: number; mean_probability: number; hit_rate: number }[]

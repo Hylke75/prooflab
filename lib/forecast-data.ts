@@ -75,12 +75,14 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
   const { idea, canWrite } = access;
   const ws = await getWorkspace();
   const supabase = await supabaseServer();
-  const [classes, forecasts, outcome, checkins, own] = await Promise.all([
+  const [classes, forecasts, outcome, checkins, own, anyForecast] = await Promise.all([
     supabase.from("reference_classes").select("*").order("position"),
     supabase.from("forecasts").select("*").eq("idea_id", idea.id).order("created_at"),
     supabase.from("idea_outcomes").select("*").eq("idea_id", idea.id).maybeSingle(),
     supabase.from("outcome_checkins").select("*").eq("idea_id", idea.id).order("created_at", { ascending: false }),
     canWrite ? supabase.rpc("own_base_rate", { p_org: idea.org_id, p_project_type: idea.project_type, p_min: OWN_BASE_RATE_MIN }) : Promise.resolve({ data: [], error: null }),
+    // Also counts forecasts this user may not see yet (blind rule), so the lock is shown correctly.
+    supabase.rpc("forecasts_exist", { p_idea: idea.id }),
   ]);
   if (classes.error || forecasts.error || outcome.error || checkins.error) return null;
 
@@ -138,7 +140,7 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
       })),
     openMoment: openMomentFor(progress),
     ownMoments: state.ownMoments,
-    definitionLocked: rows.length > 0,
+    definitionLocked: rows.length > 0 || anyForecast.data === true,
     resolved: outcome.data
       ? { achieved: outcome.data.achieved as Achieved, actualValue: outcome.data.actual_value == null ? null : Number(outcome.data.actual_value), evidence: outcome.data.evidence, resolvedAt: outcome.data.resolved_at }
       : null,
@@ -157,7 +159,7 @@ export async function loadOutcomeReminders(orgId: string, today: string): Promis
   const supabase = await supabaseServer();
   const { data: ideas, error } = await supabase
     .from("ideas")
-    .select("id, title, outcome_due")
+    .select("id, title, outcome_due, outcome_clock_start")
     .eq("org_id", orgId)
     .not("outcome_due", "is", null)
     .lte("outcome_due", addMonths(today, OUTCOME_HORIZON_MONTHS - CHECKIN_AFTER_MONTHS))
@@ -172,6 +174,7 @@ export async function loadOutcomeReminders(orgId: string, today: string): Promis
   return ideas.flatMap((i): OutcomeReminder[] => {
     const fu = followUp({
       outcomeDue: i.outcome_due,
+      clockStart: i.outcome_clock_start,
       checkins: (checkins.data ?? []).filter((c) => c.idea_id === i.id).length,
       resolved: (outcomes.data ?? []).some((o) => o.idea_id === i.id),
       today,

@@ -154,7 +154,7 @@ export const loadForecastState = cache(async (ideaId: string): Promise<ForecastS
   const supabase = await supabaseServer();
   const user = await getUser();
   const [idea, own, checkins, outcome] = await Promise.all([
-    supabase.from("ideas").select("outcome_statement, outcome_due, reference_class").eq("id", ideaId).maybeSingle(),
+    supabase.from("ideas").select("outcome_statement, outcome_due, outcome_clock_start, reference_class").eq("id", ideaId).maybeSingle(),
     user
       ? supabase.from("forecasts").select("moment").eq("idea_id", ideaId).eq("forecaster_id", user.id)
       : Promise.resolve({ data: [] as { moment: string }[], error: null }),
@@ -166,6 +166,7 @@ export const loadForecastState = cache(async (ideaId: string): Promise<ForecastS
     outcomeDefined: !!idea.data.outcome_statement,
     baseRateChosen: !!idea.data.reference_class,
     outcomeDue: idea.data.outcome_due,
+    clockStart: idea.data.outcome_clock_start,
     ownMoments: (own.data ?? []).map((f) => f.moment).filter((m): m is ForecastMoment => (FORECAST_MOMENTS as readonly string[]).includes(m)),
     checkins: checkins.count ?? 0,
     resolved: !!outcome.data,

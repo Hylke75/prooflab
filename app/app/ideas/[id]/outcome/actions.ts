@@ -63,8 +63,9 @@ export async function saveBaseRate(ideaId: string, _: ActionState, form: FormDat
   const p = BaseRateSchema.safeParse(Object.fromEntries(form));
   if (!p.success) return { error: p.error.issues[0].message };
   const supabase = await supabaseServer();
-  const { count } = await supabase.from("forecasts").select("id", { count: "exact", head: true }).eq("idea_id", ideaId);
-  if ((count ?? 0) > 0) return { error: "Het basispercentage ligt vast zodra er voorspellingen zijn: iedereen moet vanaf hetzelfde vertrekpunt hebben voorspeld." };
+  // The database locks the base rate too; this gives the reason up front (also for forecasts not yet visible).
+  const { data: exists } = await supabase.rpc("forecasts_exist", { p_idea: ideaId });
+  if (exists === true) return { error: "Het basispercentage ligt vast zodra er voorspellingen zijn: iedereen moet vanaf hetzelfde vertrekpunt hebben voorspeld." };
   const note = p.data.base_rate_note || null;
   let update: { reference_class: string; base_rate_low: number | null; base_rate_high: number | null; base_rate_note: string | null };
   if (p.data.reference === NO_REFERENCE) {
@@ -199,7 +200,7 @@ export async function saveCheckin(ideaId: string, _: ActionState, form: FormData
   const p = CheckinSchema.safeParse(Object.fromEntries(form));
   if (!p.success) return { error: p.error.issues[0].message };
   if (!idea.outcome_due) return { error: "De tussenstand volgt drie maanden na het besluit. Er is nog geen besluit met een uitkomstdatum." };
-  const fu = followUp({ outcomeDue: idea.outcome_due, checkins: 0, resolved: false, today: todayInNL() });
+  const fu = followUp({ outcomeDue: idea.outcome_due, clockStart: idea.outcome_clock_start, checkins: 0, resolved: false, today: todayInNL() });
   if (fu.checkinDate && todayInNL() < fu.checkinDate) return { error: `De tussenstand kan vanaf ${fu.checkinDate}, drie maanden na het besluit.` };
   const supabase = await supabaseServer();
   const { error } = await supabase.from("outcome_checkins").insert({ idea_id: ideaId, on_track: p.data.on_track, current_value: p.data.current_value ?? null, note: p.data.note });

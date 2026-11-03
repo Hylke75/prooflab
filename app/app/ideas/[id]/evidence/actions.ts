@@ -169,7 +169,10 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   const status = { continue: "continued", stop: "stopped", pause: "parked", adjust: "active", test_more: "active" }[p.data.action];
   await supabase.from("ideas").update({ status }).eq("id", ideaId);
   // The first decision after the outcome definition starts the six-month clock (set once, never moved).
-  if (progress.forecast && !idea.outcome_due) await supabase.from("ideas").update({ outcome_due: outcomeDueFor(todayInNL()) }).eq("id", ideaId).is("outcome_due", null);
+  if (progress.forecast && !idea.outcome_due) {
+    const decidedOn = todayInNL();
+    await supabase.from("ideas").update({ outcome_due: outcomeDueFor(decidedOn), outcome_clock_start: decidedOn }).eq("id", ideaId).is("outcome_due", null);
+  }
   refresh(ideaId);
   return { error: null, ok: "Besluit vastgelegd. De opdrachtgever kan het nu bevestigen; werk daarna het rapport bij." };
 }

@@ -118,6 +118,7 @@ export type ForecastState = {
   outcomeDefined: boolean;
   baseRateChosen: boolean;
   outcomeDue: string | null;
+  clockStart?: string | null; // decision date that started the six-month clock (stored since 2026-11)
   ownMoments: ForecastMoment[]; // moments at which the current user already forecast
   checkins: number;
   resolved: boolean;
@@ -131,6 +132,7 @@ export type MomentInput = {
   experimentEnded: boolean;
   realityCheckDone: boolean;
   outcomeDue: string | null;
+  clockStart?: string | null;
   today: string;
 };
 
@@ -141,7 +143,7 @@ export function openMoment(i: MomentInput): ForecastMoment | null {
   if (!i.outcomeDefined || i.resolved) return null;
   if (i.realityCheckDone) {
     if (!i.outcomeDue) return "decision";
-    const decidedOn = addMonths(i.outcomeDue, -OUTCOME_HORIZON_MONTHS);
+    const decidedOn = i.clockStart ?? addMonths(i.outcomeDue, -OUTCOME_HORIZON_MONTHS);
     return i.today <= addDaysIso(decidedOn, DECISION_GRACE_DAYS) ? "decision" : null;
   }
   if (i.experimentEnded) return "experiment";
@@ -157,6 +159,7 @@ export function momentInput(p: IdeaProgress, f: ForecastState): MomentInput {
     experimentEnded: p.experimentsEnded > 0,
     realityCheckDone: !!p.latestRealityCheckAt,
     outcomeDue: f.outcomeDue,
+    clockStart: f.clockStart ?? null,
     today: f.today,
   };
 }
@@ -190,9 +193,10 @@ export type FollowUp = {
 
 // The interim check-in is due from three months after the decision until it is given (or the outcome is
 // due, which then takes over); the outcome is due from the outcome date until it is recorded.
-export function followUp(s: { outcomeDue: string | null; checkins: number; resolved: boolean; today: string }): FollowUp {
+export function followUp(s: { outcomeDue: string | null; clockStart?: string | null; checkins: number; resolved: boolean; today: string }): FollowUp {
   if (!s.outcomeDue) return { checkinDate: null, outcomeDate: null, checkinDue: false, outcomeDue: false };
-  const checkinDate = checkinDueFor(s.outcomeDue);
+  // From the stored decision date when available; deriving it back from the due date can shift at month ends.
+  const checkinDate = s.clockStart ? addMonths(s.clockStart, CHECKIN_AFTER_MONTHS) : checkinDueFor(s.outcomeDue);
   const outcomeDue = !s.resolved && s.today >= s.outcomeDue;
   return {
     checkinDate,

@@ -12,6 +12,7 @@ alter table public.ideas
   add column if not exists outcome_metric text check (char_length(outcome_metric) <= 160),
   add column if not exists outcome_target numeric check (outcome_target >= 0),
   add column if not exists outcome_due date,
+  add column if not exists outcome_clock_start date,
   add column if not exists reference_class text,
   add column if not exists base_rate_low numeric check (base_rate_low between 0 and 1),
   add column if not exists base_rate_high numeric check (base_rate_high between 0 and 1),
@@ -155,18 +156,28 @@ create trigger forecasts_guard before insert on public.forecasts
 create or replace function public.guard_outcome_definition()
 returns trigger language plpgsql security definer set search_path = '' as $$
 begin
-  -- The due date (six months after the decision) may be filled in once, when the decision is taken.
-  if ((new.outcome_statement, new.outcome_metric, new.outcome_target)
-      is distinct from (old.outcome_statement, old.outcome_metric, old.outcome_target)
-      or (old.outcome_due is not null and new.outcome_due is distinct from old.outcome_due))
+  -- The definition and the base rate it starts from are fixed once forecasts exist. The due date (six
+  -- months after the decision) and the decision date that starts the clock may be filled in once.
+  if ((new.outcome_statement, new.outcome_metric, new.outcome_target, new.reference_class, new.base_rate_low, new.base_rate_high)
+      is distinct from (old.outcome_statement, old.outcome_metric, old.outcome_target, old.reference_class, old.base_rate_low, old.base_rate_high)
+      or (old.outcome_due is not null and new.outcome_due is distinct from old.outcome_due)
+      or (old.outcome_clock_start is not null and new.outcome_clock_start is distinct from old.outcome_clock_start))
      and exists (select 1 from public.forecasts f where f.idea_id = new.id) then
     raise exception 'OUTCOME_LOCKED: de uitkomstdefinitie ligt vast zodra er een voorspelling is' using errcode = 'P0001';
   end if;
   return new;
 end $$;
 
-create trigger ideas_outcome_lock before update of outcome_statement, outcome_metric, outcome_target, outcome_due on public.ideas
+create trigger ideas_outcome_lock before update of outcome_statement, outcome_metric, outcome_target, outcome_due,
+  outcome_clock_start, reference_class, base_rate_low, base_rate_high on public.ideas
   for each row execute function public.guard_outcome_definition();
+
+-- Whether any forecast exists for an idea (also the ones the caller may not see yet), so the screen can show
+-- that the definition and base rate are locked.
+create or replace function public.forecasts_exist(p_idea uuid)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select public.can_read_idea(p_idea) and exists (select 1 from public.forecasts f where f.idea_id = p_idea);
+$$;
 
 -- Scores per forecaster across the organisation: Brier score on resolved ideas (yes = 1, partial = 0.5, no = 0).
 create or replace function public.forecast_scores(p_org uuid)
@@ -305,8 +316,8 @@ revoke all on public.reference_classes, public.forecasts, public.idea_outcomes, 
 grant select on public.reference_classes to authenticated;
 grant select, insert on public.forecasts, public.idea_outcomes, public.outcome_checkins to authenticated;
 grant select, insert, delete on public.customer_signals to authenticated;
-revoke execute on function public.forecast_visible(uuid, text, uuid), public.forecast_scores(uuid), public.forecast_calibration(uuid),
+revoke execute on function public.forecasts_exist(uuid), public.forecast_visible(uuid, text, uuid), public.forecast_scores(uuid), public.forecast_calibration(uuid),
   public.own_base_rate(uuid, text, int), public.guard_forecast(), public.guard_outcome(), public.guard_outcome_definition(),
   public.guard_observation_review() from public, anon;
 grant execute on function public.forecast_visible(uuid, text, uuid), public.forecast_scores(uuid), public.forecast_calibration(uuid),
-  public.own_base_rate(uuid, text, int) to authenticated;
+  public.own_base_rate(uuid, text, int), public.forecasts_exist(uuid) to authenticated;
