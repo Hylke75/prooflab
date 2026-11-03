@@ -4,6 +4,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { checkQuote, normalizeText, type FreshnessKind } from "@/lib/domain/verify";
 import { claimStatusWithSupport, isSupportCheck, type EvidenceWithSupport } from "@/lib/domain/support";
 import type { EvidenceType, SourceType } from "@/lib/domain/labels";
+import { compareWithIntake, intakeScope, type Relevance } from "@/lib/domain/claim-scope";
 
 export function contentHash(text: string): string {
   return createHash("sha256").update(normalizeText(text)).digest("hex").slice(0, 24);
@@ -15,7 +16,11 @@ export function contentHash(text: string): string {
 // the live page (competitor recheck) makes the finding outdated.
 export async function recomputeClaim(claimId: string) {
   const supabase = await supabaseServer();
-  const { data: claim } = await supabase.from("claims").select("id, statement, evidence_type, freshness_kind").eq("id", claimId).single();
+  const { data: claim } = await supabase
+    .from("claims")
+    .select("id, idea_id, statement, evidence_type, freshness_kind, population, region, reference_date")
+    .eq("id", claimId)
+    .single();
   if (!claim) return;
   const { data: links } = await supabase
     .from("claim_sources")
@@ -44,6 +49,33 @@ export async function recomputeClaim(claimId: string) {
     { evidenceType: claim.evidence_type as EvidenceType, freshness: claim.freshness_kind as FreshnessKind },
     evidence,
   );
-  await supabase.from("claims").update({ status: result.status, status_reason: result.reason }).eq("id", claimId);
+  // Golf C, punt 7: wijken populatie, regio of peildatum af van de intake, dan telt de bevinding als indirect.
+  const relevance = await claimRelevance(claim);
+  await supabase
+    .from("claims")
+    .update({ status: result.status, status_reason: result.reason, ...(relevance ? { relevance } : {}) })
+    .eq("id", claimId);
   return result;
+}
+
+// Vergelijkt de bevinding met de intake van het idee (doelgroep, regio, beslisdatum). Null als het idee niet te
+// lezen is; de opgeslagen relevantie blijft dan staan.
+async function claimRelevance(claim: {
+  idea_id: string;
+  population: string | null;
+  region: string | null;
+  reference_date: string | null;
+  freshness_kind: string;
+}): Promise<Relevance | null> {
+  const supabase = await supabaseServer();
+  const { data: idea } = await supabase
+    .from("ideas")
+    .select("target_audience, audience_detail, region, region_detail, decision_deadline")
+    .eq("id", claim.idea_id)
+    .maybeSingle();
+  if (!idea) return null;
+  return compareWithIntake(
+    { population: claim.population, region: claim.region, referenceDate: claim.reference_date, freshness: claim.freshness_kind as FreshnessKind },
+    intakeScope(idea),
+  ).relevance;
 }

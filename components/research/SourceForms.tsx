@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { SOURCE_PREFILL_EVENT, type SourcePrefill } from "./source-prefill";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { checkQuote } from "@/lib/domain/verify";
 import { EVIDENCE_TYPES, SOURCE_TYPES } from "@/lib/domain/labels";
@@ -8,16 +9,44 @@ import { EVIDENCE_TYPES, SOURCE_TYPES } from "@/lib/domain/labels";
 type Action = (s: FormState, f: FormData) => Promise<FormState>;
 
 export function AddSourceForm({ action }: { action: Action }) {
+  const titleRef = useRef<HTMLInputElement>(null);
+  const urlRef = useRef<HTMLInputElement>(null);
+  const typeRef = useRef<HTMLSelectElement>(null);
+  const excerptRef = useRef<HTMLTextAreaElement>(null);
+  const [prefilled, setPrefilled] = useState<string | null>(null);
+  // Een kandidaat-bron uit het zoeklogboek: URL en titel invullen, het citaat plakt de gebruiker zelf.
+  useEffect(() => {
+    const onPrefill = (e: Event) => {
+      const d = (e as CustomEvent<SourcePrefill>).detail;
+      if (!d?.url) return;
+      if (titleRef.current) titleRef.current.value = d.title.slice(0, 300);
+      if (urlRef.current) urlRef.current.value = d.url;
+      if (typeRef.current) typeRef.current.value = "other";
+      setPrefilled(d.url);
+      requestAnimationFrame(() => {
+        excerptRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        excerptRef.current?.focus({ preventScroll: true });
+      });
+    };
+    window.addEventListener(SOURCE_PREFILL_EVENT, onPrefill);
+    return () => window.removeEventListener(SOURCE_PREFILL_EVENT, onPrefill);
+  }, []);
   return (
     <ActionForm action={action} submitLabel="Bron opslaan" resetOnSuccess>
+      {prefilled && (
+        <div className="note" role="status" style={{ marginTop: 0 }}>
+          Kandidaat-bron overgenomen. Open de pagina, kies het type bron en plak hieronder het relevante fragment letterlijk. Pas daarna kan een
+          bevinding met citaat meetellen.
+        </div>
+      )}
       <div className="double-field">
         <div className="form-line">
           <label htmlFor="src-title">Titel van de bron</label>
-          <input className="field" id="src-title" name="title" required placeholder="Bijv. Vestigingen van bedrijven; bedrijfstak, regio" />
+          <input ref={titleRef} className="field" id="src-title" name="title" required placeholder="Bijv. Vestigingen van bedrijven; bedrijfstak, regio" />
         </div>
         <div className="form-line">
           <label htmlFor="src-type">Type bron</label>
-          <select className="field" id="src-type" name="source_type" defaultValue="official_statistic">
+          <select ref={typeRef} className="field" id="src-type" name="source_type" defaultValue="official_statistic">
             {Object.entries(SOURCE_TYPES).map(([k, v]) => (
               <option key={k} value={k}>{v}</option>
             ))}
@@ -27,7 +56,7 @@ export function AddSourceForm({ action }: { action: Action }) {
       </div>
       <div className="form-line">
         <label htmlFor="src-url">URL of dataset-ID</label>
-        <input className="field" id="src-url" name="url" type="url" placeholder="https://www.cbs.nl/…" />
+        <input ref={urlRef} className="field" id="src-url" name="url" type="url" placeholder="https://www.cbs.nl/…" />
       </div>
       <div className="double-field">
         <div className="form-line">
@@ -41,7 +70,7 @@ export function AddSourceForm({ action }: { action: Action }) {
       </div>
       <div className="form-line">
         <label htmlFor="src-excerpt">Relevant fragment (letterlijk overgenomen)</label>
-        <textarea className="field" id="src-excerpt" name="excerpt" required minLength={20} maxLength={6000} placeholder="Plak hier de passage of tabelregel waar je bevinding op steunt. Alleen dit fragment wordt bewaard, niet het hele document." />
+        <textarea ref={excerptRef} className="field" id="src-excerpt" name="excerpt" required minLength={20} maxLength={6000} placeholder="Plak hier de passage of tabelregel waar je bevinding op steunt. Alleen dit fragment wordt bewaard, niet het hele document." />
       </div>
       <div className="double-field">
         <div className="form-line">
@@ -150,15 +179,26 @@ export function AddClaimForm({ action, excerpts, questions }: { action: Action; 
           </select>
         </div>
       </div>
+      <p className="explain">
+        Populatie, regio en peildatum zijn verplicht. Staat iets niet in de bron, schrijf dan &quot;onbekend&quot;. Wijkt een veld af van de intake, dan telt de bevinding als indirect.
+      </p>
+      <div className="form-line">
+        <label htmlFor="cl-pop">Populatie</label>
+        <input className="field" id="cl-pop" name="population" required maxLength={200} placeholder="Bijv. mkb-bedrijven met 10-50 werknemers, of onbekend" />
+      </div>
       <div className="double-field">
         <div className="form-line">
           <label htmlFor="cl-reg">Regio</label>
-          <input className="field" id="cl-reg" name="region" placeholder="Bijv. Nederland" />
+          <input className="field" id="cl-reg" name="region" required maxLength={120} placeholder="Bijv. Nederland, of onbekend" />
         </div>
         <div className="form-line">
-          <label htmlFor="cl-per">Peilperiode</label>
-          <input className="field" id="cl-per" name="period" placeholder="Bijv. 2026 (voorlopig)" />
+          <label htmlFor="cl-ref">Peildatum</label>
+          <input className="field" id="cl-ref" name="reference_date" required maxLength={40} placeholder="Bijv. 2025, 2025-06 of onbekend" />
         </div>
+      </div>
+      <div className="form-line">
+        <label htmlFor="cl-per">Peilperiode (optioneel)</label>
+        <input className="field" id="cl-per" name="period" placeholder="Bijv. 2026 (voorlopig)" />
       </div>
       <div className="double-field">
         <div className="form-line">

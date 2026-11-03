@@ -4,6 +4,7 @@
 
 import { OWN_BASE_RATE_MIN, openMoment } from "@/lib/domain/forecast";
 import { OVERCONFIDENT_GAP, overconfidence } from "@/lib/domain/calibration";
+import { extendedPhase } from "@/lib/domain/extension";
 
 export type NoteKind = "tip" | "warning" | "question" | "praise";
 export type NoteAudience = "consultant" | "everyone";
@@ -64,16 +65,25 @@ export type CoachFacts = {
   observations: { kind: string; isBehaviour: boolean; isSynthetic: boolean; createdAt: string }[];
   learningCards: { id: string; status: string; approvedAt: string | null }[];
   realityCheck: { id: string; createdAt: string } | null;
-  decisions: { id: string; decidedAt: string; confirmed: boolean }[]; // oldest first
+  // oldest first; action en extendWeeks voor de verlengde testfase (golf B, punt 20; optioneel voor oudere aanroepers)
+  decisions: { id: string; decidedAt: string; confirmed: boolean; action?: string; extendWeeks?: number | null }[];
   decisionDeadline: string | null;
   clientDeciderInvited: boolean;
-  outcome: { defined: boolean; due: string | null; resolved: boolean; checkins: string[]; clockStart?: string | null };
+  // question: "stop_review" na een stop of pauze (golf B, punt 1); resolved geldt dan voor de stopvraag.
+  outcome: { defined: boolean; due: string | null; resolved: boolean; checkins: string[]; clockStart?: string | null; question?: "success" | "stop_review" };
   // Probabilities only for forecasts the reviewing consultant may see (blind rule, enforced by the database).
   forecasts: { moment: string; kind: string; probability?: number }[];
   // Base rate chosen for this dossier (null: none or "no good reference") and the number of resolved dossiers
   // of the organisation (for the starting calibration before there are enough own outcomes).
   baseRate?: { low: number; high: number } | null;
+  // Of er een basispercentage is gekozen, ook "geen goede referentie" (dan is voorspellen toegestaan). Onbekend
+  // telt als niet gekozen: de coach vraagt nooit om een voorspelling die de pagina weigert.
+  baseRateChosen?: boolean;
+  // Beslisvraag en grootste onzekerheid uit de intake (optioneel voor aanroepers die ze niet kennen).
+  idea?: { decisionQuestion: string; keyUncertainty: string | null };
   orgResolved?: number;
+  // Golf B, punt 6: of het dossier een beslisregel heeft (undefined = onbekend; dan blijft de regel stil).
+  decisionRule?: { defined: boolean; locked: boolean };
   outreach: { replies: number; latestReplyAt: string | null; latestImportAt: string | null };
 };
 
@@ -118,6 +128,7 @@ export function openForecastMoment(f: CoachFacts): ForecastMoment | null {
     realityCheckDone: !!f.realityCheck,
     outcomeDue: f.outcome.due,
     clockStart: f.outcome.clockStart ?? null,
+    stopped: f.outcome.question === "stop_review",
     today: f.today,
   });
 }
@@ -133,6 +144,14 @@ export function projectedSample(e: { n: number; startedAt: string | null; endsAt
   return { projected: Math.floor((e.n / elapsedDays) * totalDays), elapsedDays, totalDays };
 }
 
+// Gaat de beslisvraag of de grootste onzekerheid over betalingsbereidheid? Dan is de belangrijkste aanname al bij
+// de intake bekend, en hoeft die niet op het einde van het onderzoek te wachten.
+const PAYMENT = /\b(betal\w*|prijs\w*|prijzen|budget\w*|kosten|kost|tarie[fv]\w*|willen\s+betalen|betalingsbereid\w*|geld\s+voor)\b/i;
+
+export function paymentFocused(...texts: (string | null | undefined)[]): boolean {
+  return texts.some((t) => !!t && PAYMENT.test(t));
+}
+
 type Rule = (f: CoachFacts, base: string) => CoachNoteDraft | CoachNoteDraft[] | null;
 
 export const RULES: Record<string, Rule> = {
@@ -144,6 +163,23 @@ export const RULES: Record<string, Rule> = {
       title: "Huidige alternatieven ontbreken nog",
       body: "Er zijn bevindingen, maar nog geen huidig alternatief of 'niets doen' in kaart. Klanten vergelijken je idee met wat ze nu al doen; dat is vaak de echte concurrent.",
       href: `${base}/research?tab=competitors`,
+      audience: "consultant",
+    };
+  },
+
+  // Aannames en pre-mortem al in week 1, parallel aan het onderzoek. Er wordt niets geblokkeerd.
+  assumptions_early: (f, base) => {
+    if (f.assumptions.length > 0 || f.experiments.length > 0 || f.decisions.length > 0) return null;
+    if (f.sprint && f.sprint.state === "running" && f.sprint.week > 2) return null; // critical_untested en sprint_behind nemen het over
+    const pay = paymentFocused(f.idea?.decisionQuestion, f.idea?.keyUncertainty);
+    return {
+      code: "assumptions_early",
+      kind: "tip",
+      title: pay ? "Leg de betaalaanname nu al vast" : "Begin al met aannames en een pre-mortem",
+      body: pay
+        ? "De beslisvraag of de grootste onzekerheid gaat over betalen of prijs. Schrijf die aanname nu al op en doe de pre-mortem: dan kun je een prijs- of aanbodtest voorbereiden terwijl het marktonderzoek loopt."
+        : "Je hoeft niet te wachten tot het onderzoek af is. Schrijf de belangrijkste aannames op en doe de pre-mortem ('het is mislukt: waarom?'); het onderzoek kan ze daarna gericht toetsen.",
+      href: `${base}/assumptions#nieuwe-aanname`,
       audience: "consultant",
     };
   },
@@ -340,6 +376,16 @@ export const RULES: Record<string, Rule> = {
     const m = openForecastMoment(f);
     if (!m) return null;
     if (f.forecasts.some((x) => x.moment === m && x.kind === "consultant")) return null;
+    // Voorspellen kan pas vanaf een basispercentage: eerst die tip, dan pas de vraag om een kans.
+    if (!f.baseRateChosen)
+      return {
+        code: "base_rate_missing",
+        kind: "tip",
+        title: "Kies een basispercentage",
+        body: "Hoe vaak slagen vergelijkbare ideeën? Kies een referentie met bron (of leg uit waarom er geen goede is). Daarna kun je voorspellen, vanaf dat vertrekpunt.",
+        href: `${base}/outcome#basispercentage`,
+        audience: "consultant",
+      };
     return {
       code: `forecast:${m}`,
       kind: "question",
@@ -381,6 +427,15 @@ export const RULES: Record<string, Rule> = {
   outcome_due: (f, base) => {
     if (f.outcome.resolved || !f.outcome.due || f.decisions.length === 0) return null;
     if (daysBetween(f.today, f.outcome.due) > 0) return null;
+    if (f.outcome.question === "stop_review")
+      return {
+        code: "stop_review_due",
+        kind: "warning",
+        title: "Was stoppen achteraf terecht?",
+        body: "Zes maanden na het stop- of pauzebesluit: leg met bewijs vast of stoppen terecht was. Het telt mee bij de terechte stops, niet in de kalibratie van slagingskansen.",
+        href: `${base}/outcome#uitkomst`,
+        audience: "consultant",
+      };
     return {
       code: "outcome_due",
       kind: "warning",
@@ -393,7 +448,7 @@ export const RULES: Record<string, Rule> = {
 
   outcome_checkin: (f, base) => {
     const last = f.decisions[f.decisions.length - 1];
-    if (f.outcome.resolved || !last || !f.outcome.defined) return null;
+    if (f.outcome.resolved || !last || !f.outcome.defined || f.outcome.question === "stop_review") return null;
     if (f.outcome.due && daysBetween(f.today, f.outcome.due) <= 0) return null; // outcome_due takes over
     const decided = last.decidedAt.slice(0, 10);
     if (daysBetween(decided, f.today) < 90) return null;
@@ -404,6 +459,41 @@ export const RULES: Record<string, Rule> = {
       title: "De check-in na drie maanden is aan de beurt",
       body: "Het besluit is drie maanden oud. Noteer kort of de uitkomst op koers ligt; zo zie je vroeg of bijsturen nodig is.",
       href: `${base}/outcome`,
+      audience: "consultant",
+    };
+  },
+
+  decision_rule_missing: (f, base) => {
+    if (!f.decisionRule || f.decisionRule.defined || f.decisions.length > 0 || f.experiments.length === 0) return null;
+    const approved = f.experiments.some((e) => !["draft", "ready_for_review"].includes(e.state));
+    return {
+      code: approved ? "decision_rule_missing:late" : "decision_rule_missing",
+      kind: approved ? "warning" : "tip",
+      title: approved ? "De beslisregel ontbreekt, terwijl er al getest wordt" : "Leg de beslisregel vast vóór de eerste test",
+      body: approved
+        ? "Er is al een test goedgekeurd zonder vooraf vastgelegde beslisregel. Leg hem alsnog vast: hij staat dan als 'achteraf vastgelegd' in het rapport."
+        : "Welke aannames moeten boven welke kans uitkomen, en welke hoofdtest moet slagen, om door te gaan? Leg dat nu vast; bij de eerste goedgekeurde test gaat de regel op slot.",
+      href: `${base}/assumptions#beslisregel`,
+      audience: "consultant",
+    };
+  },
+
+  extension_ending: (f, base) => {
+    const phase = extendedPhase(
+      f.decisions.filter((d) => d.action).map((d) => ({ action: d.action!, decidedOn: d.decidedAt.slice(0, 10), extendWeeks: d.extendWeeks ?? null })),
+      f.today,
+    );
+    if (!phase) return null;
+    const left = daysBetween(f.today, phase.end);
+    if (phase.active && left > 7) return null;
+    return {
+      code: `extension_ending:${phase.end}`,
+      kind: phase.active ? "tip" : "warning",
+      title: phase.active ? "De verlengde testfase loopt bijna af" : "De verlengde testfase is voorbij: tijd voor het definitieve besluit",
+      body: phase.active
+        ? `De verlengde testfase eindigt op ${phase.end}. Zorg dat de Learning Cards dan klaar zijn en voer de Reality Check opnieuw uit; daarna volgt het definitieve besluit en start de uitkomstklok.`
+        : `De verlengde testfase eindigde op ${phase.end}. Neem nu het definitieve besluit (doorgaan, stoppen of pauzeren); daarmee start de uitkomstklok.`,
+      href: `${base}/evidence`,
       audience: "consultant",
     };
   },
@@ -478,6 +568,7 @@ export const RULES: Record<string, Rule> = {
 // Short Dutch names per rule code (the part before ':'), for the learning page.
 export const RULE_LABELS: Record<string, string> = {
   alternatives_missing: "Huidige alternatieven ontbreken",
+  assumptions_early: "Aannames al in week 1",
   single_secondary_source: "Eén secundaire bron",
   opinions_no_behaviour: "Veel meningen, geen gedrag",
   critical_untested: "Kritieke aanname niet getest",
@@ -491,9 +582,13 @@ export const RULE_LABELS: Record<string, string> = {
   decision_confirm: "Besluit bevestigen",
   outcome_undefined: "Uitkomst niet vastgelegd",
   forecast: "Voorspelling ontbreekt",
+  base_rate_missing: "Basispercentage ontbreekt",
   forecast_overconfident: "Voorspelling ver van basispercentage",
   outcome_due: "Uitkomst vastleggen",
+  stop_review_due: "Was stoppen terecht?",
   outcome_checkin: "Check-in na drie maanden",
+  decision_rule_missing: "Beslisregel ontbreekt",
+  extension_ending: "Verlengde testfase loopt af",
   sprint_behind: "Sprint loopt achter",
   no_customer_voice: "Stem van de klant ontbreekt",
   outreach_unimported: "LinkedIn-antwoorden niet opgenomen",
@@ -513,6 +608,51 @@ export function evaluateRules(f: CoachFacts): CoachNoteDraft[] {
     for (const d of Array.isArray(r) ? r : [r]) if (!out.some((x) => x.code === d.code)) out.push(d);
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// "Gedaan": is het werk echt gedaan?
+// ---------------------------------------------------------------------------
+
+// Wat we per regel missen zolang de voorwaarde nog geldt ("We zien nog geen …").
+export const NOT_DONE: Record<string, string> = {
+  alternatives_missing: "We zien nog geen huidig alternatief of 'niets doen' bij de concurrenten.",
+  single_secondary_source: "We zien nog geen tweede onafhankelijke of primaire bron bij deze bevinding(en).",
+  opinions_no_behaviour: "We zien nog geen waargenomen klantgedrag (een aanvraag, aanmelding of aanbetaling).",
+  critical_untested: "We zien nog geen test of nieuwe status voor deze kritieke aanname.",
+  test_pace: "We zien nog geen extra deelnemers: in dit tempo haalt de test de steekproef nog niet.",
+  interview_hypothetical: "We zien nog geen aangepaste gespreksleidraad: er staan nog hypothetische vragen in.",
+  survey_suggest: "We zien nog geen enquête of extra datapunten bij deze aanname.",
+  acquaintances_majority: "We zien nog geen extra gesprekken buiten je eigen netwerk.",
+  learning_card_waiting: "We zien nog geen goedgekeurde Learning Card.",
+  reality_check_stale: "We zien nog geen nieuwe Reality Check na het laatste bewijs.",
+  decision_deadline: "We zien nog geen vastgelegd besluit.",
+  decision_confirm: "We zien nog geen bevestiging van het besluit door de opdrachtgever.",
+  outcome_undefined: "We zien nog geen uitkomstdefinitie.",
+  base_rate_missing: "We zien nog geen gekozen basispercentage.",
+  forecast: "We zien nog geen voorspelling van het team bij dit moment.",
+  forecast_overconfident: "We zien nog geen afgeronde landingpage- of prijstest die de afwijking onderbouwt.",
+  outcome_due: "We zien nog geen vastgelegde uitkomst.",
+  stop_review_due: "We zien nog geen antwoord op de vraag of stoppen terecht was.",
+  outcome_checkin: "We zien nog geen tussenstand na drie maanden.",
+  decision_rule_missing: "We zien nog geen vastgelegde beslisregel.",
+  extension_ending: "We zien nog geen definitief besluit na de verlengde testfase.",
+  sprint_behind: "We zien nog niet dat het dossier de sprintweek heeft ingehaald.",
+  no_customer_voice: "We zien nog geen bron met de stem van de klant (review, forum, interview of enquête).",
+  outreach_unimported: "We zien nog geen opgenomen LinkedIn-antwoorden bij de bronnen.",
+  assumptions_early: "We zien nog geen aannames in het dossier.",
+};
+
+export type DoneCheck = { done: true } | { done: false; message: string };
+
+// Puur: een regelnotitie is gedaan als de regel met dezelfde code niet meer afgaat op de actuele feiten.
+// Complimenten en notities van de AI-coach hebben geen controleerbare voorwaarde en gelden als gedaan.
+export function checkNoteDone(note: { code: string; source: string; kind?: string }, f: CoachFacts): DoneCheck {
+  if (note.source !== "rules" || note.kind === "praise") return { done: true };
+  const still = evaluateRules(f).some((d) => d.code === note.code);
+  if (!still) return { done: true };
+  const rule = note.code.split(":")[0];
+  return { done: false, message: NOT_DONE[rule] ?? "We zien in het dossier nog geen verandering die dit punt oplost." };
 }
 
 // ---------------------------------------------------------------------------

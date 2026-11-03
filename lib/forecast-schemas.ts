@@ -17,8 +17,47 @@ export const optionalAmount = (msg: string) =>
     .refine((n) => n === null || (Number.isFinite(n) && n >= 0), msg);
 
 // What "geslaagd" means, measured six months after the decision (docs/ProofLab_Voorspelkracht_v1.md §3.1).
+// Naast het aantal ook een waarde: een minimumbedrag per klant en/of een omzetdoel (minstens één van beide,
+// zie outcomeValueProblem) en optioneel een geplande meetdatum binnen zes maanden na de beslisdatum.
 export const OutcomeDefinitionSchema = z.object({
   outcome_statement: z.string().trim().min(10, "Beschrijf in één zin wanneer dit idee geslaagd is.").max(400, "Houd de uitkomst kort: hooguit 400 tekens."),
   outcome_metric: z.string().trim().min(2, "Noem wat je meet, bijvoorbeeld 'betalende klanten'.").max(160, "Houd de maatstaf kort: hooguit 160 tekens."),
   outcome_target: optionalAmount("De doelwaarde moet een getal van 0 of hoger zijn.").refine((n) => n !== null, "Geef de doelwaarde als getal."),
+  outcome_min_value_per_customer: optionalAmount("Het minimumbedrag per klant moet een bedrag van 0 of hoger zijn.").optional(),
+  outcome_revenue_target: optionalAmount("Het omzetdoel moet een bedrag van 0 of hoger zijn.").optional(),
+  outcome_measure_date: z
+    .string()
+    .trim()
+    .transform((s) => (s === "" ? null : s))
+    .refine((s) => s === null || /^\d{4}-\d{2}-\d{2}$/.test(s), "Kies een geldige meetdatum.")
+    .nullable()
+    .optional(),
+});
+
+export type OutcomeDefinition = z.infer<typeof OutcomeDefinitionSchema>;
+
+// Een aantal alleen zegt weinig: 15 klanten van € 10 is iets anders dan 15 klanten van € 2.000.
+export function outcomeValueProblem(v: Pick<OutcomeDefinition, "outcome_min_value_per_customer" | "outcome_revenue_target">): string | null {
+  const per = v.outcome_min_value_per_customer ?? null;
+  const rev = v.outcome_revenue_target ?? null;
+  if ((per === null || per <= 0) && (rev === null || rev <= 0)) return "Vul ook een minimumbedrag per klant of een omzetdoel in (minstens één van beide).";
+  return null;
+}
+
+// Inzet bij de uitkomst (golf B, punt 2): gestart ja/nee is verplicht; uren en budget t.o.v. plan zijn optioneel
+// (leeg = onbekend). Budget als percentage van het plan, 100 = volgens plan.
+export const EffortSchema = z.object({
+  started: z.enum(["yes", "no"], { message: "Geef aan of het besluit is uitgevoerd (gestart ja of nee)." }),
+  effort_hours: optionalAmount("De bestede uren moeten een getal van 0 of hoger zijn.")
+    .refine((n) => n === null || n <= 100000, "Vul de bestede uren in als aantal uren.")
+    .optional(),
+  budget_pct_of_plan: optionalAmount("Het budget ten opzichte van het plan moet een percentage van 0 of hoger zijn.")
+    .refine((n) => n === null || n <= 1000, "Het budget ten opzichte van het plan is een percentage, bijvoorbeeld 80.")
+    .optional(),
+});
+
+export type EffortInput = z.infer<typeof EffortSchema>;
+
+export const ExclusionSchema = z.object({
+  reason: z.string().trim().min(10, "Geef in minstens één zin de reden waarom dit dossier niet meetelt.").max(600),
 });

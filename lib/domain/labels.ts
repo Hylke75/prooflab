@@ -131,6 +131,8 @@ export const DECISIONS = {
   continue: { label: "Doorgaan", hint: "Het bewijs draagt de volgende investering." },
   adjust: { label: "Bijsturen", hint: "Verander aanbod, doelgroep of belofte en toets opnieuw." },
   test_more: { label: "Verder testen", hint: "Het bewijs is nog te zwak of onbeslist." },
+  // Golf B, punt 20: tussenbesluit na de sprint; het definitieve besluit volgt na 2 tot 8 weken.
+  extend: { label: "Doorgaan met testen (verlengde testfase)", hint: "Na de sprint 2 tot 8 weken extra gedragsbewijs verzamelen. Het definitieve besluit en de uitkomstklok starten daarna." },
   pause: { label: "Pauzeren", hint: "Leg de redenen vast en kom later terug." },
   stop: { label: "Stoppen", hint: "Het bewijs spreekt het idee tegen. Dat bespaart geld." },
 } as const;

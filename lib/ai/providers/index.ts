@@ -1,6 +1,6 @@
 import "server-only";
 import { configuredProviders, providerKey } from "@/lib/env";
-import { modelFor, type ProviderId } from "./config";
+import { modelFor, type ModelTier, type ProviderId } from "./config";
 import { createAnthropicAdapter } from "./anthropic";
 import { createGeminiAdapter } from "./gemini";
 import { createOpenAiAdapter } from "./openai";
@@ -10,10 +10,11 @@ import { AiNotConfiguredError } from "../client";
 const cache = new Map<string, ProviderAdapter>();
 
 // The adapter for a provider with this environment's key and model. Throws AiNotConfiguredError without a key.
-export function adapterFor(provider: ProviderId): ProviderAdapter {
+// tier "research" gives the provider's cheaper model for searching and reading.
+export function adapterFor(provider: ProviderId, tier: ModelTier = "main"): ProviderAdapter {
   const key = providerKey(provider);
   if (!key) throw new AiNotConfiguredError(provider);
-  const model = modelFor(provider);
+  const model = modelFor(provider, process.env, tier);
   const k = `${provider}:${model}`;
   let a = cache.get(k);
   if (!a) {

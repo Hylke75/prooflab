@@ -5,6 +5,8 @@ import { PageFrame } from "@/components/shell/PageFrame";
 import { CalibrationChart } from "@/components/forecast/CalibrationChart";
 import { CoachEffect, LearnedWeights, SurveyAgreement } from "@/components/forecast/Learning";
 import { loadLearningView } from "@/lib/learning-data";
+import { EvidenceCapsCard } from "@/components/forecast/EvidenceCapsCard";
+import { loadOrgCaps } from "@/lib/method-data";
 import { calendarDate } from "@/components/sprint/SprintCard";
 import { getWorkspace } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
@@ -15,6 +17,10 @@ import {
   FORECASTER_LABELS,
   MOMENT_LABELS,
   OWN_BASE_RATE_MIN,
+  BRIER_FEW_OUTCOMES,
+  BRIER_MIN_OUTCOMES,
+  brierWarning,
+  aiAsOneVotePerKey,
   pct,
   scoreSet,
   type Achieved,
@@ -32,8 +38,13 @@ export default async function ForecastsPage() {
   if (!ws.org) redirect("/app");
   const org = ws.org.id;
   const supabase = await supabaseServer();
-  const [learning, scores, calibration, allOutcomes, upcoming, ...baseRates] = await Promise.all([
+  const [caps, learning, stops, questions, exclusions, scores, calibration, allOutcomes, upcoming, ...baseRates] = await Promise.all([
+    loadOrgCaps(org),
     loadLearningView(org),
+    // Golf B: zonder deze functie of kolom (oudere database) is er geen stopvraag en tellen alle uitkomsten mee.
+    supabase.rpc("stop_review_counts", { p_org: org }),
+    supabase.from("ideas").select("id, outcome_question").eq("org_id", org).eq("outcome_question", "stop_review"),
+    supabase.from("calibration_exclusions").select("idea_id"),
     supabase.rpc("forecast_scores", { p_org: org }),
     supabase.rpc("forecast_calibration", { p_org: org }),
     supabase.from("idea_outcomes").select("idea_id, achieved"),
@@ -44,7 +55,13 @@ export default async function ForecastsPage() {
   const unavailable = scores.error || calibration.error || allOutcomes.error || upcoming.error;
   // Only this organisation's ideas: an outcome is recorded after the decision, so its idea has a due date.
   const orgIdeas = new Set((upcoming.data ?? []).map((i) => i.id));
-  const resolved = (allOutcomes.data ?? []).filter((o) => orgIdeas.has(o.idea_id));
+  // Dossiers met de stopvraag hebben geen slagingskans om te scoren (golf B, punt 1).
+  const stopped = new Set((questions.error ? [] : questions.data ?? []).map((q) => q.id));
+  const stopRow = stops.error ? null : stops.data?.[0] ?? null;
+  const stopCounts = stopRow ? { stopped: Number(stopRow.stopped), justified: Number(stopRow.justified), notJustified: Number(stopRow.not_justified), unknown: Number(stopRow.unknown), open: Number(stopRow.open) } : null;
+  // Punt 2: dossiers die een consultant wegens onvoldoende uitvoering uit de kalibratie haalde, tellen ook niet mee.
+  const excluded = new Set((exclusions.error ? [] : exclusions.data ?? []).map((x) => x.idea_id).filter((id) => orgIdeas.has(id)));
+  const resolved = (allOutcomes.data ?? []).filter((o) => orgIdeas.has(o.idea_id) && !stopped.has(o.idea_id) && !excluded.has(o.idea_id));
   const resolvedIds = new Set(resolved.map((o) => o.idea_id));
 
   // Per moment, from the raw forecasts of resolved ideas (visible to everyone once the outcome is known).
@@ -52,9 +69,15 @@ export default async function ForecastsPage() {
     ? await supabase.from("forecasts").select("idea_id, moment, forecaster_kind, probability").in("idea_id", [...resolvedIds])
     : { data: [] };
   const achievedOf = new Map(resolved.map((o) => [o.idea_id, o.achieved as Achieved]));
+  // Golf B, punt 15: per dossier en moment telt de AI als één stem (het gemiddelde van de modellen).
   const perMoment = FORECAST_MOMENTS.map((m: ForecastMoment) => ({
     moment: m,
-    score: scoreSet((resolvedForecasts ?? []).filter((f) => f.moment === m).map((f) => ({ probability: Number(f.probability), achieved: achievedOf.get(f.idea_id)! }))),
+    score: scoreSet(
+      aiAsOneVotePerKey(
+        (resolvedForecasts ?? []).filter((f) => f.moment === m).map((f) => ({ ideaId: f.idea_id, kind: f.forecaster_kind as ForecasterKind, probability: Number(f.probability) })),
+        (f) => f.ideaId,
+      ).map((v) => ({ probability: v.probability, achieved: achievedOf.get(v.rows[0].ideaId)! })),
+    ),
   })).filter((r) => r.score);
 
   const scoreRows = scores.data ?? [];
@@ -83,7 +106,7 @@ export default async function ForecastsPage() {
     return { type: t, label: PROJECT_TYPES[t].label, resolved: row ? Number(row.resolved) : 0, achieved: row ? Number(row.achieved) : null };
   });
   const today = todayInNL();
-  const pending = (upcoming.data ?? []).filter((i) => !resolvedIds.has(i.id));
+  const pending = (upcoming.data ?? []).filter((i) => !resolvedIds.has(i.id) && !stopped.has(i.id) && !excluded.has(i.id));
 
   return (
     <PageFrame crumbs={["Werkruimte", "Voorspelkwaliteit"]} coach="forecasts">
@@ -114,6 +137,11 @@ export default async function ForecastsPage() {
               <div className="tiny">Afgeronde dossiers</div>
               <div className="mini-kpi num">{resolved.length}</div>
               <span className="pill gray">{resolved.filter((o) => o.achieved === "yes").length} gehaald · {resolved.filter((o) => o.achieved === "partial").length} deels</span>
+              {excluded.size > 0 && (
+                <p className="tiny mt-8">
+                  {excluded.size} {excluded.size === 1 ? "dossier telt" : "dossiers tellen"} niet mee: onvoldoende uitgevoerd en met reden uit de kalibratie gehaald.
+                </p>
+              )}
             </div>
             <div className="card tight">
               <div className="tiny">Gescoorde voorspellingen</div>
@@ -123,7 +151,7 @@ export default async function ForecastsPage() {
             <div className="card tight">
               <div className="tiny">Betrouwbaarheid van deze cijfers</div>
               <div className="mini-kpi num">{resolved.length < 10 ? "Laag" : resolved.length < 30 ? "Matig" : "Redelijk"}</div>
-              <span className={`pill ${resolved.length < 10 ? "orange" : "gray"}`}>{resolved.length < 30 ? "Minder dan 30 dossiers: voorzichtig lezen" : "30+ dossiers"}</span>
+              <span className={`pill ${resolved.length < 10 ? "orange" : "gray"}`}>{resolved.length < BRIER_MIN_OUTCOMES ? `Minder dan ${BRIER_MIN_OUTCOMES} dossiers: ${BRIER_FEW_OUTCOMES}` : `${BRIER_MIN_OUTCOMES}+ dossiers`}</span>
             </div>
           </div>
 
@@ -133,6 +161,12 @@ export default async function ForecastsPage() {
                 <h3>Brier-score per voorspeller</h3>
                 <span className="pill gray">Lager is beter</span>
               </div>
+              {brierWarning(resolved.length) && (
+                <div className="form-error" role="note">
+                  <strong>Let op: {BRIER_FEW_OUTCOMES}.</strong> {brierWarning(resolved.length)} Lees deze scores als een eerste indruk, niet als oordeel over een
+                  voorspeller.
+                </div>
+              )}
               <table className="table">
                 <caption className="sr-only">Brier-score, aantal voorspellingen, gemiddelde kans en werkelijk gehaald per voorspeller</caption>
                 <thead>
@@ -161,11 +195,12 @@ export default async function ForecastsPage() {
               </table>
               <div className="note">
                 Brier-score: het gemiddelde kwadraat van het verschil tussen de gegeven kans en de uitkomst (gehaald = 1, deels = 0,5, niet = 0). Altijd 50% zeggen
-                levert 0,25 op. Ligt de gemiddelde kans ver boven het percentage gehaald, dan is de voorspeller te optimistisch. AI-voorspellingen tellen nooit als bewijs.
+                levert 0,25 op. Ligt de gemiddelde kans ver boven het percentage gehaald, dan is de voorspeller te optimistisch. De AI telt per voorspelmoment als één stem (het gemiddelde van de modellen) en nooit als bewijs. Gestopte dossiers en dossiers die wegens onvoldoende uitvoering zijn uitgesloten, tellen niet mee.
               </div>
               {perMoment.length > 0 && (
                 <>
                   <h3 className="mt-24" style={{ fontSize: 15 }}>Per moment</h3>
+                  {brierWarning(resolved.length) && <p className="tiny">Let op: {BRIER_FEW_OUTCOMES} ({resolved.length} van de minimaal {BRIER_MIN_OUTCOMES} uitkomsten).</p>}
                   <table className="table">
                     <caption className="sr-only">Brier-score per voorspelmoment</caption>
                     <thead>
@@ -244,6 +279,31 @@ export default async function ForecastsPage() {
         </div>
       )}
 
+      {!unavailable && stopCounts && stopCounts.stopped > 0 && (
+        <div className="card mt-24" id="terechte-stops">
+          <div className="section-title">
+            <h3>Terechte stops</h3>
+            <span className="pill gray">{stopCounts.stopped} gestopt of gepauzeerd</span>
+          </div>
+          <p className="sub">
+            Na een stop- of pauzebesluit vervalt de uitkomstvraag. Zes maanden later kijken we terug: was stoppen achteraf terecht? Deze dossiers tellen niet mee in
+            de Brier-scores, de kalibratie of het eigen basispercentage: hun voorspellingen worden niet gescoord als slagingskans.
+          </p>
+          <div className="kpi-row" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))", margin: "12px 0 4px" }}>
+            <div><div className="tiny">Terecht</div><div className="mini-kpi num" style={{ fontSize: 24 }}>{stopCounts.justified}</div></div>
+            <div><div className="tiny">Onterecht</div><div className="mini-kpi num" style={{ fontSize: 24 }}>{stopCounts.notJustified}</div></div>
+            <div><div className="tiny">Onbekend</div><div className="mini-kpi num" style={{ fontSize: 24 }}>{stopCounts.unknown}</div></div>
+            <div><div className="tiny">Nog open</div><div className="mini-kpi num" style={{ fontSize: 24 }}>{stopCounts.open}</div></div>
+          </div>
+          {stopCounts.justified + stopCounts.notJustified > 0 && (
+            <p className="tiny">
+              {pct(stopCounts.justified / (stopCounts.justified + stopCounts.notJustified))} van de beoordeelde stops was terecht ({stopCounts.justified} van{" "}
+              {stopCounts.justified + stopCounts.notJustified}; &lsquo;onbekend&rsquo; telt niet mee).
+            </p>
+          )}
+        </div>
+      )}
+
       {learning && (
         <>
           <div className="section-title mt-24">
@@ -261,6 +321,8 @@ export default async function ForecastsPage() {
           </div>
         </>
       )}
+
+      <EvidenceCapsCard caps={caps.caps} custom={caps.custom} canEdit={ws.org.role === "owner"} />
     </PageFrame>
   );
 }

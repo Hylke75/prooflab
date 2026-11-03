@@ -11,6 +11,10 @@ export type ForecastMoment = (typeof FORECAST_MOMENTS)[number];
 export type ForecasterKind = "consultant" | "client" | "ai";
 export type Achieved = "yes" | "partial" | "no";
 export type OnTrack = "yes" | "unsure" | "no";
+// Welke vraag zes maanden na het definitieve besluit wordt gesteld (golf B, punt 1). Na een stop of pauze vervalt
+// de oorspronkelijke uitkomstvraag: dan volgt "Was stoppen achteraf terecht?".
+export type OutcomeQuestion = "success" | "stop_review";
+export type Justified = "yes" | "no" | "unknown";
 
 export const MOMENT_LABELS: Record<ForecastMoment, { label: string; when: string }> = {
   intake: { label: "Na de intake", when: "Voordat er onderzoek is gedaan" },
@@ -22,6 +26,13 @@ export const MOMENT_LABELS: Record<ForecastMoment, { label: string; when: string
 export const FORECASTER_LABELS: Record<ForecasterKind, string> = { consultant: "Consultant", client: "Opdrachtgever", ai: "AI" };
 export const ACHIEVED_LABELS: Record<Achieved, string> = { yes: "Gehaald", partial: "Deels gehaald", no: "Niet gehaald" };
 export const ON_TRACK_LABELS: Record<OnTrack, string> = { yes: "Op koers", unsure: "Onzeker", no: "Niet op koers" };
+export const JUSTIFIED_LABELS: Record<Justified, string> = { yes: "Ja, terecht", no: "Nee, onterecht", unknown: "Onbekend" };
+export const STOP_REVIEW_QUESTION = "Was stoppen achteraf terecht?";
+
+// De uitkomstvraag die hoort bij het besluit dat de klok start (dezelfde regel als stamp_outcome_question in de database).
+export function outcomeQuestionFor(action: string): OutcomeQuestion {
+  return action === "stop" || action === "pause" ? "stop_review" : "success";
+}
 
 // Product owner decision: the outcome is measured six months after the decision, with a check-in at three.
 export const OUTCOME_HORIZON_MONTHS = 6;
@@ -99,9 +110,31 @@ function addDaysIso(date: string, days: number): string {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
+// Bij de stopvraag ligt de vraagdatum altijd zes maanden na het besluit (de meetdatum hoort bij de vervallen succesvraag).
+export function outcomeDueForQuestion(question: OutcomeQuestion, decidedOn: string, measureDate: string | null | undefined): string {
+  return question === "stop_review" ? outcomeDueFor(decidedOn) : outcomeDueAtDecision(decidedOn, measureDate);
+}
+
 // The outcome is measured six months after the (calendar) date of the decision.
 export function outcomeDueFor(decisionDate: string): string {
   return addMonths(decisionDate, OUTCOME_HORIZON_MONTHS);
+}
+
+// De geplande meetdatum van het succescriterium ligt na de beslisdatum en binnen het venster van zes maanden
+// daarna. Geeft een Nederlandse melding terug, of null als de datum past.
+export function measureWindowProblem(measureDate: string, decisionDate: string): string | null {
+  if (!ISO.test(measureDate)) return "Kies een geldige meetdatum.";
+  if (!ISO.test(decisionDate)) return null;
+  if (measureDate <= decisionDate) return `De meetdatum moet na de beslisdatum (${decisionDate}) liggen: je meet het effect van het besluit.`;
+  const end = outcomeDueFor(decisionDate);
+  if (measureDate > end) return `De meetdatum valt buiten het venster van ${OUTCOME_HORIZON_MONTHS} maanden na de beslisdatum. Kies uiterlijk ${end}.`;
+  return null;
+}
+
+// De uitkomstdatum bij een besluit: de vooraf geplande meetdatum als die nog na het besluit en binnen zes maanden
+// valt, anders zes maanden na het besluit.
+export function outcomeDueAtDecision(decidedOn: string, measureDate: string | null | undefined): string {
+  return measureDate && measureWindowProblem(measureDate, decidedOn) === null ? measureDate : outcomeDueFor(decidedOn);
 }
 
 // The interim check-in opens three months after the decision, i.e. three months before the outcome date.
@@ -121,7 +154,10 @@ export type ForecastState = {
   clockStart?: string | null; // decision date that started the six-month clock (stored since 2026-11)
   ownMoments: ForecastMoment[]; // moments at which the current user already forecast
   checkins: number;
+  // Uitkomst vastgelegd: bij de succesvraag de uitkomst, bij de stopvraag het antwoord op "was stoppen terecht?".
   resolved: boolean;
+  // Ontbreekt bij oudere databases: dan geldt de succesvraag.
+  question?: OutcomeQuestion;
   today: string;
 };
 
@@ -133,6 +169,8 @@ export type MomentInput = {
   realityCheckDone: boolean;
   outcomeDue: string | null;
   clockStart?: string | null;
+  // Na een stop of pauze is er geen slagingskans meer om te voorspellen.
+  stopped?: boolean;
   today: string;
 };
 
@@ -140,7 +178,7 @@ export type MomentInput = {
 // with later knowledge is not a forecast at that moment. Nothing is open before the outcome is defined or
 // after it is known; the decision moment closes two weeks after the decision that started the clock.
 export function openMoment(i: MomentInput): ForecastMoment | null {
-  if (!i.outcomeDefined || i.resolved) return null;
+  if (!i.outcomeDefined || i.resolved || i.stopped) return null;
   if (i.realityCheckDone) {
     if (!i.outcomeDue) return "decision";
     const decidedOn = i.clockStart ?? addMonths(i.outcomeDue, -OUTCOME_HORIZON_MONTHS);
@@ -160,6 +198,7 @@ export function momentInput(p: IdeaProgress, f: ForecastState): MomentInput {
     realityCheckDone: !!p.latestRealityCheckAt,
     outcomeDue: f.outcomeDue,
     clockStart: f.clockStart ?? null,
+    stopped: f.question === "stop_review",
     today: f.today,
   };
 }
@@ -184,6 +223,35 @@ export function decisionBlocker(p: IdeaProgress): string | null {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Eerst voorspellen (golf B, punt 15)
+// ---------------------------------------------------------------------------
+
+// Het open voorspelmoment waarop de huidige gebruiker nog moet voorspellen, en dat ook kan (er is een uitkomstdefinitie
+// en een basispercentage). Zolang dit niet null is, blijven berekende kansen (aannamekansen, sterkte van het bewijs) en
+// andermans voorspellingen op de bewijs- en aannamepagina vergrendeld. Geldt voor consultants én opdrachtgevers.
+export function forecastFirstLock(p: IdeaProgress): ForecastMoment | null {
+  if (!p.forecast?.outcomeDefined || !p.forecast.baseRateChosen) return null;
+  return forecastDue(p);
+}
+
+// AI-voorspellingen tellen als één stem: per groep (bijv. dossier en moment) het gemiddelde van de modellen. Mensen
+// blijven elk een eigen stem. Zelfde regel als de kalibratie in de database (forecast_scores, forecast_calibration).
+export type Vote<T> = { kind: ForecasterKind; probability: number; models: number; rows: T[] };
+export function aiAsOneVote<T extends { kind: ForecasterKind; probability: number }>(rows: T[]): Vote<T>[] {
+  const out: Vote<T>[] = rows.filter((r) => r.kind !== "ai").map((r) => ({ kind: r.kind, probability: r.probability, models: 0, rows: [r] }));
+  const ai = rows.filter((r) => r.kind === "ai" && Number.isFinite(r.probability));
+  if (ai.length) out.push({ kind: "ai", probability: ai.reduce((s, r) => s + r.probability, 0) / ai.length, models: ai.length, rows: ai });
+  return out;
+}
+
+// Hetzelfde over meerdere dossiers en momenten: AI per sleutel (dossier + moment) samengevoegd.
+export function aiAsOneVotePerKey<T extends { kind: ForecasterKind; probability: number }>(rows: T[], key: (r: T) => string): Vote<T>[] {
+  const groups = new Map<string, T[]>();
+  for (const r of rows) groups.set(key(r), [...(groups.get(key(r)) ?? []), r]);
+  return [...groups.values()].flatMap((g) => aiAsOneVote(g));
+}
+
 export type FollowUp = {
   checkinDate: string | null;
   outcomeDate: string | null;
@@ -192,12 +260,14 @@ export type FollowUp = {
 };
 
 // The interim check-in is due from three months after the decision until it is given (or the outcome is
-// due, which then takes over); the outcome is due from the outcome date until it is recorded.
-export function followUp(s: { outcomeDue: string | null; clockStart?: string | null; checkins: number; resolved: boolean; today: string }): FollowUp {
+// due, which then takes over); the outcome is due from the outcome date until it is recorded. Bij de stopvraag is er
+// geen tussenstand: er is geen doel meer dat op koers kan liggen.
+export function followUp(s: { outcomeDue: string | null; clockStart?: string | null; checkins: number; resolved: boolean; today: string; question?: OutcomeQuestion }): FollowUp {
   if (!s.outcomeDue) return { checkinDate: null, outcomeDate: null, checkinDue: false, outcomeDue: false };
+  const outcomeDue = !s.resolved && s.today >= s.outcomeDue;
+  if (s.question === "stop_review") return { checkinDate: null, outcomeDate: s.outcomeDue, checkinDue: false, outcomeDue };
   // From the stored decision date when available; deriving it back from the due date can shift at month ends.
   const checkinDate = s.clockStart ? addMonths(s.clockStart, CHECKIN_AFTER_MONTHS) : checkinDueFor(s.outcomeDue);
-  const outcomeDue = !s.resolved && s.today >= s.outcomeDue;
   return {
     checkinDate,
     outcomeDate: s.outcomeDue,
@@ -231,6 +301,15 @@ export function scoreSet(list: { probability: number; achieved: Achieved }[]): {
     meanProbability: list.reduce((s, f) => s + f.probability, 0) / n,
     hitRate: list.reduce((s, f) => s + outcomeValue(f.achieved), 0) / n,
   };
+}
+
+// Brier-scores zeggen pas iets bij genoeg uitkomsten (golf A, punt 16). Daaronder staat bij elke score een
+// waarschuwing.
+export const BRIER_MIN_OUTCOMES = 30;
+export const BRIER_FEW_OUTCOMES = "te weinig dossiers voor een betrouwbaar oordeel";
+
+export function brierWarning(outcomes: number): string | null {
+  return outcomes < BRIER_MIN_OUTCOMES ? `${outcomes} van de minimaal ${BRIER_MIN_OUTCOMES} uitkomsten: ${BRIER_FEW_OUTCOMES}.` : null;
 }
 
 export const pct = (p: number) => `${Math.round(p * 100)}%`;

@@ -3,11 +3,22 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { RESEARCH_SYSTEM, type AiUsage } from "./client";
 import { generate, generateJson, generateText } from "./generate";
-import type { ProviderId } from "./providers/config";
-import { fetchPageText } from "@/lib/fetch-page";
-import { parseQuotedSources, relevantPassages, verifyQuotedSources, widen, type FoundSource, type PageFetcher } from "./web-evidence";
+import type { ModelTier, ProviderId } from "./providers/config";
+import { EXPECTED_SOURCE_KEYS, EXPECTED_SOURCES, splitCompoundQuestions, type PlanQuestion } from "@/lib/domain/research-plan";
+import { fetchPageText, PageFetchError } from "@/lib/fetch-page";
+import {
+  pageProblem,
+  parseQuotedSources,
+  relevantPassages,
+  UrlLedger,
+  verifyQuotedSources,
+  widen,
+  type FoundSource,
+  type PageFetcher,
+  type QueryLog,
+} from "./web-evidence";
 
-export type { FoundSource } from "./web-evidence";
+export type { FoundSource, QueryLog } from "./web-evidence";
 
 export type IdeaContext = {
   title: string;
@@ -34,8 +45,9 @@ Grootste onzekerheid: ${i.keyUncertainty ?? "onbekend"}
 }
 
 // Structured output on the chosen provider; validated against the schema whichever provider answered.
-function parse<T extends z.ZodType>(provider: ProviderId, schema: T, system: string, user: string, effort: "low" | "medium" | "high") {
-  return generateJson(provider, { schema, name: "prooflab_output", system, user, maxTokens: 16000, effort });
+// tier "research": the provider's cheaper model (searching and reading); "main": the heavy model.
+function parse<T extends z.ZodType>(provider: ProviderId, schema: T, system: string, user: string, effort: "low" | "medium" | "high", tier: ModelTier = "main") {
+  return generateJson(provider, { schema, name: "prooflab_output", system, user, maxTokens: 16000, effort, tier });
 }
 
 // ---------------------------------------------------------------------------
@@ -52,24 +64,38 @@ const PlanSchema = z.object({
         suggested_sources: z.string(),
         method: z.enum(["desk", "customer", "both"]),
         done_criterion: z.string(),
+        meeteenheid: z.string().describe("De eenheid waarin het antwoord wordt gemeten, bijv. 'aantal bedrijven' of 'euro per klant per jaar'"),
+        verwacht_brontype: z
+          .enum(EXPECTED_SOURCE_KEYS)
+          .describe(`Het soort bron dat het antwoord moet leveren: ${Object.entries(EXPECTED_SOURCES).map(([k, v]) => `${k} = ${v}`).join(", ")}`),
       }),
     )
     .min(3)
     .max(5),
 });
 
+// Each question single and measurable; compound questions are split afterwards in code as well (at most five).
 export async function planResearch(idea: IdeaContext, provider: ProviderId) {
-  return parse(
+  const res = await parse(
     provider,
     PlanSchema,
     RESEARCH_SYSTEM,
     `${ideaBlock(idea)}
 Maak een onderzoekskaart met maximaal vijf beslissende marktvragen die samen de beslisvraag beantwoorden.
+Elke vraag is enkelvoudig en meetbaar: precies één vraag met één vraagteken, zonder "en" of "of" tussen twee
+deelvragen. Samengestelde vragen zijn verboden; maak er dan twee vragen van. Noem in de vraag de doelgroep, de regio
+en waar relevant de branche bij naam.
 Per vraag: waarom de vraag de beslissing kan veranderen, welke gegevens nodig zijn, welke soort bronnen geschikt zijn
-(officiële statistiek eerst), of het bureauonderzoek, klantonderzoek of beide vraagt, en een toetsbaar klaar-criterium.
+(officiële statistiek eerst), of het bureauonderzoek, klantonderzoek of beide vraagt, een toetsbaar klaar-criterium,
+de meeteenheid van het antwoord en het verwachte brontype.
 Neem altijd een vraag op over huidige alternatieven (inclusief niets doen) en een over betalingsbereidheid of financiering.`,
     "medium",
   );
+  const questions: PlanQuestion[] = splitCompoundQuestions(
+    res.data.questions.map(({ meeteenheid, verwacht_brontype, ...q }) => ({ ...q, unit: meeteenheid.slice(0, 120), expected_source: verwacht_brontype })),
+    5,
+  );
+  return { ...res, data: { questions } };
 }
 
 // ---------------------------------------------------------------------------
@@ -81,6 +107,17 @@ const SEARCH_INSTRUCTIONS = (idea: IdeaContext, question: string) => `${ideaBloc
 Zoek de best onderbouwde, actuele bronnen voor deze vraag in de regio ${idea.region}. Geef voorrang aan officiële
 statistiek (zoals CBS of Eurostat), primaire documenten (prijspagina's, jaarverslagen) en onderzoeksrapporten met methode.`;
 
+// Golf C, punt 10: een aparte, verplichte zoekopdracht per vraag die alleen tegenbewijs zoekt. Zoekinstructies die
+// alleen het antwoord zoeken, vinden vooral bevestiging.
+const COUNTER_INSTRUCTIONS = (idea: IdeaContext, question: string) => `${ideaBlock(idea)}
+<onderzoeksvraag>${question}</onderzoeksvraag>
+Zoek uitsluitend naar TEGENBEWIJS voor het idee bij deze vraag in de regio ${idea.region}: bronnen die laten zien dat
+het antwoord tegenvalt, dat de markt kleiner, verzadigd of krimpend is, dat klanten het probleem niet hebben of niet
+willen betalen, dat vergelijkbare initiatieven zijn mislukt of gestopt, of dat regels of kosten het idee in de weg zitten.
+Zoek niet naar bevestiging. Geef voorrang aan officiële statistiek, primaire documenten en onderzoek met methode.`;
+
+export type SearchFocus = "evidence" | "counter";
+
 // Claude fetches pages itself (web_fetch) and cites verbatim text; ChatGPT and Gemini name the page and copy the
 // literal sentence, which ProofLab then looks up on the page it fetches itself (lib/ai/web-evidence.ts).
 // Search results ProofLab opens itself when the model did not (no AI cost; only verbatim paragraphs are kept).
@@ -91,15 +128,24 @@ export async function searchQuestion(
   question: string,
   maxSearches: number,
   provider: ProviderId,
-  deps: { fetchPage?: PageFetcher } = {},
-): Promise<{ sources: FoundSource[]; usage: AiUsage; detail: string }> {
+  deps: { fetchPage?: PageFetcher; avoidQueries?: string[]; focus?: SearchFocus } = {},
+): Promise<{ sources: FoundSource[]; usage: AiUsage; detail: string; log: QueryLog[]; stoppedForBudget: boolean }> {
+  const fetchPage = deps.fetchPage ?? fetchPageText;
+  const counter = deps.focus === "counter";
+  const instructions = counter ? COUNTER_INSTRUCTIONS(idea, question) : SEARCH_INSTRUCTIONS(idea, question);
+  const ledger = new UrlLedger();
+  // Terms already searched (and paid for) for this idea in the last 7 days; ProofLab reuses those results.
+  const avoid = (deps.avoidQueries ?? []).slice(0, 15);
+  const avoidText = avoid.length
+    ? `\nDeze zoektermen zijn de afgelopen 7 dagen al gebruikt; ProofLab heeft die resultaten al. Gebruik andere zoektermen:\n${avoid.map((q) => `- ${q.replace(/[<>\n]/g, " ").slice(0, 120)}`).join("\n")}`
+    : "";
   if (provider === "anthropic") {
     const { res, usage } = await generate(
       provider,
       {
         system: RESEARCH_SYSTEM,
-        user: `${SEARCH_INSTRUCTIONS(idea, question)}
-Open de belangrijkste pagina's met web_fetch. Zoek ook naar tegenbewijs.
+        user: `${instructions}${avoidText}
+Open de belangrijkste pagina's met web_fetch.${counter ? "" : " Zoek ook naar tegenbewijs."}
 Vat daarna in maximaal tien zinnen samen wat de bronnen letterlijk zeggen, met een citaat bij elke feitelijke bewering.
 Schrijf "onbekend" als je iets niet kunt vinden.`,
         maxTokens: 8000,
@@ -107,6 +153,7 @@ Schrijf "onbekend" als je iets niet kunt vinden.`,
         webSearch: { maxUses: maxSearches },
       },
       "Het model weigerde deze zoekopdracht.",
+      "research",
     );
     // Group cited passages per source. Passages from fetched pages are widened to their paragraph so that later
     // extraction has context; everything stays a verbatim slice of the page.
@@ -124,28 +171,35 @@ Schrijf "onbekend" als je iets niet kunt vinden.`,
       const passage = doc ? widen(doc.text, c.citedText) : c.citedText;
       if (passage && !src.excerpts.includes(passage)) src.excerpts.push(passage.slice(0, 1500));
     }
+    for (const s of bySource.values()) if (s.excerpts.length) ledger.set(s.url, "bewaard", { title: s.title, passages: s.excerpts.length, reason: "Letterlijk citaat van het model bewaard" });
     const cited = [...bySource.values()].filter((s) => s.excerpts.length > 0).length;
+    // Pages Claude could not fetch (blocked, unsupported, too large).
+    for (const f of res.fetchFailed ?? []) ledger.set(f.url, "geblokkeerd", { title: meta.get(f.url)?.title ?? null, reason: `Claude kon de pagina niet openen (${f.reason})` });
     // Pages Claude read but did not cite (for example when it ran out of turns before writing its answer): keep
     // their most relevant paragraphs, verbatim.
     for (const doc of res.fetched) {
       if (bySource.get(doc.url)?.excerpts.length) continue;
       const passages = relevantPassages(doc.text, question);
-      if (passages.length) bySource.set(doc.url, { url: doc.url, title: doc.title ?? meta.get(doc.url)?.title ?? doc.url, pageAge: meta.get(doc.url)?.pageAge ?? null, excerpts: passages, foundBy: [provider] });
+      const title = doc.title ?? meta.get(doc.url)?.title ?? doc.url;
+      if (passages.length) {
+        bySource.set(doc.url, { url: doc.url, title, pageAge: meta.get(doc.url)?.pageAge ?? null, excerpts: passages, foundBy: [provider] });
+        ledger.set(doc.url, "bewaard", { title, passages: passages.length, reason: "Meest relevante alinea's van een door Claude gelezen pagina" });
+      } else {
+        ledger.set(doc.url, pageProblem(doc) ?? "geen_relevante_alinea", { title });
+      }
     }
     // Search results that were never opened: ProofLab opens the most promising ones itself (SSRF-safe fetch).
-    const unopened = res.searchResults.filter((r) => !bySource.has(r.url)).slice(0, FALLBACK_PAGES);
+    const seen = new Set<string>();
+    const unopened = res.searchResults
+      .filter((r) => !bySource.has(r.url) && !ledger.has(r.url) && !seen.has(r.url) && seen.add(r.url))
+      .slice(0, FALLBACK_PAGES);
     let fetchedByUs = 0;
     for (const r of unopened) {
       if ([...bySource.values()].filter((x) => x.excerpts.length).length >= 8) break;
-      try {
-        const page = await (deps.fetchPage ?? fetchPageText)(r.url);
-        const passages = relevantPassages(page.text, question);
-        if (passages.length) {
-          bySource.set(page.url, { url: page.url, title: page.title ?? r.title, pageAge: r.pageAge, excerpts: passages, foundBy: [provider] });
-          fetchedByUs++;
-        }
-      } catch {
-        // Unreachable or blocked page: skip.
+      const opened = await openPage(fetchPage, r.url, question, ledger, r.title);
+      if (opened) {
+        bySource.set(opened.url, { url: opened.url, title: opened.title, pageAge: r.pageAge, excerpts: opened.passages, foundBy: [provider] });
+        fetchedByUs++;
       }
     }
     const sources = [...bySource.values()].filter((s) => s.excerpts.length > 0);
@@ -153,7 +207,9 @@ Schrijf "onbekend" als je iets niet kunt vinden.`,
     return {
       sources,
       usage,
-      detail: `${sources.length} bronnen${extra > 0 ? ` (${cited} met citaat van het model, ${extra} met de meest relevante alinea's${fetchedByUs ? `, waarvan ${fetchedByUs} door ProofLab zelf geopend` : ""})` : ""}`,
+      detail: `${sources.length} bronnen${extra > 0 ? ` (${cited} met citaat van het model, ${extra} met de meest relevante alinea's${fetchedByUs ? `, waarvan ${fetchedByUs} door ProofLab zelf geopend` : ""})` : ""}${res.stoppedForBudget ? "; zoeken gestopt: budget bereikt" : ""}`,
+      log: ledger.build(res.queries ?? [], question, new Map(res.searchResults.map((r) => [r.url, r.title]))),
+      stoppedForBudget: !!res.stoppedForBudget,
     };
   }
 
@@ -161,8 +217,8 @@ Schrijf "onbekend" als je iets niet kunt vinden.`,
     provider,
     {
       system: RESEARCH_SYSTEM,
-      user: `${SEARCH_INSTRUCTIONS(idea, question)}
-Zoek ook naar tegenbewijs. Geef daarna per bruikbare bron precies dit formaat, zonder andere tekst:
+      user: `${instructions}${avoidText}
+${counter ? "" : "Zoek ook naar tegenbewijs. "}Geef daarna per bruikbare bron precies dit formaat, zonder andere tekst:
 BRON: <volledige URL van de pagina>
 CITAAT: <één zin of korte alinea, letterlijk en woord voor woord van die pagina gekopieerd>
 Een bron mag meerdere CITAAT-regels hebben. Maximaal acht bronnen. Parafraseer nooit: ProofLab haalt elke pagina
@@ -172,15 +228,37 @@ zelf op en gooit elk citaat weg dat niet letterlijk op de pagina staat. Vind je 
       webSearch: { maxUses: maxSearches },
     },
     "Het model weigerde deze zoekopdracht.",
+    "research",
   );
   const claimed = parseQuotedSources(res.text);
   const citationUrls = res.citations.flatMap((c) => (c.url ? [c.url] : []));
-  const v = await verifyQuotedSources(provider, claimed, citationUrls, deps.fetchPage ?? fetchPageText);
+  const v = await verifyQuotedSources(provider, claimed, citationUrls, fetchPage, 8, ledger);
   return {
     sources: v.sources,
     usage,
     detail: `${v.sources.length} bronnen, ${v.quotes - v.rejected} van ${v.quotes} citaten letterlijk teruggevonden${v.pagesFailed ? `, ${v.pagesFailed} pagina's niet bereikbaar` : ""}`,
+    // Without reported queries (older responses) the research question stands in as the search term.
+    log: ledger.build(res.queries ?? [], question),
+    stoppedForBudget: false,
   };
+}
+
+// Opens a page ProofLab found in the search results itself and keeps its most relevant paragraphs. Records the
+// outcome in the ledger; returns null when nothing usable was found.
+async function openPage(fetchPage: PageFetcher, url: string, question: string, ledger: UrlLedger, title: string | null) {
+  try {
+    const page = await fetchPage(url);
+    const passages = relevantPassages(page.text, question);
+    const name = page.title ?? title ?? page.url;
+    if (passages.length) {
+      ledger.set(url, "bewaard", { title: name, passages: passages.length, reason: "Meest relevante alinea's; pagina door ProofLab zelf geopend" });
+      return { url: page.url, title: name, passages };
+    }
+    ledger.set(url, pageProblem(page) ?? "geen_relevante_alinea", { title: name });
+  } catch (e) {
+    ledger.set(url, e instanceof PageFetchError ? e.reason : "geblokkeerd", { title, reason: e instanceof Error ? e.message : undefined });
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -205,7 +283,10 @@ const ExtractSchema = z.object({
       excerpt_ref: z.string(),
       quote: z.string().describe("Letterlijke tekst uit het fragment, minimaal 8 tekens"),
       stance: z.enum(["supports", "contradicts"]).describe("Ondersteunt of weerspreekt de aanname in de onderzoeksvraag"),
-      region: z.string().nullable(),
+      // Populatie, regio en peildatum (golf C, punt 7): alleen wat uit het citaat of fragment blijkt, anders "onbekend".
+      population: z.string().describe('Over welke populatie het cijfer of de uitspraak gaat (bijv. "mkb-bedrijven met 10-50 werknemers"), alleen als dat in het citaat of fragment staat; anders "onbekend"'),
+      region: z.string().describe('Het gebied waarover de bevinding gaat, alleen als dat in het citaat of fragment staat; anders "onbekend"'),
+      reference_date: z.string().describe('Peildatum van het cijfer als JJJJ, JJJJ-MM of JJJJ-MM-DD, alleen als die in het citaat of fragment staat; anders "onbekend"'),
       period: z.string().nullable(),
       numeric_value: z.number().nullable(),
       unit: z.string().nullable(),
@@ -238,7 +319,7 @@ function fenceTag(): string {
   return `data-${randomBytes(6).toString("hex")}`;
 }
 
-export async function extractClaims(idea: IdeaContext, question: string, excerpts: ExcerptRef[], provider: ProviderId) {
+export async function extractClaims(idea: IdeaContext, question: string, excerpts: ExcerptRef[], provider: ProviderId, opts: { focus?: SearchFocus } = {}) {
   const tag = fenceTag();
   const clean = (s: string) => s.replace(/[<>]/g, " ").slice(0, 300);
   const docs = excerpts
@@ -259,10 +340,18 @@ ${docs}
 
 Haal uit deze fragmenten alleen beweringen die relevant zijn voor de onderzoeksvraag. Elke bewering verwijst naar
 precies één fragment (excerpt_ref) en bevat een letterlijk citaat daaruit. Neem getallen in de bewering alleen op als
-ze letterlijk in het citaat staan. Classificeer elke bron (source_ref). Noem concurrenten of alternatieven alleen als
+ze letterlijk in het citaat staan. Geef per bewering de populatie, de regio en de peildatum waar het cijfer over gaat,
+alleen als die uit het citaat of het fragment blijken; schrijf anders "onbekend". Vul ze nooit aan vanuit het idee. Classificeer elke bron (source_ref). Noem concurrenten of alternatieven alleen als
 ze in een fragment voorkomen; een prijs alleen als die letterlijk in het citaat staat. Als de fragmenten de vraag niet
-beantwoorden, geef dan lege lijsten.`,
+beantwoorden, geef dan lege lijsten.${
+      opts.focus === "counter"
+        ? `
+Deze fragmenten komen uit een zoekopdracht naar tegenbewijs. Neem alleen beweringen op die het idee bij deze vraag
+tegenspreken of afzwakken, met stance "contradicts". Formuleer de bewering als wat het citaat zelf zegt.`
+        : ""
+    }`,
     "medium",
+    "research",
   );
 }
 
@@ -403,6 +492,7 @@ Antwoord "supports" als het citaat dat volledig doet (zelfde onderwerp, regio, p
 "partial" als het maar een deel draagt of de bewering verder gaat dan het citaat, en "not_supported" als het citaat
 iets anders zegt. Geef één korte reden.`,
     "low",
+    "research",
   );
 }
 

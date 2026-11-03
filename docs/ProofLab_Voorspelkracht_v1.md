@@ -1,7 +1,8 @@
 # ProofLab: hoe voorspellen we de uitkomst zo goed mogelijk?
 
 Onderzoek naar methodes die de voorspelkracht van ProofLab kunnen verbeteren, en hoe we ze toepassen.
-Versie 1.2, 4 november 2026 (hoofdstuk 7: onderzoeksmethodes en AI; hoofdstuk 8: leren van uitkomsten).
+Versie 1.3, 6 november 2026 (hoofdstuk 7: onderzoeksmethodes en AI; hoofdstuk 8: leren van uitkomsten; hoofdstuk 9:
+methode 2026-11-b).
 
 ## 1. Waar we nu staan
 
@@ -412,3 +413,383 @@ tientallen afgeronde dossiers betrouwbaar.
   gekalibreerde groepen, maar zonder eigen uitkomstdata zou het de bekende overmoed versterken. We krimpen daarom
   alleen richting het basispercentage. De gewichten zijn startaannames; zodra er genoeg eigen dossiers zijn, ijken we
   ze op de Brier-scores per voorspeller (fase D).
+
+## 9. Methode 2026-11-b: beslisregels en bewijsfactoren (6 november 2026)
+
+Methode 2026-11-a is de rekenwijze tot en met hoofdstuk 8. Methode 2026-11-b verandert drie dingen: de beslisregel
+per testtype (9.1), één factor per bron (9.2) en een plafond per bewijsniveau (9.3). De code staat in
+`lib/domain/stats.ts` (beslisregels) en `lib/domain/evidence.ts` (`assumptionProbabilityV2`).
+
+### 9.1 Beslisregels per testtype
+
+De intervalregel van 2026-11-a ("geslaagd als ook de ondergrens van het 95%-Wilson-interval boven de drempel ligt")
+is bij kleine steekproeven zo streng dat bijna elke test onbeslist eindigt. Voorbeeld: 6 van 20 bij een drempel van
+20% geeft een ondergrens van 14,6%: onbeslist, terwijl de kans dat het echte percentage boven 20% ligt 89% is.
+
+- **Kansregel** (landingpagina, prijstest op klikniveau, enquête, interviews): met een vlakke prior Beta(1,1) is de
+  posterior Beta(1 + s, 1 + n − s). **Geslaagd** als P(echte waarde > succesdrempel) ≥ 0,80. **Niet geslaagd** als
+  P(echte waarde > faaldrempel) ≤ 0,20; zonder faaldrempel geldt de succesdrempel. Daartussen **onbeslist**. Met een
+  aparte, lagere faaldrempel is "niet geslaagd" dus strenger: het moet vrijwel zeker zijn dat de waarde zelfs onder
+  de faaldrempel ligt.
+- **Aantalregel** (sterke handelingen): vooraf ligt een aantal vast, bijvoorbeeld "minstens 3 aanbetalingen uit 15
+  gesprekken". Geslaagd als dat aantal na de eindconditie is gehaald; niet gehaald na een volledige steekproef is
+  niet geslaagd; minder deelnemers dan afgesproken en het aantal niet gehaald is onbeslist. In de huidige code is
+  dit beschikbaar voor interviews: een gesprek telt mee met een vastgelegde aanbetaling of herhaalaankoop
+  (`deposit`, `repeat_purchase`; afgekeurde AI-codering telt niet). De prijstest meet een klik op een prijs, geen
+  betaling, en valt daarom onder de kansregel. Een getekende offerte heeft nog geen eigen soort waarneming.
+- **Sterk bewezen**: de intervalregel blijft bestaan als extra label. Ligt bij een geslaagde test ook de
+  Wilson-ondergrens boven de drempel, dan heet de uitkomst "sterk bewezen".
+- **Eindconditie en minimale steekproef** blijven: geen oordeel zolang de test loopt; onder de minimale steekproef
+  is het resultaat onbeslist.
+- **Vooraf rekenen**: de Test Card vraagt de verwachte uitkomst (`expected_pct`) en het aantal beschikbare
+  deelnemers per week. Voor de kansregel is het benodigde aantal de kleinste n vanaf waar, met een waargenomen
+  aandeel gelijk aan de verwachting, P(p > drempel) ≥ 0,80 blijvend wordt gehaald, met een ondergrens van 5. Voor
+  de aantalregel: aantal ÷ verwacht aandeel, naar boven afgerond. ProofLab waarschuwt als dat aantal niet past in
+  beschikbaar per week × looptijd, of groter is dan de minimale steekproef. `required_n` wordt met de drempels
+  vastgelegd en na goedkeuring vergrendeld, net als de regel, het afgesproken aantal en de aannames erachter.
+- **Beperking:** bij een lage drempel geeft de vlakke prior zonder enige data al P(p > drempel) = 1 − drempel (bij
+  20% precies 0,80). Bij lage drempels draagt daarom vooral de minimale steekproef het oordeel; de ondergrens van 5
+  deelnemers in het benodigde aantal voorkomt een schijnbaar haalbare test van 1 deelnemer. Overweeg bij drempels
+  onder 20% een strengere slaaggrens of een prior rond de drempel; dat is een keuze voor een volgende methodeversie.
+- De Bayesiaanse schatting met voorkennis (3.6) blijft ter informatie naast het oordeel en telt niet mee in de regel.
+
+### 9.2 Eén factor per bron per aanname
+
+Twaalf antwoorden uit dezelfde enquête of vijf gecodeerde citaten uit hetzelfde interview zijn geen twaalf of vijf
+onafhankelijke signalen. In 2026-11-b telt **ondersteunend** bewijs per bron als één signaal: alleen de sterkste
+factor (grootste ln(factor) × gewicht) blijft over. "Dezelfde bron" is (`evidenceSourceKey`):
+
+| Signaal | Dezelfde bron = |
+|---|---|
+| Bevinding (claim) uit bronfragmenten en klantsignalen | de bron (`source_id`) van de bevinding; bij meerdere bronnen de eerste met een letterlijk gecontroleerd citaat |
+| Klantsignalen uit outreach (bronnen van het type outreach) | de campagne, ook over meerdere importen heen |
+| Enquête- en testwaarnemingen | het experiment (`experiment_id`); open enquêteantwoorden die als bron zijn opgenomen horen bij hun enquête |
+| Interviewcodering | het interview (`interview_id`) |
+| Overig (losse observatie, bevinding zonder bron) | het signaal zelf |
+
+**Tegenbewijs** (een tegensprekende koppeling, en bezwaren, "probleem niet herkend" en tegenvoorbeelden) wordt niet
+samengevoegd en telt per signaal mee, zoals in 2026-11-a. Daarna werkt alles als in 3.5: per soort en richting
+afnemend meetellen (log₂(1 + n)), half gewicht voor niet beoordeelde AI-codering, synthetische data telt niet.
+
+**De factoren werken op de kansverhouding (odds):** logit(p) = logit(beginwaarde) + Σ ln(factor) × log₂(1 + n) ×
+gewicht. Eén aanbetaling (factor 6) bij een beginwaarde van 50% geeft odds 1 × 6 = 6, dus 6/7 ≈ 86%; een huidige
+werkwijze (factor 2) bij 20% geeft odds 0,25 × 2 = 0,5, dus 33%. Dit is in de unittests vastgelegd.
+
+De aannamepagina toont welke signalen zijn samengevoegd, bijvoorbeeld "12 signalen uit Enquête X samengevoegd".
+Wie alleen meekijkt (opdrachtgever) ziet geen campagnenamen of interviewlabels, maar rekent met dezelfde groepering.
+
+### 9.3 Plafond per bewijsniveau
+
+De berekende kans wordt begrensd door het hoogste bewijsniveau onder het ondersteunende bewijs dat volledig meetelt
+(niet beoordeelde AI-codering tilt het niveau niet op). Standaardwaarden, instelbaar per werkruimte door de
+eigenaar (pagina Voorspelkwaliteit; tabel `org_evidence_caps`, elke wijziging in het auditspoor):
+
+| Niveau | Soorten bewijs | Plafond |
+|---|---|---|
+| Meningen, enquêtes en bureauonderzoek | mening, enquête-uitkomst, overige observatie, alle bevindingen uit bronnen | 40% |
+| Probleem in eigen gedrag of huidige uitgaven | probleem herkend in eigen recent gedrag, huidige werkwijze, huidige uitgaven | 50% |
+| Kleine handeling | aanmelding wachtlijst, demo aangevraagd | 60% |
+| Offerte of prijsaanbod gekozen | offerte of prijsaanbod gekozen | 75% |
+| Aanbetaling | aanbetaling | 90% |
+| Herhaalaankoop | herhaalaankoop | geen plafond (wel de algemene grens van 99%) |
+
+Tegenbewijs (bezwaar, probleem niet herkend, tegenvoorbeeld) tilt nooit een niveau op. Zonder ondersteunend bewijs
+geldt het laagste niveau: een aanname zonder bewijs staat dus op hoogstens 40%, ook bij een hogere beginwaarde.
+Zo kan meer ondersteunend bewijs de kans nooit verlagen. Is het plafond actief, dan toont ProofLab wat er
+ontbreekt, bijvoorbeeld "begrensd op 75%: nog geen aanbetaling", met de kans zonder plafond ernaast. De
+bandbreedte wordt op dezelfde manier begrensd.
+
+### 9.4 Methodeversie en reproduceerbaarheid
+
+- Elk dossier rekent met één vaste methodeversie (`ideas.method_version`): **2026-11-a** (de rekenwijze tot en met
+  hoofdstuk 8, ongewijzigd) of **2026-11-b** (9.1–9.3). Per versie is er een rekenmodule (`lib/domain/method/`) die
+  zowel de kans per aanname als het oordeel per test berekent; dezelfde gegevens geven onder dezelfde versie altijd
+  dezelfde uitkomst.
+- Bestaande dossiers houden 2026-11-a; nieuwe dossiers starten op 2026-11-b. Een consultant kan een dossier laten
+  overstappen. Vooraf toont ProofLab per aanname de kans oud/nieuw en per test de uitkomst oud/nieuw; na bevestiging
+  wordt de versie bijgewerkt en komt de overstap met dat overzicht in het auditspoor. Terug kan niet.
+- Goedgekeurde Learning Cards veranderen nooit. Elke nieuwe kaart bewaart de methodeversie en de beslisregel; rekende
+  een goedgekeurde kaart met een andere versie dan het dossier nu, dan staat de uitkomst onder de huidige versie er
+  ter informatie naast.
+- Elk rapport (scherm en PDF) vermeldt de methodeversie, de beslisregels en de gebruikte plafonds (standaard of
+  ingesteld door de werkruimte). Rapporten van vóór de methodeversie zijn met 2026-11-a gemaakt.
+
+## 10. Onderzoek en herleidbaarheid (golf C, 7 november 2026)
+
+Golf C van het verbeterplan (`docs/VERBETERPLAN_WERKWIJZE.md`) maakt bureauonderzoek beter toetsbaar en houdt
+rapporten herleidbaar na de bewaartermijn. Geen van deze punten verandert de rekenwijze van 2026-11-a of 2026-11-b; de weging van indirect bewijs
+(10.1) hoort bij methode 2026-11-c (11.6).
+
+### 10.1 Populatie, regio en peildatum per bevinding (punt 7)
+
+Een letterlijk citaat zegt nog niet dat een cijfer over de juiste groep, het juiste gebied of een recent moment gaat.
+
+- Elke bevinding heeft drie verplichte velden: **populatie**, **regio** en **peildatum** (jaar, maand of datum). Wat
+  niet uit de bron blijkt, staat er expliciet als "onbekend".
+- Bij AI-extractie vraagt het schema om deze drie velden. ProofLab houdt een veld alleen als het uit het citaat of het
+  bewaarde fragment blijkt: een betekenisvol woord van de populatie of regio moet er letterlijk in staan, het jaartal
+  van de peildatum ook. Anders wordt het "onbekend".
+- ProofLab vergelijkt de velden met de intake (`lib/domain/claim-scope.ts`):
+  - populatie: een vastgesteld ander soort doelgroep (bijvoorbeeld huishoudens bij een B2B-idee);
+  - regio: een ander, breder of kleiner gebied dan de intake (een Europees cijfer of een stad bij een Nederlandse
+    markt);
+  - peildatum: ouder dan de verouderingstermijn van dat soort gegeven (statistiek 3 jaar, prijs 1 jaar, regelgeving
+    1,5 jaar), gemeten op de beslisdatum, of op vandaag als die ontbreekt.
+- Wijkt een veld af, dan staat er een waarschuwing bij de bevinding en telt ze als **indirect** (`claims.relevance`).
+  "Onbekend" is geen afwijking, maar ook geen bevestiging: het blijft zichtbaar als onbekend.
+- **Weging.** In de bewijsberekening telt een indirecte bevinding met halve sterkte (`relevanceWeight()`, gewicht
+  0,5 in log-odds). Dat geldt alleen in methode 2026-11-c (zie 11.6); 2026-11-a en 2026-11-b lezen het veld niet en
+  rekenen ongewijzigd (vastgelegd in `tests/unit/evidence-v3.test.ts`).
+
+### 10.2 Jaar en regio per sizing-factor (punt 8)
+
+Een marktomvang vermenigvuldigt getallen die vaak uit verschillende bronnen komen. Een bedrijventelling uit 2019
+keer een aandeel uit een Europees onderzoek van 2025 levert een precies ogend, maar onzeker getal op.
+
+- Elke sizing-factor heeft een **jaar** en een **regio** (`sizing_factors.year`, `.region`; leeg is onbekend). Wie
+  een bevinding als bron koppelt, krijgt het jaar uit de peildatum en de regio van die bevinding voorgesteld.
+- `factorConsistency()` (`lib/domain/sizing.ts`) vergelijkt de factoren van één scenario. Liggen de bekende jaren
+  **meer dan 2 jaar** uit elkaar, of gaan factoren over **verschillende regio's** (hetzelfde gebied in een andere
+  schrijfwijze telt niet als verschil), dan volgt een waarschuwing op het scherm en in het rapport.
+- De Monte Carlo-simulatie verbreedt dan elke 90%-bandbreedte: ×1,5 per soort verschil, ×2 bij jaar én regio.
+  Log-normaal: de afstand tot het geometrisch midden wordt in log-schaal zoveel keer groter. Driehoek (ondergrens 0):
+  de afstand van de waarde tot de bovengrens. Percentages blijven hoogstens 100.
+- Zonder verschil is de simulatie exact gelijk aan die van vóór golf C. Een onbekend jaar of een onbekende regio is
+  geen verschil, maar ProofLab vraagt erom.
+
+### 10.3 Verplichte zoekopdracht naar tegenbewijs (punt 10)
+
+Zoekinstructies die het antwoord op een vraag zoeken, vinden vooral bevestiging. Daarom krijgt elke onderzoeksvraag
+in een run een eigen stap **"Tegenbewijs zoeken"**, direct na het zoeken en uitlezen van die vraag.
+
+- De stap zoekt uitsluitend naar bronnen die het idee bij die vraag tegenspreken: een kleinere of krimpende markt,
+  klanten zonder het probleem of zonder betalingsbereidheid, mislukte vergelijkbare initiatieven, regels of kosten.
+- Hij draait binnen dezelfde budgetbewaking als de andere stappen (`RunBudget`): is het runbudget op, dan wordt hij
+  overgeslagen en staat dat bij de stap. Zoeken en uitlezen gebruiken het goedkopere onderzoeksmodel.
+- Elke zoekterm komt in het zoeklogboek met `kind = 'counter'`. Hergebruik van eerdere zoekresultaten (binnen 7
+  dagen) gebeurt alleen binnen hetzelfde soort zoekopdracht: een gewone zoekopdracht telt nooit als zoeken naar
+  tegenbewijs.
+- Gevonden passages worden fragmenten in de bronnenbibliotheek. Alleen tegenbevindingen worden bewaard, met relatie
+  **"contradicts"** en dezelfde controles als elke andere bevinding: het citaat moet letterlijk in het fragment staan
+  en de steuncontrole mag het niet afwijzen.
+- Het scherm toont het tegenbewijs apart ("Tegenbewijs"), met per vraag de uitkomst van de stap en een eigen
+  zoeklogboek. Niets gevonden staat er eerlijk bij, met de kanttekening dat dit niet bewijst dat het idee klopt.
+
+### 10.4 Momentopname van aantallen bij elk rapport (punt 19)
+
+Bewaartermijnen beschermen deelnemers, maar gaan in tegen herleidbaarheid: na 180 of 365 dagen zijn e-mailadressen,
+transcripten, citaten en open antwoorden weg (`purge_expired_personal_data`).
+
+- Elk rapport bewaart daarom in zijn onveranderlijke momentopname (`reports.snapshot.tallies`,
+  `lib/domain/report-counts.ts`) een **geanonimiseerde telling**: per test n en successen, uitgesplitst per bron
+  (bij enquêtes uitnodiging of open link, anders het kanaal), per kanaal en per wervingsgroep, en bij enquêtes de
+  kernvraag per bron met het aantal opgeslagen antwoorden. Afgebroken en lopende tests staan erin met hun aantallen.
+- **Per wervingsgroep** (golf A, 11.1): n en successen per groep (eigen netwerk, warm contact, koud, betaald panel,
+  onbekend). Bij enquête-, landing- en prijstests geldt de groep van de test voor alle deelnemers; bij interviews de
+  groep per gesprek (een bekende is eigen netwerk, anders de groep van het gesprek of van de test). Een test zonder
+  groep telt als onbekend. Rapporten met de eerste versie van de momentopname (`tallies.version` 1) tellen bij
+  interviews alleen bekenden en onbekenden, zonder successen; die blijven zo zichtbaar.
+- Er staan geen persoonsgegevens in: geen namen, adressen, citaten, open antwoorden of tijdstippen per persoon.
+- De momentopname valt niet onder de bewaartermijn. Rapporten zijn na het maken niet te wijzigen of te verwijderen en
+  de opruimtaak raakt ze niet (gecontroleerd in `tests/db/golf-c.test.ts`).
+- **Gevolg voor herleiding.** Binnen de bewaartermijn is elk getal in een rapport terug te voeren op de ruwe
+  antwoorden, events en citaten. **Na de bewaartermijn kan herleiding alleen nog op aantallen**: wie het rapport
+  later controleert, kan nagaan hoeveel deelnemers per bron, kanaal en groep er waren en hoeveel succesvol, maar niet
+  meer wat individuele deelnemers zeiden of deden.
+
+## 11. Methode 2026-11-c en golf A: bewijs en testen (7 november 2026)
+
+Golf A van het verbeterplan (`docs/VERBETERPLAN_WERKWIJZE.md`) pakt zwakke plekken aan in hoe bewijs telt en hoe
+tests worden gekozen en getoond. Wat de berekening verandert, hoort bij een nieuwe methodeversie **2026-11-c**
+(`lib/domain/method/2026-11-c.ts`, `assumptionProbabilityV3` in `lib/domain/evidence.ts`); wat alleen de weergave
+verandert, geldt voor alle versies. Bestaande dossiers op 2026-11-a of 2026-11-b rekenen ongewijzigd; nieuwe
+dossiers starten op 2026-11-c. Overstappen kan alleen vooruit (a → b → c of a → c), via dezelfde overstappagina met
+vooraf per aanname de kans oud/nieuw en per test de uitkomst oud/nieuw, en met audit.
+
+### 11.1 Wervingsgroep (punten 4 en 13, rekenwijziging in 2026-11-c)
+
+Signalen uit dezelfde kring lijken op elkaar en op wie de test opzette. Drie enquêtes onder het eigen netwerk zijn
+geen drie onafhankelijke bewijzen. Daarom leggen we per test, per interview en (optioneel) per losse observatie de
+**wervingsgroep** vast (`lib/domain/recruitment.ts`):
+
+| Groep | Definitie |
+|---|---|
+| Eigen netwerk | Mensen die de onderzoeker of opdrachtgever persoonlijk kent: vrienden, collega's, bestaande klanten, volgers van het eigen account. Een interview met de vlag "bekende" is altijd eigen netwerk. |
+| Warm contact | Geen bekende, maar bereikt via een introductie, een gedeelde community of eerder contact. |
+| Koud | Zonder eerdere relatie bereikt: koude outreach, advertenties, een open oproep op een platform. |
+| Betaald panel | Een ingekocht onderzoekspanel of betaalde werving van deelnemers. |
+| Onbekend | Niet vastgelegd. Telt als één groep: zonder herkomst kunnen we niet aannemen dat signalen onafhankelijk zijn. |
+
+- **Verplicht** op de Test Card bij enquête-, landing- en prijstests (zonder voorkeuze). Bij interviews per gesprek;
+  de groep van de test is dan de standaard. Na goedkeuring is de groep van een test vergrendeld.
+- **Welke groep een signaal heeft** (`evidence_recruitment_refs`): de groep van het signaal zelf, dan die van het
+  interview (een bekende = eigen netwerk), dan die van de test; een signaal uit een test of interview zonder groep
+  is onbekend. Bevindingen uit open enquêteantwoorden krijgen de groep van die enquête. Bureauonderzoek is niet
+  geworven en valt erbuiten. Tests van vóór golf A hebben geen groep en tellen in 2026-11-c als onbekend.
+- **Rekenregel (2026-11-c).** Eerst wordt ondersteunend bewijs per bron samengevoegd (9.2). Daarna krijgen de
+  overgebleven signalen per wervingsgroep, het sterkste eerst, een afnemende factor met dezelfde functie als het
+  afnemend meetellen per soort: het k-de signaal (k = 0, 1, …) telt voor log₂(2 + k) − log₂(1 + k), dus 1; 0,58;
+  0,42; 0,32; … Samen tellen n bronnen uit één groep als log₂(1 + n) bronnen. Binnen een soort en richting wordt
+  het afnemend meetellen daarmee een gewogen som: Σ d(k) × (log₂(2 + k) − log₂(1 + k)), met de grootste factor d
+  eerst; zonder demping is dat precies log₂(1 + n) zoals in 9.2. Tegenbewijs wordt niet gedempt. Het plafond (9.3)
+  verandert niet.
+- **Weergave**: de risicokaart, de overstappagina en het rapport tonen "x signalen uit dezelfde wervingsgroep
+  (eigen netwerk): herhaling telt afnemend mee".
+
+### 11.2 AI-codering telt pas na beoordeling (punt 17, rekenwijziging in 2026-11-c)
+
+In 2026-11-a en 2026-11-b telt AI-codering van interviews die nog niemand beoordeelde voor de helft (in log-odds).
+In 2026-11-c telt onbeoordeelde AI-codering **niet**: pas na akkoord van een consultant volledig, na afkeuren nooit.
+De risicokaart toont hoeveel coderingen nog op beoordeling wachten.
+
+Bij AI-concepten (onderzoeksvragen, enquête-opzet, promoberichten) bewaart ProofLab het AI-origineel
+(`research_questions.ai_original`, `promo_posts.ai_original`, `ai_drafts` voor de enquête). Het origineel verandert
+daarna nooit. Het scherm toont "door mens aangepast: ja/nee" met het aantal gewijzigde regels
+(`lib/domain/ai-draft.ts`: regels zonder witruimteverschil vergeleken via de langste gemeenschappelijke reeks;
+gewijzigd = max(verwijderd, toegevoegd)). Dit is weergave en geldt voor alle versies.
+
+### 11.3 Hoofdtest per aanname (punt 11)
+
+Wie veel kleine tests doet, vindt er vroeg of laat één die toevallig slaagt. Per aanname wijst de consultant daarom
+**vóór de goedkeuring** één hoofdtest aan (`assumptions.primary_experiment_id`, met audit); de andere tests heten
+**verkennend**. Zodra de hoofdtest is goedgekeurd of gestart, ligt de keuze vast (database en app). In 2026-11-c
+beslist alleen de hoofdtest over de status van de aanname; zonder goedgekeurde hoofdtest blijft de aanname "wordt
+getest". In 2026-11-a en 2026-11-b telt elke goedgekeurde test zoals voorheen. Golf B bouwt de beslisregel voor het
+besluit; die gebruikt alleen hoofdtests als doorslag (`primaryTestFor` in `lib/domain/primary-test.ts`).
+
+Bij een geslaagde kansregel staat de **kans op toeval** erbij: 1 − P(echte waarde > drempel). Bij een kans van 89%
+is dat 11%: ongeveer één op de negen zulke "geslaagde" tests zit in werkelijkheid onder de drempel.
+
+### 11.4 Startkans (punt 5)
+
+Elke aanname begint op 50%. Een afwijking vraagt een **onderbouwing** van minimaal 10 tekens (bijvoorbeeld het
+basispercentage). Zodra het eerste bewijs aan de aanname wordt gekoppeld, is de startkans **blijvend vergrendeld**
+(`prior_locked_at`, ook als het bewijs later wordt ontkoppeld): wijzigen kan alleen met een reden
+(`change_assumption_prior`), en elke wijziging komt met oude en nieuwe waarde en de reden in het auditspoor. De
+database dwingt dit af (trigger), de app ook. Bestaande aannames met bewijs zijn bij de migratie vergrendeld; hun
+kans verandert niet.
+
+### 11.5 Weergave (punten 3, 12, 14 en 16, alle versies)
+
+- **Niet gekalibreerd (3).** Zolang de werkruimte minder dan 10 dossiers met een vastgelegde uitkomst heeft (dezelfde
+  grens als het eigen basispercentage), staan kansen per aanname in banden van 10 procentpunt ("40–50%") met het
+  label "niet gekalibreerd", op scherm, in het rapport en in de PDF. De bandbreedte wordt naar buiten afgerond. De
+  exacte waarde staat in de tooltip. Eén helper: `lib/domain/probability-display.ts`. Het rapport bewaart de
+  kalibratie in de momentopname; rapporten van daarvoor tonen ook banden.
+- **Alle tests (12).** Elk nieuw rapport bevat verplicht de lijst van alle vooraf vastgelegde tests (goedgekeurd of
+  verder, ook teruggezet naar concept), met rol, status (ook afgebroken), resultaat en uitkomst, en het aantal tests
+  per aanname (`lib/domain/all-tests.ts`).
+- **Bewijsniveau naast de uitkomst (14).** Learning Card, rapport en PDF tonen bijvoorbeeld "Geslaagd · niveau:
+  mening". Het niveau volgt de indeling van de plafonds: enquête = mening, landingpagina = kleine handeling,
+  prijstest = prijskeuze, interviews = probleem in eigen gedrag (met de aantalregel: aanbetaling).
+- **Brier-scores (16).** Onder 30 uitkomsten staat bij elke Brier-score op de pagina Voorspelkwaliteit: "te weinig
+  dossiers voor een betrouwbaar oordeel".
+
+### 11.6 Indirect bewijs telt half (golf C punt 7, rekenwijziging in 2026-11-c)
+
+Bij het samenvoegen van golf A en golf C is de relevantie per bevinding (10.1, `claims.relevance`) aan methode
+2026-11-c toegevoegd. Een bevinding die als **indirect** is gemarkeerd (andere populatie, andere regio of een te oude
+peildatum dan de intake) telt met **halve sterkte**: gewicht 0,5 in log-odds (`relevanceWeight()` in
+`lib/domain/claim-scope.ts`), net zoals niet beoordeelde AI-codering in 2026-11-a en 2026-11-b. Dat geldt voor
+ondersteunend bewijs en voor tegenbewijs. Een bevinding zonder relevantie (gegevens van vóór golf C) telt als direct.
+
+- Indirecte en directe bevindingen van dezelfde status vormen aparte groepen voor het afnemend meetellen (zoals bij
+  ander gewicht); bij het samenvoegen per bron (9.2) blijft het sterkste signaal over, dus een directe bevinding
+  wint van een indirecte uit dezelfde bron.
+- Het plafond (9.3) verandert niet: bevindingen uit bronnen staan al op het laagste niveau.
+- **Weergave**: de aannamepagina toont bij de aanname "Telt half: indirect bewijs" met het aantal bevindingen, en de
+  bijdrage heet "(indirect bewijs)" met "half gewicht". De overstappagina noemt de wijziging (`changesBetween`) en
+  toont vooraf de kans oud/nieuw. Het rapport vermeldt de regel bij de methode.
+- **Gegevens**: `lib/progress.ts` laadt `claims.relevance` mee bij de gekoppelde bevindingen; het dossier en het
+  rapport (`lib/dossier.ts`) rekenen via dezelfde functie. Opdrachtgevers lezen bevindingen via dezelfde RLS
+  (`can_read_idea`) en rekenen dus met dezelfde weging (gecontroleerd in `tests/db/golf-c.test.ts`).
+
+## 12. Besluit en voorspelling (golf B, 7 november 2026)
+
+Uit de kritische controle van de werkwijze (`docs/VERBETERPLAN_WERKWIJZE.md`, golf B). Zes aanpassingen aan de brug
+van bewijs naar besluit en aan de voorspellus. Migratie `20261107100000_golf_b.sql`.
+
+### 12.1 Uitkomst na stop of pauze (punt 1)
+
+- Na een stop- of pauzebesluit is de oorspronkelijke uitkomst ("is het doel na zes maanden gehaald?") niet meer te
+  meten. Op het moment dat de uitkomstklok start, legt de database daarom de uitkomstvraag vast
+  (`ideas.outcome_question`): `success` na doorgaan, `stop_review` na stoppen of pauzeren. De vraag verandert daarna
+  nooit meer.
+- Bij de stopvraag ligt de vraagdatum altijd zes maanden na het besluit (de geplande meetdatum hoort bij de vervallen
+  succesvraag). Er is geen tussenstand na drie maanden.
+- Zes maanden later volgt "Was stoppen achteraf terecht?": ja, nee of onbekend, met bewijs (`stop_reviews`, eenmalig,
+  daarna een vast feit). Herinnering op het overzicht en coachregel `stop_review_due`.
+- Stopdossiers tellen **niet** mee in de kalibratie van slagingskansen (`forecast_scores`, `forecast_calibration`) en
+  niet in de eigen basisrate (`own_base_rate`). Hun voorspellingen worden niet gescoord als slagingskans; uitkomst-
+  pagina en rapport zeggen dat expliciet. Na de stop sluit het voorspelmoment.
+- Eigen telling **terechte stops** op Voorspelkwaliteit (`stop_review_counts`): terecht, onterecht, onbekend en nog
+  open. Het percentage terecht rekent alleen met ja en nee.
+- Bestaande dossiers: is de klok gestart door een stop- of pauzebesluit, dan krijgen ze bij de migratie de stopvraag.
+  Een al vastgelegde uitkomst blijft bewaard, maar telt niet meer mee in de kalibratie.
+
+### 12.2 Inzet bij de uitkomst (punt 2)
+
+- De uitkomst meet ook uitvoering. Bij elke nieuwe uitkomst legt de consultant de inzet vast: gestart ja/nee
+  (verplicht), bestede uren en besteed budget als percentage van het plan (optioneel, leeg = onbekend).
+- **Onvoldoende uitvoering** (`execution_insufficient`, berekend door de database, zelfde regel als
+  `lib/domain/effort.ts`): niet gestart, minder dan 50% van het geplande budget, of (als de inzet in de intake in uren
+  is opgegeven) minder dan de helft van die uren.
+- Zo'n dossier wordt gemarkeerd. Een consultant kan het met een reden uit de kalibratie halen
+  (`calibration_exclusions`); dat kan alleen bij onvoldoende uitvoering. Uitsluiten en weer meetellen komen met de
+  reden in het auditspoor. Uitgesloten dossiers tellen niet mee in scores, kalibratie en eigen basisrate.
+
+### 12.3 Beslisregel van bewijs naar besluit (punt 6)
+
+- Vóór de eerste goedgekeurde test legt het team op de aannamepagina vast wanneer het doorgaat: welke aannames boven
+  welke kans (5–95%) moeten uitkomen, en welke hoofdtest moet slagen (`decision_rules`, `decision_rule_assumptions`).
+  De hoofdtest is een experiment-id. Sinds het samenvoegen met golf A kun je daar alleen een test kiezen die bij een
+  gekozen aanname van de regel als hoofdtest is aangewezen (`assumptions.primary_experiment_id`, `primaryTestFor` en
+  `rulePrimaryProblem` in `lib/domain/primary-test.ts`); een verkennende test kan het besluit niet beslissen. Is er nog
+  geen hoofdtest aangewezen, dan verwijst het formulier naar de experimentenpagina. De keuzelijst en de server-actie
+  controleren dit; de database niet.
+- De regel gaat op slot bij de eerste goedgekeurde test (trigger op `experiments`), en uiterlijk bij het eerste
+  definitieve besluit. Wie de regel pas na de eerste goedgekeurde test vastlegt, krijgt een regel die meteen op slot
+  zit en in het rapport "achteraf vastgelegd" heet. Vastleggen kan alleen via `save_decision_rule` (regel en
+  voorwaarden in één keer).
+- Bij het besluit toont de bewijspagina per voorwaarde of die is gehaald (kans nu tegen de minimale kans; de hoofdtest
+  is geslaagd als de laatste goedgekeurde Learning Card "geslaagd" zegt). Het besluit bewaart die toets
+  (`rule_met`, `rule_evaluation`).
+- **Afwijken** is doorgaan terwijl de regel niet is gehaald, of stoppen/pauzeren terwijl hij wel is gehaald.
+  Bijsturen, verder testen en de verlengde testfase zijn geen definitief besluit en wijken dus niet af. Wie afwijkt,
+  motiveert dat in minstens één zin; de database dwingt dat af en zet de motivering in het auditspoor
+  (`rule_deviation`). Het rapport vermeldt toets en motivering. De database controleert ook wat ze zelf kan zien: een
+  hoofdtest zonder goedgekeurde geslaagde Learning Card kan de regel niet "gehaald" maken.
+
+### 12.4 Eerst voorspellen (punt 15)
+
+- Op elk voorspelmoment geeft iedereen (consultant én opdrachtgever) eerst de eigen voorspelling. Zolang het open
+  moment niet door deze gebruiker is voorspeld, zijn op de bewijspagina de sterkte van het bewijs, de kansen per
+  aanname, de Reality Check en andermans voorspellingen vergrendeld, en op de aannamepagina de risicokaart met de
+  berekende kansen. Een knop "Geef eerst je voorspelling" leidt naar het formulier. De vergrendeling geldt alleen als
+  voorspellen kan (uitkomstdefinitie en basispercentage liggen vast). De voorspellingen van anderen bleven al
+  verborgen in de database (`forecast_visible`).
+- De AI-voorspellingen (één per model) gelden als **één stem**: het gemiddelde van de modellen per dossier en moment.
+  Zo tellen ze in de kalibratie (`calibration_votes_internal` onder `forecast_scores` en `forecast_calibration`), in de
+  Brier-tabel van de uitkomst, op Voorspelkwaliteit en in het rapport. Modellen lezen hetzelfde dossier; hun
+  overeenstemming is geen onafhankelijk oordeel.
+
+### 12.5 Opdrachtgever bevestigt na "Wat ging tegen" (punt 18)
+
+- Bij het bevestigen van een besluit ziet de opdrachtgever verplicht de samenvatting "Wat ging tegen": mislukte tests
+  (laatste goedgekeurde Learning Card "niet geslaagd"), tegenbewijs (bevindingen met een tegensprekende, letterlijk
+  gecontroleerde bron; bezwaren, "probleem niet herkend" en tegenvoorbeelden), begrensde aannames (plafond actief) en
+  afwijkingen van de beslisregel. Pas na het openen of aanvinken kan hij bevestigen.
+- `confirm_decision(p_decision, p_comment, p_reviewed_against_summary)` eist een gelezen, complete samenvatting en
+  telt zelf na of alle mislukte tests en de afwijking erin staan. De samenvatting wordt met tijdstempel bij het besluit
+  bewaard (`decisions.reviewed_against_summary`) en verandert daarna niet. De oude variant zonder samenvatting bestaat
+  niet meer.
+
+### 12.6 Verlengde testfase (punt 20)
+
+- Gedragsbewijs past niet altijd in de sprint. Na de sprint kan het team één keer een verlengde testfase van 2 tot 8
+  weken nemen, met het tussenbesluit "doorgaan met testen" (`decisions.action = 'extend'`, `extend_weeks`).
+- Zolang de fase loopt, weigert de database een definitief besluit en het starten van de uitkomstklok. Na de fase volgt
+  het definitieve besluit (met de Reality Check van dat moment) en start de klok. Na een definitief besluit is er geen
+  verlengde fase meer. Coachregel `extension_ending` meldt het einde.
+- Bekende beperking: het voorspelmoment "bij het besluit" is één moment. Wie al vóór het tussenbesluit voorspelde,
+  voorspelt na de verlengde fase niet opnieuw.

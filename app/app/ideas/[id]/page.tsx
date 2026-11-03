@@ -1,12 +1,160 @@
+import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { PageFrame } from "@/components/shell/PageFrame";
+import { Icon, type IconName } from "@/components/Icon";
+import { calendarDate } from "@/components/sprint/SprintCard";
 import { getIdea } from "@/lib/data";
 import { loadProgress } from "@/lib/progress";
-import { nextAction } from "@/lib/domain/coach";
+import { loadOpenNotes } from "@/lib/coach/review";
+import { NOTE_KINDS, type NoteKind } from "@/lib/coach/rules";
+import { nextAction, predictionTip, sprintStage } from "@/lib/domain/coach";
+import { SPRINT_PHASES, sprintStatus, todayInNL } from "@/lib/domain/sprint";
+import { currentStepLabel, stepOverview } from "@/lib/steps";
 
-// An idea always opens at its next sensible step.
-export default async function IdeaIndex({ params }: PageProps<"/app/ideas/[id]">) {
+export const metadata: Metadata = { title: "Dossieroverzicht" };
+
+const SHORTCUTS: { suffix: string; label: string; icon: IconName }[] = [
+  { suffix: "/research", label: "Marktverkenning", icon: "compass" },
+  { suffix: "/assumptions", label: "Aannames", icon: "layers" },
+  { suffix: "/experiments", label: "Experimenten", icon: "flask" },
+  { suffix: "/evidence", label: "Bewijs & besluit", icon: "shield" },
+  { suffix: "/report", label: "Rapportage", icon: "file" },
+  { suffix: "/outcome", label: "Voorspelling & uitkomst", icon: "trend" },
+  { suffix: "/integrations", label: "Bronnen & koppelingen", icon: "users" },
+];
+
+// Dossieroverzicht: beslisvraag, sprintweek en stap, voortgang per stap, de volgende actie en de open coachtips.
+// Opdrachtgevers gaan zoals voorheen direct naar het rapport.
+export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id]">) {
   const { id } = await params;
-  const { canWrite } = await getIdea(id);
+  const { idea, canWrite } = await getIdea(id);
   if (!canWrite) redirect(`/app/ideas/${id}/report`);
-  redirect(nextAction(await loadProgress(id)).href);
+  const progress = await loadProgress(id);
+  const today = todayInNL();
+  const next = nextAction(progress);
+  const tip = predictionTip(progress);
+  const steps = stepOverview(progress);
+  const notes = await loadOpenNotes(id, "consultant");
+  const s = sprintStatus({
+    start: idea.sprint_start,
+    weeks: idea.sprint_weeks,
+    today,
+    stage: sprintStage(progress),
+    testsStarted: progress.experimentsLive + progress.experimentsEnded > 0,
+  });
+  const sprintText = !s.planned
+    ? "Nog geen sprint gepland"
+    : s.state === "running"
+      ? `Week ${s.week} van ${s.weeks} · ${SPRINT_PHASES[s.phase].label}`
+      : s.state === "finished"
+        ? "Sprint afgerond"
+        : `Sprint start over ${s.daysToStart} ${s.daysToStart === 1 ? "dag" : "dagen"}`;
+  const done = steps.filter((x) => x.done).length;
+
+  return (
+    <PageFrame crumbs={["Werkruimte", idea.title, "Overzicht"]} coach="overview" ideaId={id}>
+      <div className="section-row">
+        <div>
+          <div className="eyebrow">Dossieroverzicht</div>
+          <h1>{idea.title}</h1>
+          <p className="sub">{idea.decision_question}</p>
+        </div>
+      </div>
+
+      <div className="grid-3">
+        <div className="card tight">
+          <div className="eyebrow">Sprint</div>
+          <strong>{sprintText}</strong>
+          {s.planned && s.behind && <p className="tiny mt-8">{s.behindReason}</p>}
+        </div>
+        <div className="card tight">
+          <div className="eyebrow">Huidige stap</div>
+          <strong>{currentStepLabel(progress)}</strong>
+          <p className="tiny mt-8">{done} van 5 stappen met bewijs</p>
+        </div>
+        <div className="card tight">
+          <div className="eyebrow">Beslisdatum en inzet</div>
+          <strong>{idea.decision_deadline ? calendarDate(idea.decision_deadline, { day: "numeric", month: "long", year: "numeric" }) : "Geen beslisdatum"}</strong>
+          <p className="tiny mt-8">{idea.decision_stakes ? `Inzet: ${idea.decision_stakes}` : "Inzet niet vastgelegd"}</p>
+        </div>
+      </div>
+
+      <div className="card mt-24">
+        <div className="section-title">
+          <h2 className="as-h3">Volgende stap</h2>
+          <span className="pill blue">Aanbevolen</span>
+        </div>
+        <p style={{ fontSize: 16, fontWeight: 700 }}>{next.title}</p>
+        <p className="sub">{next.detail}</p>
+        <Link className="btn primary mt-12" href={next.href}>
+          <Icon name={next.icon} /> {next.title} <Icon name="arrow" size="sm" />
+        </Link>
+        {tip && tip.href !== next.href && (
+          <p className="tiny mt-12">
+            Ook nuttig: <Link className="text-link" href={tip.href}>{tip.title}</Link>. {tip.detail}
+          </p>
+        )}
+      </div>
+
+      <div className="grid-2 mt-24">
+        <div className="card">
+          <div className="section-title">
+            <h2 className="as-h3">Voortgang per stap</h2>
+            <span className="pill gray num">{done}/5</span>
+          </div>
+          <ol className="stack" style={{ listStyle: "none", padding: 0, margin: 0 }} aria-label="Stappen van het dossier">
+            {steps.map((step, i) => (
+              <li key={step.key} className="quickline" aria-current={step.current ? "step" : undefined}>
+                <span className="num" style={step.done ? { background: "var(--color-primary)", color: "var(--color-on-dark)" } : undefined} aria-hidden="true">
+                  {step.done ? <Icon name="check" size="sm" /> : i + 1}
+                </span>
+                <div>
+                  <strong>
+                    <Link href={step.href}>{step.label}</Link>
+                  </strong>
+                  <span>{step.counts}</span>
+                </div>
+                <span className={`pill ${step.done ? "green" : step.current ? "blue" : "gray"}`}>{step.done ? "Klaar" : step.current ? "Nu" : "Later"}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        <div className="card">
+          <div className="section-title">
+            <h2 className="as-h3">Open coachtips</h2>
+            <span className={`pill ${notes.length ? "coral" : "gray"}`}>{notes.length} open</span>
+          </div>
+          {notes.length === 0 ? (
+            <p className="sub">Geen open punten. De coach meldt zich als er iets opvalt in het dossier.</p>
+          ) : (
+            notes.slice(0, 6).map((n) => {
+              const k = NOTE_KINDS[(n.kind as NoteKind) in NOTE_KINDS ? (n.kind as NoteKind) : "tip"];
+              return (
+                <div className="quickline" key={n.id}>
+                  <span className="num" aria-hidden="true"><Icon name={k.icon} size="sm" /></span>
+                  <div>
+                    <strong>{n.title}</strong>
+                    <span>{k.label}{n.source === "ai" ? " · AI-coach, advies" : ""}</span>
+                  </div>
+                  {n.href && <Link className="text-link" href={n.href} aria-label={`Bekijken: ${n.title}`}>Bekijken →</Link>}
+                </div>
+              );
+            })
+          )}
+          {notes.length > 6 && <p className="tiny">En nog {notes.length - 6} in het coachpaneel.</p>}
+        </div>
+      </div>
+
+      <div className="section-title mt-24"><h2>Snelkoppelingen</h2></div>
+      <div className="chat-suggestions" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+        {SHORTCUTS.map((sc) => (
+          <Link key={sc.suffix} className="suggestion card tight" href={`/app/ideas/${id}${sc.suffix}`}>
+            <Icon name={sc.icon} /> {sc.label}
+          </Link>
+        ))}
+      </div>
+    </PageFrame>
+  );
 }

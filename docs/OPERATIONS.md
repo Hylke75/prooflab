@@ -107,7 +107,7 @@ bestand opnieuw uit (ze zijn herhaalbaar), registreer daarna pas.
 | `GEMINI_API_KEY` | Vercel (server) | Zelfde patroon in Google AI Studio (API keys) |
 | `RESEND_API_KEY` | Vercel (server) | Zelfde patroon in Resend. `EMAIL_FROM` alleen wijzigen naar een geverifieerd domein |
 | Supabase publishable key | Vercel (`NEXT_PUBLIC_…`) | Project settings → API keys: nieuwe publishable key maken, uitrollen, oude intrekken |
-| Supabase secret/service-role key | Niet in de app (alleen CI-lokaal en beheer) | Bij een lek intrekken in het dashboard; de app gebruikt hem niet |
+| Supabase secret/service-role key | Standaard niet in de app. Optioneel `SUPABASE_SERVICE_ROLE_KEY` (Vercel, server), alleen voor eenmalige inloglinks in uitnodigingen (§10) | Bij een lek intrekken in het dashboard en uit Vercel halen; uitnodigingen vallen dan terug op de link naar de inlogpagina |
 | Supabase JWT-signeersleutel | Supabase | Project settings → JWT keys: nieuwe sleutel als standby, roteren; ingelogde gebruikers loggen opnieuw in |
 | `SENTRY_DSN` | Vercel (server) | Nieuwe client key in het monitoringproject, uitrollen, oude intrekken |
 | Webhook-tokens (Expandi) | Per dossier, alleen de hash in de database | Bij een lek: endpoint uitschakelen en een nieuwe maken op "Bronnen & koppelingen"; de URL in Expandi vervangen |
@@ -219,3 +219,46 @@ supabase stop --no-backup
 ```
 
 Inloglinks (magic links) uit de lokale stack staan in Mailpit: <http://127.0.0.1:54324>.
+
+## 10. Uitnodigingen aan opdrachtgevers en e-mail via Resend
+
+Een uitnodiging (Klanten → dossier → "Uitnodigen", of "Stuur inloglink opnieuw") maakt de rij in `idea_members` aan en
+verstuurt een eigen e-mail via Resend (`lib/invite.ts`, `lib/email.ts`), niet meer de standaardmail van Supabase Auth.
+
+**Gekozen route zonder service-rol-sleutel (standaard).** De e-mail bevat een link naar
+`/login?email=<adres>`. De inlogpagina opent dan op "Inloggen zonder wachtwoord" met het adres ingevuld; de opdrachtgever
+vraagt zelf een magic link aan ("log in met een magic link"). Waarom dit de veiligste route is:
+
+- er staat geen inlogtoken in onze e-mail: een doorgestuurde of gelekte uitnodiging geeft geen toegang;
+- de app heeft geen service-rol-sleutel nodig (die omzeilt alle RLS) en blijft bij het principe "elke query met de JWT
+  van de gebruiker";
+- Supabase verstuurt de magic link alleen naar het adres zelf, en maakt alleen een account aan voor uitgenodigde adressen
+  (`may_create_account` en de auth-hook, §6).
+
+**Optioneel: eenmalige link.** Staat `SUPABASE_SERVICE_ROLE_KEY` in Vercel (alleen server), dan maakt de app met Supabase
+admin `generateLink` (type `magiclink`, of `invite` voor een nieuw adres) een eenmalige link naar
+`/auth/confirm?token_hash=…`. De sleutel wordt nergens anders gebruikt. Mislukt `generateLink`, dan valt de app terug op de
+link naar de inlogpagina.
+
+**Zonder `RESEND_API_KEY`/`EMAIL_FROM`** wordt niets verstuurd. De app meldt eerlijk "E-mail niet gekoppeld" en toont de
+link om te kopiëren en zelf te delen. Weigert Resend (bijv. een niet-geverifieerd domein), dan volgt dezelfde kopieerbare
+link met de foutmelding.
+
+### Resend als SMTP voor Supabase Auth instellen
+
+De magic link die de opdrachtgever op de inlogpagina aanvraagt, verstuurt Supabase Auth zelf. Zonder eigen SMTP gebruikt
+Supabase een gedeelde testserver met een zeer lage limiet. Stel daarom Resend in als SMTP (eigenaar van het project):
+
+1. Resend → Domains: verifieer het afzenderdomein (SPF/DKIM-records bij de DNS-beheerder) en maak een API-sleutel met
+   alleen "Sending access".
+2. Supabase-dashboard → Authentication → Emails → **SMTP Settings** → *Enable custom SMTP*:
+   - **Host**: `smtp.resend.com`
+   - **Port**: `465`
+   - **Username**: `resend`
+   - **Password**: de Resend-API-sleutel
+   - **Sender email**: een adres op het geverifieerde domein (bijv. `inloggen@jouwdomein.nl`), **Sender name**: `ProofLab`
+3. Opslaan, en onder Authentication → Rate Limits de limiet voor e-mails verhogen naar wat past (bijv. 30 per uur).
+4. Controle: vraag op `/login` een inloglink aan voor een uitgenodigd testadres en kijk in Resend → Emails of hij is
+   verstuurd.
+
+Dezelfde sleutel mag als `RESEND_API_KEY` in Vercel staan; `EMAIL_FROM` moet ook op het geverifieerde domein liggen.

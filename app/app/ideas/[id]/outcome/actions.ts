@@ -8,13 +8,15 @@ import { loadProgress } from "@/lib/progress";
 import { env, aiConfigured } from "@/lib/env";
 import { runAi, aiErrorMessage } from "@/lib/ai/guard";
 import { forecastOutcome } from "@/lib/ai/forecast";
+import { proposeReference } from "@/lib/ai/reference";
+import { PROPOSAL_REFERENCE_PREFIX } from "@/lib/domain/reference-proposal";
 import { providersFor } from "@/lib/ai/settings";
 import { PROVIDER_LABELS, providerOfModel } from "@/lib/ai/providers/config";
 import { ensembleMean } from "@/lib/ai/providers/select";
 import { dossierSummaryForAi, loadDossier } from "@/lib/dossier";
 import { ideaContext } from "@/lib/idea-context";
 import { todayInNL } from "@/lib/domain/sprint";
-import { OutcomeDefinitionSchema, optionalAmount as number } from "@/lib/forecast-schemas";
+import { EffortSchema, ExclusionSchema, OutcomeDefinitionSchema, optionalAmount as number, outcomeValueProblem } from "@/lib/forecast-schemas";
 import {
   FORECAST_MOMENTS,
   NO_REFERENCE,
@@ -23,6 +25,7 @@ import {
   PROBABILITY_MAX,
   PROBABILITY_MIN,
   followUp,
+  measureWindowProblem,
   openMomentFor,
   pct,
 } from "@/lib/domain/forecast";
@@ -35,13 +38,27 @@ const refresh = (id: string) => {
 };
 
 export async function saveOutcomeDefinition(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
-  await requireWritableIdea(ideaId);
+  const { idea } = await requireWritableIdea(ideaId);
   const p = OutcomeDefinitionSchema.safeParse(Object.fromEntries(form));
   if (!p.success) return { error: p.error.issues[0].message };
+  const valueProblem = outcomeValueProblem(p.data);
+  if (valueProblem) return { error: valueProblem };
+  // De meetdatum ligt na de beslisdatum en binnen zes maanden daarna. Is het besluit al genomen, dan telt die
+  // datum; anders de geplande beslisdatum, en zonder beslisdatum vandaag.
+  const decisionDate = idea.outcome_clock_start ?? idea.decision_deadline ?? todayInNL();
+  const windowProblem = p.data.outcome_measure_date ? measureWindowProblem(p.data.outcome_measure_date, decisionDate) : null;
+  if (windowProblem) return { error: windowProblem };
   const supabase = await supabaseServer();
   const { error } = await supabase
     .from("ideas")
-    .update({ outcome_statement: p.data.outcome_statement, outcome_metric: p.data.outcome_metric, outcome_target: p.data.outcome_target })
+    .update({
+      outcome_statement: p.data.outcome_statement,
+      outcome_metric: p.data.outcome_metric,
+      outcome_target: p.data.outcome_target,
+      outcome_min_value_per_customer: p.data.outcome_min_value_per_customer ?? null,
+      outcome_revenue_target: p.data.outcome_revenue_target ?? null,
+      outcome_measure_date: p.data.outcome_measure_date ?? null,
+    })
     .eq("id", ideaId);
   if (error) {
     if (error.message.includes("OUTCOME_LOCKED")) return { error: "De uitkomstdefinitie ligt vast: er is al een voorspelling gegeven. Zo kan niemand achteraf het doel verschuiven." };
@@ -80,6 +97,16 @@ export async function saveBaseRate(ideaId: string, _: ActionState, form: FormDat
     const rate = Number(row.achieved);
     const source = `Eigen basispercentage: ${pct(rate)} van ${Number(row.resolved)} afgeronde dossiers van dit projecttype haalde het doel (peildatum ${todayInNL()}).`;
     update = { reference_class: `${OWN_REFERENCE_PREFIX}${idea.project_type}`, base_rate_low: rate, base_rate_high: rate, base_rate_note: note ? `${source} ${note}`.slice(0, 600) : source };
+  } else if (p.data.reference.startsWith(PROPOSAL_REFERENCE_PREFIX)) {
+    // Een door AI voorgestelde referentie die ProofLab letterlijk op de bronpagina terugvond.
+    const proposalId = p.data.reference.slice(PROPOSAL_REFERENCE_PREFIX.length);
+    const { data: r } = /^[0-9a-f-]{36}$/i.test(proposalId)
+      ? await supabase.from("reference_proposals").select("id, rate, label, source_url").eq("id", proposalId).eq("idea_id", ideaId).maybeSingle()
+      : { data: null };
+    if (!r) return { error: "Dit referentievoorstel bestaat niet (meer). Ververs de pagina." };
+    const rate = Number(r.rate);
+    const source = `${r.label}: ${pct(rate)} volgens ${r.source_url} (door AI voorgesteld, citaat door ProofLab letterlijk teruggevonden).`;
+    update = { reference_class: `${PROPOSAL_REFERENCE_PREFIX}${r.id}`, base_rate_low: rate, base_rate_high: rate, base_rate_note: note ? `${source} ${note}`.slice(0, 600) : source.slice(0, 600) };
   } else {
     const { data: c } = await supabase.from("reference_classes").select("id, low, high").eq("id", p.data.reference).maybeSingle();
     if (!c) return { error: "Deze referentieklasse bestaat niet (meer). Ververs de pagina." };
@@ -89,6 +116,44 @@ export async function saveBaseRate(ideaId: string, _: ActionState, form: FormDat
   if (error) return { error: "Het basispercentage kon niet worden opgeslagen." };
   refresh(ideaId);
   return { error: null, ok: "Basispercentage vastgelegd." };
+}
+
+// "Laat AI een referentie met bron voorstellen": het model zoekt, ProofLab haalt de pagina zelf op en bewaart een
+// voorstel alleen als het citaat met het percentage er letterlijk op staat. Kiezen blijft een menselijke stap.
+export async function proposeReferenceWithSource(ideaId: string, _: ActionState): Promise<ActionState> {
+  const { idea } = await requireWritableIdea(ideaId);
+  if (!aiConfigured()) return { error: "AI is niet verbonden in deze omgeving. Kies een referentie met bron of 'geen goede referentie'." };
+  if (!idea.outcome_statement) return { error: "Leg eerst vast wanneer dit idee geslaagd is; daar zoekt de referentie een vergelijking voor." };
+  const supabase = await supabaseServer();
+  const { data: exists } = await supabase.rpc("forecasts_exist", { p_idea: ideaId });
+  if (exists === true) return { error: "Het basispercentage ligt vast zodra er voorspellingen zijn." };
+  let result;
+  try {
+    result = await runAi(ideaId, "reference_proposal", (provider) =>
+      proposeReference({ idea: ideaContext(idea), outcome: `${idea.outcome_statement} (gemeten uiterlijk zes maanden na het besluit)` }, provider),
+    );
+  } catch (e) {
+    return { error: aiErrorMessage(e, "Het zoeken naar een referentie is niet gelukt. Probeer het later opnieuw.") };
+  }
+  let stored = 0;
+  for (const r of result.accepted) {
+    const { error } = await supabase.rpc("record_reference_proposal", {
+      p_key: env.ingestSecret,
+      p_idea: ideaId,
+      p_label: r.label,
+      p_rate: r.rate,
+      p_url: r.url,
+      p_title: r.title,
+      p_quote: r.quote,
+      p_passage: r.passage,
+      p_model: result.model,
+    });
+    if (!error) stored++;
+  }
+  const dropped = result.rejected.length ? ` ${result.rejected.length} voorstel${result.rejected.length === 1 ? "" : "len"} afgewezen: ${result.rejected[0].reason}` : "";
+  if (stored === 0) return { error: `Geen referentie gevonden waarvan ProofLab het citaat met percentage letterlijk op de bronpagina terugvond.${dropped} Kies een bestaande referentie of 'geen goede referentie'.` };
+  refresh(ideaId);
+  return { error: null, ok: `${stored} referentie${stored === 1 ? "" : "s"} met teruggevonden bron toegevoegd aan de keuzelijst. Controleer of de vergelijkingsgroep past voordat je kiest.${dropped}` };
 }
 
 // ---------------------------------------------------------------------------
@@ -162,7 +227,10 @@ export async function requestAiForecast(ideaId: string, _: ActionState): Promise
       ? "Geen goede referentie gevonden"
       : idea.reference_class.startsWith(OWN_REFERENCE_PREFIX)
         ? "Eigen afgeronde dossiers van dit projecttype"
-        : ((await supabase.from("reference_classes").select("label").eq("id", idea.reference_class).maybeSingle()).data?.label ?? idea.reference_class);
+        : idea.reference_class.startsWith(PROPOSAL_REFERENCE_PREFIX)
+          ? ((await supabase.from("reference_proposals").select("label").eq("id", idea.reference_class.slice(PROPOSAL_REFERENCE_PREFIX.length)).maybeSingle()).data?.label ??
+            "Door AI voorgestelde referentie met bron")
+          : ((await supabase.from("reference_classes").select("label").eq("id", idea.reference_class).maybeSingle()).data?.label ?? idea.reference_class);
   const dossier = await loadDossier(idea);
   // Every provider gets the same fenced dossier prompt and forecasts independently (in parallel, blind to the others).
   const input = {
@@ -232,6 +300,7 @@ export async function saveCheckin(ideaId: string, _: ActionState, form: FormData
   const p = CheckinSchema.safeParse(Object.fromEntries(form));
   if (!p.success) return { error: p.error.issues[0].message };
   if (!idea.outcome_due) return { error: "De tussenstand volgt drie maanden na het besluit. Er is nog geen besluit met een uitkomstdatum." };
+  if (idea.outcome_question === "stop_review") return { error: "Na een stop- of pauzebesluit is er geen doel meer om de tussenstand van te geven." };
   const fu = followUp({ outcomeDue: idea.outcome_due, clockStart: idea.outcome_clock_start, checkins: 0, resolved: false, today: todayInNL() });
   if (fu.checkinDate && todayInNL() < fu.checkinDate) return { error: `De tussenstand kan vanaf ${fu.checkinDate}, drie maanden na het besluit.` };
   const supabase = await supabaseServer();
@@ -252,17 +321,89 @@ export async function resolveOutcome(ideaId: string, _: ActionState, form: FormD
   const { idea } = await requireWritableIdea(ideaId);
   const p = OutcomeSchema.safeParse(Object.fromEntries(form));
   if (!p.success) return { error: p.error.issues[0].message };
+  // Golf B, punt 2: de inzet hoort bij elke nieuwe uitkomst.
+  const effort = EffortSchema.safeParse(Object.fromEntries(form));
+  if (!effort.success) return { error: effort.error.issues[0].message };
   if (!idea.outcome_statement) return { error: "Leg eerst vast wanneer dit idee geslaagd is." };
   if (!idea.outcome_due) return { error: "De uitkomst wordt gemeten zes maanden na het besluit. Neem eerst het besluit." };
+  if (idea.outcome_question === "stop_review") return { error: STOPPED_MESSAGE };
   if (todayInNL() < idea.outcome_due && p.data.confirm_early !== "on")
     return { error: `De uitkomstdatum is ${idea.outcome_due}. Eerder vastleggen kan alleen als de uitkomst al zeker is; vink dat dan expliciet aan.` };
   const supabase = await supabaseServer();
-  const { error } = await supabase.from("idea_outcomes").insert({ idea_id: ideaId, achieved: p.data.achieved, actual_value: p.data.actual_value ?? null, evidence: p.data.evidence });
+  const { error } = await supabase.from("idea_outcomes").insert({
+    idea_id: ideaId,
+    achieved: p.data.achieved,
+    actual_value: p.data.actual_value ?? null,
+    evidence: p.data.evidence,
+    started: effort.data.started === "yes",
+    effort_hours: effort.data.started === "yes" ? (effort.data.effort_hours ?? null) : null,
+    budget_pct_of_plan: effort.data.started === "yes" ? (effort.data.budget_pct_of_plan ?? null) : null,
+  });
   if (error) {
     if (error.code === "23505") return { error: "De uitkomst is al vastgelegd. Een uitkomst is een vast feit en wordt niet herschreven." };
     if (error.message.includes("OUTCOME_UNDEFINED")) return { error: "Leg eerst vast wanneer dit idee geslaagd is." };
+    if (error.message.includes("OUTCOME_STOPPED")) return { error: STOPPED_MESSAGE };
     return { error: "De uitkomst kon niet worden opgeslagen." };
   }
   refresh(ideaId);
   return { error: null, ok: "Uitkomst vastgelegd. De voorspellingen zijn nu gescoord." };
+}
+
+// ---------------------------------------------------------------------------
+// Golf B, punt 2: een dossier met onvoldoende uitvoering uit de kalibratie halen (consultant, met reden, geaudit)
+// ---------------------------------------------------------------------------
+
+export async function excludeFromCalibration(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const p = ExclusionSchema.safeParse(Object.fromEntries(form));
+  if (!p.success) return { error: p.error.issues[0].message };
+  const supabase = await supabaseServer();
+  const { error } = await supabase.from("calibration_exclusions").insert({ idea_id: ideaId, reason: p.data.reason });
+  if (error) {
+    if (error.code === "23505") return { error: "Dit dossier telt al niet mee in de kalibratie." };
+    if (error.message.includes("EXCLUSION_NOT_ALLOWED")) return { error: "Alleen een uitkomst met onvoldoende uitvoering kan uit de kalibratie worden gehaald." };
+    return { error: "Uitsluiten is niet gelukt." };
+  }
+  refresh(ideaId);
+  return { error: null, ok: "Dit dossier telt niet meer mee in de kalibratie. De reden staat in het auditspoor." };
+}
+
+export async function includeInCalibration(ideaId: string, _: ActionState): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  const { error } = await supabase.from("calibration_exclusions").delete().eq("idea_id", ideaId);
+  if (error) return { error: "Weer meetellen is niet gelukt." };
+  refresh(ideaId);
+  return { error: null, ok: "Dit dossier telt weer mee in de kalibratie. Ook dat staat in het auditspoor." };
+}
+
+// ---------------------------------------------------------------------------
+// Golf B, punt 1: na een stop of pauze "Was stoppen achteraf terecht?" in plaats van de uitkomst
+// ---------------------------------------------------------------------------
+
+const STOPPED_MESSAGE = "Na een stop- of pauzebesluit vervalt de uitkomstvraag. Leg in plaats daarvan vast of stoppen achteraf terecht was.";
+const NOT_STOPPED = "Deze vraag hoort bij een dossier dat met stoppen of pauzeren is afgesloten.";
+
+const StopReviewSchema = z.object({
+  justified: z.enum(["yes", "no", "unknown"], { message: "Kies of stoppen achteraf terecht was." }),
+  evidence: z.string().trim().min(10, "Beschrijf het bewijs: waaruit blijkt dat stoppen wel of niet terecht was?").max(2000),
+  confirm_early: z.string().optional(),
+});
+
+export async function resolveStopReview(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const { idea } = await requireWritableIdea(ideaId);
+  const p = StopReviewSchema.safeParse(Object.fromEntries(form));
+  if (!p.success) return { error: p.error.issues[0].message };
+  if (idea.outcome_question !== "stop_review" || !idea.outcome_due) return { error: NOT_STOPPED };
+  if (todayInNL() < idea.outcome_due && p.data.confirm_early !== "on")
+    return { error: `De vraag staat open vanaf ${idea.outcome_due}. Eerder vastleggen kan alleen als het antwoord al zeker is; vink dat dan expliciet aan.` };
+  const supabase = await supabaseServer();
+  const { error } = await supabase.from("stop_reviews").insert({ idea_id: ideaId, justified: p.data.justified, evidence: p.data.evidence });
+  if (error) {
+    if (error.code === "23505") return { error: "Het antwoord is al vastgelegd. Het is een vast feit en wordt niet herschreven." };
+    if (error.message.includes("STOP_REVIEW_NOT_APPLICABLE")) return { error: NOT_STOPPED };
+    return { error: "Het antwoord kon niet worden opgeslagen." };
+  }
+  refresh(ideaId);
+  return { error: null, ok: "Vastgelegd. Het telt mee bij de terechte stops, niet in de kalibratie van slagingskansen." };
 }

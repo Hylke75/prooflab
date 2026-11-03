@@ -71,6 +71,188 @@ export function sampleNeeded(expectedPct: number, thresholdPct: number): number 
 }
 
 // ---------------------------------------------------------------------------
+// Methode 2026-11-b: beslisregels per testtype (6a).
+//
+// - "absolute": voor sterke handelingen (aanbetaling, betaling, getekende toezegging, herhaalaankoop). Vooraf
+//   ligt een aantal vast ("minstens 3 aanbetalingen uit 15 gesprekken"). Geslaagd zodra dat aantal na de
+//   eindconditie is gehaald; niet gehaald na een volledige test = niet geslaagd.
+// - "probability": voor percentagetests (landingpagina, prijstest op klikniveau, enquête, interviews). Met een
+//   vlakke prior Beta(1,1) is de posterior Beta(1 + s, 1 + n − s). Geslaagd als P(p > succesdrempel) ≥ 0,80;
+//   niet geslaagd als P(p > faaldrempel) ≤ 0,20 (zonder faaldrempel: de succesdrempel); daartussen onbeslist.
+// - Het 95%-Wilson-interval blijft ter informatie; ligt ook de ondergrens boven de succesdrempel, dan krijgt
+//   een geslaagde test het extra label "sterk bewezen".
+// ---------------------------------------------------------------------------
+
+export type DecisionRule = "absolute" | "probability";
+export const DECISION_RULES: Record<DecisionRule, { label: string; short: string }> = {
+  absolute: { label: "Vast aantal (sterke handeling)", short: "aantalregel" },
+  probability: { label: "Kansregel (percentage)", short: "kansregel" },
+};
+export const PASS_PROBABILITY = 0.8;
+export const FAIL_PROBABILITY = 0.2;
+
+// P(X ≤ x) voor X ~ Beta(a, b): de geregulariseerde onvolledige bètafunctie.
+export function betaCdf(x: number, a: number, b: number): number {
+  return regIncBeta(x, a, b);
+}
+
+// P(echte waarde > drempel) na s successen uit n, met prior Beta(1,1). s mag een niet-geheel getal zijn
+// (gebruikt bij het vooraf rekenen met een verwacht aandeel).
+export function probabilityAbove(successes: number, n: number, thresholdPct: number): number {
+  const s = Math.max(0, Math.min(successes, n));
+  const t = Math.min(1, Math.max(0, thresholdPct / 100));
+  return 1 - betaCdf(t, 1 + s, 1 + Math.max(0, n - s));
+}
+
+export type VerdictLabel = "sterk bewezen" | "geslaagd" | "niet geslaagd" | "onbeslist" | "loopt nog";
+
+export type RuleDetails = {
+  rule: DecisionRule | "interval"; // "interval" = methode 2026-11-a
+  probability: number | null; // P(p > succesdrempel), kansregel
+  probabilityFail: number | null; // P(p > faaldrempel), kansregel
+  successCount: number | null; // aantalregel
+  strongProof: boolean; // Wilson-ondergrens ≥ succesdrempel
+  label: VerdictLabel;
+};
+export type RuledVerdict = Verdict & RuleDetails;
+
+export type VerdictV2Input = VerdictInput & { rule: DecisionRule; successCount?: number | null };
+
+const labelOf = (kind: Verdict["kind"], strong: boolean): VerdictLabel =>
+  kind === "running" ? "loopt nog" : kind === "pass" ? (strong ? "sterk bewezen" : "geslaagd") : kind === "fail" ? "niet geslaagd" : "onbeslist";
+
+export function verdictV2(v: VerdictV2Input): RuledVerdict {
+  const interval = wilson(v.successes, v.n);
+  const strong = v.n > 0 && interval.low >= v.successThresholdPct / 100;
+  const base = { interval, rule: v.rule, successCount: null as number | null, probability: null as number | null, probabilityFail: null as number | null };
+  const out = (kind: Verdict["kind"], reason: string, extra: Partial<RuleDetails> = {}): RuledVerdict => ({
+    kind,
+    reason,
+    ...base,
+    ...extra,
+    strongProof: kind === "pass" && strong,
+    label: labelOf(kind, strong),
+  });
+
+  if (v.rule === "absolute") {
+    const count = Math.max(1, Math.round(v.successCount ?? 1));
+    const extra = { successCount: count };
+    if (!v.endConditionReached) {
+      return out("running", `De test loopt: ${v.successes} van de vooraf afgesproken ${count}. Een uitspraak volgt pas na de eindconditie.`, extra);
+    }
+    if (v.successes >= count) return out("pass", `Het afgesproken aantal is gehaald: ${v.successes} (minimaal ${count}).`, extra);
+    if (v.n < v.minSample) {
+      return out("inconclusive", `Te weinig deelnemers: ${v.n} van de minimaal ${v.minSample}, en ${v.successes} van de ${count} gehaald. Het resultaat is onbeslist.`, extra);
+    }
+    return out("fail", `Het afgesproken aantal is niet gehaald: ${v.successes} van de minimaal ${count} na ${v.n} deelnemers.`, extra);
+  }
+
+  const failPct = v.failThresholdPct ?? v.successThresholdPct;
+  const pAbove = probabilityAbove(v.successes, v.n, v.successThresholdPct);
+  const pAboveFail = probabilityAbove(v.successes, v.n, failPct);
+  const extra = { probability: pAbove, probabilityFail: pAboveFail };
+  if (!v.endConditionReached) {
+    return out(
+      "running",
+      `De test loopt. Een uitspraak volgt pas na de afgesproken eindconditie (minimaal ${v.minSample} deelnemers of einde looptijd).`,
+      extra,
+    );
+  }
+  if (v.n < v.minSample) {
+    return out("inconclusive", `Te weinig deelnemers: ${v.n} van de minimaal ${v.minSample}. Het resultaat is onbeslist.`, extra);
+  }
+  const p = (x: number) => pct(x, 0);
+  if (pAbove >= PASS_PROBABILITY) {
+    return out(
+      "pass",
+      `De kans dat het echte percentage boven ${v.successThresholdPct}% ligt is ${p(pAbove)} (minimaal ${p(PASS_PROBABILITY)} nodig).${strong ? " Ook de ondergrens van het 95%-interval ligt boven de drempel: sterk bewezen." : ""}`,
+      extra,
+    );
+  }
+  if (pAboveFail <= FAIL_PROBABILITY) {
+    return out("fail", `De kans dat het echte percentage boven ${failPct}% ligt is maar ${p(pAboveFail)} (${p(FAIL_PROBABILITY)} of minder = niet geslaagd).`, extra);
+  }
+  return out(
+    "inconclusive",
+    `De kans dat het echte percentage boven ${v.successThresholdPct}% ligt is ${p(pAbove)}: te onzeker voor geslaagd (≥ ${p(PASS_PROBABILITY)}) of niet geslaagd (≤ ${p(FAIL_PROBABILITY)} boven ${failPct}%).`,
+    extra,
+  );
+}
+
+// Methode 2026-11-a als RuledVerdict: dezelfde uitkomst als verdict(), met de details die de schermen tonen.
+export function verdictV1(v: VerdictInput): RuledVerdict {
+  const r = verdict(v);
+  return { ...r, rule: "interval", probability: null, probabilityFail: null, successCount: null, strongProof: r.kind === "pass", label: labelOf(r.kind, false) };
+}
+
+export const MAX_REQUIRED_N = 20000;
+
+// Benodigd aantal deelnemers om de drempel te kunnen halen als de uitkomst gelijk is aan de verwachting.
+// - kansregel: de kleinste n waarbij, met waargenomen aandeel = verwacht, P(p > drempel) ≥ 0,80;
+// - aantalregel: de kleinste n waarbij verwacht × n het afgesproken aantal haalt.
+// Null als de verwachting de drempel niet haalt (of niet binnen 20.000 deelnemers).
+export function requiredSample(input: { rule: DecisionRule; expectedPct: number; thresholdPct: number; successCount?: number | null }): number | null {
+  const e = input.expectedPct / 100;
+  if (!(e > 0) || e > 1) return null;
+  if (input.rule === "absolute") {
+    const count = Math.max(1, Math.round(input.successCount ?? 0));
+    const n = Math.ceil(count / e - 1e-9);
+    return n <= MAX_REQUIRED_N ? n : null;
+  }
+  if (input.expectedPct <= input.thresholdPct) return null;
+  const ok = (n: number) => probabilityAbove(e * n, n, input.thresholdPct) >= PASS_PROBABILITY;
+  // Let op: bij een lage drempel geeft de vlakke prior Beta(1,1) zonder data al P(p > drempel) = 1 − drempel
+  // (bij 20% precies 0,80). Bij weinig deelnemers zakt de kans dan eerst iets en stijgt daarna. Daarom zoeken
+  // we de kleinste n vanaf waar de regel blijvend wordt gehaald (ook bij elke grotere n), met een ondergrens
+  // van MIN_REQUIRED_N deelnemers: dezelfde ondergrens als de minimale steekproef van de hypothesecoach.
+  const SCAN = 400;
+  let firstStable: number | null = null;
+  for (let n = 1; n <= SCAN; n++) {
+    if (ok(n)) firstStable ??= n;
+    else firstStable = null;
+  }
+  if (firstStable != null) return Math.max(MIN_REQUIRED_N, firstStable);
+  // Voorbij de eerste honderden deelnemers stijgt de kans monotoon met n: binair zoeken.
+  let lo = SCAN;
+  let hi = SCAN * 2;
+  while (!ok(hi)) {
+    lo = hi;
+    hi *= 2;
+    if (hi > MAX_REQUIRED_N * 2) return null;
+  }
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (ok(mid)) hi = mid;
+    else lo = mid;
+  }
+  return hi <= MAX_REQUIRED_N ? hi : null;
+}
+
+export const MIN_REQUIRED_N = 5;
+
+// Haalbaarheid binnen de looptijd: beschikbare deelnemers per week × aantal weken.
+export function sampleFeasibility(input: { requiredN: number | null; availablePerWeek: number | null; maxDurationDays: number; minSample: number }): {
+  capacity: number | null;
+  warnings: string[];
+} {
+  const warnings: string[] = [];
+  const capacity = input.availablePerWeek != null && input.availablePerWeek > 0 ? Math.floor((input.availablePerWeek * input.maxDurationDays) / 7) : null;
+  if (input.requiredN == null) {
+    warnings.push("Met deze verwachting is de drempel niet te halen, hoe groot de test ook wordt. Pas de verwachting of de drempel aan.");
+    return { capacity, warnings };
+  }
+  if (capacity != null && capacity < input.requiredN) {
+    warnings.push(
+      `Niet realistisch binnen de looptijd: ${input.requiredN} deelnemers nodig, en met ${input.availablePerWeek} per week in ${input.maxDurationDays} dagen bereik je er ongeveer ${capacity}.`,
+    );
+  }
+  if (input.minSample < input.requiredN) {
+    warnings.push(`De minimale steekproef (${input.minSample}) is kleiner dan het benodigde aantal (${input.requiredN}): de test eindigt dan waarschijnlijk onbeslist.`);
+  }
+  return { capacity, warnings };
+}
+
+// ---------------------------------------------------------------------------
 // Bayesian estimate with prior knowledge (research 3.6). A Beta-binomial posterior whose prior comes
 // from earlier ended tests of the same type in the same organisation, so a lucky result on a small
 // sample is pulled towards what earlier tests showed (winner's curse). Shown next to the Wilson

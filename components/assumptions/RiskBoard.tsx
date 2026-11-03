@@ -5,9 +5,14 @@ import { useEffect, useRef, useState } from "react";
 import { layoutRiskPoints } from "@/lib/domain/risk-layout";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { ASSUMPTION_CATEGORIES, ASSUMPTION_STATUS, type AssumptionCategory, type AssumptionStatus } from "@/lib/domain/labels";
-import { bandFromShift, explainContribution, probabilityFromShift, type AssumptionProbability } from "@/lib/domain/evidence";
+import { applyCap, bandFromShift, capReason, explainContribution, explainMerged, probabilityFromShift, type AssumptionProbability } from "@/lib/domain/evidence";
 import type { VoiResult } from "@/lib/domain/recommend";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
+import { Probability } from "@/components/ui/Probability";
+import { formatProbability } from "@/lib/domain/probability-display";
+import { explainRecruitment } from "@/lib/domain/recruitment";
+import { explainIndirect } from "@/lib/domain/claim-scope";
+import { priorNeedsRationale, PRIOR_TEXT_MAX, PRIOR_TEXT_MIN } from "@/lib/domain/prior";
 
 export type BoardAssumption = {
   id: string;
@@ -20,6 +25,8 @@ export type BoardAssumption = {
   supporting: number;
   contradicting: number;
   probability: AssumptionProbability;
+  priorRationale: string | null;
+  priorLocked: boolean;
   voi: VoiResult;
   claims: { id: string; statement: string; relation: string; status: string }[];
 };
@@ -44,7 +51,9 @@ export function RiskBoard({
   importanceActions,
   priorActions,
   deleteActions,
+  calibrated = false,
 }: {
+  calibrated?: boolean;
   ideaId: string;
   assumptions: BoardAssumption[];
   claims: { id: string; statement: string; status: string }[];
@@ -52,7 +61,7 @@ export function RiskBoard({
   linkActions: Record<string, Action>;
   unlinkActions: Record<string, Record<string, () => Promise<void>>>;
   importanceActions: Record<string, (f: FormData) => Promise<void>>;
-  priorActions: Record<string, (f: FormData) => Promise<void>>;
+  priorActions: Record<string, Action>;
   deleteActions: Record<string, () => Promise<void>>;
 }) {
   const [sel, setSel] = useState(assumptions[0]?.id ?? null);
@@ -135,7 +144,7 @@ export function RiskBoard({
                 className={`risk-dot${hot ? " hot" : ""}`}
                 style={{ ...pos(p.x, p.y, p.dx, p.dy), outline: a.id === current.id ? "3px solid var(--color-heading)" : undefined }}
                 onClick={() => select(a.id)}
-                aria-label={`Aanname ${p.index + 1}: ${a.statement}. Geschatte kans dat dit klopt: ${pctR(a.probability.probability)}.`}
+                aria-label={`Aanname ${p.index + 1}: ${a.statement}. Geschatte kans dat dit klopt: ${formatProbability(a.probability.probability, calibrated).text}${calibrated ? "" : " (niet gekalibreerd)"}.`}
                 aria-pressed={a.id === current.id}
               >
                 {p.index + 1}
@@ -184,8 +193,8 @@ export function RiskBoard({
           <button key={a.id} type="button" className={`assumption-item${a.id === current.id ? " active" : ""}`} onClick={() => select(a.id)} aria-pressed={a.id === current.id}>
             <span className="count">{i + 1}</span>
             <span>{a.statement}</span>
-            <small aria-label={`Informatiewaarde ${a.voi.index} van 100, geschatte kans ${pctR(a.probability.probability)}`}>
-              {pctR(a.probability.probability)} · IW {a.voi.index}
+            <small aria-label={`Informatiewaarde ${a.voi.index} van 100, geschatte kans ${formatProbability(a.probability.probability, calibrated).text}${calibrated ? "" : " (niet gekalibreerd)"}${a.probability.cap?.active ? ", begrensd" : ""}`}>
+              {formatProbability(a.probability.probability, calibrated).text}{a.probability.cap?.active ? " (begrensd)" : ""} · IW {a.voi.index}
             </small>
           </button>
         ))}
@@ -198,7 +207,7 @@ export function RiskBoard({
           {current.origin === "premortem" && <span className="pill coral">Uit de pre-mortem</span>}
           <span className="pill gray">Bewijsscore {Math.round(current.evidence * 100)} van 100</span>
         </div>
-        <ProbabilityDetail a={current} prior={prior} setPrior={setPrior} save={canWrite ? priorActions[current.id] : undefined} />
+        <ProbabilityDetail key={current.id} a={current} prior={prior} setPrior={setPrior} save={canWrite ? priorActions[current.id] : undefined} calibrated={calibrated} />
         <p className="sub mt-12">
           <strong>Waarom nu testen (informatiewaarde {current.voi.index} van 100):</strong> {current.voi.why}
         </p>
@@ -252,19 +261,50 @@ export function RiskBoard({
 }
 
 // Probability with its band, the three largest contributions and a what-if starting value.
-function ProbabilityDetail({ a, prior, setPrior, save }: { a: BoardAssumption; prior: number; setPrior: (p: number) => void; save?: (f: FormData) => Promise<void> }) {
-  const p = probabilityFromShift(prior, a.probability.shift);
-  const band = bandFromShift(prior, a.probability.shift);
-  const ignored = a.probability.ignored.synthetic + a.probability.ignored.rejected;
+function ProbabilityDetail({
+  a,
+  prior,
+  setPrior,
+  save,
+  calibrated,
+}: {
+  a: BoardAssumption;
+  prior: number;
+  setPrior: (p: number) => void;
+  save?: Action;
+  calibrated: boolean;
+}) {
+  // Methode 2026-11-b: het plafond van het hoogste bewijsniveau geldt ook voor een andere beginwaarde.
+  const cap = a.probability.cap ?? null;
+  const capMax = cap ? cap.max : null;
+  const rawP = probabilityFromShift(prior, a.probability.shift);
+  const p = applyCap(rawP, capMax);
+  const rawBand = bandFromShift(prior, a.probability.shift);
+  const band = { low: applyCap(rawBand.low, capMax), high: applyCap(rawBand.high, capMax) };
+  const capped = !!cap && p < rawP;
+  const unreviewed = a.probability.ignored.unreviewed ?? 0;
+  const ignored = a.probability.ignored.synthetic + a.probability.ignored.rejected + unreviewed;
   return (
     <div className="mt-12" style={{ background: "var(--color-surface-muted)", borderRadius: "var(--radius-inner)", padding: "12px 14px" }}>
       <div className="row between">
-        <strong style={{ font: "700 24px var(--font-heading),sans-serif", letterSpacing: "-.04em" }} className="num">{pctR(p)}</strong>
-        <span className="pill gray">Geschat · bandbreedte {pctR(band.low)}–{pctR(band.high)}</span>
+        <strong style={{ font: "700 24px var(--font-heading),sans-serif", letterSpacing: "-.04em" }}>
+          <Probability p={p} calibrated={calibrated} showLabel={false} />
+        </strong>
+        <span className="pill gray">
+          {calibrated ? "Geschat" : "Niet gekalibreerd"} · bandbreedte <Probability p={band.low} high={band.high} calibrated={calibrated} showLabel={false} />
+        </span>
       </div>
       <p className="explain" style={{ marginTop: 2 }}>
         Geschatte kans dat deze aanname klopt. De bandbreedte laat zien wat er gebeurt als de factoren per bewijssoort 50% zwakker of sterker zijn.
+        {calibrated
+          ? ""
+          : " Niet gekalibreerd: je werkruimte heeft nog te weinig opgeloste dossiers om deze kansen te toetsen, daarom tonen we een band van 10 procentpunt. De exacte waarde staat in de tooltip."}
       </p>
+      {capped && cap && (
+        <p className="tiny mt-8">
+          <span className="pill orange">{capReason(cap.level, cap.max)}</span> Zonder plafond <Probability p={rawP} calibrated={calibrated} showLabel={false} />. Hoogste bewijsniveau tot nu toe: {cap.levelLabel.toLowerCase()}.
+        </p>
+      )}
       {a.probability.top.length > 0 ? (
         <ul style={{ margin: "8px 0 0 18px", fontSize: 14, lineHeight: 1.7 }} aria-label="Grootste bijdragen aan de kans">
           {a.probability.top.map((c) => (
@@ -276,15 +316,28 @@ function ProbabilityDetail({ a, prior, setPrior, save }: { a: BoardAssumption; p
       ) : (
         <p className="tiny mt-8">Nog geen bewijs dat meetelt: de kans staat op de beginwaarde.</p>
       )}
+      {(a.probability.merged ?? []).length > 0 && (
+        <ul className="tiny" style={{ margin: "8px 0 0 18px", lineHeight: 1.6 }} aria-label="Samengevoegde signalen">
+          {a.probability.merged!.map((m) => <li key={m.key}>{explainMerged(m)}</li>)}
+        </ul>
+      )}
+      {(a.probability.recruitment ?? []).length > 0 && (
+        <ul className="tiny" style={{ margin: "8px 0 0 18px", lineHeight: 1.6 }} aria-label="Signalen uit dezelfde wervingsgroep">
+          {a.probability.recruitment!.map((r) => <li key={r.group}>{explainRecruitment(r)}</li>)}
+        </ul>
+      )}
+      {(a.probability.indirect ?? 0) > 0 && <p className="tiny mt-8">{explainIndirect(a.probability.indirect!)}</p>}
       {ignored > 0 && (
         <p className="tiny mt-8">
           Niet meegeteld: {a.probability.ignored.synthetic ? `${a.probability.ignored.synthetic} synthetische observatie(s)` : ""}
           {a.probability.ignored.synthetic && a.probability.ignored.rejected ? " en " : ""}
-          {a.probability.ignored.rejected ? `${a.probability.ignored.rejected} afgekeurde AI-codering(en)` : ""}.
+          {a.probability.ignored.rejected ? `${a.probability.ignored.rejected} afgekeurde AI-codering(en)` : ""}
+          {(a.probability.ignored.synthetic || a.probability.ignored.rejected) && unreviewed ? " en " : ""}
+          {unreviewed ? `${unreviewed} AI-codering(en) die nog op beoordeling wachten (tellen pas mee na akkoord)` : ""}.
         </p>
       )}
       <div className="row mt-8">
-        <label className="tiny" htmlFor={`prior-${a.id}`}>Beginwaarde</label>
+        <label className="tiny" htmlFor={`prior-${a.id}`}>Startkans (beginwaarde)</label>
         <select
           className="field"
           id={`prior-${a.id}`}
@@ -295,16 +348,40 @@ function ProbabilityDetail({ a, prior, setPrior, save }: { a: BoardAssumption; p
           {PRIORS.map((x) => <option key={x} value={x}>{pctR(x)}</option>)}
         </select>
       </div>
-      {save && prior !== a.probability.prior && (
-        <form action={save} className="mt-8">
+      {save && (prior !== a.probability.prior || (priorNeedsRationale(prior) && !a.priorRationale)) && (
+        <ActionForm action={save} submitLabel={`Bewaar ${pctR(prior)} als startkans`} submitClass="btn white sm" pendingLabel="Opslaan…">
           <input type="hidden" name="prior" value={prior} />
-          <button className="btn white sm">Bewaar {pctR(prior)} als beginwaarde</button>
-          <FormPendingOverlay />
-        </form>
+          {priorNeedsRationale(prior) && (
+            <div className="form-line mt-8">
+              <label htmlFor={`prior-why-${a.id}`}>Onderbouwing van {pctR(prior)} (verplicht bij een afwijking van 50%)</label>
+              <textarea
+                className="field"
+                id={`prior-why-${a.id}`}
+                name="prior_rationale"
+                rows={2}
+                minLength={PRIOR_TEXT_MIN}
+                maxLength={PRIOR_TEXT_MAX}
+                required
+                defaultValue={a.priorRationale ?? ""}
+                placeholder="Bijv. basispercentage van vergelijkbare diensten, of eerder onderzoek met bron"
+              />
+            </div>
+          )}
+          {a.priorLocked && prior !== a.probability.prior && (
+            <div className="form-line mt-8">
+              <label htmlFor={`prior-reason-${a.id}`}>Reden van wijziging (komt in het auditspoor)</label>
+              <textarea className="field" id={`prior-reason-${a.id}`} name="prior_reason" rows={2} minLength={PRIOR_TEXT_MIN} maxLength={PRIOR_TEXT_MAX} required />
+            </div>
+          )}
+        </ActionForm>
+      )}
+      {a.priorRationale && priorNeedsRationale(a.probability.prior) && (
+        <p className="tiny mt-8">Onderbouwing van de startkans: {a.priorRationale}</p>
       )}
       <p className="explain">
         Hoe waarschijnlijk vond je dit vóór enig bewijs? Kies een andere waarde om te zien hoe gevoelig de kans daarvoor is
-        {save ? "; bewaar hem als je hem kunt onderbouwen (bijvoorbeeld met het basispercentage)." : "."} Opgeslagen: {pctR(a.probability.prior)}.
+        {save ? "; een afwijking van 50% bewaar je alleen met een onderbouwing (bijvoorbeeld het basispercentage)." : "."} Opgeslagen: {pctR(a.probability.prior)}.
+        {a.priorLocked ? " Vergrendeld: er hangt bewijs aan deze aanname, dus wijzigen kan alleen met een reden." : ""}
       </p>
     </div>
   );

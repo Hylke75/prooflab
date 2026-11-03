@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { questionDraftText } from "@/lib/domain/ai-draft";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { requireWritableIdea } from "@/lib/data";
@@ -9,12 +10,14 @@ import { fetchPageText } from "@/lib/fetch-page";
 import { checkQuote, normalizeText, numericFromInput, registrableDomain, valueInQuote } from "@/lib/domain/verify";
 import { aiConfigured, env } from "@/lib/env";
 import { analyzeSignals, planResearch } from "@/lib/ai/research";
-import { aiSupportCheck } from "@/lib/research-runner";
+import { aiSupportCheck, collectCbsFigures } from "@/lib/research-runner";
 import { isSupportCheck } from "@/lib/domain/support";
 import { priceOnPage, recheckChanges, recheckQuotes, type CompetitorRecheck, type PageRecheck } from "@/lib/domain/recheck";
 import { isSignalSource, painAsAssumption, verifySignalGroups, type SignalExcerpt, type SignalQuote } from "@/lib/domain/customer-signals";
 import { ideaContext } from "@/lib/idea-context";
 import { aiErrorMessage, runAi } from "@/lib/ai/guard";
+import { EXPECTED_SOURCE_KEYS } from "@/lib/domain/research-plan";
+import { isUnknown, normalizeReferenceDate, scopeValue, UNKNOWN } from "@/lib/domain/claim-scope";
 
 export type ActionState = { error: string | null; ok?: string | null };
 
@@ -37,6 +40,16 @@ const QuestionSchema = z.object({
   done_criterion: z.string().trim().min(5).max(400),
   method: z.enum(["desk", "customer", "both"]),
   status: z.enum(["open", "answered", "needs_customer_research"]),
+  unit: z
+    .string()
+    .trim()
+    .max(120)
+    .optional()
+    .transform((s) => (s ? s : null)),
+  expected_source: z
+    .union([z.enum(EXPECTED_SOURCE_KEYS), z.literal("")])
+    .optional()
+    .transform((s) => (s ? s : null)),
 });
 
 export async function saveQuestion(ideaId: string, questionId: string | null, _: ActionState, form: FormData): Promise<ActionState> {
@@ -84,12 +97,26 @@ export async function aiPlan(ideaId: string, _: ActionState): Promise<ActionStat
     const manual = (existing ?? []).filter((q) => q.origin === "manual");
     await supabase.from("research_questions").delete().eq("idea_id", ideaId).neq("origin", "manual");
     const free = [1, 2, 3, 4, 5].filter((p) => !manual.some((m) => m.position === p));
-    const rows = res.data.questions.slice(0, free.length).map((q, i) => ({ ...q, idea_id: ideaId, position: free[i], origin: "ai" }));
+    // Het AI-origineel blijft bewaard (golf A, punt 17), zodat zichtbaar is wat de consultant aanpaste.
+    const rows = res.data.questions
+      .slice(0, free.length)
+      .map((q, i) => ({ ...q, idea_id: ideaId, position: free[i], origin: "ai", ai_original: questionDraftText(q).slice(0, 4000) }));
     if (rows.length) await supabase.from("research_questions").insert(rows);
     return done(ideaId, "De onderzoekskaart is opnieuw opgesteld. Controleer de vragen.");
   } catch (e) {
     return { error: aiErrorMessage(e, "Het onderzoeksplan kon niet worden gemaakt. De huidige vragen blijven staan.") };
   }
+}
+
+// CBS StatLine: officiële bedrijventellingen als bron, zonder AI. Er wordt geen bevinding aangemaakt: de
+// consultant legt zelf een bevinding met citaat vast (of een onderzoeksrun leest de tabelregels uit).
+export async function fetchCbsFigures(ideaId: string, _: ActionState): Promise<ActionState> {
+  const { idea } = await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  const { data: sizeQuestion } = await supabase.from("research_questions").select("question").eq("idea_id", ideaId).eq("expected_source", "official_statistic").order("position").limit(1).maybeSingle();
+  const res = await collectCbsFigures(idea, null, sizeQuestion?.question ?? null);
+  if (res.excerptIds.length === 0) return { error: `${res.detail} Voeg de cijfers anders handmatig toe onder Bronnen.` };
+  return done(ideaId, `${res.detail} Opgeslagen als bron (officiële statistiek) onder Bronnen; leg zelf de bevinding met citaat vast.`);
 }
 
 // ---------------------------------------------------------------------------
@@ -179,7 +206,15 @@ const ClaimSchema = z.object({
   section: z.enum(["market", "customers", "competition", "pricing", "sizing", "regulation", "other"]),
   freshness_kind: z.enum(["statistic", "price", "regulation", "product", "general"]),
   question_id: z.string().optional(),
-  region: z.string().trim().max(120).optional(),
+  // Golf C, punt 7: verplicht, of expliciet "onbekend".
+  population: z.string().trim().min(1, "Vul de populatie in, of schrijf \"onbekend\".").max(200),
+  region: z.string().trim().min(1, "Vul de regio in, of schrijf \"onbekend\".").max(120),
+  reference_date: z
+    .string()
+    .trim()
+    .min(1, "Vul de peildatum in, of schrijf \"onbekend\".")
+    .max(40)
+    .refine((v) => isUnknown(v) || normalizeReferenceDate(v) !== UNKNOWN, "Schrijf de peildatum als jaartal (2025), maand (2025-06) of datum, of \"onbekend\"."),
   period: z.string().trim().max(60).optional(),
   numeric_value: z.string().trim().optional(),
   unit: z.string().trim().max(40).optional(),
@@ -211,7 +246,9 @@ export async function addClaim(ideaId: string, _: ActionState, form: FormData): 
       section: v.section,
       statement: v.statement,
       evidence_type: v.evidence_type,
-      region: blank(v.region),
+      population: scopeValue(v.population, 200),
+      region: scopeValue(v.region),
+      reference_date: normalizeReferenceDate(v.reference_date),
       period: blank(v.period),
       numeric_value: numeric,
       unit: blank(v.unit),
@@ -367,7 +404,7 @@ export async function saveScenario(ideaId: string, scenarioId: string, _: Action
   await requireWritableIdea(ideaId);
   const supabase = await supabaseServer();
   const { data: factors } = await supabase.from("sizing_factors").select("id, key, unit, label").eq("scenario_id", scenarioId).eq("idea_id", ideaId);
-  const rows: { id: string; value: number; claim_id: string | null; note: string | null; low_value: number | null; high_value: number | null }[] = [];
+  const rows: { id: string; value: number; claim_id: string | null; note: string | null; low_value: number | null; high_value: number | null; year: number | null; region: string | null }[] = [];
   // Validate every factor first, so an error never leaves a half-saved scenario.
   for (const f of factors ?? []) {
     // Same reading as quotes: "41.230" is forty-one thousand, "2,5" is two and a half.
@@ -388,8 +425,14 @@ export async function saveScenario(ideaId: string, scenarioId: string, _: Action
       if (low > high) return { error: `${f.label}: de ondergrens is hoger dan de bovengrens.` };
       if (value < low || value > high) return { error: `${f.label}: de waarde ligt buiten de eigen bandbreedte.` };
     }
+    // Golf C, punt 8: jaar en regio van het getal (leeg of "onbekend" = onbekend).
+    const rawYear = String(form.get(`year_${f.key}`) ?? "").trim();
+    const year = rawYear === "" ? null : /^\d{4}$/.test(rawYear) && Number(rawYear) >= 1950 && Number(rawYear) <= 2100 ? Number(rawYear) : NaN;
+    if (Number.isNaN(year)) return { error: `${f.label}: schrijf het jaar als vier cijfers, bijvoorbeeld 2025, of laat het leeg.` };
+    const rawRegion = blank(form.get(`region_${f.key}`));
+    const region = rawRegion == null || isUnknown(rawRegion) ? null : rawRegion.slice(0, 120);
     const claim = String(form.get(`claim_${f.key}`) ?? "");
-    rows.push({ id: f.id, value, claim_id: /^[0-9a-f-]{36}$/.test(claim) ? claim : null, note: blank(form.get(`note_${f.key}`)), low_value: low, high_value: high });
+    rows.push({ id: f.id, value, claim_id: /^[0-9a-f-]{36}$/.test(claim) ? claim : null, note: blank(form.get(`note_${f.key}`)), low_value: low, high_value: high, year, region });
   }
   for (const { id, ...row } of rows) {
     const { error } = await supabase.from("sizing_factors").update(row).eq("id", id).eq("idea_id", ideaId);
@@ -446,6 +489,8 @@ export async function startResearchRun(ideaId: string, mode: "quick" | "deep"): 
   for (const q of qs) {
     tasks.push({ run_id: run.id, idea_id: ideaId, position: pos++, kind: "search", question_id: q.id, label: `Bronnen zoeken: vraag ${q.position}` });
     tasks.push({ run_id: run.id, idea_id: ideaId, position: pos++, kind: "extract", question_id: q.id, label: `Citaten controleren: vraag ${q.position}` });
+    // Golf C, punt 10: per vraag een verplichte, aparte zoekopdracht naar tegenbewijs.
+    tasks.push({ run_id: run.id, idea_id: ideaId, position: pos++, kind: "counter", question_id: q.id, label: `Tegenbewijs zoeken: vraag ${q.position}` });
   }
   if (mode === "deep") tasks.push({ run_id: run.id, idea_id: ideaId, position: pos++, kind: "reality_check", question_id: null, label: "Tegenbewijs en zwakke plekken zoeken" });
   await supabase.from("research_tasks").insert(tasks);

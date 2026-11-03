@@ -16,14 +16,21 @@ import { loadIdeaWeights } from "@/lib/learning-data";
 import { describeWeights, type WeightsInUse } from "@/lib/domain/calibration";
 import { aiConfigured } from "@/lib/env";
 import { ASSUMPTION_CATEGORIES, type AssumptionCategory, type AssumptionStatus } from "@/lib/domain/labels";
+import { asMethodVersion, CURRENT_METHOD, METHODS, type MethodVersion } from "@/lib/domain/method";
+import { EVIDENCE_LEVELS, type EvidenceCaps } from "@/lib/domain/evidence";
+import { loadCalibration, loadIdeaCaps } from "@/lib/method-data";
 import { addAssumption, deleteAssumption, linkClaim, seedAssumptions, setImportance, setPrior, unlinkClaim } from "./actions";
+import { DecisionRuleCard } from "@/components/decision/DecisionRule";
+import { loadDecisionRule } from "@/lib/decision-rule-data";
+import { forecastFirstLock } from "@/lib/domain/forecast";
+import { ForecastFirstLock } from "@/components/forecast/ForecastFirstLock";
 
 export const metadata: Metadata = { title: "Aannames" };
 
 const lrText = (e: LrEntry) => (e.lr === 1 ? "telt niet mee" : e.against ? `÷ ${fmtLr(e.lr)} (tegenbewijs)` : `× ${fmtLr(e.lr)} (tegen: ÷ ${fmtLr(e.lr)})`);
 
 // The factors behind the probabilities and the ranking, visible as they are used in code.
-function HowWeCalculate({ weights }: { weights: WeightsInUse }) {
+function HowWeCalculate({ weights, method, caps }: { weights: WeightsInUse; method: MethodVersion; caps: EvidenceCaps }) {
   const rows = [...Object.values(OBSERVATION_LR), ...Object.values(CLAIM_LR)];
   return (
     <details className="card mt-18">
@@ -31,9 +38,28 @@ function HowWeCalculate({ weights }: { weights: WeightsInUse }) {
       <p className="sub mt-12">
         Elke aanname begint op 50%. Elk stuk bewijs vermenigvuldigt de kansverhouding (odds) met een vaste factor; tegenbewijs deelt erdoor.
         Meer van hetzelfde telt afnemend mee: n stuks tellen als log₂(1 + n) stuks, dus 20 dezelfde meningen brengen 50% maar naar ongeveer 60%.
-        AI-gecodeerde observaties tellen voor {AI_UNREVIEWED_WEIGHT * 100}% zolang niemand ze heeft beoordeeld, volledig na akkoord en niet na afkeuren. Synthetische data telt nooit mee.
+        {METHODS[method].primaryDecides
+          ? "AI-gecodeerde observaties tellen pas mee na akkoord van een consultant, niet zolang niemand ze heeft beoordeeld en niet na afkeuren."
+          : `AI-gecodeerde observaties tellen voor ${AI_UNREVIEWED_WEIGHT * 100}% zolang niemand ze heeft beoordeeld, volledig na akkoord en niet na afkeuren.`}{" "}
+        Synthetische data telt nooit mee.
         De kans blijft altijd tussen 1% en 99%.
       </p>
+      {METHODS[method].usesCaps ? (
+        <p className="sub mt-12">
+          {METHODS[method].label}: ondersteunend bewijs uit dezelfde bron (dezelfde enquête of test, hetzelfde interview, dezelfde bron of outreach-campagne) telt
+          één keer, met de sterkste factor; tegenbewijs telt per signaal. De kans is begrensd door het hoogste bewijsniveau:{" "}
+          {EVIDENCE_LEVELS.map((l) => `${l.label.toLowerCase()} ${l.level === "repeat" ? "geen plafond" : `${Math.round(caps[l.level as keyof EvidenceCaps] * 100)}%`}`).join("; ")}.
+        </p>
+      ) : (
+        <p className="sub mt-12">{METHODS[method].label}: geen samenvoegen per bron en geen plafond per bewijsniveau.</p>
+      )}
+      {METHODS[method].primaryDecides && (
+        <p className="sub mt-12">
+          {METHODS[method].label}: ondersteunend bewijs uit dezelfde wervingsgroep (eigen netwerk, warm contact, koud, betaald panel of onbekend) telt over
+          verschillende bronnen heen afnemend mee: n bronnen uit één groep tellen als log₂(1 + n). Per aanname beslist alleen de vooraf aangewezen hoofdtest over de
+          status; andere tests zijn verkennend.
+        </p>
+      )}
       <div style={{ overflowX: "auto" }}>
         <table className="table mt-12">
           <caption className="sr-only">Factor per soort bewijs</caption>
@@ -62,12 +88,17 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
   const { id } = await params;
   const { idea, canWrite } = await getIdea(id);
   const supabase = await supabaseServer();
-  const [ranked, progress, { data: claims }, { data: links }, weights] = await Promise.all([
+  const method = asMethodVersion(idea.method_version);
+  const [ranked, progress, { data: claims }, { data: links }, weights, caps, calibration, rule, { data: experiments }] = await Promise.all([
     loadInformationValue(id),
     loadProgress(id),
     supabase.from("claims").select("id, statement, status").eq("idea_id", id).order("created_at"),
     supabase.from("assumption_claims").select("assumption_id, claim_id, relation, claims(statement, status)").eq("idea_id", id),
     loadIdeaWeights(id),
+    loadIdeaCaps(id),
+    loadCalibration(id),
+    loadDecisionRule(id),
+    supabase.from("experiments").select("id, title").eq("idea_id", id).order("created_at"),
   ]);
   const board: BoardAssumption[] = ranked.map((a) => ({
     ...a,
@@ -75,6 +106,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
     status: a.status as AssumptionStatus,
     claims: (links ?? []).filter((l) => l.assumption_id === a.id).map((l) => ({ id: l.claim_id, relation: l.relation, statement: l.claims?.statement ?? "", status: l.claims?.status ?? "" })),
   }));
+  const lock = forecastFirstLock(progress);
   const missing = (Object.keys(ASSUMPTION_CATEGORIES) as AssumptionCategory[]).filter((c) => !board.some((a) => a.category === c));
   const usable = (claims ?? []).filter((c) => c.status !== "insufficient");
 
@@ -91,8 +123,16 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
         </Link>
       </div>
       <Stepper current="assumptions" ideaId={id} done={stepsDone(progress)} />
+      {method !== CURRENT_METHOD && (
+        <div className="note">
+          Dit dossier rekent met methode {method}. <Link className="text-link" href={`/app/ideas/${id}/method`}>Bekijk wat overstappen naar methode {CURRENT_METHOD} verandert →</Link>
+        </div>
+      )}
 
-      {board.length === 0 ? (
+      {lock ? (
+        // Golf B, punt 15: eerst de eigen voorspelling, dan de berekende kansen op de risicokaart.
+        <ForecastFirstLock ideaId={id} moment={lock} what="de risicokaart met de berekende kans per aanname" client={!canWrite} />
+      ) : board.length === 0 ? (
         <div className="empty-state">
           <h2 className="as-h3">Nog geen aannames</h2>
           <p>
@@ -112,6 +152,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
           assumptions={board}
           claims={usable}
           canWrite={canWrite}
+          calibrated={calibration.calibrated}
           linkActions={Object.fromEntries(board.map((a) => [a.id, linkClaim.bind(null, id, a.id)]))}
           unlinkActions={Object.fromEntries(board.map((a) => [a.id, Object.fromEntries(a.claims.map((c) => [c.id, unlinkClaim.bind(null, id, a.id, c.id)]))]))}
           importanceActions={Object.fromEntries(board.map((a) => [a.id, setImportance.bind(null, id, a.id)]))}
@@ -127,8 +168,17 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
         </div>
       )}
 
-      <RedTeamButton ideaId={id} assumptions={board} canWrite={canWrite} />
-      {board.length > 0 && <HowWeCalculate weights={weights.inUse} />}
+      {!lock && <RedTeamButton ideaId={id} assumptions={board} canWrite={canWrite} />}
+      {rule !== undefined && (
+        <DecisionRuleCard
+          ideaId={id}
+          rule={rule}
+          assumptions={ranked.map((a) => ({ id: a.id, statement: a.statement, importance: a.importance, primaryExperimentId: a.primaryExperimentId }))}
+          experiments={experiments ?? []}
+          canWrite={canWrite}
+        />
+      )}
+      {board.length > 0 && !lock && <HowWeCalculate weights={weights.inUse} method={method} caps={caps.caps} />}
 
       {canWrite && (
         <div className="card mt-18">

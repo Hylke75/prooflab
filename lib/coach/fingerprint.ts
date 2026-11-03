@@ -31,6 +31,8 @@ export const FINGERPRINT_LABELS: Record<string, string> = {
   decisions_confirmed: "Bevestigde besluiten",
   forecasts: "Voorspellingen",
   outcome: "Uitkomst vastgelegd",
+  outcome_defined: "Uitkomstdefinitie",
+  base_rate_chosen: "Basispercentage gekozen",
   checkins: "Check-ins",
   outreach_replies: "Outreach-antwoorden",
   sprint_week: "Sprintweek",

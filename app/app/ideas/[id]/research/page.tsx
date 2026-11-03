@@ -1,3 +1,4 @@
+import { describeDraftEdit, draftEdit, questionDraftText } from "@/lib/domain/ai-draft";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PageFrame } from "@/components/shell/PageFrame";
@@ -5,7 +6,8 @@ import { Stepper } from "@/components/ui/Stepper";
 import { InsightCard, type ClaimView } from "@/components/ui/InsightCard";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { Tabs } from "@/components/research/Tabs";
-import { ResearchRunPanel } from "@/components/research/ResearchRunPanel";
+import { ResearchRunPanel, SearchLogList, type QuestionLog, type SearchLogUrl } from "@/components/research/ResearchRunPanel";
+import { EXPECTED_SOURCES, isExpectedSource } from "@/lib/domain/research-plan";
 import { AddClaimForm, AddSourceForm } from "@/components/research/SourceForms";
 import { CompetitorPanel, type CompetitorView } from "@/components/research/CompetitorPanel";
 import { SizingPanel } from "@/components/research/SizingPanel";
@@ -26,8 +28,10 @@ import { ensembleProviders } from "@/lib/ai/providers/select";
 import { aiSettingsForOrg } from "@/lib/ai/settings";
 import { CLAIM_STATUS, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type EvidenceType, type SourceType } from "@/lib/domain/labels";
 import { breakEvenRevenue, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
+import { compareWithIntake, intakeScope } from "@/lib/domain/claim-scope";
+import type { FreshnessKind } from "@/lib/domain/verify";
 import {
-  addClaim, addSource, aiPlan, checkClaimSupport, deleteClaim, deleteCompetitor, deleteQuestion, deleteSegment, deleteSource,
+  addClaim, addSource, aiPlan, fetchCbsFigures, checkClaimSupport, deleteClaim, deleteCompetitor, deleteQuestion, deleteSegment, deleteSource,
   overrideSupport, recheckCompetitors, saveCompetitor, saveQuestion, saveScenario, saveSegment, saveUnitEconomics,
 } from "./actions";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
@@ -64,10 +68,18 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   const { data: tasks } = run
     ? await supabase.from("research_tasks").select("label, status, detail, kind, output").eq("run_id", run.id).order("position")
     : { data: [] };
+  // Zoeklogboek van de laatste run (RLS: alleen het onderzoeksteam leest het).
+  const { data: logRows } =
+    run && canWrite
+      ? await supabase.from("research_search_log").select("id, question_id, question, provider, query, urls, passages, reused, kind").eq("run_id", run.id).order("created_at")
+      : { data: [] };
+  const counterTasks = (tasks ?? []).filter((t) => t.kind === "counter");
   const challenges =
     ((tasks ?? []).find((t) => t.kind === "reality_check" && t.status === "done")?.output as { challenges?: { title: string; detail: string }[] } | null)?.challenges ?? [];
 
   const questions = qs.data ?? [];
+  const counterLog = groupSearchLog((logRows ?? []).filter((r) => r.kind === "counter"), questions);
+  const intake = intakeScope(idea);
   const claims: (ClaimView & { question_id: string | null; section: string; numeric_value: number | null })[] = (claimsRes.data ?? []).map((c) => ({
     id: c.id,
     statement: c.statement,
@@ -78,6 +90,11 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     does_not_prove: c.does_not_prove,
     region: c.region,
     period: c.period,
+    scope: (() => {
+      // Golf C, punt 7: dezelfde vergelijking als bij het opslaan, zodat de waarschuwing altijd zichtbaar is.
+      const check = compareWithIntake({ population: c.population, region: c.region, referenceDate: c.reference_date, freshness: c.freshness_kind as FreshnessKind }, intake);
+      return { population: c.population, region: c.region, referenceDate: c.reference_date, relevance: check.relevance, warnings: check.warnings };
+    })(),
     definition: c.definition,
     limitations: c.limitations,
     origin: c.origin,
@@ -122,6 +139,9 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     for (const c of claims) for (const e of c.evidence) if (e.source_id === sourceId) counts[isSupportCheck(e.support_check) ? e.support_check : "unchecked"]++;
     return counts;
   };
+  // Golf C, punt 10: bevindingen die alleen als tegenbewijs (relatie 'contradicts') aan een bron hangen, staan apart.
+  const isCounter = (c: (typeof claims)[number]) => c.evidence.length > 0 && c.evidence.every((e) => e.stance === "contradicts");
+  const counterClaims = claims.filter(isCounter);
   const verified = claims.filter((c) => c.status === "verified").length;
   const answered = questions.filter((q) => q.status === "answered").length;
   const openQuestion = questions.find((q) => q.status !== "answered");
@@ -129,7 +149,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   const ue = ueRes.data;
   const sizingClaims = claims
     .filter((c) => c.status !== "insufficient")
-    .map((c) => ({ id: c.id, statement: c.statement, status: c.status, numeric_value: c.numeric_value }));
+    .map((c) => ({ id: c.id, statement: c.statement, status: c.status, numeric_value: c.numeric_value, region: c.region, reference_date: c.scope?.referenceDate ?? null }));
 
   const tab = typeof sp.tab === "string" ? sp.tab : "overview";
   const evidenceActions = (claim: (typeof claims)[number]) =>
@@ -222,7 +242,31 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                 providers={PROVIDERS.map((p) => ({ id: p, name: providerLabel(p), keyEnv: PROVIDER_KEY_ENV[p], connected: configuredProviders().includes(p) }))}
                 searchWith={canWrite && aiConfigured() ? (await researchProviders(idea.org_id)).map((p) => PROVIDER_LABELS[p].name) : []}
                 run={run ? { id: run.id, status: run.status, mode: run.mode, cost: Number(run.cost_usd), budget: Number(run.budget_usd), tasks: (tasks ?? []).map((t) => ({ label: t.label, status: t.status, detail: t.detail })) } : null}
+                searchLog={groupSearchLog((logRows ?? []).filter((r) => r.kind !== "counter"), questions)}
+                cbsAction={fetchCbsFigures.bind(null, id)}
               />
+              {/* Golf C, punt 10: tegenbewijs apart, met het eigen zoeklogboek. */}
+              {(counterClaims.length > 0 || counterLog.length > 0 || counterTasks.length > 0) && (
+                <div className="card">
+                  <div className="section-title">
+                    <h3>Tegenbewijs</h3>
+                    <span className={`pill ${counterClaims.length ? "coral" : "gray"}`}>
+                      {counterClaims.length} tegenbevinding{counterClaims.length === 1 ? "" : "en"}
+                    </span>
+                  </div>
+                  <p className="sub">
+                    Per onderzoeksvraag zoekt ProofLab apart naar bronnen die het idee tegenspreken. Elke tegenbevinding heeft een letterlijk gecontroleerd citaat.
+                    Niets gevonden bewijst niet dat het idee klopt.
+                  </p>
+                  {counterTasks.map((t, i) => (
+                    <div className="quickline" key={i}>
+                      <span className="num risk" aria-hidden="true">{t.status === "done" ? "✓" : t.status === "failed" ? "!" : "…"}</span>
+                      <div><strong>{t.label}</strong><span>{t.detail ?? (t.status === "pending" ? "Nog niet gestart." : t.status === "skipped" ? "Overgeslagen." : "")}</span></div>
+                    </div>
+                  ))}
+                  {counterLog.length > 0 && <SearchLogList questions={counterLog} canWrite={canWrite} title="Zoeklogboek tegenbewijs" />}
+                </div>
+              )}
               {challenges.length > 0 && (
                 <div className="card">
                   <div className="section-title"><h3>Tegenargumenten</h3><span className="pill coral">Advocaat van de duivel</span></div>
@@ -254,12 +298,17 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                       <span className="num">{q.position}</span>
                       <div style={{ flex: 1 }}>
                         <strong>{q.question}</strong>
-                        <span>{METHOD[q.method as keyof typeof METHOD]} · {qClaims.length} bevinding{qClaims.length === 1 ? "" : "en"}</span>
+                        <span>
+                          {METHOD[q.method as keyof typeof METHOD]}
+                          {isExpectedSource(q.expected_source) ? ` · Brontype: ${EXPECTED_SOURCES[q.expected_source]}` : ""} · {qClaims.length} bevinding{qClaims.length === 1 ? "" : "en"}
+                          {q.ai_original ? ` · AI-concept · ${describeDraftEdit(draftEdit(q.ai_original, questionDraftText(q))).toLowerCase()}` : ""}
+                        </span>
                       </div>
                       <span className={`pill ${pill}`}>{label}</span>
                     </summary>
                     <div style={{ padding: "10px 0 4px 39px" }}>
                       {q.why_it_matters && <p className="tiny">Waarom: {q.why_it_matters}</p>}
+                      {q.unit && <p className="tiny mt-8">Meeteenheid: {q.unit}</p>}
                       <p className="tiny mt-8">Klaar als: {q.done_criterion}</p>
                       {canWrite && (
                         <ActionForm action={saveQuestion.bind(null, id, q.id)} submitLabel="Vraag opslaan" submitClass="btn white sm" footer={<DeleteQuestion ideaId={id} questionId={q.id} />}>
@@ -278,6 +327,19 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                               <label className="field-label" htmlFor={`s-${q.id}`}>Status</label>
                               <select className="field" id={`s-${q.id}`} name="status" defaultValue={q.status}>
                                 {Object.entries(QSTATUS).map(([k, [v]]) => <option key={k} value={k}>{v}</option>)}
+                              </select>
+                            </div>
+                          </div>
+                          <div className="double-field">
+                            <div>
+                              <label className="field-label" htmlFor={`u-${q.id}`}>Meeteenheid</label>
+                              <input className="field" id={`u-${q.id}`} name="unit" defaultValue={q.unit ?? ""} placeholder="Bijv. aantal bedrijven" />
+                            </div>
+                            <div>
+                              <label className="field-label" htmlFor={`b-${q.id}`}>Verwacht brontype</label>
+                              <select className="field" id={`b-${q.id}`} name="expected_source" defaultValue={q.expected_source ?? ""}>
+                                <option value="">Niet opgegeven</option>
+                                {Object.entries(EXPECTED_SOURCES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                               </select>
                             </div>
                           </div>
@@ -312,7 +374,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
           ) : (
             <div className="stack">
               {questions.map((q) => {
-                const list = claims.filter((c) => c.question_id === q.id);
+                const list = claims.filter((c) => c.question_id === q.id && !isCounter(c));
                 if (list.length === 0) return null;
                 return (
                   <div key={q.id} className="stack">
@@ -321,8 +383,30 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                   </div>
                 );
               })}
-              {claims.filter((c) => !c.question_id).map((c) => <InsightCard key={c.id} claim={c} actions={claimActions(c.id)} evidenceActions={evidenceActions(c)} />)}
+              {claims.filter((c) => !c.question_id && !isCounter(c)).map((c) => <InsightCard key={c.id} claim={c} actions={claimActions(c.id)} evidenceActions={evidenceActions(c)} />)}
             </div>
+          )}
+
+          {counterClaims.length > 0 && (
+            <>
+              <div className="section-title mt-24">
+                <div>
+                  <h2>Tegenbewijs</h2>
+                  <p className="sub">Bevindingen die het idee tegenspreken, per onderzoeksvraag. Lees ze even serieus als het ondersteunende bewijs.</p>
+                </div>
+              </div>
+              <div className="stack">
+                {[...questions.map((q) => ({ key: q.id, label: `Vraag ${q.position} · ${q.question}`, list: counterClaims.filter((c) => c.question_id === q.id) })),
+                  { key: "zonder-vraag", label: "Zonder onderzoeksvraag", list: counterClaims.filter((c) => !c.question_id || !questions.some((q) => q.id === c.question_id)) }]
+                  .filter((g) => g.list.length > 0)
+                  .map((g) => (
+                    <div key={g.key} className="stack">
+                      <div className="eyebrow" style={{ marginBottom: 0 }}>{g.label}</div>
+                      {g.list.map((c) => <InsightCard key={c.id} claim={c} actions={claimActions(c.id)} evidenceActions={evidenceActions(c)} />)}
+                    </div>
+                  ))}
+              </div>
+            </>
           )}
 
           <div className="card" style={{ marginTop: 18 }}>
@@ -434,7 +518,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               id: s.id,
               kind: s.kind as ScenarioKind,
               model: s.model as SizingModel,
-              factors: (s.sizing_factors ?? []).sort((a, b) => a.position - b.position).map((f) => ({ key: f.key, label: f.label, unit: f.unit, value: Number(f.value), claim_id: f.claim_id, note: f.note, low: f.low_value, high: f.high_value })),
+              factors: (s.sizing_factors ?? []).sort((a, b) => a.position - b.position).map((f) => ({ key: f.key, label: f.label, unit: f.unit, value: Number(f.value), claim_id: f.claim_id, note: f.note, low: f.low_value, high: f.high_value, year: f.year, region: f.region })),
             }))}
             breakEvenRevenue={breakEvenRevenue({ grossMarginPct: ue?.gross_margin_pct ?? null, fixedCostsYear: ue?.fixed_costs_year ?? null })}
             actions={Object.fromEntries((scenRes.data ?? []).map((s) => [s.id, saveScenario.bind(null, id, s.id)]))}
@@ -549,6 +633,25 @@ function DeleteQuestion({ ideaId, questionId }: { ideaId: string; questionId: st
       Vraag verwijderen
     </button>
   );
+}
+
+type LogRow = { id: string; question_id: string | null; question: string | null; provider: string; query: string; urls: unknown; passages: number; reused: boolean; kind?: string };
+
+// Zoeklogboek per onderzoeksvraag, in de volgorde van de onderzoekskaart.
+function groupSearchLog(rows: LogRow[], questions: { id: string; position: number; question: string }[]): QuestionLog[] {
+  const groups = new Map<string, QuestionLog>();
+  for (const r of rows) {
+    const key = r.question_id ?? `vraag:${r.question ?? ""}`;
+    const q = questions.find((x) => x.id === r.question_id);
+    if (!groups.has(key)) groups.set(key, { key, label: q ? `Vraag ${q.position} · ${q.question}` : (r.question ?? "Vraag"), rows: [] });
+    const urls = (Array.isArray(r.urls) ? r.urls : []).flatMap((u): SearchLogUrl[] => {
+      const x = u as Partial<SearchLogUrl>;
+      return typeof x?.url === "string" ? [{ url: x.url, title: typeof x.title === "string" ? x.title : null, status: String(x.status ?? "niet_opgehaald"), reason: String(x.reason ?? "") }] : [];
+    });
+    groups.get(key)!.rows.push({ id: r.id, provider: isProvider(r.provider) ? PROVIDER_LABELS[r.provider].short : "ProofLab", query: r.query, passages: r.passages, reused: r.reused, urls });
+  }
+  const order = (k: string) => questions.find((q) => q.id === k)?.position ?? 99;
+  return [...groups.values()].sort((a, b) => order(a.key) - order(b.key));
 }
 
 // Providers that would run the web search for this organisation (its choice first, ensemble on or off).

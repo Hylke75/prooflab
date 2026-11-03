@@ -7,7 +7,9 @@ import { aiSettingsForOrg } from "@/lib/ai/settings";
 import { PROVIDER_LABELS, providerOfModel, type ProviderId } from "@/lib/ai/providers/config";
 import { ensembleProviders } from "@/lib/ai/providers/select";
 import type { IdeaProgress } from "@/lib/domain/coach";
+import type { Effort } from "@/lib/domain/effort";
 import { PROJECT_TYPES, type ProjectType } from "@/lib/domain/labels";
+import { PROPOSAL_REFERENCE_PREFIX } from "@/lib/domain/reference-proposal";
 import {
   CHECKIN_AFTER_MONTHS,
   FORECAST_MOMENTS,
@@ -22,10 +24,14 @@ import {
   type FollowUp,
   type ForecastMoment,
   type ForecasterKind,
+  type Justified,
   type OnTrack,
+  type OutcomeQuestion,
 } from "@/lib/domain/forecast";
 
-export type ReferenceClass = { id: string; label: string; low: number; high: number; sourceTitle: string; sourceUrl: string; caveat: string };
+// Een referentieklasse uit de vaste lijst, of een door AI voorgesteld en door ProofLab nagelopen voorstel voor dit
+// dossier (id "proposal:<uuid>", met het letterlijke citaat). Elke referentie heeft een bron.
+export type ReferenceClass = { id: string; label: string; low: number; high: number; sourceTitle: string; sourceUrl: string; caveat: string; quote?: string };
 
 export type BaseRateView =
   | { kind: "class"; label: string; low: number; high: number; sourceTitle: string; sourceUrl: string | null; caveat: string; note: string | null }
@@ -46,22 +52,47 @@ export type ForecastRow = {
   createdAt: string;
 };
 
-export type OutcomeRow = { achieved: Achieved; actualValue: number | null; evidence: string; resolvedAt: string };
+export type OutcomeRow = {
+  achieved: Achieved;
+  actualValue: number | null;
+  evidence: string;
+  resolvedAt: string;
+  // Golf B, punt 2: de inzet bij de uitkomst en of het dossier uit de kalibratie is gehaald.
+  effort: Effort;
+  insufficient: boolean | null;
+  exclusion: { reason: string; excludedAt: string } | null;
+};
 export type CheckinRow = { id: string; onTrack: OnTrack; currentValue: number | null; note: string; createdAt: string };
+export type StopReviewRow = { justified: Justified; evidence: string; reviewedAt: string };
 
 export type ForecastView = {
   ideaId: string;
   canWrite: boolean;
-  outcome: { statement: string | null; metric: string | null; target: number | null; due: string | null };
+  outcome: {
+    statement: string | null;
+    metric: string | null;
+    target: number | null;
+    due: string | null;
+    minValuePerCustomer: number | null;
+    revenueTarget: number | null;
+    measureDate: string | null;
+  };
+  // Beslisdatum (gepland of genomen), voor het venster van de meetdatum.
+  decisionDate: string | null;
   baseRate: BaseRateView | null;
   referenceClasses: ReferenceClass[];
   ownBaseRate: OwnBaseRate | null;
+  // Geplande inzet uit de intake, om de bestede uren mee te vergelijken (golf B, punt 2).
+  plannedStake: { kind: string | null; value: number | null };
   forecasts: ForecastRow[];
   openMoment: ForecastMoment | null;
   ownMoments: ForecastMoment[];
   // Best effort: forecasts of others stay hidden until you forecast, so the database has the final say.
   definitionLocked: boolean;
   resolved: OutcomeRow | null;
+  // Golf B, punt 1: na een stop of pauze de stopvraag in plaats van de uitkomstvraag.
+  question: OutcomeQuestion;
+  stopReview: StopReviewRow | null;
   checkins: CheckinRow[];
   followUp: FollowUp;
   today: string;
@@ -84,7 +115,7 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
   const { idea, canWrite } = access;
   const ws = await getWorkspace();
   const supabase = await supabaseServer();
-  const [classes, forecasts, outcome, checkins, own, anyForecast, orgResolved, behaviour] = await Promise.all([
+  const [classes, forecasts, outcome, checkins, own, anyForecast, orgResolved, behaviour, proposals, stopReview, exclusion] = await Promise.all([
     supabase.from("reference_classes").select("*").order("position"),
     supabase.from("forecasts").select("*").eq("idea_id", idea.id).order("created_at"),
     supabase.from("idea_outcomes").select("*").eq("idea_id", idea.id).maybeSingle(),
@@ -94,6 +125,11 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
     supabase.rpc("forecasts_exist", { p_idea: idea.id }),
     canWrite ? supabase.rpc("own_base_rate", { p_org: idea.org_id, p_project_type: null, p_min: 0 }) : Promise.resolve({ data: null, error: null }),
     supabase.from("experiments").select("id", { count: "exact", head: true }).eq("idea_id", idea.id).in("type", ["landing", "pricing"]).in("state", ["ended", "analyzed", "decided"]),
+    // Ontbreekt de tabel (oudere database), dan zijn er gewoon geen voorstellen.
+    supabase.from("reference_proposals").select("id, label, rate, source_url, source_title, quote").eq("idea_id", idea.id).order("created_at", { ascending: false }).limit(10),
+    // Ontbreekt de tabel (oudere database), dan is er geen stopvraag.
+    state.question === "stop_review" ? supabase.from("stop_reviews").select("justified, evidence, reviewed_at").eq("idea_id", idea.id).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    state.resolved ? supabase.from("calibration_exclusions").select("reason, excluded_at").eq("idea_id", idea.id).maybeSingle() : Promise.resolve({ data: null, error: null }),
   ]);
   if (classes.error || forecasts.error || outcome.error || checkins.error) return null;
 
@@ -106,6 +142,18 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
     sourceUrl: c.source_url,
     caveat: c.caveat,
   }));
+  for (const r of proposals.data ?? []) {
+    referenceClasses.push({
+      id: `${PROPOSAL_REFERENCE_PREFIX}${r.id}`,
+      label: r.label,
+      low: Number(r.rate),
+      high: Number(r.rate),
+      sourceTitle: r.source_title,
+      sourceUrl: r.source_url,
+      caveat: "Door AI voorgesteld; ProofLab vond het citaat letterlijk op de bronpagina. Controleer of de vergelijkingsgroep en de termijn passen bij dit doel.",
+      quote: r.quote,
+    });
+  }
 
   const rows = forecasts.data ?? [];
   const ids = [...new Set(rows.map((f) => f.forecaster_id).filter((x): x is string => !!x))];
@@ -143,9 +191,19 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
   return {
     ideaId: idea.id,
     canWrite,
-    outcome: { statement: idea.outcome_statement, metric: idea.outcome_metric, target: idea.outcome_target == null ? null : Number(idea.outcome_target), due: idea.outcome_due },
+    outcome: {
+      statement: idea.outcome_statement,
+      metric: idea.outcome_metric,
+      target: idea.outcome_target == null ? null : Number(idea.outcome_target),
+      due: idea.outcome_due,
+      minValuePerCustomer: idea.outcome_min_value_per_customer == null ? null : Number(idea.outcome_min_value_per_customer),
+      revenueTarget: idea.outcome_revenue_target == null ? null : Number(idea.outcome_revenue_target),
+      measureDate: idea.outcome_measure_date,
+    },
+    decisionDate: idea.outcome_clock_start ?? idea.decision_deadline,
     baseRate,
     referenceClasses,
+    plannedStake: { kind: idea.stake_kind, value: idea.stake_value == null ? null : Number(idea.stake_value) },
     ownBaseRate: ownRow ? { resolved: Number(ownRow.resolved), achieved: Number(ownRow.achieved), projectTypeLabel: PROJECT_TYPES[idea.project_type as ProjectType]?.label ?? idea.project_type } : null,
     forecasts: rows
       .filter((f) => isMoment(f.moment))
@@ -164,8 +222,22 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
     ownMoments: state.ownMoments,
     definitionLocked: rows.length > 0 || anyForecast.data === true,
     resolved: outcome.data
-      ? { achieved: outcome.data.achieved as Achieved, actualValue: outcome.data.actual_value == null ? null : Number(outcome.data.actual_value), evidence: outcome.data.evidence, resolvedAt: outcome.data.resolved_at }
+      ? {
+          achieved: outcome.data.achieved as Achieved,
+          actualValue: outcome.data.actual_value == null ? null : Number(outcome.data.actual_value),
+          evidence: outcome.data.evidence,
+          resolvedAt: outcome.data.resolved_at,
+          effort: {
+            started: outcome.data.started ?? null,
+            hours: outcome.data.effort_hours == null ? null : Number(outcome.data.effort_hours),
+            budgetPctOfPlan: outcome.data.budget_pct_of_plan == null ? null : Number(outcome.data.budget_pct_of_plan),
+          },
+          insufficient: outcome.data.execution_insufficient ?? null,
+          exclusion: exclusion.data ? { reason: exclusion.data.reason, excludedAt: exclusion.data.excluded_at } : null,
+        }
       : null,
+    question: state.question ?? "success",
+    stopReview: stopReview.data ? { justified: stopReview.data.justified as Justified, evidence: stopReview.data.evidence, reviewedAt: stopReview.data.reviewed_at } : null,
     checkins: (checkins.data ?? []).map((c) => ({ id: c.id, onTrack: c.on_track as OnTrack, currentValue: c.current_value == null ? null : Number(c.current_value), note: c.note, createdAt: c.created_at })),
     followUp: followUp(state),
     today: state.today,
@@ -176,7 +248,7 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
   };
 });
 
-export type OutcomeReminder = { ideaId: string; title: string; kind: "checkin" | "outcome"; date: string };
+export type OutcomeReminder = { ideaId: string; title: string; kind: "checkin" | "outcome" | "stop_review"; date: string };
 
 // Dashboard reminders for consultants, across all ideas of the organisation (also ones decided long ago):
 // a check-in from three months after the decision, the outcome from the outcome date.
@@ -191,20 +263,27 @@ export async function loadOutcomeReminders(orgId: string, today: string): Promis
     .order("outcome_due");
   if (error || !ideas?.length) return [];
   const ids = ideas.map((i) => i.id);
-  const [checkins, outcomes] = await Promise.all([
+  const [checkins, outcomes, questions, stopReviews] = await Promise.all([
     supabase.from("outcome_checkins").select("idea_id").in("idea_id", ids),
     supabase.from("idea_outcomes").select("idea_id").in("idea_id", ids),
+    // Golf B: zonder deze kolom of tabel (oudere database) geldt overal de succesvraag.
+    supabase.from("ideas").select("id, outcome_question").in("id", ids),
+    supabase.from("stop_reviews").select("idea_id").in("idea_id", ids),
   ]);
   if (checkins.error || outcomes.error) return [];
+  const stopped = new Set((questions.error ? [] : questions.data ?? []).filter((q) => q.outcome_question === "stop_review").map((q) => q.id));
+  const reviewed = new Set((stopReviews.error ? [] : stopReviews.data ?? []).map((r) => r.idea_id));
   return ideas.flatMap((i): OutcomeReminder[] => {
+    const question: OutcomeQuestion = stopped.has(i.id) ? "stop_review" : "success";
     const fu = followUp({
       outcomeDue: i.outcome_due,
       clockStart: i.outcome_clock_start,
       checkins: (checkins.data ?? []).filter((c) => c.idea_id === i.id).length,
-      resolved: (outcomes.data ?? []).some((o) => o.idea_id === i.id),
+      resolved: question === "stop_review" ? reviewed.has(i.id) : (outcomes.data ?? []).some((o) => o.idea_id === i.id),
+      question,
       today,
     });
-    if (fu.outcomeDue) return [{ ideaId: i.id, title: i.title, kind: "outcome" as const, date: fu.outcomeDate! }];
+    if (fu.outcomeDue) return [{ ideaId: i.id, title: i.title, kind: question === "stop_review" ? ("stop_review" as const) : ("outcome" as const), date: fu.outcomeDate! }];
     if (fu.checkinDue) return [{ ideaId: i.id, title: i.title, kind: "checkin" as const, date: fu.checkinDate! }];
     return [];
   });

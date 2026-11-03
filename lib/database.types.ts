@@ -107,6 +107,33 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_drafts: {
+        Row: {
+          id: string
+          idea_id: string
+          kind: string
+          content: Json
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          idea_id: string
+          kind: string
+          content: Json
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          idea_id?: string
+          kind?: string
+          content?: Json
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       promo_posts: {
         Row: {
           id: string
@@ -118,6 +145,7 @@ export type Database = {
           code: string
           created_by: string
           created_at: string
+          ai_original: string | null
         }
         Insert: {
           id?: string
@@ -129,6 +157,7 @@ export type Database = {
           code?: string
           created_by?: string
           created_at?: string
+          ai_original?: string | null
         }
         Update: {
           id?: string
@@ -140,6 +169,7 @@ export type Database = {
           code?: string
           created_by?: string
           created_at?: string
+          ai_original?: string | null
         }
         Relationships: []
       }
@@ -303,6 +333,7 @@ export type Database = {
           resolved_at: string | null
           resolved_by: string | null
           helpful: boolean | null
+          confirmed_without_data: boolean
         }
         Insert: {
           id?: string
@@ -319,6 +350,7 @@ export type Database = {
           resolved_at?: string | null
           resolved_by?: string | null
           helpful?: boolean | null
+          confirmed_without_data?: boolean
         }
         Update: {
           id?: string
@@ -335,6 +367,7 @@ export type Database = {
           resolved_at?: string | null
           resolved_by?: string | null
           helpful?: boolean | null
+          confirmed_without_data?: boolean
         }
         Relationships: []
       }
@@ -514,6 +547,10 @@ export type Database = {
           evidence: string
           resolved_by: string
           resolved_at: string
+          started: boolean | null
+          effort_hours: number | null
+          budget_pct_of_plan: number | null
+          execution_insufficient: boolean | null
         }
         Insert: {
           idea_id: string
@@ -522,6 +559,10 @@ export type Database = {
           evidence: string
           resolved_by?: string
           resolved_at?: string
+          started?: boolean | null
+          effort_hours?: number | null
+          budget_pct_of_plan?: number | null
+          execution_insufficient?: boolean | null
         }
         Update: {
           idea_id?: string
@@ -530,7 +571,38 @@ export type Database = {
           evidence?: string
           resolved_by?: string
           resolved_at?: string
+          started?: boolean | null
+          effort_hours?: number | null
+          budget_pct_of_plan?: number | null
+          execution_insufficient?: boolean | null
         }
+        Relationships: []
+      }
+      // Golf B (punt 6): beslisregel per dossier en de aannames met hun minimale kans.
+      decision_rules: {
+        Row: { idea_id: string; primary_experiment_id: string | null; note: string | null; created_by: string | null; created_at: string; updated_at: string; locked_at: string | null; recorded_late: boolean }
+        Insert: { idea_id: string; primary_experiment_id?: string | null; note?: string | null; created_by?: string | null; created_at?: string; updated_at?: string; locked_at?: string | null; recorded_late?: boolean }
+        Update: { idea_id?: string; primary_experiment_id?: string | null; note?: string | null; created_by?: string | null; created_at?: string; updated_at?: string; locked_at?: string | null; recorded_late?: boolean }
+        Relationships: []
+      }
+      decision_rule_assumptions: {
+        Row: { idea_id: string; assumption_id: string; min_probability: number }
+        Insert: { idea_id: string; assumption_id: string; min_probability: number }
+        Update: { idea_id?: string; assumption_id?: string; min_probability?: number }
+        Relationships: []
+      }
+      // Golf B (punt 2): dossier met onvoldoende uitvoering uit de kalibratie gehaald, met reden.
+      calibration_exclusions: {
+        Row: { idea_id: string; reason: string; excluded_by: string; excluded_at: string }
+        Insert: { idea_id: string; reason: string; excluded_by?: string; excluded_at?: string }
+        Update: { idea_id?: string; reason?: string; excluded_by?: string; excluded_at?: string }
+        Relationships: []
+      }
+      // Golf B (punt 1): "Was stoppen achteraf terecht?"
+      stop_reviews: {
+        Row: { idea_id: string; justified: string; evidence: string; reviewed_by: string; reviewed_at: string }
+        Insert: { idea_id: string; justified: string; evidence: string; reviewed_by?: string; reviewed_at?: string }
+        Update: { idea_id?: string; justified?: string; evidence?: string; reviewed_by?: string; reviewed_at?: string }
         Relationships: []
       }
       outcome_checkins: {
@@ -559,6 +631,48 @@ export type Database = {
           current_value?: number | null
           note?: string
           created_by?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      reference_proposals: {
+        Row: {
+          id: string
+          idea_id: string
+          label: string
+          rate: number
+          source_url: string
+          source_title: string
+          quote: string
+          passage: string
+          model: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          idea_id: string
+          label: string
+          rate: number
+          source_url: string
+          source_title: string
+          quote: string
+          passage: string
+          model?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          idea_id?: string
+          label?: string
+          rate?: number
+          source_url?: string
+          source_title?: string
+          quote?: string
+          passage?: string
+          model?: string | null
+          created_by?: string | null
           created_at?: string
         }
         Relationships: []
@@ -752,6 +866,9 @@ export type Database = {
           origin: string
           statement: string
           status: string
+          prior_rationale: string | null
+          prior_locked_at: string | null
+          primary_experiment_id: string | null
         }
         Insert: {
           prior?: number | null
@@ -763,6 +880,9 @@ export type Database = {
           origin?: string
           statement: string
           status?: string
+          prior_rationale?: string | null
+          prior_locked_at?: string | null
+          primary_experiment_id?: string | null
         }
         Update: {
           prior?: number | null
@@ -774,6 +894,9 @@ export type Database = {
           origin?: string
           statement?: string
           status?: string
+          prior_rationale?: string | null
+          prior_locked_at?: string | null
+          primary_experiment_id?: string | null
         }
         Relationships: [
           {
@@ -927,7 +1050,10 @@ export type Database = {
           origin: string
           period: string | null
           question_id: string | null
-          region: string | null
+          region: string
+          population: string
+          reference_date: string
+          relevance: string
           section: string
           statement: string
           status: string
@@ -950,7 +1076,10 @@ export type Database = {
           origin?: string
           period?: string | null
           question_id?: string | null
-          region?: string | null
+          region?: string
+          population?: string
+          reference_date?: string
+          relevance?: string
           section?: string
           statement: string
           status?: string
@@ -973,7 +1102,10 @@ export type Database = {
           origin?: string
           period?: string | null
           question_id?: string | null
-          region?: string | null
+          region?: string
+          population?: string
+          reference_date?: string
+          relevance?: string
           section?: string
           statement?: string
           status?: string
@@ -1129,6 +1261,11 @@ export type Database = {
           next_step: string | null
           rationale: string
           reality_check_id: string
+          rule_met: boolean | null
+          rule_evaluation: Json | null
+          rule_deviation_reason: string | null
+          reviewed_against_summary: Json | null
+          extend_weeks: number | null
         }
         Insert: {
           action: string
@@ -1143,6 +1280,11 @@ export type Database = {
           next_step?: string | null
           rationale: string
           reality_check_id: string
+          rule_met?: boolean | null
+          rule_evaluation?: Json | null
+          rule_deviation_reason?: string | null
+          reviewed_against_summary?: Json | null
+          extend_weeks?: number | null
         }
         Update: {
           action?: string
@@ -1157,6 +1299,11 @@ export type Database = {
           next_step?: string | null
           rationale?: string
           reality_check_id?: string
+          rule_met?: boolean | null
+          rule_evaluation?: Json | null
+          rule_deviation_reason?: string | null
+          reviewed_against_summary?: Json | null
+          extend_weeks?: number | null
         }
         Relationships: [
           {
@@ -1198,6 +1345,8 @@ export type Database = {
           idea_id: string
           owner_id: string
           public_slug: string | null
+          recruitment_group: string | null
+          ai_draft_id: string | null
           started_at: string | null
           state: string
           title: string
@@ -1218,6 +1367,8 @@ export type Database = {
           idea_id: string
           owner_id?: string
           public_slug?: string | null
+          recruitment_group?: string | null
+          ai_draft_id?: string | null
           started_at?: string | null
           state?: string
           title: string
@@ -1238,6 +1389,8 @@ export type Database = {
           idea_id?: string
           owner_id?: string
           public_slug?: string | null
+          recruitment_group?: string | null
+          ai_draft_id?: string | null
           started_at?: string | null
           state?: string
           title?: string
@@ -1263,8 +1416,11 @@ export type Database = {
       hypotheses: {
         Row: {
           assumption_id: string
+          available_per_week: number | null
           change_reason: string | null
           created_at: string
+          decision_rule: string | null
+          expected_pct: number | null
           expected_biases: string | null
           fail_threshold_pct: number | null
           id: string
@@ -1275,6 +1431,8 @@ export type Database = {
           metric_label: string
           metric_numerator: string
           min_sample: number
+          required_n: number | null
+          success_count: number | null
           success_threshold_pct: number
           superseded_by: string | null
           target_group: string
@@ -1284,8 +1442,11 @@ export type Database = {
         }
         Insert: {
           assumption_id: string
+          available_per_week?: number | null
           change_reason?: string | null
           created_at?: string
+          decision_rule?: string | null
+          expected_pct?: number | null
           expected_biases?: string | null
           fail_threshold_pct?: number | null
           id?: string
@@ -1296,6 +1457,8 @@ export type Database = {
           metric_label: string
           metric_numerator: string
           min_sample: number
+          required_n?: number | null
+          success_count?: number | null
           success_threshold_pct: number
           superseded_by?: string | null
           target_group: string
@@ -1305,8 +1468,11 @@ export type Database = {
         }
         Update: {
           assumption_id?: string
+          available_per_week?: number | null
           change_reason?: string | null
           created_at?: string
+          decision_rule?: string | null
+          expected_pct?: number | null
           expected_biases?: string | null
           fail_threshold_pct?: number | null
           id?: string
@@ -1317,6 +1483,8 @@ export type Database = {
           metric_label?: string
           metric_numerator?: string
           min_sample?: number
+          required_n?: number | null
+          success_count?: number | null
           success_threshold_pct?: number
           superseded_by?: string | null
           target_group?: string
@@ -1386,6 +1554,12 @@ export type Database = {
       ideas: {
         Row: {
           outcome_clock_start: string | null
+          outcome_question: string
+          outcome_min_value_per_customer: number | null
+          outcome_revenue_target: number | null
+          outcome_measure_date: string | null
+          stake_kind: string | null
+          stake_value: number | null
           outcome_statement: string | null
           outcome_metric: string | null
           outcome_target: number | null
@@ -1409,6 +1583,7 @@ export type Database = {
           id: string
           is_demo: boolean
           key_uncertainty: string | null
+          method_version: string
           org_id: string
           project_type: string
           region: string
@@ -1421,6 +1596,12 @@ export type Database = {
         }
         Insert: {
           outcome_clock_start?: string | null
+          outcome_question?: string
+          outcome_min_value_per_customer?: number | null
+          outcome_revenue_target?: number | null
+          outcome_measure_date?: string | null
+          stake_kind?: string | null
+          stake_value?: number | null
           outcome_statement?: string | null
           outcome_metric?: string | null
           outcome_target?: number | null
@@ -1444,6 +1625,7 @@ export type Database = {
           id?: string
           is_demo?: boolean
           key_uncertainty?: string | null
+          method_version?: string
           org_id: string
           project_type: string
           region: string
@@ -1456,6 +1638,12 @@ export type Database = {
         }
         Update: {
           outcome_clock_start?: string | null
+          outcome_question?: string
+          outcome_min_value_per_customer?: number | null
+          outcome_revenue_target?: number | null
+          outcome_measure_date?: string | null
+          stake_kind?: string | null
+          stake_value?: number | null
           outcome_statement?: string | null
           outcome_metric?: string | null
           outcome_target?: number | null
@@ -1479,6 +1667,7 @@ export type Database = {
           id?: string
           is_demo?: boolean
           key_uncertainty?: string | null
+          method_version?: string
           org_id?: string
           project_type?: string
           region?: string
@@ -1519,6 +1708,7 @@ export type Database = {
           participant_label: string
           record_type: string
           recruited_via: string
+          recruitment_group: string | null
           retention_until: string
           segment: string | null
           transcript: string
@@ -1535,6 +1725,7 @@ export type Database = {
           participant_label: string
           record_type: string
           recruited_via: string
+          recruitment_group?: string | null
           retention_until?: string
           segment?: string | null
           transcript: string
@@ -1551,6 +1742,7 @@ export type Database = {
           participant_label?: string
           record_type?: string
           recruited_via?: string
+          recruitment_group?: string | null
           retention_until?: string
           segment?: string | null
           transcript?: string
@@ -1660,6 +1852,7 @@ export type Database = {
           origin: string
           quote: string | null
           quote_check: string
+          recruitment_group: string | null
           summary: string
         }
         Insert: {
@@ -1680,6 +1873,7 @@ export type Database = {
           origin?: string
           quote?: string | null
           quote_check?: string
+          recruitment_group?: string | null
           summary: string
         }
         Update: {
@@ -1700,6 +1894,7 @@ export type Database = {
           origin?: string
           quote?: string | null
           quote_check?: string
+          recruitment_group?: string | null
           summary?: string
         }
         Relationships: [
@@ -1801,6 +1996,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      org_evidence_caps: {
+        Row: {
+          deposit: number
+          opinion: number
+          org_id: string
+          problem: number
+          quote: number
+          small_action: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          deposit?: number
+          opinion?: number
+          org_id: string
+          problem?: number
+          quote?: number
+          small_action?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          deposit?: number
+          opinion?: number
+          org_id?: string
+          problem?: number
+          quote?: number
+          small_action?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
       }
       organizations: {
         Row: {
@@ -1952,9 +2180,12 @@ export type Database = {
           origin: string
           position: number
           question: string
+          ai_original: string | null
           status: string
           suggested_sources: string | null
           why_it_matters: string | null
+          unit: string | null
+          expected_source: string | null
         }
         Insert: {
           created_at?: string
@@ -1966,9 +2197,12 @@ export type Database = {
           origin?: string
           position: number
           question: string
+          ai_original?: string | null
           status?: string
           suggested_sources?: string | null
           why_it_matters?: string | null
+          unit?: string | null
+          expected_source?: string | null
         }
         Update: {
           created_at?: string
@@ -1980,9 +2214,12 @@ export type Database = {
           origin?: string
           position?: number
           question?: string
+          ai_original?: string | null
           status?: string
           suggested_sources?: string | null
           why_it_matters?: string | null
+          unit?: string | null
+          expected_source?: string | null
         }
         Relationships: [
           {
@@ -2114,6 +2351,83 @@ export type Database = {
           },
         ]
       }
+      research_search_log: {
+        Row: {
+          created_at: string
+          id: string
+          idea_id: string
+          kind: string
+          passages: number
+          provider: string
+          query: string
+          question: string | null
+          question_id: string | null
+          reused: boolean
+          run_id: string | null
+          task_id: string | null
+          urls: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          idea_id: string
+          kind?: string
+          passages?: number
+          provider: string
+          query: string
+          question?: string | null
+          question_id?: string | null
+          reused?: boolean
+          run_id?: string | null
+          task_id?: string | null
+          urls?: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          idea_id?: string
+          passages?: number
+          provider?: string
+          query?: string
+          kind?: string
+          question?: string | null
+          question_id?: string | null
+          reused?: boolean
+          run_id?: string | null
+          task_id?: string | null
+          urls?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "research_search_log_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "ideas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_search_log_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "research_questions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_search_log_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "research_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_search_log_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "research_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       segments: {
         Row: {
           created_at: string
@@ -2169,6 +2483,8 @@ export type Database = {
           label: string
           note: string | null
           position: number
+          year: number | null
+          region: string | null
           scenario_id: string
           unit: string
           value: number
@@ -2183,6 +2499,8 @@ export type Database = {
           label: string
           note?: string | null
           position: number
+          year?: number | null
+          region?: string | null
           scenario_id: string
           unit: string
           value: number
@@ -2197,6 +2515,8 @@ export type Database = {
           label?: string
           note?: string | null
           position?: number
+          year?: number | null
+          region?: string | null
           scenario_id?: string
           unit?: string
           value?: number
@@ -2558,7 +2878,7 @@ export type Database = {
       job_suppressed_hashes: { Args: { p_key: string; p_job: string; p_hashes: string[] }; Returns: string[] }
       job_survey_sent: { Args: { p_key: string; p_job: string; p_invitation: string; p_message_id: string }; Returns: boolean }
       claim_invitations: { Args: never; Returns: number }
-      confirm_decision: { Args: { p_comment: string; p_decision: string }; Returns: boolean }
+      confirm_decision: { Args: { p_comment: string; p_decision: string; p_reviewed_against_summary: Json }; Returns: boolean }
       create_organization: { Args: { p_name: string }; Returns: string }
       get_public_test: { Args: { p_slug: string }; Returns: Json }
       is_org_member: { Args: { p_org: string }; Returns: boolean }
@@ -2670,6 +2990,10 @@ export type Database = {
         Args: { p_campaign: string | null; p_contact_hash: string; p_dedupe: string; p_event: string; p_key: string; p_message: string | null; p_token_hash: string }
         Returns: string
       }
+      record_reference_proposal: {
+        Args: { p_key: string; p_idea: string; p_label: string; p_rate: number; p_url: string; p_title: string; p_quote: string; p_passage: string; p_model: string }
+        Returns: string
+      }
       record_ai_forecast: {
         Args: { p_idea: string; p_key: string; p_model: string; p_moment: string; p_probability: number; p_rationale: string }
         Returns: boolean
@@ -2688,12 +3012,42 @@ export type Database = {
         Args: { p_org: string; p_project_type: string | null; p_min?: number }
         Returns: { resolved: number; achieved: number }[]
       }
+      extended_phase_end: { Args: { p_idea: string }; Returns: string | null }
+      save_decision_rule: { Args: { p_idea: string; p_primary: string | null; p_note: string; p_conditions: Json }; Returns: string }
+      stop_review_counts: {
+        Args: { p_org: string }
+        Returns: { stopped: number; justified: number; not_justified: number; unknown: number; open: number }[]
+      }
       set_learned_weights: { Args: { p_org: string; p_on: boolean }; Returns: boolean }
       learning_evidence_counts: {
         Args: { p_org: string }
         Returns: { dimension: string; kind: string; achieved: string; direction: string; dossiers: number }[]
       }
       idea_uses_learned_weights: { Args: { p_idea: string }; Returns: boolean }
+      evidence_caps_for_idea: {
+        Args: { p_idea: string }
+        Returns: { opinion: number; problem: number; small_action: number; quote: number; deposit: number }[]
+      }
+      switch_method_version: { Args: { p_idea: string; p_to: string; p_preview: Json }; Returns: string }
+      resolved_dossiers_for_idea: { Args: { p_idea: string }; Returns: number }
+      evidence_recruitment_refs: { Args: { p_idea: string }; Returns: { item_type: string; item_id: string; recruitment_group: string | null }[] }
+      change_assumption_prior: { Args: { p_assumption: string; p_prior: number; p_rationale: string; p_reason: string }; Returns: undefined }
+      evidence_source_refs: {
+        Args: { p_idea: string }
+        Returns: {
+          item_type: string
+          item_id: string
+          source_id: string | null
+          source_type: string | null
+          source_title: string | null
+          campaign: string | null
+          survey_experiment_id: string | null
+          experiment_id: string | null
+          experiment_title: string | null
+          interview_id: string | null
+          interview_label: string | null
+        }[]
+      }
       idea_learning_counts: {
         Args: { p_idea: string }
         Returns: { dimension: string; kind: string; achieved: string; direction: string; dossiers: number }[]

@@ -3,6 +3,7 @@
 
 import type { ClaimStatus, ObservationKind } from "./labels";
 import type { LrOverrides } from "./calibration";
+import { relevanceWeight } from "./claim-scope";
 
 export type ObservationDims = {
   isFact: boolean;
@@ -159,13 +160,27 @@ export const PROBABILITY_CEIL = 0.99;
 // Sensitivity for the band: every ln(LR) scaled by 0,5 and 1,5 (LRs ±50% in log space).
 export const SENSITIVITY = 0.5;
 
-export type ProbabilityClaim = { status: ClaimStatus; relation: "supports" | "contradicts" };
+// sourceKey/sourceLabel: de bron van het signaal (evidenceSourceKey); alleen gebruikt door methode 2026-11-b.
+// recruitmentGroup: de wervingsgroep van het signaal (lib/domain/recruitment.ts); alleen gebruikt door methode 2026-11-c.
+// relevance: 'direct' of 'indirect' (golf C, claims.relevance; lib/domain/claim-scope.ts); alleen gebruikt door
+// methode 2026-11-c, waar een indirecte bevinding met halve sterkte telt.
+export type ProbabilityClaim = {
+  status: ClaimStatus;
+  relation: "supports" | "contradicts";
+  sourceKey?: string | null;
+  sourceLabel?: string | null;
+  recruitmentGroup?: string | null;
+  relevance?: string | null;
+};
 export type ProbabilityObservation = {
   kind: string;
   relation: "supports" | "contradicts";
   isSynthetic: boolean;
   origin?: string | null; // 'ai' observations need a review
   reviewStatus?: string | null; // 'accepted' | 'rejected' | null
+  sourceKey?: string | null;
+  sourceLabel?: string | null;
+  recruitmentGroup?: string | null;
 };
 
 export type Contribution = {
@@ -176,7 +191,12 @@ export type Contribution = {
   lr: number; // per item, in the direction of the effect (< 1 lowers the probability)
   weight: number; // 1, or 0,5 for unreviewed AI coding
   logOdds: number; // total contribution of this group
+  // Methode 2026-11-c: het effectieve aantal na de afnemende factor binnen dezelfde wervingsgroep (anders log₂(1 + n)).
+  effective?: number;
 };
+
+// Methode 2026-11-c: een wervingsgroep waaruit meer dan één bron ondersteunend bewijs leverde.
+export type RecruitmentRepeat = { group: string; sources: number };
 
 export type AssumptionProbability = {
   prior: number;
@@ -186,7 +206,15 @@ export type AssumptionProbability = {
   contributions: Contribution[]; // sorted by absolute effect
   top: Contribution[]; // the three largest
   counted: number;
-  ignored: { synthetic: number; rejected: number; neutral: number };
+  // unreviewed: alleen methode 2026-11-c, AI-codering die nog wacht op beoordeling (telt niet mee).
+  ignored: { synthetic: number; rejected: number; neutral: number; unreviewed?: number };
+  // Alleen methode 2026-11-b: samengevoegde signalen per bron en het plafond per bewijsniveau.
+  merged?: MergedSource[];
+  cap?: CapInfo | null;
+  // Alleen methode 2026-11-c: herhaling binnen dezelfde wervingsgroep.
+  recruitment?: RecruitmentRepeat[];
+  // Alleen methode 2026-11-c: aantal meetellende bevindingen dat als indirect bewijs met halve sterkte telt.
+  indirect?: number;
 };
 
 const clampP = (p: number) => Math.min(PROBABILITY_CEIL, Math.max(PROBABILITY_FLOOR, p));
@@ -279,5 +307,358 @@ export function fmtLr(x: number): string {
 export function explainContribution(c: Contribution): string {
   const factor = c.lr >= 1 ? `× ${fmtLr(c.lr)}` : `÷ ${fmtLr(1 / c.lr)}`;
   const n = c.count === 1 ? "1 keer" : `${c.count} keer (afnemend meegeteld)`;
-  return `${c.label}: ${n}, kansverhouding ${factor} per stuk${c.weight < 1 ? ", half gewicht" : ""}.`;
+  const damped = c.effective != null && c.effective < diminishing(c.count) - 1e-9 ? ", minder door herhaling binnen dezelfde wervingsgroep" : "";
+  return `${c.label}: ${n}, kansverhouding ${factor} per stuk${c.weight < 1 ? ", half gewicht" : ""}${damped}.`;
+}
+
+// ===========================================================================
+// Methode 2026-11-b (6b): één factor per bron per aanname en een plafond per bewijsniveau.
+// ===========================================================================
+
+// Wat is "dezelfde bron"? Signalen met dezelfde sleutel tellen samen als één signaal:
+// - bronfragmenten, bevindingen (claims) en klantsignalen: de bron (source_id) van de bevinding;
+// - outreach (bronnen van het type outreach): de campagne, ook als die in meerdere importen binnenkwam;
+// - enquête- en testwaarnemingen: het experiment (experiment_id); open enquêteantwoorden die als bron zijn
+//   opgenomen horen bij hun enquête;
+// - interviewcodering: het interview (interview_id).
+// Zonder herkenbare bron is elk signaal zijn eigen bron.
+export type EvidenceSourceRef = {
+  itemType: "claim" | "observation";
+  itemId: string;
+  sourceId?: string | null;
+  sourceType?: string | null;
+  sourceTitle?: string | null;
+  campaign?: string | null; // outreach: de campagnenaam (of een onleesbare sleutel voor wie alleen meekijkt)
+  surveyExperimentId?: string | null; // bron met open enquêteantwoorden: de enquête waar ze uit komen
+  experimentId?: string | null;
+  experimentTitle?: string | null;
+  interviewId?: string | null;
+  interviewLabel?: string | null;
+};
+
+const OUTREACH_TITLE = /^Expandi-antwoorden – (.+) – [^–]+$/;
+
+export function campaignFromTitle(title: string | null | undefined): string | null {
+  const m = title ? OUTREACH_TITLE.exec(title.trim()) : null;
+  return m ? m[1].trim() : null;
+}
+
+export function evidenceSourceKey(r: EvidenceSourceRef): { key: string; label: string } {
+  if (r.itemType === "observation") {
+    if (r.interviewId) return { key: `interview:${r.interviewId}`, label: r.interviewLabel ? `Interview ${r.interviewLabel}` : "Interview" };
+    if (r.experimentId) return { key: `experiment:${r.experimentId}`, label: r.experimentTitle || "Experiment" };
+    return { key: `observation:${r.itemId}`, label: "Losse observatie" };
+  }
+  if (r.surveyExperimentId) return { key: `experiment:${r.surveyExperimentId}`, label: r.experimentTitle || "Enquête" };
+  if (r.sourceType === "outreach") {
+    const campaign = r.campaign ?? campaignFromTitle(r.sourceTitle);
+    if (campaign) return { key: `campaign:${campaign}`, label: campaign.startsWith("md5:") ? "Outreach-campagne" : `Outreach-campagne ${campaign}` };
+  }
+  if (r.sourceId) return { key: `source:${r.sourceId}`, label: r.sourceTitle || "Bron" };
+  return { key: `claim:${r.itemId}`, label: "Bevinding zonder bron" };
+}
+
+// Bewijsniveaus met hun standaardplafond (instelbaar per werkruimte). Het plafond begrenst hoe hoog bewijs
+// de kans kan duwen; herhaalaankoop heeft geen plafond (wel de algemene grens van 99%).
+export type EvidenceLevel = "opinion" | "problem" | "small_action" | "quote" | "deposit" | "repeat";
+export type EvidenceCaps = Record<Exclude<EvidenceLevel, "repeat">, number>;
+
+export const EVIDENCE_LEVELS: { level: EvidenceLevel; label: string; missing: string }[] = [
+  { level: "opinion", label: "Meningen, enquêtes en bureauonderzoek", missing: "nog geen probleem in eigen gedrag of huidige uitgaven" },
+  { level: "problem", label: "Probleem in eigen gedrag of huidige uitgaven", missing: "nog geen kleine handeling (aanmelding of demo-aanvraag)" },
+  { level: "small_action", label: "Kleine handeling (aanmelding, demo-aanvraag)", missing: "nog geen offerte of gekozen prijsaanbod" },
+  { level: "quote", label: "Offerte of prijsaanbod gekozen", missing: "nog geen aanbetaling" },
+  { level: "deposit", label: "Aanbetaling", missing: "nog geen herhaalaankoop" },
+  { level: "repeat", label: "Herhaalaankoop", missing: "" },
+];
+
+// Korte naam per niveau, voor naast een uitkomst: "Geslaagd · niveau: mening" (golf A, punt 14).
+export const LEVEL_SHORT: Record<EvidenceLevel, string> = {
+  opinion: "mening",
+  problem: "probleem in eigen gedrag",
+  small_action: "kleine handeling",
+  quote: "prijskeuze",
+  deposit: "aanbetaling",
+  repeat: "herhaalaankoop",
+};
+
+// Het bewijsniveau van een testuitkomst: het niveau van wat de test meet (dezelfde indeling als de plafonds).
+// Enquête = zelfrapportage (mening); landingpagina = kleine handeling; prijstest = keuze bij een prijs;
+// interviews meten het probleem in eigen gedrag, of met de aantalregel een aanbetaling.
+export function testEvidenceLevel(type: string, opts: { decisionRule?: string | null } = {}): EvidenceLevel {
+  if (type === "survey") return KIND_LEVEL.survey_answer;
+  if (type === "landing") return KIND_LEVEL.waitlist_signup;
+  if (type === "pricing") return KIND_LEVEL.quote_request;
+  if (type === "interview") return opts.decisionRule === "absolute" ? KIND_LEVEL.deposit : KIND_LEVEL.problem_confirmed;
+  return "opinion";
+}
+
+export function asEvidenceLevel(v: unknown): EvidenceLevel | null {
+  return typeof v === "string" && v in LEVEL_SHORT ? (v as EvidenceLevel) : null;
+}
+
+// "Geslaagd · niveau: mening". Zonder niveau alleen de uitkomst.
+export function outcomeWithLevel(outcome: string, level: EvidenceLevel | null | undefined): string {
+  const o = outcome ? outcome.charAt(0).toUpperCase() + outcome.slice(1) : outcome;
+  return level ? `${o} · niveau: ${LEVEL_SHORT[level]}` : o;
+}
+
+export const DEFAULT_CAPS: EvidenceCaps = { opinion: 0.4, problem: 0.5, small_action: 0.6, quote: 0.75, deposit: 0.9 };
+
+// Koppeling van elke soort waarneming aan een bewijsniveau. Tegenbewijs (bezwaar, probleem niet herkend,
+// tegenvoorbeeld) en "overig" tillen nooit een niveau op; ze staan bij het laagste niveau. Bevindingen uit
+// bronnen (claims) zijn bureauonderzoek.
+export const KIND_LEVEL: Record<ObservationKind, EvidenceLevel> = {
+  opinion: "opinion",
+  survey_answer: "opinion",
+  other: "opinion",
+  objection: "opinion",
+  problem_absent: "opinion",
+  counter_example: "opinion",
+  problem_confirmed: "problem",
+  current_behaviour: "problem",
+  current_spend: "problem",
+  waitlist_signup: "small_action",
+  demo_request: "small_action",
+  quote_request: "quote",
+  deposit: "deposit",
+  repeat_purchase: "repeat",
+};
+export const CLAIM_LEVEL: EvidenceLevel = "opinion";
+
+const LEVEL_RANK: Record<EvidenceLevel, number> = { opinion: 0, problem: 1, small_action: 2, quote: 3, deposit: 4, repeat: 5 };
+
+export function normaliseCaps(raw: Partial<Record<keyof EvidenceCaps, unknown>> | null | undefined): EvidenceCaps {
+  const out = { ...DEFAULT_CAPS };
+  for (const k of Object.keys(DEFAULT_CAPS) as (keyof EvidenceCaps)[]) {
+    const v = Number(raw?.[k]);
+    if (raw?.[k] != null && Number.isFinite(v) && v >= 0.05 && v <= 0.99) out[k] = v;
+  }
+  return out;
+}
+
+export type MergedSource = { key: string; label: string; signals: number; kept: string };
+
+export type CapInfo = {
+  level: EvidenceLevel; // hoogste aanwezige niveau
+  levelLabel: string;
+  max: number | null; // plafond van dat niveau (null = geen plafond)
+  active: boolean; // de kans is begrensd
+  uncapped: number; // de kans zonder plafond
+  reason: string; // "begrensd op 75%: nog geen aanbetaling"
+};
+
+// Begrenzing: de kans komt niet boven het plafond van het hoogste aanwezige bewijsniveau, ook niet door een
+// hoge beginwaarde. Zonder ondersteunend bewijs geldt het laagste niveau (40%): wie nog niets heeft gezien
+// van wat klanten doen, kan niet zekerder zijn dan dat. Zo blijft meer ondersteunend bewijs de kans nooit
+// verlagen.
+export function applyCap(p: number, max: number | null): number {
+  return max == null ? p : Math.min(p, max);
+}
+
+export function capReason(level: EvidenceLevel, max: number | null): string {
+  const meta = EVIDENCE_LEVELS.find((l) => l.level === level)!;
+  return max == null ? "" : `begrensd op ${Math.round(max * 100)}%: ${meta.missing}`;
+}
+
+type Item = {
+  kindKey: string;
+  label: string;
+  entry: LrEntry;
+  supports: boolean;
+  weight: number;
+  sourceKey: string;
+  sourceLabel: string;
+  level: EvidenceLevel;
+  recruitment: string | null;
+  damp: number; // afnemende factor binnen dezelfde wervingsgroep (methode 2026-11-c); anders 1
+};
+
+// Wat methode 2026-11-c toevoegt aan de rekenwijze van 2026-11-b. Zonder opties rekent de kern exact als 2026-11-b.
+type CoreOptions = { recruitmentDamping?: boolean; aiNeedsReview?: boolean; relevanceWeighting?: boolean };
+
+export function assumptionProbabilityV2(
+  claims: ProbabilityClaim[],
+  observations: ProbabilityObservation[],
+  prior = 0.5,
+  overrides: LrOverrides = {},
+  caps: EvidenceCaps = DEFAULT_CAPS,
+): AssumptionProbability {
+  return probabilityCore(claims, observations, prior, overrides, caps, {});
+}
+
+function probabilityCore(
+  claims: ProbabilityClaim[],
+  observations: ProbabilityObservation[],
+  prior: number,
+  overrides: LrOverrides,
+  caps: EvidenceCaps,
+  opts: CoreOptions,
+): AssumptionProbability {
+  const ignored: AssumptionProbability["ignored"] = opts.aiNeedsReview ? { synthetic: 0, rejected: 0, neutral: 0, unreviewed: 0 } : { synthetic: 0, rejected: 0, neutral: 0 };
+  const items: Item[] = [];
+  let unique = 0;
+  const own = () => `eigen:${unique++}`;
+  for (const c of claims) {
+    // Methode 2026-11-c: een indirecte bevinding (andere populatie, regio of te oude peildatum) telt half
+    // (gewicht 0,5 in log-odds, zoals niet beoordeelde AI-codering in 2026-11-a en 2026-11-b).
+    const weight = opts.relevanceWeighting ? relevanceWeight(c.relevance) : 1;
+    items.push({
+      kindKey: `claim:${c.status}`,
+      label: `${CLAIM_LR[c.status].label}${weight < 1 ? " (indirect bewijs)" : ""}`,
+      entry: CLAIM_LR[c.status],
+      supports: c.relation === "supports",
+      weight,
+      sourceKey: c.sourceKey || own(),
+      sourceLabel: c.sourceLabel || "Bron",
+      level: CLAIM_LEVEL,
+      recruitment: c.recruitmentGroup ?? null,
+      damp: 1,
+    });
+  }
+  for (const o of observations) {
+    if (o.isSynthetic) {
+      ignored.synthetic++;
+      continue;
+    }
+    let weight = 1;
+    if (o.origin === "ai") {
+      if (o.reviewStatus === "rejected") {
+        ignored.rejected++;
+        continue;
+      }
+      if (o.reviewStatus !== "accepted") {
+        // Methode 2026-11-c: onbeoordeelde AI-codering telt niet mee, pas na beoordeling door een consultant.
+        if (opts.aiNeedsReview) {
+          ignored.unreviewed = (ignored.unreviewed ?? 0) + 1;
+          continue;
+        }
+        weight = AI_UNREVIEWED_WEIGHT;
+      }
+    }
+    const kind = (o.kind in OBSERVATION_LR ? o.kind : "other") as ObservationKind;
+    const base = OBSERVATION_LR[kind];
+    const learned = overrides[kind];
+    const entry: LrEntry = learned ? { ...base, lr: learned.lr, lrAgainst: learned.lrAgainst, learned: true } : base;
+    items.push({
+      kindKey: `obs:${kind}`,
+      label: `${entry.label}${learned ? " (geleerde factor)" : ""}${weight < 1 ? " (AI-codering, nog niet beoordeeld)" : ""}`,
+      entry,
+      supports: entry.against ? false : o.relation === "supports",
+      weight,
+      sourceKey: o.sourceKey || own(),
+      sourceLabel: o.sourceLabel || "Observatie",
+      level: KIND_LEVEL[kind],
+      recruitment: o.recruitmentGroup ?? null,
+      damp: 1,
+    });
+  }
+
+  const factorOf = (i: Item) => (i.supports ? i.entry.lr : (i.entry.lrAgainst ?? i.entry.lr));
+  const counting = items.filter((i) => {
+    if (factorOf(i) !== 1) return true;
+    ignored.neutral++;
+    return false;
+  });
+  const indirect = opts.relevanceWeighting ? counting.filter((i) => i.kindKey.startsWith("claim:") && i.weight < 1).length : 0;
+
+  // Ondersteunend bewijs: per bron alleen het sterkste signaal (grootste ln(factor) × gewicht).
+  // Tegenbewijs telt volledig per signaal en wordt niet samengevoegd.
+  const bySource = new Map<string, Item[]>();
+  for (const i of counting.filter((x) => x.supports)) bySource.set(i.sourceKey, [...(bySource.get(i.sourceKey) ?? []), i]);
+  const pull = (i: Item) => Math.log(factorOf(i)) * i.weight;
+  const merged: MergedSource[] = [];
+  const kept: Item[] = [];
+  for (const [key, list] of bySource) {
+    const best = [...list].sort((a, b) => pull(b) - pull(a) || a.kindKey.localeCompare(b.kindKey))[0];
+    kept.push(best);
+    if (list.length > 1) merged.push({ key, label: best.sourceLabel, signals: list.length, kept: best.label });
+  }
+
+  // Methode 2026-11-c: herhaling binnen dezelfde wervingsgroep over verschillende bronnen heen telt afnemend mee,
+  // met dezelfde functie als `diminishing`. Per groep (het sterkste signaal eerst) krijgt het k-de signaal (k = 0, 1,
+  // …) de factor log₂(2 + k) − log₂(1 + k): 1; 0,58; 0,42; 0,32; … Samen tellen n signalen uit één groep zo als
+  // log₂(1 + n) signalen. Alleen ondersteunend bewijs; signalen zonder werving (bureauonderzoek) vallen erbuiten.
+  const recruitment: RecruitmentRepeat[] = [];
+  if (opts.recruitmentDamping) {
+    const byGroup = new Map<string, Item[]>();
+    for (const i of kept) if (i.recruitment) byGroup.set(i.recruitment, [...(byGroup.get(i.recruitment) ?? []), i]);
+    for (const [group, list] of byGroup) {
+      const ordered = [...list].sort((a, b) => pull(b) - pull(a) || a.kindKey.localeCompare(b.kindKey) || a.sourceKey.localeCompare(b.sourceKey));
+      ordered.forEach((i, k) => {
+        i.damp = diminishing(k + 1) - diminishing(k);
+      });
+      if (list.length > 1) recruitment.push({ group, sources: list.length });
+    }
+  }
+  kept.push(...counting.filter((x) => !x.supports));
+
+  // Daarna zoals methode 2026-11-a: per soort en richting afnemend meetellen; elke factor vermenigvuldigt
+  // de kansverhouding (odds): logit(p) = logit(beginwaarde) + Σ ln(factor) × log₂(1 + n) × gewicht.
+  // Met een wervingsfactor d per signaal (2026-11-c) wordt log₂(1 + n) een gewogen som: Σ d(k) × (log₂(2 + k) −
+  // log₂(1 + k)), met de grootste d eerst; zonder demping is dat precies log₂(1 + n).
+  const groups = new Map<string, Omit<Contribution, "logOdds"> & { damps: number[] }>();
+  for (const i of kept) {
+    const direction = i.supports ? "supports" : "contradicts";
+    const k = `${i.kindKey}:${direction}:${i.weight}`;
+    const g = groups.get(k) ?? { key: k, label: i.label, direction, count: 0, lr: i.supports ? factorOf(i) : 1 / factorOf(i), weight: i.weight, damps: [] };
+    g.count++;
+    g.damps.push(i.damp);
+    groups.set(k, g);
+  }
+  const contributions: Contribution[] = [...groups.values()]
+    .map(({ damps, ...g }) => {
+      if (damps.every((x) => x === 1)) return { ...g, logOdds: Math.log(g.lr) * diminishing(g.count) * g.weight };
+      const effective = [...damps].sort((a, b) => b - a).reduce((s, d, k) => s + d * (diminishing(k + 1) - diminishing(k)), 0);
+      return { ...g, effective, logOdds: Math.log(g.lr) * effective * g.weight };
+    })
+    .sort((a, b) => Math.abs(b.logOdds) - Math.abs(a.logOdds) || a.key.localeCompare(b.key));
+  const shift = contributions.reduce((x, c) => x + c.logOdds, 0);
+  const p0 = clampP(prior);
+
+  // Plafond: het hoogste niveau onder het ondersteunende bewijs dat volledig meetelt (AI-codering die nog
+  // niemand beoordeelde tilt het niveau niet op).
+  const level = kept
+    .filter((i) => i.supports && i.weight === 1)
+    .reduce<EvidenceLevel>((best, i) => (LEVEL_RANK[i.level] > LEVEL_RANK[best] ? i.level : best), "opinion");
+  const max = level === "repeat" ? null : caps[level];
+  const uncapped = probabilityFromShift(p0, shift);
+  const probability = applyCap(uncapped, max);
+  const band = bandFromShift(p0, shift);
+  const active = probability < uncapped;
+  return {
+    prior: p0,
+    probability,
+    band: { low: applyCap(band.low, max), high: applyCap(band.high, max) },
+    shift,
+    contributions,
+    top: contributions.slice(0, 3),
+    counted: counting.length,
+    ignored,
+    merged: merged.sort((a, b) => b.signals - a.signals || a.label.localeCompare(b.label)),
+    ...(opts.recruitmentDamping ? { recruitment: recruitment.sort((a, b) => b.sources - a.sources || a.group.localeCompare(b.group)) } : {}),
+    ...(opts.relevanceWeighting ? { indirect } : {}),
+    cap: { level, levelLabel: EVIDENCE_LEVELS.find((l) => l.level === level)!.label, max, active, uncapped, reason: active ? capReason(level, max) : "" },
+  };
+}
+
+// ===========================================================================
+// Methode 2026-11-c (golf A): bouwt voort op 2026-11-b.
+// - Herhaling binnen dezelfde wervingsgroep over verschillende bronnen heen telt afnemend mee (punt 4).
+// - Onbeoordeelde AI-codering telt niet mee; pas na akkoord van een consultant volledig (punt 17).
+// - Een indirecte bevinding (golf C, punt 7: claims.relevance = 'indirect') telt met halve sterkte (relevanceWeight).
+// ===========================================================================
+
+export function assumptionProbabilityV3(
+  claims: ProbabilityClaim[],
+  observations: ProbabilityObservation[],
+  prior = 0.5,
+  overrides: LrOverrides = {},
+  caps: EvidenceCaps = DEFAULT_CAPS,
+): AssumptionProbability {
+  return probabilityCore(claims, observations, prior, overrides, caps, { recruitmentDamping: true, aiNeedsReview: true, relevanceWeighting: true });
+}
+
+export function explainMerged(m: MergedSource): string {
+  return `${m.signals} signalen uit ${m.label} samengevoegd: alleen het sterkste telt (${m.kept}).`;
 }

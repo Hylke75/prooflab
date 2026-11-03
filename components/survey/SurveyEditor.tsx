@@ -30,7 +30,8 @@ import {
 import { ISSUE_LABEL } from "@/lib/domain/interview-audit";
 import type { DraftResult } from "@/lib/domain/survey-draft";
 
-type DraftState = { error: string | null; draft: DraftResult | null };
+// draftId: het bewaarde AI-origineel (golf A, punt 17), alleen bij een echte AI-opzet.
+type DraftState = { error: string | null; draft: DraftResult | null; draftId?: string | null };
 export type SurveyDraftAction = (input: { assumption_id: string; target_group?: string }) => Promise<DraftState>;
 
 const TYPE_ENTRIES = Object.entries(QUESTION_TYPES) as [QuestionType, string][];
@@ -45,7 +46,9 @@ export function SurveyEditor({
   targetGroup,
   aiConnected,
   draftAction,
+  onDraftId,
 }: {
+  onDraftId?: (id: string | null) => void;
   value: SurveyConfig;
   onChange: (next: SurveyConfig) => void;
   productNames: string[];
@@ -119,6 +122,7 @@ export function SurveyEditor({
       if (res.draft) {
         setPrevious(c);
         onChange(res.draft.config);
+        onDraftId?.(res.draft.origin === "ai" ? (res.draftId ?? null) : null);
         setAnnounce(res.draft.origin === "ai" ? "De eerste opzet van de coach staat in de editor." : "Het sjabloon staat in de editor.");
       }
     });
@@ -160,7 +164,7 @@ export function SurveyEditor({
             )}
             <p className="tiny mt-8">Een opzet is geen bewijs. Test de vragen vóór publicatie bij 3–5 echte mensen uit de doelgroep.</p>
             {previous && (
-              <button type="button" className="text-link mt-8" onClick={() => { onChange(previous); setPrevious(null); setAnnounce("Vorige versie teruggezet."); }}>
+              <button type="button" className="text-link mt-8" onClick={() => { onChange(previous); setPrevious(null); onDraftId?.(null); setAnnounce("Vorige versie teruggezet."); }}>
                 Vorige versie terugzetten
               </button>
             )}

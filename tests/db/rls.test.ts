@@ -6,6 +6,8 @@ import { randomUUID, createHash } from "node:crypto";
 // (see scripts/test-db.sh). Skipped when TEST_DATABASE_URL is not set.
 const url = process.env.TEST_DATABASE_URL;
 const d = url ? describe : describe.skip;
+// Golf B, punt 18: bevestigen vraagt de samenvatting "Wat ging tegen".
+const REVIEWED = JSON.stringify({ acknowledged: true, failed_tests: [], counter_evidence: [], capped_assumptions: [], rule_deviations: [] });
 
 let db: Client;
 
@@ -258,9 +260,9 @@ d("row level security and integrity rules", () => {
     );
     expect(edited).toBe(0);
     await expect(
-      as(viewer, (c) => c.query("select public.confirm_decision($1, 'akkoord')", [decision])),
+      as(viewer, (c) => c.query("select public.confirm_decision($1, 'akkoord', $2)", [decision, REVIEWED])),
     ).rejects.toThrow(/FORBIDDEN/);
-    const ok = await as(client, async (c) => (await c.query("select public.confirm_decision($1, 'akkoord') as ok", [decision])).rows[0].ok);
+    const ok = await as(client, async (c) => (await c.query("select public.confirm_decision($1, 'akkoord', $2) as ok", [decision, REVIEWED])).rows[0].ok);
     expect(ok).toBe(true);
     const audit = await as(alice, async (c) =>
       (await c.query("select count(*)::int as n from public.audit_events where idea_id = $1 and table_name = 'decisions'", [A.idea])).rows[0].n,
@@ -279,7 +281,7 @@ d("row level security and integrity rules", () => {
       const rc = (await c.query("insert into public.reality_checks (idea_id, findings, advice, advice_reason) values ($1, '[]', 'adjust', 'x') returning id", [A.idea])).rows[0].id;
       return (await c.query("insert into public.decisions (idea_id, reality_check_id, action, rationale) values ($1, $2, 'adjust', 'y') returning id", [A.idea, rc])).rows[0].id;
     });
-    await expect(as(alice, (c) => c.query("select public.confirm_decision($1, 'zelf')", [decision]))).rejects.toThrow(/FORBIDDEN/);
+    await expect(as(alice, (c) => c.query("select public.confirm_decision($1, 'zelf', $2)", [decision, REVIEWED]))).rejects.toThrow(/FORBIDDEN/);
     await as(alice, (c) => c.query("delete from public.idea_members where idea_id = $1 and email = $2", [A.idea, alice.email]));
   });
 

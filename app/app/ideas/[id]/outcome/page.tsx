@@ -10,7 +10,8 @@ import { CalibrationGuide } from "@/components/forecast/CalibrationGuide";
 import { getIdea } from "@/lib/data";
 import { loadProgress } from "@/lib/progress";
 import { loadForecastView } from "@/lib/forecast-data";
-import { saveBaseRate } from "./actions";
+import { ActionForm } from "@/components/ui/ActionForm";
+import { proposeReferenceWithSource, saveBaseRate } from "./actions";
 
 export const metadata: Metadata = { title: "Voorspelling & uitkomst" };
 
@@ -59,6 +60,23 @@ export default async function OutcomePage({ params }: PageProps<"/app/ideas/[id]
                     <summary className="text-link">{view.baseRate ? "Andere referentie kiezen" : "Kies een referentieklasse"}</summary>
                     <BaseRatePicker classes={view.referenceClasses} own={view.ownBaseRate} current={idea.reference_class?.startsWith("own:") ? "own" : idea.reference_class} action={saveBaseRate.bind(null, id)} />
                   </details>
+                )}
+                {canWrite && !view.definitionLocked && !view.resolved && (
+                  <div className="note">
+                    <strong>Geen passende referentie?</strong> Laat AI op het web zoeken naar een percentage voor vergelijkbare ideeën. ProofLab haalt de bronpagina zelf op
+                    en neemt een voorstel alleen op als het citaat met het percentage daar letterlijk staat.
+                    {view.aiAvailable ? (
+                      view.outcome.statement ? (
+                        <ActionForm action={proposeReferenceWithSource.bind(null, id)} submitLabel="Laat AI een referentie met bron voorstellen" submitClass="btn white sm" pendingLabel="Zoeken en controleren…">
+                          <span />
+                        </ActionForm>
+                      ) : (
+                        <p className="tiny mt-8">Leg eerst vast wanneer dit idee geslaagd is; daar zoekt de referentie een vergelijking voor.</p>
+                      )
+                    ) : (
+                      <p className="tiny mt-8">AI is niet verbonden in deze omgeving. Kies een referentie met bron of &lsquo;geen goede referentie&rsquo;.</p>
+                    )}
+                  </div>
                 )}
                 {!view.baseRate && !canWrite && <p className="tiny mt-8">Het onderzoeksteam kiest het basispercentage.</p>}
                 {view.definitionLocked && view.baseRate && <p className="tiny mt-8">Ligt vast: er zijn al voorspellingen vanaf dit vertrekpunt gegeven.</p>}

@@ -6,8 +6,10 @@ import { PROMO_MIN, PROMO_PLATFORMS, PROMO_PLATFORM_KEYS, postLink, promoWarning
 import { CHANNELS } from "@/lib/domain/tracking";
 import { deletePromoPost, generatePromo, savePromoPost } from "@/app/app/ideas/[id]/experiments/[expId]/survey-actions";
 import { ExpandiPush, type ExpandiHook } from "./ExpandiPush";
+import { describeDraftEdit, draftEdit } from "@/lib/domain/ai-draft";
 
-export type PromoPostRow = { id: string; platform: string; body: string; origin: string; code: string };
+// ai_original: het AI-concept zoals de AI het schreef (golf A, punt 17), null bij sjabloon of eigen tekst.
+export type PromoPostRow = { id: string; platform: string; body: string; origin: string; code: string; ai_original?: string | null };
 
 type Props = {
   ideaId: string;
@@ -49,6 +51,7 @@ function PostCard({ p, platform, post, incentive, dmIncludesLink, busy, run }: {
         <h4 style={{ fontSize: 14, margin: 0 }} id={`${id}-h`}>{meta.label}</h4>
         {origin && <span className={`pill ${origin.pill}`}>{origin.label}</span>}
       </div>
+      {post?.ai_original && <p className="tiny">AI-concept · {describeDraftEdit(draftEdit(post.ai_original, post.body))}</p>}
       <p className="tiny">
         {meta.hint} Kanaal: {CHANNELS[meta.channel as keyof typeof CHANNELS] ?? meta.channel} (utm_source={meta.channel}
         {post ? <>, postcode <span className="mono">{post.code}</span> als utm_content</> : null}).

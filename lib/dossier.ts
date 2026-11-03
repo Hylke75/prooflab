@@ -1,14 +1,17 @@
 import "server-only";
+import { PROPOSAL_REFERENCE_PREFIX } from "@/lib/domain/reference-proposal";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadAssumptions, rankAssumptions } from "@/lib/progress";
 import { experimentMetrics } from "@/lib/experiment-metrics";
-import { breakEvenRevenue, computeSizing, computeUnitEconomics, SCENARIO_LABELS, simulateSizing, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
+import { breakEvenRevenue, computeSizing, computeUnitEconomics, factorConsistency, SCENARIO_LABELS, simulateSizing, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import { explainContribution } from "@/lib/domain/evidence";
 import { dossierLabel } from "@/lib/domain/dossier-label";
 import type { DossierFacts } from "@/lib/domain/reality-check";
 import type { ClaimStatus } from "@/lib/domain/labels";
 import type { Idea } from "@/lib/data";
 import { loadIdeaWeights } from "@/lib/learning-data";
+import { asMethodVersion, METHODS } from "@/lib/domain/method";
+import { loadCalibration, loadIdeaCaps } from "@/lib/method-data";
 
 // Collects everything about one idea in a single pass. Used by the Reality Check and as the
 // immutable snapshot behind every report version.
@@ -43,8 +46,14 @@ export async function loadDossier(idea: Idea) {
   const assumptions = rankAssumptions(await loadAssumptions(id));
   // Which evidence factors those probabilities used (default or learned), for the report.
   const weights = (await loadIdeaWeights(id)).inUse;
+  // The method version of this dossier, with its rules and (2026-11-b) the caps per evidence level.
+  const version = asMethodVersion(idea.method_version);
+  const caps = await loadIdeaCaps(id);
+  // Genoeg opgeloste dossiers in de werkruimte om kansen exact te tonen? Anders in banden (golf A, punt 3).
+  const calibration = await loadCalibration(id);
+  const method = { version, label: METHODS[version].label, rules: METHODS[version].rules, caps: METHODS[version].usesCaps ? caps.caps : null, capsCustom: caps.custom };
   const expList = experiments.data ?? [];
-  const metrics = await Promise.all(expList.map((e) => (e.hypotheses ? experimentMetrics(e, e.hypotheses) : null)));
+  const metrics = await Promise.all(expList.map((e) => (e.hypotheses ? experimentMetrics(e, e.hypotheses, version) : null)));
 
   const sizing = (scenarios.data ?? [])
     .map((s) => {
@@ -62,8 +71,10 @@ export async function loadDossier(idea: Idea) {
         kind: s.kind as ScenarioKind,
         label: SCENARIO_LABELS[s.kind as ScenarioKind].label,
         model: s.model,
-        factors: factors.map((f) => ({ label: f.label, value: Number(f.value), unit: f.unit, source: f.claims?.statement ?? null, status: f.claims?.status ?? null })),
+        factors: factors.map((f) => ({ label: f.label, value: Number(f.value), unit: f.unit, source: f.claims?.statement ?? null, status: f.claims?.status ?? null, year: f.year, region: f.region })),
         result,
+        // Golf C, punt 8: passen jaar en regio van de factoren bij elkaar?
+        consistency: factorConsistency(factors.map((f) => ({ key: f.key, label: f.label, year: f.year, region: f.region }))),
       };
     })
     .sort((a, b) => ["conservative", "realistic", "optimistic"].indexOf(a.kind) - ["conservative", "realistic", "optimistic"].indexOf(b.kind));
@@ -91,7 +102,7 @@ export async function loadDossier(idea: Idea) {
           low: f.low_value == null ? null : Number(f.low_value),
           high: f.high_value == null ? null : Number(f.high_value),
         })),
-        { threshold: breakEven },
+        { threshold: breakEven, widen: factorConsistency((s.sizing_factors ?? []).map((f) => ({ key: f.key, year: f.year, region: f.region }))).widen },
       );
       return sim ? { kind: s.kind as ScenarioKind, label: SCENARIO_LABELS[s.kind as ScenarioKind].label, thresholdIsBreakEven: breakEven != null, ...sim } : null;
     })
@@ -106,19 +117,33 @@ export async function loadDossier(idea: Idea) {
     prior: a.probability.prior,
     probability: a.probability.probability,
     band: a.probability.band,
+    capReason: a.probability.cap?.active ? a.probability.cap.reason : null,
+    merged: (a.probability.merged ?? []).map((m) => ({ label: m.label, signals: m.signals })),
+    // Methode 2026-11-c: wervingsgroepen waaruit meer dan één bron kwam.
+    recruitment: a.probability.recruitment ?? [],
     top: a.probability.top.map((c) => ({ label: c.label, direction: c.direction, count: c.count, lr: c.lr, weight: c.weight, explanation: explainContribution(c) })),
   }));
 
   // Prediction loop and customer signals. Forecasts follow the blind rule: the snapshot holds the forecasts
   // the person making the report can see.
-  const [forecastsRes, outcomeRes, checkinsRes, refRes, signalsRes] = await Promise.all([
+  const stopped = idea.outcome_question === "stop_review";
+  const [forecastsRes, outcomeRes, checkinsRes, refRes, signalsRes, stopRes] = await Promise.all([
     supabase.from("forecasts").select("moment, forecaster_kind, probability, rationale, model, created_at").eq("idea_id", id).order("created_at"),
-    supabase.from("idea_outcomes").select("achieved, actual_value, evidence, resolved_at").eq("idea_id", id).maybeSingle(),
+    // "*": de inzetkolommen (golf B) ontbreken in oudere databases.
+    supabase.from("idea_outcomes").select("*").eq("idea_id", id).maybeSingle(),
     supabase.from("outcome_checkins").select("on_track, current_value, note, created_at").eq("idea_id", id).order("created_at"),
-    idea.reference_class && !idea.reference_class.startsWith("own:") && idea.reference_class !== "none"
+    idea.reference_class?.startsWith(PROPOSAL_REFERENCE_PREFIX)
+      ? supabase
+          .from("reference_proposals")
+          .select("label, source_title, source_url, quote")
+          .eq("id", idea.reference_class.slice(PROPOSAL_REFERENCE_PREFIX.length))
+          .maybeSingle()
+          .then((r) => ({ data: r.data ? { label: r.data.label, source_title: r.data.source_title, source_url: r.data.source_url, caveat: `Door AI voorgesteld; citaat letterlijk teruggevonden: "${r.data.quote}"` } : null }))
+      : idea.reference_class && !idea.reference_class.startsWith("own:") && idea.reference_class !== "none"
       ? supabase.from("reference_classes").select("label, source_title, source_url, caveat").eq("id", idea.reference_class).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from("customer_signals").select("kind, label, mentions").eq("idea_id", id).order("mentions", { ascending: false }).limit(12),
+    stopped ? supabase.from("stop_reviews").select("justified, evidence, reviewed_at").eq("idea_id", id).maybeSingle() : Promise.resolve({ data: null }),
   ]);
   const prediction = {
     outcome: {
@@ -137,6 +162,9 @@ export async function loadDossier(idea: Idea) {
     forecasts: forecastsRes.data ?? [],
     result: outcomeRes.data ?? null,
     checkins: checkinsRes.data ?? [],
+    // Golf B, punt 1: na een stop of pauze de stopvraag in plaats van de uitkomstvraag.
+    question: stopped ? ("stop_review" as const) : ("success" as const),
+    stopReview: stopRes.data ?? null,
   };
   const signals = signalsRes.data ?? [];
 
@@ -177,6 +205,8 @@ export async function loadDossier(idea: Idea) {
     label,
     probabilities,
     weights,
+    method,
+    calibration,
     simulation: simulations.find((s) => s.kind === "realistic") ?? simulations[0] ?? null,
     simulations,
     prediction,

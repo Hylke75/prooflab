@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  checkNoteDone,
   DONE_COOLDOWN_DAYS,
+  NOT_DONE,
+  RULE_LABELS,
   evaluateRules,
   hypotheticalQuestions,
   openForecastMoment,
+  paymentFocused,
   planNoteChanges,
   projectedSample,
   RULES,
@@ -28,7 +32,7 @@ function facts(over: Partial<CoachFacts> = {}): CoachFacts {
     claims: [{ id: "c1", statement: "Er zijn 41.230 vestigingen", exactSources: [{ sourceType: "official_statistic", isPrimary: true }] }],
     competitorKinds: ["direct", "status_quo"],
     sourceTypes: ["official_statistic", "review_site"],
-    assumptions: [],
+    assumptions: [{ id: "a0", statement: "Eventmanagers zoeken zelf locaties", importance: 3, status: "untested" }],
     experiments: [],
     interviews: [],
     observations: [],
@@ -43,6 +47,7 @@ function facts(over: Partial<CoachFacts> = {}): CoachFacts {
       { moment: "research", kind: "consultant" },
     ],
     outreach: { replies: 0, latestReplyAt: null, latestImportAt: null },
+    baseRateChosen: true,
     ...over,
   };
 }
@@ -189,6 +194,19 @@ describe("coach rules", () => {
     expect(openForecastMoment(facts({ claims: [], competitorKinds: [] }))).toBe("intake");
   });
 
+  it("asks for a base rate before a forecast, never for a forecast the page refuses", () => {
+    const ended = { experiments: [exp({ state: "ended" })] };
+    for (const chosen of [false, undefined]) {
+      const c = codes(facts({ ...ended, baseRateChosen: chosen }));
+      expect(c).toContain("base_rate_missing");
+      expect(c).not.toContain("forecast:experiment");
+    }
+    expect(evaluateRules(facts({ ...ended, baseRateChosen: false })).find((n) => n.code === "base_rate_missing")?.href).toBe(`${base}/outcome#basispercentage`);
+    expect(codes(facts({ ...ended, baseRateChosen: true }))).toContain("forecast:experiment");
+    // Geen open moment of al voorspeld: ook geen basispercentage-tip uit deze regel.
+    expect(codes(facts({ baseRateChosen: false, outcome: { defined: true, due: null, resolved: true, checkins: [] } }))).not.toContain("base_rate_missing");
+  });
+
   it("reminds about the three-month check-in and the outcome date", () => {
     const decided = { decisions: [{ id: "d1", decidedAt: iso(-100), confirmed: true }] };
     expect(codes(facts({ ...decided, forecasts: [{ moment: "decision", kind: "consultant" }] }))).toContain("outcome_checkin:d1");
@@ -298,5 +316,69 @@ describe("starting calibration: forecast_overconfident", () => {
     }
     expect(ruleLabel("ai")).toBe("AI-coach");
     expect(ruleLabel("onbekend")).toBe("onbekend");
+  });
+});
+
+describe('"Gedaan": is het werk echt gedaan?', () => {
+  const rule = (code: string) => ({ code, source: "rules", kind: "warning" });
+
+  it("alternatives_missing is pas gedaan als er een alternatief of status quo is", () => {
+    expect(checkNoteDone(rule("alternatives_missing"), facts({ competitorKinds: ["direct"] }))).toEqual({
+      done: false,
+      message: "We zien nog geen huidig alternatief of 'niets doen' bij de concurrenten.",
+    });
+    expect(checkNoteDone(rule("alternatives_missing"), facts({ competitorKinds: ["direct", "status_quo"] }))).toEqual({ done: true });
+    expect(checkNoteDone(rule("alternatives_missing"), facts({ competitorKinds: ["alternative"] }))).toEqual({ done: true });
+  });
+
+  it("outcome_undefined is pas gedaan als de definitie bestaat", () => {
+    const open = { outcome: { defined: false, due: null, resolved: false, checkins: [] } };
+    expect(checkNoteDone(rule("outcome_undefined"), facts(open))).toMatchObject({ done: false, message: "We zien nog geen uitkomstdefinitie." });
+    expect(checkNoteDone(rule("outcome_undefined"), facts())).toEqual({ done: true });
+  });
+
+  it("controleert regels met een eigen code per situatie (forecast:moment, decision_deadline:datum)", () => {
+    const ended = { experiments: [exp({ state: "ended" })] };
+    expect(checkNoteDone(rule("forecast:experiment"), facts(ended))).toMatchObject({ done: false, message: expect.stringMatching(/^We zien nog geen voorspelling/) });
+    expect(checkNoteDone(rule("forecast:experiment"), facts({ ...ended, forecasts: [{ moment: "experiment", kind: "consultant" }] }))).toEqual({ done: true });
+    expect(checkNoteDone(rule("base_rate_missing"), facts({ ...ended, baseRateChosen: false }))).toMatchObject({ done: false, message: "We zien nog geen gekozen basispercentage." });
+  });
+
+  it("laat AI-notities en complimenten zonder controle afronden", () => {
+    expect(checkNoteDone({ code: "ai:123", source: "ai", kind: "tip" }, facts({ competitorKinds: [] }))).toEqual({ done: true });
+    expect(checkNoteDone({ code: "praise_first_behaviour", source: "rules", kind: "praise" }, facts())).toEqual({ done: true });
+  });
+
+  it("heeft voor elke regel een concrete melding", () => {
+    const rules = Object.keys(RULE_LABELS).filter((r) => r !== "ai" && !r.startsWith("praise"));
+    for (const r of rules) expect(NOT_DONE[r], r).toMatch(/^We zien nog/);
+  });
+});
+
+describe("assumptions_early: aannames al in week 1", () => {
+  const week1 = { assumptions: [], sprint: { week: 1, weeks: 5, state: "running" as const, behindReason: null } };
+
+  it("biedt aannames en pre-mortem parallel aan het onderzoek aan, zonder te blokkeren", () => {
+    const n = evaluateRules(facts(week1)).find((x) => x.code === "assumptions_early");
+    expect(n).toMatchObject({ kind: "tip", title: "Begin al met aannames en een pre-mortem", href: `${base}/assumptions#nieuwe-aanname` });
+    expect(n?.body).toContain("pre-mortem");
+  });
+
+  it("legt de nadruk op betalingsbereidheid als de beslisvraag of onzekerheid daarover gaat", () => {
+    for (const idea of [
+      { decisionQuestion: "Investeren we in een eerste versie?", keyUncertainty: "of eventmanagers hiervoor willen betalen" },
+      { decisionQuestion: "Lanceren we tegen deze prijs?", keyUncertainty: null },
+      { decisionQuestion: "Starten we als het budget van klanten dit toelaat?", keyUncertainty: null },
+    ]) {
+      expect(evaluateRules(facts({ ...week1, idea })).find((x) => x.code === "assumptions_early")?.title).toBe("Leg de betaalaanname nu al vast");
+    }
+    expect(paymentFocused("Investeren we in een eerste versie?", "of de techniek werkt")).toBe(false);
+  });
+
+  it("zwijgt zodra er aannames of tests zijn, of later in de sprint", () => {
+    expect(codes(facts())).not.toContain("assumptions_early");
+    expect(codes(facts({ ...week1, experiments: [exp()] }))).not.toContain("assumptions_early");
+    expect(codes(facts({ ...week1, sprint: { week: 3, weeks: 5, state: "running", behindReason: null } }))).not.toContain("assumptions_early");
+    expect(checkNoteDone({ code: "assumptions_early", source: "rules" }, facts(week1))).toEqual({ done: false, message: "We zien nog geen aannames in het dossier." });
   });
 });

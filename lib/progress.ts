@@ -1,7 +1,9 @@
 import "server-only";
 import { cache } from "react";
 import { supabaseServer } from "@/lib/supabase/server";
-import { assumptionEvidence, assumptionProbability, type AssumptionProbability, type ObservationDims } from "@/lib/domain/evidence";
+import { assumptionEvidence, type AssumptionProbability, type ObservationDims } from "@/lib/domain/evidence";
+import { METHODS, type MethodVersion } from "@/lib/domain/method";
+import { ideaMethodVersion, loadIdeaCaps, loadSourceRefs } from "@/lib/method-data";
 import type { AssumptionCategory, ClaimStatus } from "@/lib/domain/labels";
 import { rankByInformationValue, type VoiResult } from "@/lib/domain/recommend";
 import type { IdeaProgress } from "@/lib/domain/coach";
@@ -22,10 +24,16 @@ export type AssumptionWithEvidence = {
   contradicting: number;
   // Estimated probability that the assumption holds (research 3.5), from the stored starting value (default 50%).
   probability: AssumptionProbability;
+  // Golf A, punt 5: onderbouwing van de startkans en of die vergrendeld is (er hangt bewijs aan de aanname).
+  priorRationale: string | null;
+  priorLocked: boolean;
+  // Golf A, punt 11: de vooraf aangewezen hoofdtest (experiment-id) of null.
+  primaryExperimentId: string | null;
 };
 
 type ObsLink = {
   assumption_id: string;
+  observation_id?: string;
   relation: string;
   observations: {
     is_fact: boolean;
@@ -54,6 +62,7 @@ async function loadObservationLinks(ideaId: string): Promise<ObsLink[]> {
       const o = byId.get(l.observation_id);
       return {
         assumption_id: l.assumption_id,
+        observation_id: l.observation_id,
         relation: l.relation,
         observations: o
           ? { is_fact: o.is_fact, is_behaviour: o.is_behaviour, is_real_context: o.is_real_context, is_costly: o.is_costly, is_synthetic: o.is_synthetic, kind: o.kind, origin: o.origin, review_status: o.review_status ?? null }
@@ -63,31 +72,56 @@ async function loadObservationLinks(ideaId: string): Promise<ObsLink[]> {
   }
   const full = await supabase
     .from("assumption_observations")
-    .select("assumption_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin, review_status)")
+    .select("assumption_id, observation_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin, review_status)")
     .eq("idea_id", ideaId);
   if (!full.error) return full.data ?? [];
   const plain = await supabase
     .from("assumption_observations")
-    .select("assumption_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin)")
+    .select("assumption_id, observation_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin)")
     .eq("idea_id", ideaId);
   return plain.data ?? [];
 }
 
-// Computes the evidence axis and the probability of every assumption from linked claims and observations.
-export const loadAssumptions = cache(async (ideaId: string): Promise<AssumptionWithEvidence[]> => {
+// Everything the probabilities of one idea are computed from, loaded once: assumptions, linked claims and
+// observations, evidence factors (default or learned), the source of every signal and the caps (method 2026-11-b).
+export const loadAssumptionInputs = cache(async (ideaId: string) => {
   const supabase = await supabaseServer();
-  const [{ data: assumptions }, { data: links }, obsLinks, weights] = await Promise.all([
+  const [{ data: assumptions }, { data: links }, obsLinks, weights, refs, caps, method] = await Promise.all([
     supabase.from("assumptions").select("*").eq("idea_id", ideaId).order("created_at"),
-    supabase.from("assumption_claims").select("assumption_id, relation, claims(status)").eq("idea_id", ideaId),
+    // claims.relevance (golf C): indirect bewijs telt half in methode 2026-11-c. Opdrachtgevers lezen claims via
+    // dezelfde RLS (can_read_idea), dus ze rekenen met dezelfde weging.
+    supabase.from("assumption_claims").select("assumption_id, claim_id, relation, claims(status, relevance)").eq("idea_id", ideaId),
     loadObservationLinks(ideaId),
     // Default factors unless the organisation switched learned weights on (lib/domain/calibration.ts).
     loadIdeaWeights(ideaId),
+    loadSourceRefs(ideaId),
+    loadIdeaCaps(ideaId),
+    ideaMethodVersion(ideaId),
   ]);
-  return (assumptions ?? []).map((a) => {
-    const claims = (links ?? [])
+  return { assumptions: assumptions ?? [], links: links ?? [], obsLinks: obsLinks ?? [], weights, refs, caps, method };
+});
+export type AssumptionInputs = Awaited<ReturnType<typeof loadAssumptionInputs>>;
+
+// Computes the evidence axis and the probability of every assumption with the calculation module of a method
+// version (lib/domain/method): the dossier's own version, or another one for the comparison before a switch.
+export function computeAssumptions(inputs: AssumptionInputs, version: MethodVersion): AssumptionWithEvidence[] {
+  const method = METHODS[version];
+  const { links, obsLinks, weights, refs, caps } = inputs;
+  return inputs.assumptions.map((a) => {
+    const claims = links
       .filter((l) => l.assumption_id === a.id && l.claims)
-      .map((l) => ({ status: l.claims!.status as ClaimStatus, relation: l.relation as "supports" | "contradicts" }));
-    const observations = (obsLinks ?? [])
+      .map((l) => {
+        const ref = refs.get(`claim:${l.claim_id}`);
+        return {
+          status: l.claims!.status as ClaimStatus,
+          relation: l.relation as "supports" | "contradicts",
+          sourceKey: ref?.key ?? null,
+          sourceLabel: ref?.label ?? null,
+          recruitmentGroup: ref?.recruitment ?? null,
+          relevance: l.claims!.relevance ?? null,
+        };
+      });
+    const observations = obsLinks
       .filter((l) => l.assumption_id === a.id && l.observations)
       .map((l) => {
         const o = l.observations!;
@@ -101,19 +135,26 @@ export const loadAssumptions = cache(async (ideaId: string): Promise<AssumptionW
         return { ...dims, relation: l.relation as "supports" | "contradicts" };
       });
     const e = assumptionEvidence(claims, observations);
-    const probability = assumptionProbability(
+    const probability = method.probability(
       claims,
-      (obsLinks ?? [])
+      obsLinks
         .filter((l) => l.assumption_id === a.id && l.observations)
-        .map((l) => ({
-          kind: l.observations!.kind,
-          relation: l.relation as "supports" | "contradicts",
-          isSynthetic: l.observations!.is_synthetic,
-          origin: l.observations!.origin,
-          reviewStatus: l.observations!.review_status ?? null,
-        })),
+        .map((l) => {
+          const ref = l.observation_id ? refs.get(`observation:${l.observation_id}`) : undefined;
+          return {
+            kind: l.observations!.kind,
+            relation: l.relation as "supports" | "contradicts",
+            isSynthetic: l.observations!.is_synthetic,
+            origin: l.observations!.origin,
+            reviewStatus: l.observations!.review_status ?? null,
+            sourceKey: ref?.key ?? null,
+            sourceLabel: ref?.label ?? null,
+            recruitmentGroup: ref?.recruitment ?? null,
+          };
+        }),
       a.prior == null ? 0.5 : Number(a.prior),
       weights.overrides,
+      caps.caps,
     );
     return {
       probability,
@@ -126,8 +167,18 @@ export const loadAssumptions = cache(async (ideaId: string): Promise<AssumptionW
       evidence: e.score,
       supporting: e.supporting,
       contradicting: e.contradicting,
+      priorRationale: a.prior_rationale ?? null,
+      priorLocked: !!a.prior_locked_at,
+      primaryExperimentId: a.primary_experiment_id ?? null,
     };
   });
+}
+
+// Computes the evidence axis and the probability of every assumption from linked claims and observations,
+// with the method version of the dossier.
+export const loadAssumptions = cache(async (ideaId: string): Promise<AssumptionWithEvidence[]> => {
+  const inputs = await loadAssumptionInputs(ideaId);
+  return computeAssumptions(inputs, inputs.method);
 });
 
 // Risk priority: most important first, then least evidence.
@@ -176,15 +227,19 @@ async function loadReportMeta(ideaId: string): Promise<{ created_at: string; sha
 export const loadForecastState = cache(async (ideaId: string): Promise<ForecastState | undefined> => {
   const supabase = await supabaseServer();
   const user = await getUser();
-  const [idea, own, checkins, outcome] = await Promise.all([
+  const [idea, own, checkins, outcome, question, stopReview] = await Promise.all([
     supabase.from("ideas").select("outcome_statement, outcome_due, outcome_clock_start, reference_class").eq("id", ideaId).maybeSingle(),
     user
       ? supabase.from("forecasts").select("moment").eq("idea_id", ideaId).eq("forecaster_id", user.id)
       : Promise.resolve({ data: [] as { moment: string }[], error: null }),
     supabase.from("outcome_checkins").select("id", { count: "exact", head: true }).eq("idea_id", ideaId),
     supabase.from("idea_outcomes").select("idea_id").eq("idea_id", ideaId).maybeSingle(),
+    // Golf B: los opgevraagd, zodat een database zonder deze kolom en tabel gewoon de succesvraag houdt.
+    supabase.from("ideas").select("outcome_question").eq("id", ideaId).maybeSingle(),
+    supabase.from("stop_reviews").select("idea_id").eq("idea_id", ideaId).maybeSingle(),
   ]);
   if (idea.error || own.error || checkins.error || outcome.error || !idea.data) return undefined;
+  const stopped = !question.error && question.data?.outcome_question === "stop_review";
   return {
     outcomeDefined: !!idea.data.outcome_statement,
     baseRateChosen: !!idea.data.reference_class,
@@ -192,7 +247,8 @@ export const loadForecastState = cache(async (ideaId: string): Promise<ForecastS
     clockStart: idea.data.outcome_clock_start,
     ownMoments: (own.data ?? []).map((f) => f.moment).filter((m): m is ForecastMoment => (FORECAST_MOMENTS as readonly string[]).includes(m)),
     checkins: checkins.count ?? 0,
-    resolved: !!outcome.data,
+    resolved: stopped ? !stopReview.error && !!stopReview.data : !!outcome.data,
+    question: stopped ? "stop_review" : "success",
     today: todayInNL(),
   };
 });

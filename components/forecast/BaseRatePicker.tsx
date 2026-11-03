@@ -5,7 +5,7 @@ import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import type { OwnBaseRate, ReferenceClass } from "@/lib/forecast-data";
 import { NO_REFERENCE, pct } from "@/lib/domain/forecast";
 
-type Option = { value: string; title: string; range: string; source: React.ReactNode; caveat: string | null; preferred?: boolean };
+type Option = { value: string; title: string; range: string; source: React.ReactNode; caveat: string | null; preferred?: boolean; quote?: string };
 
 // Choose the outside view: the own base rate when there are enough resolved ideas, an external reference
 // class with its source and caveat, or explicitly "no good reference".
@@ -46,6 +46,7 @@ export function BaseRatePicker({
         </>
       ),
       caveat: c.caveat,
+      quote: c.quote,
     })),
     { value: NO_REFERENCE, title: "Geen goede referentie", range: "onbekend", source: "Licht hieronder toe waarom geen van de referenties past.", caveat: null },
   ];
@@ -86,6 +87,7 @@ export function BaseRatePicker({
               </span>
             </div>
             <span className="tiny" style={{ display: "block", fontWeight: 500, marginTop: 6 }}>{o.source}</span>
+            {o.quote && <span className="tiny" style={{ display: "block", fontWeight: 500, marginTop: 4 }}>Citaat: &ldquo;{o.quote}&rdquo;</span>}
             {o.caveat && <span className="tiny" style={{ display: "block", fontWeight: 500, marginTop: 4 }}>Let op: {o.caveat}</span>}
           </div>
         ))}

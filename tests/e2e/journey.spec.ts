@@ -44,11 +44,15 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
 
   // 1. Decision-first intake
   await page.goto("/app/ideas/new");
-  await page.getByRole("button", { name: "Is er voldoende markt voor dit aanbod?" }).click();
+  await page.getByRole("button", { name: "Lanceren we dit aanbod in het eerste kwartaal met twee consultants, of stoppen we?" }).click();
+  // Inzet en beslisdatum zijn verplicht in de intake.
+  await page.getByLabel("Hoeveel (euro)", { exact: true }).fill("25000");
+  await page.getByLabel("Uiterlijke beslisdatum", { exact: true }).fill(new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10));
   await page.getByRole("button", { name: "Volgende stap" }).click();
   await page.getByLabel("Geslaagd als…", { exact: true }).fill("Zes maanden na het besluit hebben minstens 10 eventbureaus een betaald abonnement.");
   await page.getByLabel("Wat meet je?", { exact: true }).fill("betalende eventbureaus");
   await page.getByLabel("Doelwaarde", { exact: true }).fill("10");
+  await page.getByLabel("Omzetdoel (€)", { exact: true }).fill("15000");
   await page.getByRole("button", { name: "Volgende stap" }).click();
   const title = `E2E-idee ${Date.now()}`;
   await page.getByLabel("Korte naam", { exact: true }).fill(title);
@@ -64,6 +68,11 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.waitForURL(/\/research/);
   await expect(page.getByRole("heading", { name: "Begrijp je markt." })).toBeVisible();
   const ideaUrl = page.url().replace(/\/research.*$/, "");
+  // Het dossieroverzicht toont de volgende stap (week 1: onderzoek, niet de voorspelling).
+  await page.goto(ideaUrl);
+  await expect(page.getByRole("heading", { name: "Volgende stap" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Verzamel de eerste bronnen", exact: true })).toBeVisible();
+  await page.goto(`${ideaUrl}/research`);
 
   // 2. Source + verified claim
   await page.getByRole("tab", { name: "Bronnen" }).click();
@@ -79,6 +88,10 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.getByLabel("Bevinding (één zin)", { exact: true }).fill("Nederland telde in 2026 41.230 vestigingen in congres- en beursorganisatie.");
   await page.getByLabel("Letterlijk citaat uit het fragment", { exact: true }).fill("In 2026 telde Nederland 41.230 vestigingen in de branche congres- en beursorganisatie.");
   await expect(page.getByText("✓ Citaat staat letterlijk in het fragment.")).toBeVisible();
+  // Golf C: populatie, regio en peildatum per bevinding zijn verplicht; hier gelijk aan de intake (direct bewijs).
+  await page.getByLabel("Populatie", { exact: true }).fill("vestigingen in congres- en beursorganisatie");
+  await page.getByLabel("Regio", { exact: true }).fill("Nederland");
+  await page.getByLabel("Peildatum", { exact: true }).fill("2026");
   await page.getByLabel("Wat bewijst dit nog níét?", { exact: true }).fill("Dat deze bedrijven het probleem hebben of willen betalen.");
   await page.getByRole("button", { name: "Bevinding toetsen en opslaan" }).click();
   await expect(page.getByText(/Bevinding opgeslagen/)).toBeVisible();
@@ -96,6 +109,10 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.getByLabel("Kop", { exact: true }).fill("Vind de perfecte eventlocatie in minuten.");
   await page.getByLabel("Ondertitel", { exact: true }).fill("Een persoonlijke selectie, zonder eindeloos zoeken.");
   await page.getByLabel("Minimale steekproef", { exact: true }).fill("5");
+  // Methode 2026-11-b: de verwachte uitkomst is verplicht; daarmee rekent ProofLab vooraf het benodigde aantal uit.
+  await page.getByLabel("Verwachte uitkomst (%)", { exact: true }).fill("30");
+  await expect(page.getByText(/Benodigd: \d+ deelnemers/)).toBeVisible();
+  await page.getByRole("radio", { name: "Koud", exact: true }).check();
   await page.getByRole("button", { name: /Test Card opslaan als concept/ }).click();
   await page.waitForURL(/\/experiments\/[0-9a-f-]{36}/);
   await page.getByRole("button", { name: "Ter review aanbieden" }).click();
@@ -134,7 +151,9 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   // Once saved, the picker folds away (its own confirmation with it) and the chosen base rate is shown.
   await expect(page.locator("summary", { hasText: "Andere referentie kiezen" })).toBeVisible();
   await page.goto(`${ideaUrl}/evidence`);
-  await expect(page.getByRole("button", { name: "Bewaar mijn keuze" })).toBeDisabled();
+  // Eerst voorspellen (golf B, punt 15): de bewijspagina blijft vergrendeld tot de eigen voorspelling er is.
+  await expect(page.getByRole("link", { name: /Geef eerst je voorspelling/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Bewaar mijn keuze" })).toHaveCount(0);
   await page.getByLabel("Waarom? (één zin)", { exact: true }).fill("Weinig gedragsbewijs, dus dicht bij het basispercentage.");
   await page.getByRole("button", { name: "Leg mijn voorspelling vast" }).click();
   // The form makes way for the recorded forecast (and the others for this moment).

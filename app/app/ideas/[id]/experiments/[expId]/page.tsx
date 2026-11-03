@@ -1,8 +1,10 @@
+import { interviewRecruitment, RECRUITMENT_GROUPS, RECRUITMENT_KEYS, recruitmentLabel } from "@/lib/domain/recruitment";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { ActionForm } from "@/components/ui/ActionForm";
+import { RuleSummary, ruleName } from "@/components/experiments/RuleSummary";
 import { ResultMeter } from "@/components/experiments/ResultMeter";
 import { GuideAuditList, TranscriptAuditList } from "@/components/experiments/InterviewAudit";
 import { AiQualityCard } from "@/components/research/AiQualityCard";
@@ -14,12 +16,14 @@ import { loadAiQuality } from "@/lib/ai-quality";
 import { auditGuide, auditTranscript, guideSummary } from "@/lib/domain/interview-audit";
 import { codingIsProposalOnly } from "@/lib/domain/ai-quality";
 import { supabaseServer } from "@/lib/supabase/server";
-import { experimentMetrics, type InterviewConfig, type LandingConfig, type PricingConfig } from "@/lib/experiment-metrics";
+import { experimentMetrics, surveyConfigOf, type InterviewConfig, type LandingConfig, type PricingConfig } from "@/lib/experiment-metrics";
+import { describeDraftEdit, draftEdit, surveyDraftText } from "@/lib/domain/ai-draft";
 import { aiConfigured, env, trackingConfigured } from "@/lib/env";
 import { pct } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { DMU_ROLES, EXPERIMENT_STATES, EXPERIMENT_TYPES, OBSERVATION_KINDS, type ExperimentState, type ExperimentType } from "@/lib/domain/labels";
-import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, reviewObservation, transitionExperiment } from "../actions";
+import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, reviewObservation, setPrimaryTest, transitionExperiment } from "../actions";
+import { canDesignatePrimary, TEST_ROLES, testRole } from "@/lib/domain/primary-test";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export const metadata: Metadata = { title: "Experiment" };
@@ -35,6 +39,22 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
   const state = exp.state as ExperimentState;
   const m = await experimentMetrics(exp, h);
   const { data: cards } = await supabase.from("learning_cards").select("id").eq("experiment_id", expId);
+  // Hoofdtest of verkennend (golf A, punt 11).
+  const { data: primaryOf } = await supabase.from("assumptions").select("id, primary_experiment_id").eq("id", h.assumption_id).maybeSingle();
+  const role = testRole(exp.id, h.assumption_id, primaryOf ? [primaryOf] : []);
+  const { data: currentPrimary } =
+    primaryOf?.primary_experiment_id && role !== "primary"
+      ? await supabase.from("experiments").select("state").eq("id", primaryOf.primary_experiment_id).maybeSingle()
+      : { data: null };
+  const designate = canDesignatePrimary(exp, currentPrimary);
+  // AI-opzet van de enquête (golf A, punt 17): wat heeft de mens eraan veranderd?
+  const surveyDraft = await (async () => {
+    if (type !== "survey" || !exp.ai_draft_id) return null;
+    const { data: d } = await supabase.from("ai_drafts").select("content").eq("id", exp.ai_draft_id).maybeSingle();
+    const original = d ? surveyConfigOf(d.content) : null;
+    const current = surveyConfigOf(exp.config);
+    return original && current ? draftEdit(surveyDraftText(original), surveyDraftText(current)) : null;
+  })();
   const interviews =
     type === "interview" && canWrite
       ? (await supabase.from("interviews").select("*, observations(*)").eq("experiment_id", expId).order("held_on")).data ?? []
@@ -99,8 +119,13 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
 
       {m.n > 0 && (
         <div className={`verdict mt-18 ${v.kind}`}>
-          <strong>{v.kind === "running" ? "Nog geen uitspraak" : v.kind === "pass" ? "Geslaagd volgens de vooraf vastgelegde regel" : v.kind === "fail" ? "Niet geslaagd" : "Onbeslist"}</strong>
+          <strong>{v.kind === "running" ? "Nog geen uitspraak" : v.kind === "pass" ? `${v.strongProof ? "Sterk bewezen" : "Geslaagd"} volgens de vooraf vastgelegde regel` : v.kind === "fail" ? "Niet geslaagd" : "Onbeslist"}</strong>
           <p className="sub" style={{ marginTop: 4 }}>{v.reason}</p>
+          {v.kind !== "running" && (
+            <RuleSummary
+              o={{ rule: v.rule, label: v.label, probability: v.probability, probabilityFail: v.probabilityFail, successCount: v.successCount, successes: m.successes, n: m.n, interval: v.interval, thresholdPct: Number(h.success_threshold_pct), failThresholdPct: h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct) }}
+            />
+          )}
           {v.kind !== "running" && <ResultMeter v={v} success={Number(h.success_threshold_pct)} fail={h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct)} bayes={m.bayes} />}
         </div>
       )}
@@ -112,14 +137,58 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
             <h2 className="as-h3">Test Card</h2>
             <span className={`pill ${h.locked_at ? "dark" : "gray"}`}>{h.locked_at ? `Vergrendeld ${new Date(h.locked_at).toLocaleDateString("nl-NL")}` : "Concept"}</span>
           </div>
+          <div className="data-row">
+            <span>Rol</span>
+            <strong style={{ textAlign: "right" }}>
+              <span className={`pill ${role === "primary" ? "blue" : "gray"}`}>{TEST_ROLES[role].label}</span>{" "}
+              <span className="tiny">{TEST_ROLES[role].explain}</span>
+            </strong>
+          </div>
+          {canWrite && role !== "primary" && designate.ok && (
+            <ActionForm action={setPrimaryTest.bind(null, id, expId)} submitLabel="Wijs aan als hoofdtest" submitClass="btn white sm" pendingLabel="Bezig…">
+              <span className="tiny">Alleen de hoofdtest beslist over de aanname. Na goedkeuring ligt deze keuze vast.</span>
+            </ActionForm>
+          )}
           <div className="data-row"><span>Wij denken dat</span><strong style={{ textAlign: "right" }}>{h.we_believe}</strong></div>
           <div className="data-row"><span>Bij</span><strong style={{ textAlign: "right" }}>{h.target_group}</strong></div>
           <div className="data-row"><span>Dat toetsen we door</span><strong style={{ textAlign: "right" }}>{h.test_method}</strong></div>
           <div className="data-row"><span>We meten</span><strong style={{ textAlign: "right" }}>{h.metric_numerator} / {h.metric_denominator}</strong></div>
-          <div className="data-row"><span>Het klopt als</span><strong className="num">≥ {h.success_threshold_pct}%</strong></div>
-          <div className="data-row"><span>Het klopt niet als</span><strong className="num">{h.fail_threshold_pct != null ? `< ${h.fail_threshold_pct}%` : "—"}</strong></div>
+          <div className="data-row"><span>Beslisregel</span><strong style={{ textAlign: "right" }}>{ruleName(h.decision_rule ?? "interval")}</strong></div>
+          {h.decision_rule === "absolute" ? (
+            <div className="data-row"><span>Het klopt als</span><strong className="num">≥ {h.success_count} van {h.min_sample}</strong></div>
+          ) : (
+            <>
+              <div className="data-row"><span>Het klopt als</span><strong className="num">≥ {h.success_threshold_pct}%</strong></div>
+              <div className="data-row"><span>Het klopt niet als</span><strong className="num">{h.fail_threshold_pct != null ? `< ${h.fail_threshold_pct}%` : "—"}</strong></div>
+            </>
+          )}
           <div className="data-row"><span>Steekproef · looptijd</span><strong className="num">≥ {h.min_sample} · max. {h.max_duration_days} dagen</strong></div>
+          {h.decision_rule && (
+            <div className="data-row">
+              <span>Vooraf berekend</span>
+              <strong style={{ textAlign: "right" }}>
+                {h.required_n != null ? `${h.required_n} deelnemers nodig` : "drempel niet haalbaar met de verwachting"} bij een verwachte uitkomst van {h.expected_pct}%
+                {h.available_per_week != null ? ` · ${h.available_per_week} beschikbaar per week` : ""}
+              </strong>
+            </div>
+          )}
           <div className="data-row"><span>Kanalen</span><strong style={{ textAlign: "right" }}>{channels.map((c) => CHANNELS[c.channel as keyof typeof CHANNELS] ?? c.channel).join(", ")}</strong></div>
+          <div className="data-row">
+            <span>Wervingsgroep</span>
+            <strong style={{ textAlign: "right" }}>
+              {exp.type === "interview"
+                ? `Per gesprek vastgelegd${exp.recruitment_group ? `; standaard ${recruitmentLabel(exp.recruitment_group).toLowerCase()}` : ""}`
+                : exp.recruitment_group
+                  ? recruitmentLabel(exp.recruitment_group)
+                  : "Niet vastgelegd (telt als onbekend)"}
+            </strong>
+          </div>
+          {surveyDraft && (
+            <div className="data-row">
+              <span>Enquête</span>
+              <strong style={{ textAlign: "right" }}>AI-concept · {describeDraftEdit(surveyDraft)}</strong>
+            </div>
+          )}
           {h.expected_biases && <div className="note">Verwachte vertekeningen: {h.expected_biases}</div>}
         </div>
 
@@ -258,7 +327,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
               <div className="section-title">
                 <div>
                   <h3>{iv.participant_label}</h3>
-                  <p className="tiny">{DMU_ROLES[iv.dmu_role as keyof typeof DMU_ROLES]} · {iv.segment ?? "segment onbekend"} · via {CHANNELS[iv.recruited_via as keyof typeof CHANNELS] ?? iv.recruited_via} · {new Date(iv.held_on).toLocaleDateString("nl-NL")}{iv.is_acquaintance ? " · bekende" : ""}</p>
+                  <p className="tiny">{DMU_ROLES[iv.dmu_role as keyof typeof DMU_ROLES]} · {iv.segment ?? "segment onbekend"} · via {CHANNELS[iv.recruited_via as keyof typeof CHANNELS] ?? iv.recruited_via} · {new Date(iv.held_on).toLocaleDateString("nl-NL")}{iv.is_acquaintance ? " · bekende" : ""} · wervingsgroep {recruitmentLabel(interviewRecruitment(iv.is_acquaintance, iv.recruitment_group, exp.recruitment_group)).toLowerCase()}</p>
                 </div>
                 <span className="pill gray">{iv.record_type === "transcript" ? "Transcript" : "Notities (minder herleidbaar)"}</span>
               </div>
@@ -345,7 +414,14 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
                   </div>
                 </div>
                 <div className="form-line"><label htmlFor="iv-x">Transcript of notities</label><textarea className="field" id="iv-x" name="transcript" rows={8} /></div>
-                <label className="check-row"><input type="checkbox" name="is_acquaintance" /> Deze persoon is een bekende (vriend, collega, bestaande klant)</label>
+                <div className="form-line">
+                  <label htmlFor="iv-g">Wervingsgroep</label>
+                  <select className="field" id="iv-g" name="recruitment_group" defaultValue={exp.recruitment_group ?? "unknown"} aria-describedby="iv-g-hint">
+                    {RECRUITMENT_KEYS.filter((k) => k !== "own_network").map((k) => <option key={k} value={k}>{RECRUITMENT_GROUPS[k].label}</option>)}
+                  </select>
+                  <p className="field-hint" id="iv-g-hint">Is het een bekende? Vink dat hieronder aan: dan telt het gesprek als eigen netwerk. Gesprekken uit dezelfde groep tellen afnemend mee.</p>
+                </div>
+                <label className="check-row"><input type="checkbox" name="is_acquaintance" /> Deze persoon is een bekende (vriend, collega, bestaande klant): wervingsgroep eigen netwerk</label>
                 <label className="check-row"><input type="checkbox" name="consent_recorded" /> Toestemming voor verwerking is gegeven en vastgelegd (bewaartermijn 12 maanden)</label>
               </ActionForm>
             </div>

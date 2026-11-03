@@ -123,16 +123,20 @@ test("dogfood: ProofLab op ProofLab", async ({ page }) => {
 
   // Intake: the decision first
   await page.goto("/app/ideas/new");
-  await page.getByRole("button", { name: "Is dit idee interessant genoeg om in te investeren?" }).click();
+  await page.getByRole("button", { name: "Investeren we € 25.000 in een eerste versie, ja of nee, vóór 1 maart?" }).click();
   await page.getByLabel("De beslisvraag, in je eigen woorden", { exact: true }).fill(
     "Maken we van ProofLab de vaste werkwijze voor validatiesprints van Link & Lead, en investeren we in een versie voor opdrachtgevers?",
   );
+  // Inzet en beslisdatum zijn verplicht in de intake.
+  await page.getByLabel("Hoeveel (euro)", { exact: true }).fill("25000");
+  await page.getByLabel("Uiterlijke beslisdatum", { exact: true }).fill(new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10));
   await page.getByRole("button", { name: "Volgende stap" }).click();
   await page.getByLabel("Geslaagd als…", { exact: true }).fill(
     `Link & Lead verkoopt binnen zes maanden na het besluit minstens ${OUTCOME_TARGET} validatiesprints met ProofLab.`,
   );
   await page.getByLabel("Wat meet je?", { exact: true }).fill("verkochte validatiesprints met ProofLab");
   await page.getByLabel("Doelwaarde", { exact: true }).fill(OUTCOME_TARGET);
+  await page.getByLabel("Omzetdoel (€)", { exact: true }).fill("15000");
   await page.getByRole("button", { name: "Volgende stap" }).click();
   await page.getByLabel("Korte naam", { exact: true }).fill(TITLE);
   await page.getByLabel("Mijn idee", { exact: true }).fill(

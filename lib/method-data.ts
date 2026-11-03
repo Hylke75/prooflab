@@ -1,0 +1,76 @@
+import "server-only";
+import { cache } from "react";
+import { supabaseServer } from "@/lib/supabase/server";
+import { DEFAULT_CAPS, evidenceSourceKey, normaliseCaps, type EvidenceCaps } from "@/lib/domain/evidence";
+import { asMethodVersion, type MethodVersion } from "@/lib/domain/method";
+import { calibrationStatus, type CalibrationStatus } from "@/lib/domain/probability-display";
+
+// De methodeversie waarmee een dossier rekent. Database zonder methodekolom: de oude rekenwijze.
+export const ideaMethodVersion = cache(async (ideaId: string): Promise<MethodVersion> => {
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase.from("ideas").select("method_version").eq("id", ideaId).maybeSingle();
+  return asMethodVersion(error ? null : data?.method_version);
+});
+
+// Kalibratie van de werkruimte van een dossier: genoeg opgeloste dossiers om kansen exact te tonen? Zonder schema
+// of bij een fout: niet gekalibreerd (de voorzichtige weergave in banden).
+export const loadCalibration = cache(async (ideaId: string): Promise<CalibrationStatus> => {
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase.rpc("resolved_dossiers_for_idea", { p_idea: ideaId });
+  return calibrationStatus(error ? 0 : Number(data));
+});
+
+export type CapsInUse = { caps: EvidenceCaps; custom: boolean };
+
+// De plafonds per bewijsniveau voor één dossier (instelling van de werkruimte, anders de standaardwaarden).
+// Dezelfde voor consultant en opdrachtgever; standaardwaarden als het schema er nog niet is.
+export const loadIdeaCaps = cache(async (ideaId: string): Promise<CapsInUse> => {
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase.rpc("evidence_caps_for_idea", { p_idea: ideaId });
+  const row = !error ? data?.[0] : undefined;
+  return row ? { caps: normaliseCaps(row), custom: true } : { caps: DEFAULT_CAPS, custom: false };
+});
+
+export async function loadOrgCaps(orgId: string): Promise<CapsInUse & { updatedAt: string | null }> {
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase.from("org_evidence_caps").select("*").eq("org_id", orgId).maybeSingle();
+  if (error || !data) return { caps: DEFAULT_CAPS, custom: false, updatedAt: null };
+  return { caps: normaliseCaps(data), custom: true, updatedAt: data.updated_at };
+}
+
+// recruitment: de wervingsgroep van het signaal (methode 2026-11-c), null zonder werving (bureauonderzoek).
+export type SourceRef = { key: string; label: string; recruitment?: string | null };
+
+// Per bevinding ("claim:<id>") en observatie ("observation:<id>") de bron waarmee methode 2026-11-b
+// signalen samenvoegt. Leeg als het schema er nog niet is: dan is elk signaal zijn eigen bron.
+export const loadSourceRefs = cache(async (ideaId: string): Promise<Map<string, SourceRef>> => {
+  const supabase = await supabaseServer();
+  const [{ data, error }, recruitment] = await Promise.all([
+    supabase.rpc("evidence_source_refs", { p_idea: ideaId }),
+    // Ontbreekt de functie (oudere database), dan heeft geen enkel signaal een wervingsgroep.
+    supabase.rpc("evidence_recruitment_refs", { p_idea: ideaId }),
+  ]);
+  const out = new Map<string, SourceRef>();
+  if (error) return out;
+  const groups = new Map((recruitment.error ? [] : (recruitment.data ?? [])).map((r) => [`${r.item_type === "claim" ? "claim" : "observation"}:${r.item_id}`, r.recruitment_group]));
+  for (const r of data ?? []) {
+    const itemType = r.item_type === "claim" ? "claim" : "observation";
+    out.set(`${itemType}:${r.item_id}`, {
+      recruitment: groups.get(`${itemType}:${r.item_id}`) ?? null,
+      ...evidenceSourceKey({
+        itemType,
+        itemId: r.item_id,
+        sourceId: r.source_id,
+        sourceType: r.source_type,
+        sourceTitle: r.source_title,
+        campaign: r.campaign,
+        surveyExperimentId: r.survey_experiment_id,
+        experimentId: r.experiment_id,
+        experimentTitle: r.experiment_title,
+        interviewId: r.interview_id,
+        interviewLabel: r.interview_label,
+      }),
+    });
+  }
+  return out;
+});

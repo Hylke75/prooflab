@@ -15,11 +15,24 @@ export type GenerateRequest = {
   // Server-side web search by the provider. With Claude also server-side page fetching (web_fetch).
   webSearch?: { maxUses: number };
   timeoutMs?: number;
+  // Run budget (lib/ai/budget.ts): a search loop reserves an estimate before every round and stops when the
+  // reservation is refused, returning what it already has.
+  budget?: BudgetGate;
 };
+
+export type BudgetReservation = { settle(actualUsd: number): void };
+export type BudgetGate = { reserve(estimateUsd: number, label: string): BudgetReservation | null };
 
 // A web page the provider itself fetched, with its text (Claude's web_fetch). Other providers return none; their
 // pages are fetched by ProofLab (lib/ai/web-evidence.ts).
-export type FetchedPage = { url: string; title: string | null; text: string };
+export type FetchedPage = { url: string; title: string | null; text: string; kind?: "text" | "pdf" };
+
+// One search query the provider ran, with the URLs it returned (for the search log, research_search_log).
+// Encrypted search-result content is never used; only the URL and title.
+export type SearchQuery = { query: string; urls: string[] };
+
+// A page the provider tried to fetch but could not (Claude's web_fetch error codes).
+export type FetchFailure = { url: string; reason: string };
 
 // citedText is text FROM the source only when the provider says so (Claude's citations). For ChatGPT and
 // Gemini a citation marks a URL; the cited span is the model's own sentence, so citedText is null.
@@ -37,6 +50,11 @@ export type GenerateResult = {
   citations: Citation[];
   searchResults: SearchResult[];
   fetched: FetchedPage[];
+  // Search queries as the provider reports them; absent for calls without web search.
+  queries?: SearchQuery[];
+  fetchFailed?: FetchFailure[];
+  // True when a search loop stopped because the next round would exceed the run budget.
+  stoppedForBudget?: boolean;
 };
 
 export interface ProviderAdapter {

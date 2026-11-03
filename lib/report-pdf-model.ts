@@ -6,6 +6,11 @@
 import type { ReportSnapshot } from "@/lib/report";
 import { pct } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
+import { describeMethodology, ruleLabelText } from "@/lib/domain/method/describe";
+import { CALIBRATION_MIN_RESOLVED, formatProbability, formatProbabilityRange } from "@/lib/domain/probability-display";
+import { explainRecruitment } from "@/lib/domain/recruitment";
+import { asEvidenceLevel, outcomeWithLevel } from "@/lib/domain/evidence";
+import { allTestsSummary, type AllTestsPerAssumption, type AllTestsRow } from "@/lib/domain/all-tests";
 
 export type Tone = "blue" | "green" | "coral" | "lime" | "gray";
 export type Block =
@@ -67,6 +72,8 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
   const realistic = r.sizing.find((s) => s.label === "Realistisch") ?? r.sizing[1] ?? null;
   const signals = r.signals ?? [];
   const chapters: Chapter[] = [];
+  // Methodeversie, beslisregels en plafonds (rapporten van vóór de methodeversie: 2026-11-a).
+  const methodology = describeMethodology("methodology" in r ? r.methodology : null);
 
   // 01 Management summary
   chapters.push({
@@ -170,6 +177,8 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
 
   // 06 Assumptions
   const withProb = r.assumptions.some((a) => a.probability);
+  // Rapporten van vóór golf A hebben geen kalibratie: dan de voorzichtige weergave in banden.
+  const calibrated = !!(r as { calibration?: { calibrated?: boolean } }).calibration?.calibrated;
   chapters.push({
     id: "assumptions",
     eyebrow: "06 / AANNAMES EN RISICO'S",
@@ -178,17 +187,31 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
       ? [
           {
             t: "table",
-            head: ["Aanname", "Belang", withProb ? "Geschatte kans" : "Bewijs", "Status"],
+            head: ["Aanname", "Belang", withProb ? (calibrated ? "Geschatte kans" : "Geschatte kans (niet gekalibreerd)") : "Bewijs", "Status"],
             widths: [54, 10, 18, 18],
             rows: r.assumptions.map((a) => [
               `${a.statement}${a.premortem ? " (uit de pre-mortem)" : ""}`,
               `${a.importance}/5`,
-              withProb && a.probability ? `${pct0(a.probability.point)} (${pct0(a.probability.low)}–${pct0(a.probability.high)})` : `${a.evidence}%`,
+              withProb && a.probability
+                ? `${formatProbability(a.probability.point, calibrated).text} (${formatProbabilityRange(a.probability.low, a.probability.high, calibrated).text})` +
+                  ((a as { recruitment?: { group: string; sources: number }[] }).recruitment ?? []).map((x) => ` ${explainRecruitment(x)}`).join("")
+                : `${a.evidence}%`,
               ASSUMPTION_STATUS[a.status] ?? a.status,
             ]),
           },
           ...(withProb
-            ? [{ t: "p" as const, small: true, muted: true, text: "Geschatte kans dat de aanname klopt: een beginwaarde (meestal 50%), bijgewerkt met een vaste factor per soort bewijs. Uitspraken tellen nauwelijks, gedrag en betalingen sterk." }]
+            ? [
+                {
+                  t: "p" as const,
+                  small: true,
+                  muted: true,
+                  text:
+                    "Geschatte kans dat de aanname klopt: een beginwaarde (meestal 50%), bijgewerkt met een vaste factor per soort bewijs. Uitspraken tellen nauwelijks, gedrag en betalingen sterk." +
+                    (calibrated
+                      ? ""
+                      : ` Niet gekalibreerd: bij dit rapport had de werkruimte minder dan ${CALIBRATION_MIN_RESOLVED} opgeloste dossiers om deze kansen aan te toetsen. Daarom staan ze in banden van 10 procentpunt.`),
+                },
+              ]
             : []),
         ]
       : [{ t: "p", text: "Er zijn nog geen aannames vastgelegd.", muted: true }],
@@ -198,6 +221,25 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
   const exps: Block[] = [
     { t: "p", small: true, muted: true, text: "Het 95%-interval is de bandbreedte waarbinnen de werkelijke waarde vrijwel zeker ligt; bij kleine aantallen is die breed. Drempels zijn vóór de start vergrendeld." },
   ];
+  // Verplichte lijst "Alle tests" (golf A, punt 12). Rapporten van daarvoor hebben hem niet.
+  const allTests = (r as { allTests?: { rows: AllTestsRow[]; perAssumption: AllTestsPerAssumption[] } }).allTests;
+  exps.push({ t: "h", text: "Alle tests" });
+  if (allTests) {
+    exps.push({ t: "p", small: true, text: `${allTestsSummary(allTests.rows)} Deze lijst is verplicht: ook afgebroken, mislukte en verkennende tests staan erin.` });
+    if (allTests.rows.length) {
+      exps.push({
+        t: "table",
+        head: ["Test", "Aanname", "Rol", "Status", "Resultaat", "Uitkomst"],
+        widths: [20, 24, 11, 17, 10, 18],
+        rows: allTests.rows.map((t) => [`${t.title} (${t.type})`, t.assumption, t.role, t.status, t.result, t.outcome]),
+      });
+    }
+    if (allTests.perAssumption.length) {
+      exps.push({ t: "list", small: true, items: allTests.perAssumption.map((a) => `${a.assumption}: ${a.total} ${a.total === 1 ? "test" : "tests"} (${a.primary} hoofdtest, ${a.exploratory} verkennend)`) });
+    }
+  } else {
+    exps.push({ t: "p", small: true, muted: true, text: 'Dit rapport is gemaakt vóór de lijst "Alle tests" bestond.' });
+  }
   if (!r.experiments.length) exps.push({ t: "p", text: "Er zijn nog geen experimenten uitgevoerd.", muted: true });
   for (const e of r.experiments) {
     exps.push({ t: "h", text: `${e.title} (${e.type})` });
@@ -206,13 +248,18 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
     exps.push({
       t: "p",
       text:
-        `Resultaat: ${e.successes} van ${e.n}${e.interval ? ` (${pct(e.interval.point)}; 95%-interval ${pct(e.interval.low)}–${pct(e.interval.high)})` : ""}. Oordeel: ${e.verdict ? (VERDICT[e.verdict] ?? "onbeslist") : "onbeslist"}. ${e.verdictReason}` +
+        `Resultaat: ${e.successes} van ${e.n}${e.interval ? ` (${pct(e.interval.point)}; 95%-interval ${pct(e.interval.low)}–${pct(e.interval.high)})` : ""}. Oordeel: ${outcomeWithLevel("label" in e && e.label ? e.label : e.verdict ? (VERDICT[e.verdict] ?? "onbeslist") : "onbeslist", asEvidenceLevel((e as { level?: unknown }).level))}${"rule" in e ? ` (${ruleLabelText(e.rule)})` : ""}. ${e.verdictReason}` +
         (e.endedEarly ? " De test is vroegtijdig beëindigd." : ""),
     });
     for (const w of e.warnings) exps.push({ t: "p", small: true, muted: true, text: `Let op: ${w}` });
   }
   for (const c of r.learningCards) {
-    exps.push({ t: "note", title: "Learning Card", text: `We dachten: ${c.believed} We zagen: ${c.observed} Daaruit leren we: ${c.learned} Daarom: ${c.therefore} (betrouwbaarheid: ${RELIABILITY[c.reliability] ?? c.reliability})` });
+    const cl = c as { level?: unknown; title?: string | null };
+    exps.push({
+      t: "note",
+      title: `Learning Card${cl.title ? `: ${cl.title}` : ""}${"level" in cl ? ` · ${outcomeWithLevel(VERDICT[c.verdict] ?? "onbeslist", asEvidenceLevel(cl.level))}` : ""}`,
+      text: `We dachten: ${c.believed} We zagen: ${c.observed} Daaruit leren we: ${c.learned} Daarom: ${c.therefore} (betrouwbaarheid: ${RELIABILITY[c.reliability] ?? c.reliability})`,
+    });
   }
   chapters.push({ id: "experiments", eyebrow: "07 / EXPERIMENTEN EN RESULTATEN", title: "Van mening naar meetbaar gedrag", blocks: exps });
 
@@ -253,13 +300,19 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
       rows: [
         ["Besluit", r.decision.action],
         ["Vastgelegd op", nlDate(r.decision.at)],
-        ["Bevestiging opdrachtgever", r.decision.confirmedAt ? `Bevestigd op ${nlDate(r.decision.confirmedAt)}` : "Nog niet bevestigd"],
+        ...(r.decision.extendWeeks ? [["Verlengde testfase", `${r.decision.extendWeeks} weken na de sprint`]] : []),
+        ["Bevestiging opdrachtgever", r.decision.confirmedAt ? `Bevestigd op ${nlDate(r.decision.confirmedAt)}${r.decision.reviewedAgainst ? ", na de samenvatting “Wat ging tegen”" : ""}` : "Nog niet bevestigd"],
         ...(r.decision.comment ? [["Opmerking opdrachtgever", `“${r.decision.comment}”`]] : []),
         ["Rapportversie", `Versie ${meta.version}, momentopname van ${nlDate(r.generatedAt)}`],
         ["Opgesteld door", `${r.preparedBy}${r.createdBy ? ` (${r.createdBy})` : ""}`],
         ["Status rapport", meta.shared ? "Gedeeld met opdrachtgever" : "Concept, niet gedeeld"],
       ],
     });
+    // Golf B, punt 6: toets aan de beslisregel en de motivering bij afwijken.
+    if (r.decision.rule) {
+      decision.push({ t: "p", text: `Beslisregel: ${r.decision.rule.met ? "gehaald" : "niet gehaald"}. ${r.decision.rule.lines.join("; ")}.` });
+      if (r.decision.rule.deviation) decision.push({ t: "p", text: `Afwijking van de beslisregel: ${r.decision.rule.deviation.label.toLowerCase()}. Motivering: ${r.decision.rule.deviation.reason}` });
+    }
   } else {
     decision.push({ t: "p", text: "Er is nog geen besluit vastgelegd. Een besluit wordt altijd door een mens genomen en met datum en auteur bewaard.", muted: true });
   }
@@ -282,7 +335,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
   // 11 Prediction (blind until the outcome is known)
   if (r.prediction) {
     const p = r.prediction;
-    const revealed = p.result != null && (p as { revealed?: boolean }).revealed !== false;
+    const revealed = (p.result != null || !!p.stop?.review) && (p as { revealed?: boolean }).revealed !== false;
     const blocks: Block[] = [];
     blocks.push(
       p.outcome.statement
@@ -309,7 +362,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
           m.moment,
           m.people ? `${pct0(m.people.mean)} (${pct0(m.people.min)}–${pct0(m.people.max)}, n=${m.people.n})` : "—",
           m.ai != null ? pct0(m.ai) : "—",
-          m.forecasts.map((f) => `${f.who} ${f.brier?.toFixed(2) ?? "—"}`).join(" · "),
+          p.stop ? "Niet gescoord (gestopt)" : m.forecasts.map((f) => `${f.who} ${f.brier?.toFixed(2) ?? "—"}`).join(" · "),
         ]),
       });
     } else if (p.moments.length) {
@@ -318,9 +371,19 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
         text: `Voorspellingen vastgelegd: ${p.moments.map((m) => `${m.moment.toLowerCase()} (${m.count})`).join(", ")}. De kansen zelf blijven verborgen tot de uitkomst bekend is, zodat niemand op een ander kan afgaan.`,
       });
     }
-    blocks.push({ t: "p", small: true, muted: true, text: "Iedereen geeft zijn kans zonder de anderen te zien. Een AI-voorspelling telt niet mee in het gemiddelde en is geen bewijs." });
+    blocks.push({ t: "p", small: true, muted: true, text: "Iedereen geeft zijn kans zonder de anderen te zien. De AI telt als één stem (het gemiddelde van de modellen), niet mee in het gemiddelde van de mensen, en is geen bewijs." });
     for (const c of p.checkins) blocks.push({ t: "p", text: `Tussenstand ${nlDate(c.at)}: ${c.onTrack.toLowerCase()}${c.value != null ? ` (stand: ${c.value})` : ""}. ${c.note ?? ""}` });
-    if (p.result) blocks.push({ t: "p", text: `Vastgelegd op ${nlDate(p.result.at)}: ${p.result.achieved.toLowerCase()}${p.result.value != null ? ` (werkelijk: ${p.result.value})` : ""}. ${p.result.evidence}` });
+    // Golf B, punt 1: na een stop of pauze de stopvraag; voorspellingen worden niet gescoord als slagingskans.
+    if (p.stop)
+      blocks.push({
+        t: "p",
+        text: `Dit dossier is gestopt of gepauzeerd. De oorspronkelijke uitkomstvraag is daarmee vervallen en de voorspellingen worden niet gescoord als slagingskans. Zes maanden na het besluit volgt de vraag: was stoppen achteraf terecht? ${p.stop.review ? `Vastgelegd op ${nlDate(p.stop.review.at)}: ${p.stop.review.justified.toLowerCase()}. ${p.stop.review.evidence}` : "Nog niet beantwoord."}`,
+      });
+    if (p.result)
+      blocks.push({
+        t: "p",
+        text: `Vastgelegd op ${nlDate(p.result.at)}: ${p.result.achieved.toLowerCase()}${p.result.value != null ? ` (werkelijk: ${p.result.value})` : ""}. ${p.result.evidence}${p.result.effort ? ` Inzet: ${p.result.effort.toLowerCase()}.` : ""}${p.result.insufficient ? " Onvoldoende uitgevoerd: de uitkomst zegt vooral iets over de uitvoering." : ""}`,
+      });
     chapters.push({ id: "prediction", eyebrow: "11 / VOORSPELLING EN UITKOMST", title: p.result ? `Uitkomst: ${p.result.achieved.toLowerCase()}.` : "Wat verwachten we, en hoe toetsen we dat?", blocks });
   }
 
@@ -349,6 +412,8 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
           "Methode: elke bevinding steunt op een letterlijk citaat dat automatisch is teruggevonden in de bewaarde bronpassage; de status wordt berekend, niet gekozen. Experimentdrempels zijn vóór de start vergrendeld. " +
           (r.method.aiCalls ? `AI is ${r.method.aiCalls}× gebruikt (${r.method.models.join(", ")}; kosten $${r.method.aiCostUsd}). AI-uitvoer telt nooit als bewijs.` : "Er is geen AI gebruikt."),
       },
+      { t: "p", small: true, text: `Rekenwijze: ${methodology.title}.` },
+      { t: "list", small: true, items: methodology.lines },
     ],
   });
 

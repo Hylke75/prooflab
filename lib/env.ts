@@ -12,6 +12,9 @@ export const env = {
   supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "",
   appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
   ingestSecret: process.env.INGEST_SECRET ?? "",
+  // Optioneel en alleen op de server: de service-rol-sleutel, uitsluitend gebruikt voor Supabase admin generateLink
+  // bij uitnodigingen (lib/invite.ts). Zonder deze sleutel bevat de uitnodiging een link naar de inlogpagina.
+  supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
   // The current salt (visitor codes, rate buckets, new invitations). Older versions: trackingSalts.all.
   trackingSalt: trackingSalts.current?.secret ?? "",
   trackingSaltVersion: trackingSalts.current?.version ?? "v1",

@@ -29,15 +29,27 @@ export function CoachFeed({ ideaId, notes, canWrite, onNavigate }: { ideaId: str
   const [review, reviewAction, reviewing] = useActionState<ReviewNowState, FormData>(reviewNow.bind(null, ideaId), { message: null, error: null });
   const visible = notes.filter((n) => !hidden.includes(n.id));
 
-  const resolve = (id: string, status: "done" | "dismissed") => {
-    setHidden((h) => [...h, id]);
+  // Een notitie waarvan de coach nog niet ziet dat het werk gedaan is: eerst een bevestigingsvraag.
+  const [confirm, setConfirm] = useState<{ id: string; message: string } | null>(null);
+
+  const resolve = (id: string, status: "done" | "dismissed", confirmed = false) => {
     setError(null);
+    setConfirm(null);
+    // "Niet relevant" en een bevestigd "Gedaan" verdwijnen meteen; een gewoon "Gedaan" wacht op de controle.
+    const optimistic = status === "dismissed" || confirmed;
+    if (optimistic) setHidden((h) => [...h, id]);
     start(async () => {
-      const r = await resolveCoachNote(ideaId, id, status);
+      const r = await resolveCoachNote(ideaId, id, status, confirmed);
+      if (r.needsConfirm) {
+        setConfirm({ id, message: r.message ?? "We zien dit nog niet terug in het dossier." });
+        return;
+      }
       if (r.error) {
         setHidden((h) => h.filter((x) => x !== id));
         setError(r.error);
+        return;
       }
+      if (!optimistic) setHidden((h) => [...h, id]);
     });
   };
 
@@ -99,11 +111,22 @@ export function CoachFeed({ ideaId, notes, canWrite, onNavigate }: { ideaId: str
                   )}
                   {canWrite && (
                     <>
-                      <button type="button" className="btn white sm" onClick={() => resolve(n.id, "done")} aria-label={`Gedaan: ${n.title}`}>Gedaan</button>
+                      <button type="button" className="btn white sm" onClick={() => resolve(n.id, "done")} disabled={pending} aria-label={`Gedaan: ${n.title}`}>Gedaan</button>
                       <button type="button" className="btn clear sm" onClick={() => resolve(n.id, "dismissed")} aria-label={`Niet relevant: ${n.title}`}>Niet relevant</button>
                     </>
                   )}
                 </div>
+                {confirm?.id === n.id && (
+                  <div className="note" role="alertdialog" aria-labelledby={`confirm-${n.id}`} style={{ marginTop: 10 }}>
+                    <p id={`confirm-${n.id}`}>
+                      {confirm.message} Weet je zeker dat het gedaan is? Dan sluiten we de notitie en noteren we dat je het bevestigde zonder dat de data het al laat zien.
+                    </p>
+                    <div className="coach-note-actions">
+                      <button type="button" className="btn white sm" onClick={() => resolve(n.id, "done", true)}>Ja, het is gedaan</button>
+                      <button type="button" className="btn clear sm" onClick={() => setConfirm(null)}>Annuleren</button>
+                    </div>
+                  </div>
+                )}
                 {canWrite && <HelpfulVote title={n.title} value={votes[n.id] ?? n.helpful ?? null} onVote={(v) => rate(n.id, v)} />}
               </li>
             );
