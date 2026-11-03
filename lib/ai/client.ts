@@ -1,29 +1,20 @@
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
-import { env } from "@/lib/env";
+import { PROVIDER_KEY_ENV, PROVIDER_LABELS, type ProviderId } from "./providers/config";
 
-export const MODEL = "claude-opus-5-5";
-export const PROMPT_VERSION = "2026-10-27.1";
-
-// Server-side refusal fallback: on a policy decline the API re-runs the request on a suitable
-// model inside the same call. Enabled by default for the main model.
-export const FALLBACK_BETAS = ["server-side-fallback-2026-07-01"] as const;
-
-let client: Anthropic | null = null;
-
-export function anthropic(): Anthropic {
-  if (!env.anthropicKey) throw new AiNotConfiguredError();
-  client ??= new Anthropic({ apiKey: env.anthropicKey, maxRetries: 2, timeout: 10 * 60 * 1000 });
-  return client;
-}
+export const PROMPT_VERSION = "2026-11-05.1";
 
 export class AiNotConfiguredError extends Error {
-  constructor() {
-    super("AI niet verbonden: ANTHROPIC_API_KEY ontbreekt.");
+  constructor(readonly provider?: ProviderId) {
+    super(
+      provider
+        ? `AI niet verbonden: ${PROVIDER_KEY_ENV[provider]} ontbreekt (${PROVIDER_LABELS[provider].name}).`
+        : "AI niet verbonden: geen van ANTHROPIC_API_KEY, OPENAI_API_KEY of GEMINI_API_KEY is ingesteld.",
+    );
   }
 }
 
-export type AiUsage = { cost: number; searches: number; inputTokens: number; outputTokens: number };
+// Usage of one AI call as booked in the ai_runs ledger. provider/model say who answered.
+export type AiUsage = { cost: number; searches: number; inputTokens: number; outputTokens: number; provider?: ProviderId; model?: string };
 
 // A refusal still costs tokens; the usage travels with the error so it is booked and logged.
 export class AiRefusedError extends Error {
@@ -33,20 +24,6 @@ export class AiRefusedError extends Error {
 }
 
 export class AiBudgetError extends Error {}
-
-// Pricing for cost tracking (USD). Opus 5.5: $4 / $20 per MTok, cache reads $0.20; search $10 / 1000.
-export function costUsd(usage: {
-  input_tokens: number;
-  output_tokens: number;
-  cache_read_input_tokens?: number | null;
-  cache_creation_input_tokens?: number | null;
-  server_tool_use?: { web_search_requests?: number } | null;
-}): number {
-  const input = usage.input_tokens * 4 + (usage.cache_creation_input_tokens ?? 0) * 5 + (usage.cache_read_input_tokens ?? 0) * 0.2;
-  const output = usage.output_tokens * 20;
-  const searches = (usage.server_tool_use?.web_search_requests ?? 0) * 10_000;
-  return (input + output + searches) / 1_000_000;
-}
 
 // Shared instructions for every research call. Retrieved documents are untrusted data.
 export const RESEARCH_SYSTEM = `Je bent de onderzoeksmotor van ProofLab, een Nederlandse tool voor ideeënvalidatie.

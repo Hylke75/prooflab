@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ForecastView } from "@/lib/forecast-data";
 import { FORECAST_MOMENTS, MOMENT_LABELS, OWN_BASE_RATE_MIN, pct, type ForecastMoment } from "@/lib/domain/forecast";
 import { blendedEstimate, OVERCONFIDENT_GAP, overconfidence } from "@/lib/domain/calibration";
+import { ensembleMean } from "@/lib/ai/providers/select";
 
 // Starting calibration: until the organisation has enough resolved dossiers to score its forecasters, the
 // base rate is the yardstick. Shows the viewer's own forecasts against it, and a blended suggestion of
@@ -19,7 +20,8 @@ export function CalibrationGuide({ view }: { view: ForecastView }) {
   const blend = latest
     ? blendedEstimate({
         people: rows.filter((r) => r.kind !== "ai").map((r) => r.probability),
-        ai: rows.find((r) => r.kind === "ai")?.probability ?? null,
+        // Several AI forecasts (one per provider) enter the blend as their mean, with the AI weight once.
+        ai: ensembleMean(rows.filter((r) => r.kind === "ai").map((r) => r.probability)),
         baseRate: range,
         behaviourTestEnded: view.behaviourTestEnded,
       })

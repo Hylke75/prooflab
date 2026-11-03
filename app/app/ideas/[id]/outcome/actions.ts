@@ -8,7 +8,9 @@ import { loadProgress } from "@/lib/progress";
 import { env, aiConfigured } from "@/lib/env";
 import { runAi, aiErrorMessage } from "@/lib/ai/guard";
 import { forecastOutcome } from "@/lib/ai/forecast";
-import { MODEL } from "@/lib/ai/client";
+import { providersFor } from "@/lib/ai/settings";
+import { PROVIDER_LABELS, providerOfModel } from "@/lib/ai/providers/config";
+import { ensembleMean } from "@/lib/ai/providers/select";
 import { dossierSummaryForAi, loadDossier } from "@/lib/dossier";
 import { ideaContext } from "@/lib/idea-context";
 import { todayInNL } from "@/lib/domain/sprint";
@@ -143,8 +145,18 @@ export async function requestAiForecast(ideaId: string, _: ActionState): Promise
   if (!moment) return { error: "Er is nu geen voorspelmoment open." };
   if (!progress.forecast?.ownMoments.includes(moment)) return { error: "Geef eerst je eigen voorspelling. Daarna kun je de AI-voorspelling ernaast zetten." };
   const supabase = await supabaseServer();
-  const { data: existing } = await supabase.from("forecasts").select("id").eq("idea_id", ideaId).eq("moment", moment).eq("forecaster_kind", "ai").maybeSingle();
-  if (existing) return { error: "Er is al een AI-voorspelling voor dit moment." };
+  // One AI forecast per provider (an ensemble when several are connected); providers that already forecast for this
+  // moment are skipped.
+  let providers;
+  try {
+    providers = await providersFor(ideaId, "forecast");
+  } catch (e) {
+    return { error: aiErrorMessage(e, "AI is niet verbonden in deze omgeving.") };
+  }
+  const { data: existing } = await supabase.from("forecasts").select("model").eq("idea_id", ideaId).eq("moment", moment).eq("forecaster_kind", "ai");
+  const done = new Set((existing ?? []).map((f) => providerOfModel(f.model)));
+  const todo = providers.filter((p) => !done.has(p));
+  if (todo.length === 0) return { error: existing?.length && existing.length > 1 ? "Er zijn al AI-voorspellingen voor dit moment." : "Er is al een AI-voorspelling voor dit moment." };
   const classLabel =
     idea.reference_class === NO_REFERENCE
       ? "Geen goede referentie gevonden"
@@ -152,38 +164,57 @@ export async function requestAiForecast(ideaId: string, _: ActionState): Promise
         ? "Eigen afgeronde dossiers van dit projecttype"
         : ((await supabase.from("reference_classes").select("label").eq("id", idea.reference_class).maybeSingle()).data?.label ?? idea.reference_class);
   const dossier = await loadDossier(idea);
-  let result;
-  try {
-    result = await runAi(ideaId, "forecast", () =>
-      forecastOutcome({
-        idea: ideaContext(idea),
-        moment,
-        outcome: { statement: idea.outcome_statement!, metric: idea.outcome_metric, target: idea.outcome_target == null ? null : Number(idea.outcome_target) },
-        baseRate: {
-          label: classLabel,
-          low: idea.base_rate_low == null ? null : Number(idea.base_rate_low),
-          high: idea.base_rate_high == null ? null : Number(idea.base_rate_high),
-          note: idea.base_rate_note,
-        },
-        dossierSummary: dossierSummaryForAi(dossier),
-      }),
-    );
-  } catch (e) {
-    return { error: aiErrorMessage(e, "De AI-voorspelling is niet gelukt. Probeer het later opnieuw.") };
+  // Every provider gets the same fenced dossier prompt and forecasts independently (in parallel, blind to the others).
+  const input = {
+    idea: ideaContext(idea),
+    moment,
+    outcome: { statement: idea.outcome_statement!, metric: idea.outcome_metric, target: idea.outcome_target == null ? null : Number(idea.outcome_target) },
+    baseRate: {
+      label: classLabel,
+      low: idea.base_rate_low == null ? null : Number(idea.base_rate_low),
+      high: idea.base_rate_high == null ? null : Number(idea.base_rate_high),
+      note: idea.base_rate_note,
+    },
+    dossierSummary: dossierSummaryForAi(dossier),
+  };
+  const settled = await Promise.allSettled(todo.map((provider) => runAi(ideaId, "forecast", (p) => forecastOutcome(input, p), { provider })));
+  const stored: { name: string; probability: number }[] = [];
+  const failed: string[] = [];
+  let firstError: unknown = null;
+  let closed = false;
+  for (const [i, r] of settled.entries()) {
+    const name = PROVIDER_LABELS[todo[i]].name;
+    if (r.status === "rejected") {
+      failed.push(name);
+      firstError ??= r.reason;
+      continue;
+    }
+    // Recorded by the app server only (guarded by the ingest secret), so nobody can type in an "AI" forecast.
+    const { data: ok, error } = await supabase.rpc("record_ai_forecast", {
+      p_key: env.ingestSecret,
+      p_idea: ideaId,
+      p_moment: moment,
+      p_probability: r.value.data.probability,
+      p_rationale: r.value.data.rationale,
+      p_model: r.value.model,
+    });
+    if (error?.message.includes("FORECAST_MOMENT")) closed = true;
+    if (error || !ok) failed.push(name);
+    else stored.push({ name, probability: r.value.data.probability });
   }
-  // Recorded by the app server only (guarded by the ingest secret), so nobody can type in an "AI" forecast.
-  const { data: stored, error } = await supabase.rpc("record_ai_forecast", {
-    p_key: env.ingestSecret,
-    p_idea: ideaId,
-    p_moment: moment,
-    p_probability: result.data.probability,
-    p_rationale: result.data.rationale,
-    p_model: result.model || MODEL,
-  });
-  if (error) return { error: error.message.includes("FORECAST_MOMENT") ? "Dit voorspelmoment is niet meer open." : "De AI-voorspelling kon niet worden opgeslagen." };
-  if (!stored) return { error: "Er is al een AI-voorspelling voor dit moment." };
+  if (closed && stored.length === 0) return { error: "Dit voorspelmoment is niet meer open." };
+  if (stored.length === 0) return { error: aiErrorMessage(firstError, "De AI-voorspelling is niet gelukt. Probeer het later opnieuw.") };
   refresh(ideaId);
-  return { error: null, ok: "AI-voorspelling toegevoegd. Die telt als aparte voorspeller, nooit als bewijs." };
+  const list = stored.map((x) => `${x.name} ${pct(x.probability)}`).join(", ");
+  const mean = ensembleMean(stored.map((x) => x.probability));
+  const fail = failed.length ? ` Niet gelukt: ${failed.join(", ")}.` : "";
+  return {
+    error: null,
+    ok:
+      stored.length === 1
+        ? `AI-voorspelling toegevoegd (${list}). Die telt als aparte voorspeller, nooit als bewijs.${fail}`
+        : `${stored.length} AI-voorspellingen toegevoegd (${list}; gemiddeld ${pct(mean!)}). Ze tellen als aparte voorspellers, nooit als bewijs.${fail}`,
+  };
 }
 
 // ---------------------------------------------------------------------------

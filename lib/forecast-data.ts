@@ -2,7 +2,10 @@ import "server-only";
 import { cache } from "react";
 import { supabaseServer } from "@/lib/supabase/server";
 import { getWorkspace, type IdeaAccess } from "@/lib/data";
-import { aiConfigured } from "@/lib/env";
+import { aiConfigured, configuredProviders } from "@/lib/env";
+import { aiSettingsForOrg } from "@/lib/ai/settings";
+import { PROVIDER_LABELS, providerOfModel, type ProviderId } from "@/lib/ai/providers/config";
+import { ensembleProviders } from "@/lib/ai/providers/select";
 import type { IdeaProgress } from "@/lib/domain/coach";
 import { PROJECT_TYPES, type ProjectType } from "@/lib/domain/labels";
 import {
@@ -63,6 +66,8 @@ export type ForecastView = {
   followUp: FollowUp;
   today: string;
   aiAvailable: boolean;
+  // Connected providers that have not yet forecast at the open moment (one AI forecast per provider).
+  aiPending: ProviderId[];
   // Starting calibration (lib/domain/calibration.ts): resolved dossiers of the organisation (null = unknown)
   // and whether a behaviour test (landing or pricing) of this idea has ended.
   orgResolved: number | null;
@@ -105,8 +110,11 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
   const rows = forecasts.data ?? [];
   const ids = [...new Set(rows.map((f) => f.forecaster_id).filter((x): x is string => !!x))];
   const { data: profiles } = ids.length ? await supabase.from("profiles").select("user_id, full_name, email").in("user_id", ids) : { data: [] };
-  const nameOf = (id: string | null, kind: ForecasterKind) => {
-    if (kind === "ai") return "AI";
+  const nameOf = (id: string | null, kind: ForecasterKind, model: string | null) => {
+    if (kind === "ai") {
+      const p = providerOfModel(model);
+      return p ? `AI · ${PROVIDER_LABELS[p].name}` : "AI";
+    }
     if (id === ws.user.id) return "Jij";
     const p = (profiles ?? []).find((x) => x.user_id === id);
     return p?.full_name?.trim() || p?.email || (kind === "consultant" ? "Consultant" : "Opdrachtgever");
@@ -124,6 +132,14 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
       baseRate = { kind: "class", label: c.label, low: Number(idea.base_rate_low), high: Number(idea.base_rate_high), sourceTitle: c.sourceTitle, sourceUrl: c.sourceUrl, caveat: c.caveat, note: idea.base_rate_note };
   }
 
+  const open = openMomentFor(progress);
+  const settings = canWrite && aiConfigured() ? await aiSettingsForOrg(idea.org_id) : null;
+  const aiPending = () => {
+    if (!settings || !open) return [];
+    const done = new Set(rows.filter((f) => f.moment === open && f.forecaster_kind === "ai").map((f) => providerOfModel(f.model)));
+    return ensembleProviders(settings, "forecast", configuredProviders()).filter((p) => !done.has(p));
+  };
+
   return {
     ideaId: idea.id,
     canWrite,
@@ -137,7 +153,7 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
         id: f.id,
         moment: f.moment as ForecastMoment,
         kind: f.forecaster_kind as ForecasterKind,
-        name: nameOf(f.forecaster_id, f.forecaster_kind as ForecasterKind),
+        name: nameOf(f.forecaster_id, f.forecaster_kind as ForecasterKind, f.model),
         mine: f.forecaster_id === ws.user.id,
         probability: Number(f.probability),
         rationale: f.rationale,
@@ -154,6 +170,7 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
     followUp: followUp(state),
     today: state.today,
     aiAvailable: canWrite && aiConfigured(),
+    aiPending: aiPending(),
     orgResolved: orgResolved.error || !orgResolved.data ? null : Number(orgResolved.data[0]?.resolved ?? 0),
     behaviourTestEnded: (behaviour.count ?? 0) > 0,
   };

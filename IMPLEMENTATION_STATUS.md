@@ -13,7 +13,7 @@ Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van e
 | E-mailsjabloon "Magic Link": link naar `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next={{ .RedirectTo }}` | Uitnodigingen werken dan op elk apparaat | Hylke |
 | Eigen adres of domein op de toegangslijst (`insert into public.signup_allowlist (entry) values ('naam@bureau.nl')`) | Registratie staat dicht; consultants hebben een plek op de lijst nodig | Claude of Hylke |
 | "Leaked password protection" aanzetten (Authentication → Passwords) | Enige resterende security-advieswaarschuwing die geen bewuste keuze is | Hylke |
-| `ANTHROPIC_API_KEY` als secret | AI-onderzoek, AI-aannames, interviewcodering, AI-vragen in de Reality Check | Hylke |
+| Minstens één van `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` als secret (Vercel) | AI-onderzoek, AI-aannames, interviewcodering, coach, AI-vragen in de Reality Check; met meer sleutels zoeken en voorspellen de aanbieders los van elkaar | Hylke |
 | Eigen SMTP (bijv. Resend) in Supabase Auth | Uitnodigingen aan opdrachtgevers buiten het Supabase-team | Hylke |
 | Vercel-project + domein (na merkcheck) | Publieke testpagina's en app online | Hylke |
 | LinkedIn Advertising API-aanvraag | Doorlooptijd weken tot maanden | Hylke |
@@ -161,7 +161,7 @@ Alles deterministisch (geen LLM), met unit-tests in `tests/unit/quantify.test.ts
 
 ## Onderzoeksmethodes en AI (Voorspelkracht v1, hoofdstuk 7)
 
-Alle AI-functies werken alleen met `ANTHROPIC_API_KEY`; zonder sleutel tonen ze "AI niet verbonden" met het handmatige alternatief.
+Alle AI-functies werken met minstens één van `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` of `GEMINI_API_KEY`; zonder sleutel tonen ze "AI niet verbonden" met het handmatige alternatief.
 AI-uitkomsten zijn gelabeld als AI-voorstel tot een consultant ze accepteert.
 
 - [x] 7.1 Steuncontrole: draagt het letterlijke citaat de bewering? Automatisch in de onderzoeksrun (na de letterlijke controle; "draagt niet" wordt niet opgeslagen, "deels" wel met label), op verzoek per citaat, en een consultantoordeel dat altijd wint. "Draagt niet" telt als mislukte citaatcontrole in de claimstatus (`lib/domain/support.ts`, `lib/claims.ts`)
@@ -261,3 +261,19 @@ Migratie `20261104100000_privacy_and_outreach.sql`.
 - Migratie `20261104090000_survey_quality.sql`; tests `tests/unit/survey-quality.test.ts` (22) en `tests/db/survey-quality.test.ts` (5, waaronder SQL-telling gelijk aan de TypeScript-regel)
 - ✅ Samengevoegd met privacy/outreach: `20261104140000_survey_reconcile.sql` laat één `submit_survey` over (postcode én kwaliteitsvlaggen) en `survey_key_counts` telt ook per postcode, zodat "Per bericht" voor enquêtes dezelfde geloofwaardigheidsregels volgt als het oordeel
 - [ ] Migratie nog toepassen op de live Supabase; visuele controle van editor, publieke screeningstap en deelkaart in de browser
+
+## Drie AI-aanbieders (5 november)
+
+- ✅ Eén interface voor tekst/JSON met systeemprompt, optioneel webzoeken, tokenplafond en gebruik (input, output, zoekopdrachten): `lib/ai/providers/` met adapters voor Claude (Anthropic SDK, bestaand gedrag: web_search + web_fetch met citaten, server-side fallback), ChatGPT (OpenAI Responses API via `fetch`, tool `web_search`, strikt JSON-schema) en Gemini (`models/{model}:generateContent` via `fetch`, tool `google_search`, `responseJsonSchema`). Time-out, nieuwe pogingen bij 429/5xx (met Retry-After, begrensd) en eigen foutsoorten (sleutel geweigerd, limiet, time-out); de sleutel komt nooit in een foutmelding
+- ✅ Model-ID's alleen in `lib/ai/providers/config.ts`, per aanbieder te overschrijven met `ANTHROPIC_MODEL`, `OPENAI_MODEL`, `GEMINI_MODEL`; prijstabel (USD per miljoen input-/outputtokens en per zoekopdracht) op dezelfde plek, gebruikt door het `ai_runs`-grootboek. Het maandplafond telt alle aanbieders samen
+- ✅ `aiConfigured()` is waar bij minstens één sleutel; `configuredProviders()` geeft de verbonden aanbieders
+- ✅ Keuze per werkruimte (`org_ai_settings`): standaard-aanbieder plus optioneel per taak (marktonderzoek, coach, enquête-opzet, uitnodigingsberichten, voorspelling) en een schakelaar "alle verbonden aanbieders" voor webonderzoek en voorspelling. Kaart "AI-aanbieders" op Systeemstatus (eigenaren) met per aanbieder "verbonden"/"niet verbonden", nooit de sleutel. Gekozen aanbieder zonder sleutel → een verbonden aanbieder neemt over (getoond op de kaart)
+- ✅ `runAi` kiest de aanbieder per taak (of krijgt er één bij een ensemble) en boekt provider, model en kosten per aanroep
+- ✅ Webonderzoek: per onderzoeksvraag zoekt elke gekozen aanbieder los; bronnen worden per URL samengevoegd. Bij ChatGPT en Gemini haalt ProofLab de genoemde pagina's zelf op (SSRF-veilige `fetchPageText`) en bewaart alleen de letterlijke alinea waarin het citaat staat; een citaat dat niet op de pagina staat, vervalt (`lib/ai/web-evidence.ts`). De bestaande letterlijke citaatcontrole en steuncontrole daarna zijn ongewijzigd en aanbieder-onafhankelijk. `sources.found_by` vermeldt welke aanbieder(s) de pagina vonden; overeenstemming staat erbij als informatie, niet als extra bewijsgewicht. Rode-teamzoektocht op de aannamepagina gebruikt dezelfde route
+- ✅ Onderzoekspaneel toont per aanbieder verbonden/niet verbonden en werkt met elk van de drie; zonder sleutel blijft de eerlijke melding, met voor de eigenaar welke variabelen in Vercel moeten
+- ✅ Voorspelling als ensemble: elke verbonden aanbieder voorspelt los met dezelfde omheinde dossierprompt en wordt apart opgeslagen via `record_ai_forecast` (één AI-voorspelling per model per moment, hooguit drie; blinde regels ongewijzigd). Uitkomst-/bewijspagina tonen elk getal en het gemiddelde; ijkhulp en rapport gebruiken het gemiddelde met één keer het AI-gewicht
+- ✅ Coach, enquête-opzet en uitnodigingsberichten gebruiken de gekozen aanbieder voor die taak (overige onderzoeksstappen volgen de keuze voor marktonderzoek)
+- ✅ Migratie `20261105090000_ai_providers.sql`: tabel `org_ai_settings` (RLS: lezen en schrijven door leden van de organisatie, niet verwijderen, gestempeld), `ai_runs.provider`, `sources.found_by`, unieke index per model voor AI-voorspellingen en `record_ai_forecast` met model verplicht en maximaal drie
+- ✅ Tests: `tests/unit/ai-providers.test.ts` (per adapter met nep-`fetch`: verzoekvorm, tekst, gebruik, citaten/grounding, weigering, 401/403, 429 met en zonder herstel, time-out), `tests/unit/ai-selection.test.ts` (keuze en terugval, ensemble, gemiddelde, prijzen, citaatverificatie en samenvoegen), `tests/unit/ai-search.test.ts` (zoekvraag via ChatGPT end-to-end met nep-API en nep-pagina), `tests/db/ai-providers.test.ts` (RLS instellingen, provider in grootboek en bronnen, ensemble-uniciteit en blinde regel). Geen echte API-aanroepen
+- 🟡 Niet getest tegen de echte OpenAI- en Gemini-API (geen sleutels in deze omgeving); modelnamen en prijzen nagekeken op de documentatie van 3 november. Gemini's gratis zoekquotum is bewust niet verrekend (plafond nooit te laag)
+- 🟡 Migratie nog toepassen op de live Supabase; daarna sleutels in Vercel zetten en per aanbieder één onderzoeksrun en één voorspelling controleren

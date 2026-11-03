@@ -322,7 +322,7 @@ export async function analyzeInterviewWithAi(ideaId: string, expId: string, inte
   ]);
   if (!iv) return { error: "Interview niet gevonden." };
   try {
-    const res = await runAi(ideaId, "interview_analysis", () => analyzeInterview(exp?.hypotheses?.we_believe ?? "", iv.transcript));
+    const res = await runAi(ideaId, "interview_analysis", (p) => analyzeInterview(exp?.hypotheses?.we_believe ?? "", iv.transcript, p));
     let kept = 0;
     let rejected = 0;
     let known = 0;
@@ -500,7 +500,7 @@ export async function proposeCopyVariants(ideaId: string, input: z.input<typeof 
   const { data: a } = await supabase.from("assumptions").select("statement").eq("id", p.data.assumption_id).eq("idea_id", ideaId).single();
   if (!a) return { error: "Aanname niet gevonden.", variants: [], draftNotes: [], draftWarnings };
   try {
-    const res = await runAi(ideaId, "copy_variants", () => suggestCopyVariants(ideaContext(idea), { assumption: a.statement, ...p.data }));
+    const res = await runAi(ideaId, "copy_variants", (provider) => suggestCopyVariants(ideaContext(idea), { assumption: a.statement, ...p.data }, provider));
     return {
       error: null,
       variants: prepareVariants(res.data.variants),
@@ -535,8 +535,8 @@ export async function draftSurveyWithCoach(ideaId: string, input: z.input<typeof
   if (!aiConfigured()) return { error: null, draft: templateDraft(ctx, "AI is niet verbonden; dit is het sjabloon van ProofLab, geen AI-opzet.") };
   try {
     const dossier = dossierSummaryForAi(await loadDossier(idea));
-    const res = await runAi(ideaId, "survey_draft", () =>
-      draftSurvey({ idea: ideaContext(idea), assumption: a.statement, audience, decisionQuestion: idea.decision_question, dossier }),
+    const res = await runAi(ideaId, "survey_draft", (p) =>
+      draftSurvey({ idea: ideaContext(idea), assumption: a.statement, audience, decisionQuestion: idea.decision_question, dossier }, p),
     );
     return { error: null, draft: sanitiseDraft(res.data, ctx) };
   } catch (e) {

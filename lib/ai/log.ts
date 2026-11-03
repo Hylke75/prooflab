@@ -1,21 +1,25 @@
 import "server-only";
 import { supabaseServer } from "@/lib/supabase/server";
-import { MODEL, PROMPT_VERSION } from "./client";
+import { PROMPT_VERSION } from "./client";
+import { modelFor, type ProviderId } from "./providers/config";
 import { log } from "@/lib/log";
 
-// Every AI call is recorded with model, prompt version, tokens and cost (never prompts or secrets).
+// Every AI call is recorded with provider, model, prompt version, tokens and cost (never prompts or secrets).
 export async function logAiRun(input: {
   ideaId: string;
   purpose: string;
+  provider: ProviderId | null;
   outcome: "ok" | "rejected" | "refused" | "error";
-  usage?: { cost: number; searches: number; inputTokens: number; outputTokens: number };
+  usage?: { cost: number; searches: number; inputTokens: number; outputTokens: number; provider?: ProviderId; model?: string };
   detail?: string;
 }) {
   const supabase = await supabaseServer();
+  const provider = input.usage?.provider ?? input.provider;
   const { error } = await supabase.from("ai_runs").insert({
     idea_id: input.ideaId,
     purpose: input.purpose,
-    model: MODEL,
+    provider,
+    model: (input.usage?.model ?? (provider ? modelFor(provider) : "geen")).slice(0, 120),
     prompt_version: PROMPT_VERSION,
     input_tokens: input.usage?.inputTokens ?? 0,
     output_tokens: input.usage?.outputTokens ?? 0,
