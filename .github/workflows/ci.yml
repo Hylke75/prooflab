@@ -1,12 +1,17 @@
 name: CI
 
+# Every push (any branch) and every pull request.
 on:
   push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
@@ -46,3 +51,108 @@ jobs:
       - name: Database, RLS and integrity tests
         run: npm run test:db
       - run: npm run build
+
+  # The full journey (idea → research → risk → test → evidence → decision → report) and the public pages, in
+  # Chromium, against a local Supabase stack with all migrations applied. Never touches a hosted project.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CI: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      # Throwaway values for the local stack only.
+      INGEST_SECRET: ci-ingest-secret-local-only
+      TRACKING_SALT: ci-tracking-salt-local-only
+      E2E_EMAIL: e2e@example.com
+      E2E_PASSWORD: e2e-Journey-Passw0rd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 3.0.0
+      - run: npm ci
+
+      - name: Start local Supabase (applies supabase/migrations)
+        run: |
+          for attempt in 1 2; do
+            if supabase start; then exit 0; fi
+            echo "supabase start failed (attempt $attempt); retrying after a clean stop" >&2
+            supabase stop --no-backup || true
+            sleep 5
+          done
+          exit 1
+
+      - name: Export local Supabase URL and keys
+        run: |
+          supabase status -o env > "$RUNNER_TEMP/supabase.env"
+          set -a; . "$RUNNER_TEMP/supabase.env"; set +a
+          key="${PUBLISHABLE_KEY:-$ANON_KEY}"
+          test -n "$API_URL" && test -n "$key" && test -n "$DB_URL"
+          {
+            echo "API_URL=$API_URL"
+            echo "DB_URL=$DB_URL"
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$key"
+          } >> "$GITHUB_ENV"
+          echo "::add-mask::${SERVICE_ROLE_KEY:-}"
+          echo "::add-mask::${SECRET_KEY:-}"
+          echo "Local Supabase at $API_URL"
+
+      - name: Check that every migration was applied
+        run: |
+          expected=$(ls supabase/migrations/*.sql | wc -l)
+          applied=$(psql "$DB_URL" -tAc "select count(*) from supabase_migrations.schema_migrations")
+          echo "migrations: $applied applied of $expected"
+          test "$applied" -eq "$expected"
+
+      - name: Seed test user, ingest key and allowlist
+        run: |
+          set -a; . "$RUNNER_TEMP/supabase.env"; set +a
+          scripts/e2e-seed.sh
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+      - name: Install Chromium system dependencies
+        run: npx playwright install-deps chromium
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+
+      - name: Build
+        run: npm run build
+
+      # playwright.config.ts starts `npm run start` on port 3000 and waits for /login.
+      - name: Journey and public pages (Chromium, desktop and mobile)
+        run: npx playwright test tests/e2e/journey.spec.ts tests/e2e/public.spec.ts
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Supabase service logs on failure
+        if: failure()
+        run: |
+          for c in $(docker ps --format '{{.Names}}' | grep -E '^supabase_(auth|rest|db)_'); do
+            echo "::group::$c"; docker logs --tail 200 "$c" 2>&1 || true; echo "::endgroup::"
+          done
+
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop --no-backup || true

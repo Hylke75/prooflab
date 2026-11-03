@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAnon } from "@/lib/supabase/server";
 import { env, trackingConfigured } from "@/lib/env";
+import { log } from "@/lib/log";
 import { contactHash, dedupeKey, parseExpandiPayload, TOKEN_PATTERN, tokenHash } from "@/lib/integrations/expandi";
 
 const MAX_BYTES = 64 * 1024;
@@ -12,21 +13,21 @@ const MAX_EVENTS_PER_REQUEST = 25;
 // later instead of losing events; everything else → 200 with { ok, counted }.
 export async function POST(request: Request, ctx: RouteContext<"/api/integrations/expandi/[token]">) {
   const { token } = await ctx.params;
-  if (!TOKEN_PATTERN.test(token)) return NextResponse.json({ ok: false }, { status: 404 });
+  if (!TOKEN_PATTERN.test(token)) return reject("malformed_token", 404);
 
   const declared = Number(request.headers.get("content-length") ?? "0");
-  if (declared > MAX_BYTES) return NextResponse.json({ ok: false, reason: "too_large" }, { status: 413 });
+  if (declared > MAX_BYTES) return reject("too_large", 413, { reason: "too_large" });
   const raw = await readCapped(request, MAX_BYTES);
-  if (raw === null) return NextResponse.json({ ok: false, reason: "too_large" }, { status: 413 });
+  if (raw === null) return reject("too_large", 413, { reason: "too_large" });
 
-  if (!trackingConfigured()) return NextResponse.json({ ok: false, reason: "not_configured" });
+  if (!trackingConfigured()) return reject("not_configured", 200, { reason: "not_configured" });
   const type = (request.headers.get("content-type") ?? "").toLowerCase();
-  if (type && !type.includes("json")) return NextResponse.json({ ok: false, reason: "json_only" });
+  if (type && !type.includes("json")) return reject("json_only", 200, { reason: "json_only" });
   let json: unknown;
   try {
     json = JSON.parse(raw);
   } catch {
-    return NextResponse.json({ ok: false, reason: "invalid_json" });
+    return reject("invalid_json", 200, { reason: "invalid_json" });
   }
 
   // Some senders batch events in an array (or under "events" / "data").
@@ -56,14 +57,20 @@ export async function POST(request: Request, ctx: RouteContext<"/api/integration
       p_dedupe: key,
     });
     if (error) {
-      console.error("expandi webhook: event not recorded", error.message);
+      await log.error("webhook_rejected", { source: "expandi", reason: "rpc_error", code: error.code, counted });
       return NextResponse.json({ ok: false });
     }
-    if (data === "unknown") return NextResponse.json({ ok: false }, { status: 404 });
-    if (data === "rate") return NextResponse.json({ ok: false, reason: "rate_limited", counted }, { status: 429, headers: { "retry-after": "60" } });
+    if (data === "unknown") return reject("unknown_token", 404);
+    if (data === "rate") return reject("rate_limited", 429, { reason: "rate_limited", counted }, { "retry-after": "60" });
     if (data === "ok") counted++;
   }
   return NextResponse.json({ ok: true, counted });
+}
+
+// Every rejection is logged with its reason and status only: never the token, the payload or the contact.
+async function reject(reason: string, status: number, body: Record<string, unknown> = {}, headers?: Record<string, string>) {
+  await log.warn("webhook_rejected", { source: "expandi", reason, status });
+  return NextResponse.json({ ok: false, ...body }, { status, headers });
 }
 
 async function readCapped(request: Request, max: number): Promise<string | null> {

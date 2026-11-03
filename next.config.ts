@@ -22,12 +22,10 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        // Nothing in ProofLab may be framed by another site (clickjacking, silent test clicks).
-        source: "/(app|t|s|login)(.*)",
-        headers: [
-          { key: "X-Frame-Options", value: "DENY" },
-          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
-        ],
+        // Nothing in ProofLab may be framed by another site (clickjacking, silent test clicks). The full
+        // Content-Security-Policy (with frame-ancestors 'none') is set per request with a nonce in proxy.ts.
+        source: "/(.*)",
+        headers: [{ key: "X-Frame-Options", value: "DENY" }],
       },
       {
         // Survey links can carry a personal token (?u=…): never pass the address on as a referrer.

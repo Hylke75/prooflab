@@ -1,5 +1,6 @@
 import "server-only";
 import { env, emailConfigured } from "@/lib/env";
+import { log } from "@/lib/log";
 
 export type SendResult = { ok: true; id: string | null } | { ok: false; error: string; retryable: boolean };
 
@@ -33,7 +34,9 @@ export async function sendEmail(input: {
         body,
         signal: AbortSignal.timeout(15_000),
       });
-    } catch {
+    } catch (e) {
+      // Never the recipient or the content: only what failed.
+      await log.error("email_send_failed", { provider: "resend", reason: "network", attempt: attempt + 1 }, e);
       return { ok: false, error: "Geen verbinding met de e-maildienst.", retryable: true };
     }
     if (res.ok) {
@@ -45,13 +48,22 @@ export async function sendEmail(input: {
       await sleep(wait);
       continue;
     }
-    const detail = (await res.json().catch(() => null)) as { message?: string } | null;
+    const detail = (await res.json().catch(() => null)) as { message?: string; name?: string } | null;
+    const retryable = res.status === 429 || res.status >= 500;
+    await log[retryable ? "warn" : "error"]("email_send_failed", {
+      provider: "resend",
+      status: res.status,
+      providerCode: typeof detail?.name === "string" ? detail.name.slice(0, 60) : null,
+      retryable,
+      attempt: attempt + 1,
+    });
     return {
       ok: false,
       error: `E-maildienst weigerde (${res.status})${detail?.message ? `: ${String(detail.message).slice(0, 200)}` : ""}`,
-      retryable: res.status === 429 || res.status >= 500,
+      retryable,
     };
   }
+  await log.warn("email_send_failed", { provider: "resend", status: 429, retryable: true, attempt: 2 });
   return { ok: false, error: "E-maildienst: te veel verzoeken. Probeer het zo opnieuw.", retryable: true };
 }
 

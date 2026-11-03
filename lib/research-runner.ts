@@ -2,6 +2,7 @@ import "server-only";
 import { supabaseServer } from "@/lib/supabase/server";
 import { searchQuestion, extractClaims, challengeDossier, checkSupport, type ExcerptRef, type FoundSource } from "@/lib/ai/research";
 import { assertAiBudget, runAi } from "@/lib/ai/guard";
+import { log } from "@/lib/log";
 import { env } from "@/lib/env";
 import { ideaContext } from "@/lib/idea-context";
 import { contentHash, recomputeClaim } from "@/lib/claims";
@@ -94,6 +95,11 @@ export async function advanceRun(runId: string): Promise<RunState> {
   } catch (e) {
     const refused = e instanceof AiRefusedError;
     const retry = !refused && !(e instanceof AiBudgetError) && next.attempts + 1 < 3;
+    await log.error(
+      "research_task_failed",
+      { runId, taskId: next.id, kind: next.kind, attempt: next.attempts + 1, willRetry: retry, refused, budget: e instanceof AiBudgetError },
+      e,
+    );
     // A refusal still used tokens; book them on the run so the budget holds.
     if (refused && e.usage?.cost) await supabase.rpc("add_research_cost", { p_task: next.id, p_cost: e.usage.cost });
     await supabase

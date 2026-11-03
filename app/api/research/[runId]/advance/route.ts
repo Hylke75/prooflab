@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getUser } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { advanceRun } from "@/lib/research-runner";
+import { log } from "@/lib/log";
 
 export const maxDuration = 300;
 
@@ -18,7 +19,8 @@ export async function POST(_: Request, ctx: RouteContext<"/api/research/[runId]/
   if (!canWrite) return NextResponse.json({ error: "Geen toegang" }, { status: 403 });
   try {
     return NextResponse.json(await advanceRun(runId));
-  } catch {
+  } catch (e) {
+    await log.error("research_advance_failed", { runId }, e);
     return NextResponse.json({ error: "De onderzoeksstap kon niet worden uitgevoerd." }, { status: 500 });
   }
 }

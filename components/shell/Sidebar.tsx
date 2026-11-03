@@ -26,11 +26,13 @@ const IDEA_TEAM_NAV: { suffix: string; label: string; icon: IconName }[] = [
 export function Sidebar({
   workspaceName,
   isConsultant,
+  isOwner = false,
   ideas,
   aiConnected,
 }: {
   workspaceName: string;
   isConsultant: boolean;
+  isOwner?: boolean;
   ideas: IdeaLink[];
   aiConnected: boolean;
 }) {
@@ -61,6 +63,7 @@ export function Sidebar({
         {isConsultant && link("/app/clients", "Klanten", "users", pathname.startsWith("/app/clients"))}
         {isConsultant && link("/app/forecasts", "Voorspelkwaliteit", "trend", pathname.startsWith("/app/forecasts"))}
         {isConsultant && link("/app/privacy", "Privacyverzoeken", "settings", pathname.startsWith("/app/privacy"))}
+        {isOwner && link("/app/status", "Systeemstatus", "settings", pathname.startsWith("/app/status"))}
       </nav>
       {currentId && (
         <>

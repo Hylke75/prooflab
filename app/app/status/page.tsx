@@ -1,0 +1,159 @@
+import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { PageFrame } from "@/components/shell/PageFrame";
+import { getWorkspace } from "@/lib/data";
+import { supabaseServer } from "@/lib/supabase/server";
+import { aiConfigured, emailConfigured, trackingConfigured } from "@/lib/env";
+import { monitoringConfigured } from "@/lib/monitoring";
+import { log } from "@/lib/log";
+
+export const metadata: Metadata = { title: "Systeemstatus" };
+
+type Tone = "green" | "orange" | "gray" | "coral";
+const pill = (tone: Tone, text: string) => <span className={`pill ${tone}`}>{text}</span>;
+const yesNo = (ok: boolean | null | undefined, yes = "Aanwezig", no = "Ontbreekt") =>
+  ok == null ? pill("gray", "Onbekend") : ok ? pill("green", yes) : pill("orange", no);
+
+const when = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam", dateStyle: "medium", timeStyle: "short" }) : "onbekend";
+const usd = (n: number) => `$${n.toFixed(2).replace(".", ",")}`;
+
+// Operational status for workspace owners: schema markers, the purge job, integrations and AI spend. Every value
+// comes from the database (public.system_status) or from whether a server setting is present; secrets are never
+// shown.
+export default async function StatusPage() {
+  const ws = await getWorkspace();
+  if (!ws.org || ws.org.role !== "owner") redirect("/app");
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase.rpc("system_status", { p_org: ws.org.id });
+  const s = data?.[0] ?? null;
+  if (error) await log.warn("system_status_unavailable", { code: error.code });
+
+  const ai = aiConfigured();
+  const email = emailConfigured();
+  const tracking = trackingConfigured();
+  const monitoring = monitoringConfigured();
+  const spent = s ? Number(s.ai_spent_usd) : 0;
+  const cap = s ? Number(s.ai_cap_usd) : 0;
+  const share = cap > 0 ? Math.min(100, Math.round((spent / cap) * 100)) : 0;
+  const purgeOk = s?.purge_last_status === "succeeded";
+
+  const rows: { label: string; value: React.ReactNode; note?: string }[] = s
+    ? [
+        { label: "Laatste migratie", value: s.migration_version ?? "onbekend", note: s.migration_version ? "Volgens de migratiegeschiedenis van de Supabase CLI." : "Geen migratiegeschiedenis gevonden (bijv. handmatig toegepast)." },
+        { label: "Kernschema", value: yesNo(s.has_core) },
+        { label: "Voorspelkern", value: yesNo(s.has_forecasts) },
+        { label: "Trajectcoach", value: yesNo(s.has_coach) },
+        { label: "Enquêtes", value: yesNo(s.has_surveys) },
+        { label: "Kernvraag klant", value: yesNo(s.has_survey_key_answers), note: "Marker voor migratie 20261103140000." },
+        { label: "Statusfunctie", value: yesNo(s.has_ops), note: "Marker voor migratie 20261104110000." },
+        { label: "Auth-hook-functie", value: yesNo(s.auth_hook_function), note: "Of de hook ook aanstaat, staat in Supabase onder Authentication → Hooks." },
+      ]
+    : [];
+
+  return (
+    <PageFrame crumbs={["Werkruimte", "Systeemstatus"]} coach="other">
+      <div className="section-row">
+        <div>
+          <div className="eyebrow">BEHEER</div>
+          <h1>Systeemstatus</h1>
+          <p className="sub">Staat de database op de laatste versie, draait de opschoontaak en zijn de koppelingen ingesteld? Alleen zichtbaar voor eigenaren van de werkruimte.</p>
+        </div>
+      </div>
+
+      {!s ? (
+        <div className="empty-state" role="status">
+          <h2 className="as-h3">Status niet beschikbaar</h2>
+          <p>
+            De database van deze omgeving kent de statusfunctie nog niet. Pas de migraties toe (tot en met <code>20261104110000_ops.sql</code>) en laad
+            deze pagina opnieuw. Zie <code>docs/OPERATIONS.md</code>.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="grid-3" style={{ marginBottom: 22 }}>
+            <div className="card tight">
+              <div className="tiny">AI-uitgaven deze maand</div>
+              <div className="mini-kpi num">{usd(spent)}</div>
+              <div className="progress" role="img" aria-label={`${share}% van het maandbudget gebruikt`}>
+                <div style={{ width: `${share}%`, background: share >= 90 ? "var(--red)" : share >= 70 ? "var(--amber)" : undefined }} />
+              </div>
+              <span className={`pill ${share >= 90 ? "coral" : share >= 70 ? "orange" : "gray"}`}>Plafond {usd(cap)} · {share}%</span>
+            </div>
+            <div className="card tight">
+              <div className="tiny">Opschoontaak persoonsgegevens</div>
+              <div className="mini-kpi num">{s.purge_last_run_at ? when(s.purge_last_run_at) : "Onbekend"}</div>
+              {!s.cron_available
+                ? pill("orange", "pg_cron niet beschikbaar: plan de taak elders")
+                : s.purge_job_scheduled === false
+                  ? pill("coral", "Niet ingepland")
+                  : s.purge_last_status
+                    ? pill(purgeOk ? "green" : "coral", purgeOk ? "Laatste run geslaagd" : `Laatste run: ${s.purge_last_status}`)
+                    : pill("gray", "Ingepland, nog geen run bekend")}
+            </div>
+            <div className="card tight">
+              <div className="tiny">Gecontroleerd</div>
+              <div className="mini-kpi num">{when(s.checked_at)}</div>
+              {pill("gray", "Bij elke paginalading")}
+            </div>
+          </div>
+
+          <div className="grid-2">
+            <div className="card">
+              <div className="section-title">
+                <h3>Database</h3>
+              </div>
+              <table className="table">
+                <caption className="sr-only">Onderdelen van het databaseschema en of ze aanwezig zijn</caption>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.label}>
+                      <th scope="row">{r.label}</th>
+                      <td>
+                        {r.value}
+                        {r.note && <div className="tiny" style={{ marginTop: 4 }}>{r.note}</div>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="card">
+              <div className="section-title">
+                <h3>Koppelingen</h3>
+              </div>
+              <table className="table">
+                <caption className="sr-only">Welke koppelingen in deze omgeving zijn ingesteld</caption>
+                <tbody>
+                  <tr>
+                    <th scope="row">AI (Claude API)</th>
+                    <td>{yesNo(ai, "Verbonden", "Niet verbonden: handmatige modus")}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">E-mail (Resend)</th>
+                    <td>{yesNo(email, "Ingesteld", "Niet gekoppeld: CSV met persoonlijke links")}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Meting op testpagina&apos;s</th>
+                    <td>
+                      {yesNo(tracking && s.ingest_key_registered, "Ingesteld", "Niet compleet")}
+                      {!(tracking && s.ingest_key_registered) && (
+                        <div className="tiny" style={{ marginTop: 4 }}>
+                          {!tracking ? "INGEST_SECRET of TRACKING_SALT ontbreekt op de server." : "De hash van INGEST_SECRET staat nog niet in ingest_keys."}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Foutmonitoring</th>
+                    <td>{yesNo(monitoring, "SENTRY_DSN ingesteld", "Alleen serverlogs")}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </PageFrame>
+  );
+}
