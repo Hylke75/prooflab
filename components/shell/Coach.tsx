@@ -39,7 +39,7 @@ export function Coach({ data, aiConnected, notes }: { data: CoachData; aiConnect
             </div>
             <div className="chat-suggestions">
               {data.suggestions.map((s) => (
-                <Link key={s.href + s.label} className="suggestion" href={s.href} onClick={close}>
+                <Link key={s.href + s.label} className="suggestion" href={s.href} prefetch={false} onClick={close}>
                   <Icon name={s.icon} size="sm" /> {s.label} →
                 </Link>
               ))}

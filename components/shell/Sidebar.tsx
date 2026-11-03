@@ -43,8 +43,11 @@ export function Sidebar({
   const current = currentId ? ideas.find((i) => i.id === currentId) : null;
   const sub = match?.[2] ?? "";
 
+  // Geen prefetch (B1): op een ideepagina staan hier tot negen links naar zware, dynamische ideepagina's. Next
+  // prefetcht die bij zicht allemaal tegelijk (elk een eigen serverfunctie met database-aanroepen), wat op Vercel
+  // 503's op _rsc-verzoeken gaf. Navigeren laadt de pagina gewoon bij de klik, met app/app/loading.tsx.
   const link = (href: string, label: string, icon: IconName, active: boolean) => (
-    <Link key={href} href={href} className={`nav-link${active ? " active" : ""}`} aria-current={active ? "page" : undefined} onClick={close}>
+    <Link key={href} href={href} prefetch={false} className={`nav-link${active ? " active" : ""}`} aria-current={active ? "page" : undefined} onClick={close}>
       <Icon name={icon} /> {label} <span className="nav-dot" />
     </Link>
   );

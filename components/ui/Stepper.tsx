@@ -3,6 +3,7 @@ import { STEPS } from "@/lib/domain/labels";
 
 type StepKey = (typeof STEPS)[number]["key"];
 
+// Geen prefetch op de stappen (B1): vijf zware ideepagina's tegelijk bij elk paginabezoek, zie Sidebar.
 export function Stepper({ current, ideaId, done }: { current: StepKey; ideaId?: string; done?: Partial<Record<StepKey, boolean>> }) {
   return (
     <nav className="stepper" aria-label="Voortgang van het stappenplan">
@@ -17,7 +18,7 @@ export function Stepper({ current, ideaId, done }: { current: StepKey; ideaId?: 
           <span key={s.key} style={{ display: "contents" }}>
             {i > 0 && <span className="connector" />}
             {ideaId ? (
-              <Link href={`/app/ideas/${ideaId}${s.path}`} className={cls} aria-current={s.key === current ? "step" : undefined}>
+              <Link href={`/app/ideas/${ideaId}${s.path}`} prefetch={false} className={cls} aria-current={s.key === current ? "step" : undefined}>
                 {inner}
               </Link>
             ) : (
