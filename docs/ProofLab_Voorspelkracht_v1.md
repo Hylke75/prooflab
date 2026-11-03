@@ -555,3 +555,21 @@ keer een aandeel uit een Europees onderzoek van 2025 levert een precies ogend, m
   de afstand van de waarde tot de bovengrens. Percentages blijven hoogstens 100.
 - Zonder verschil is de simulatie exact gelijk aan die van vóór golf C. Een onbekend jaar of een onbekende regio is
   geen verschil, maar ProofLab vraagt erom.
+
+### 10.3 Verplichte zoekopdracht naar tegenbewijs (punt 10)
+
+Zoekinstructies die het antwoord op een vraag zoeken, vinden vooral bevestiging. Daarom krijgt elke onderzoeksvraag
+in een run een eigen stap **"Tegenbewijs zoeken"**, direct na het zoeken en uitlezen van die vraag.
+
+- De stap zoekt uitsluitend naar bronnen die het idee bij die vraag tegenspreken: een kleinere of krimpende markt,
+  klanten zonder het probleem of zonder betalingsbereidheid, mislukte vergelijkbare initiatieven, regels of kosten.
+- Hij draait binnen dezelfde budgetbewaking als de andere stappen (`RunBudget`): is het runbudget op, dan wordt hij
+  overgeslagen en staat dat bij de stap. Zoeken en uitlezen gebruiken het goedkopere onderzoeksmodel.
+- Elke zoekterm komt in het zoeklogboek met `kind = 'counter'`. Hergebruik van eerdere zoekresultaten (binnen 7
+  dagen) gebeurt alleen binnen hetzelfde soort zoekopdracht: een gewone zoekopdracht telt nooit als zoeken naar
+  tegenbewijs.
+- Gevonden passages worden fragmenten in de bronnenbibliotheek. Alleen tegenbevindingen worden bewaard, met relatie
+  **"contradicts"** en dezelfde controles als elke andere bevinding: het citaat moet letterlijk in het fragment staan
+  en de steuncontrole mag het niet afwijzen.
+- Het scherm toont het tegenbewijs apart ("Tegenbewijs"), met per vraag de uitkomst van de stap en een eigen
+  zoeklogboek. Niets gevonden staat er eerlijk bij, met de kanttekening dat dit niet bewijst dat het idee klopt.

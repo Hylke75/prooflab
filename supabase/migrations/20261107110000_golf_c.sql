@@ -36,3 +36,18 @@ where period is not null;
 alter table public.sizing_factors
   add column year int check (year between 1950 and 2100),
   add column region text check (region is null or char_length(btrim(region)) between 1 and 120);
+
+-- ---------------------------------------------------------------------------
+-- Punt 10. Verplichte zoekopdracht naar tegenbewijs
+-- ---------------------------------------------------------------------------
+-- Per onderzoeksvraag een eigen stap 'counter' (zoeken naar tegenbewijs, daarna uitlezen met dezelfde citaatcontrole).
+-- Het zoeklogboek onderscheidt gewone zoekopdrachten (kind 'search') van zoekopdrachten naar tegenbewijs ('counter');
+-- hergebruik binnen 7 dagen gebeurt alleen binnen hetzelfde soort. RLS en alleen-toevoegen blijven ongewijzigd.
+
+alter table public.research_tasks drop constraint research_tasks_kind_check;
+alter table public.research_tasks add constraint research_tasks_kind_check
+  check (kind in ('plan', 'search', 'extract', 'counter', 'competitors', 'sizing', 'reality_check'));
+
+alter table public.research_search_log
+  add column kind text not null default 'search' check (kind in ('search', 'counter'));
+create index research_search_log_kind_idx on public.research_search_log(idea_id, kind, created_at desc);

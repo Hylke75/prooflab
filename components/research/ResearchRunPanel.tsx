@@ -53,10 +53,10 @@ const hostOf = (url: string) => {
 // Per vraag een uitklapbaar logboek: zoektermen, gevonden URL's met status en reden, en het aantal passages.
 // Levert een vraag geen enkele passage op, dan staan de gevonden URL's als kandidaat-bronnen klaar; de gebruiker
 // voegt ze zelf toe met een letterlijk citaat (er telt niets automatisch als bewijs).
-function SearchLogList({ questions, canWrite }: { questions: QuestionLog[]; canWrite: boolean }) {
+export function SearchLogList({ questions, canWrite, title = "Zoeklogboek" }: { questions: QuestionLog[]; canWrite: boolean; title?: string }) {
   return (
-    <div className="mt-12" aria-label="Zoeklogboek per onderzoeksvraag">
-      <div className="eyebrow" style={{ marginBottom: 6 }}>Zoeklogboek</div>
+    <div className="mt-12" aria-label={`${title} per onderzoeksvraag`}>
+      <div className="eyebrow" style={{ marginBottom: 6 }}>{title}</div>
       {questions.map((q) => {
         const passages = q.rows.reduce((s, r) => s + r.passages, 0);
         const urls = [...new Map(q.rows.flatMap((r) => r.urls).map((u) => [u.url, u])).values()];

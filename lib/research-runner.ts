@@ -1,6 +1,6 @@
 import "server-only";
 import { supabaseServer } from "@/lib/supabase/server";
-import { searchQuestion, extractClaims, challengeDossier, checkSupport, type ExcerptRef, type FoundSource, type IdeaContext, type QueryLog } from "@/lib/ai/research";
+import { searchQuestion, extractClaims, challengeDossier, checkSupport, type ExcerptRef, type FoundSource, type IdeaContext, type QueryLog, type SearchFocus } from "@/lib/ai/research";
 import { mergeFoundSources } from "@/lib/ai/web-evidence";
 import { providersFor } from "@/lib/ai/settings";
 import { isProvider, PROVIDER_LABELS, type ProviderId } from "@/lib/ai/providers/config";
@@ -266,6 +266,8 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
     };
   }
 
+  if (task.kind === "counter") return runCounterTask(task, idea, mode);
+
   if (task.kind === "reality_check") {
     const { data: claims } = await supabase.from("claims").select("statement, status").eq("idea_id", idea.id).limit(60);
     const { data: comps } = await supabase.from("competitors").select("name, kind").eq("idea_id", idea.id);
@@ -283,6 +285,67 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
 }
 
 // ---------------------------------------------------------------------------
+// Golf C, punt 10: verplichte zoekopdracht naar tegenbewijs per onderzoeksvraag
+// ---------------------------------------------------------------------------
+
+// Een eigen stap per vraag, binnen dezelfde budgetbewaking als de andere stappen (de runner draait elke stap in
+// withRunBudget). Zoeken en uitlezen gebruiken het goedkope onderzoeksmodel. De zoektermen komen in
+// research_search_log met kind 'counter'; gevonden passages worden fragmenten in de bronnenbibliotheek en elke
+// tegenbevinding krijgt een koppeling met relatie 'contradicts', met dezelfde citaat- en steuncontrole als
+// gewone bevindingen (storeExtractedClaims). Wat de bronnen niet tegenspreekt, wordt niet bewaard.
+async function runCounterTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promise<{ output: Json; detail: string; cost: number }> {
+  const supabase = await supabaseServer();
+  const ctx = ideaContext(idea);
+  const { data: q } = await supabase.from("research_questions").select("id, question").eq("id", task.question_id!).single();
+  const question = q!.question;
+  const providers = await providersFor(idea.id, "research");
+  const cache = await cachedSearch(idea.id, question, providers, "counter");
+  const fresh = providers.filter((p) => !cache.providers.has(p));
+  const res = fresh.length
+    ? await searchAcrossProviders(idea.id, "research:counter", ctx, question, mode === "quick" ? 2 : 4, { providers: fresh, avoidQueries: cache.recentQueries, focus: "counter" })
+    : null;
+  const newIds = res ? await storeFoundSources(idea.id, task.run_id, res.sources) : [];
+  const excerptIds = [...new Set([...newIds, ...cache.excerptIds])];
+  await writeSearchLog(task, question, [...(res?.logs ?? []), ...cache.logs], "counter");
+  let cost = res?.cost ?? 0;
+  const base = { excerpt_ids: excerptIds, providers: res?.perProvider ?? [], reused_from: [...cache.taskIds] };
+  if (excerptIds.length === 0) {
+    return {
+      output: { ...base, claims: 0 },
+      detail: "Gezocht naar tegenbewijs; geen bruikbare passage gevonden. Dat bewijst niet dat het antwoord klopt.",
+      cost,
+    };
+  }
+  const { data: excerpts } = await supabase.from("source_excerpts").select("id, text, source_id, sources(title, url)").in("id", excerptIds.slice(0, 40));
+  const list = excerpts ?? [];
+  const refs: ExcerptRef[] = list.map((e, i) => ({ ref: `F${i + 1}`, sourceRef: `B-${e.source_id.slice(0, 8)}`, title: e.sources?.title ?? "", url: e.sources?.url ?? null, text: e.text }));
+  const extract = await runAi(idea.id, "research:counter_extract", (p) => extractClaims(ctx, question, refs, p, { focus: "counter" }));
+  cost += extract.usage.cost;
+  const byRef = new Map(refs.map((r, i) => [r.ref, list[i]]));
+  // Alleen tegenbevindingen; een bevestigende bewering uit deze zoekopdracht hoort bij de gewone zoekstap.
+  const counter = extract.data.claims.filter((c) => c.stance === "contradicts");
+  const skipped = extract.data.claims.length - counter.length;
+  const stored = await storeExtractedClaims(idea.id, q!.id, byRef, counter);
+  cost += stored.cost;
+  const n = stored.claimIds.length;
+  return {
+    output: { ...base, claims: n, claim_ids: stored.claimIds, rejected: stored.rejected, unsupported: stored.unsupported, duplicates: stored.duplicates, not_counter: skipped },
+    detail: [
+      res ? `${res.sources.length} bronnen, ${newIds.length} passages bewaard (${res.searches} zoekopdrachten naar tegenbewijs).` : "",
+      cache.providers.size ? `${cache.excerptIds.length} passages hergebruikt van een eerdere zoekopdracht naar tegenbewijs.` : "",
+      `${n} tegenbevinding${n === 1 ? "" : "en"} met gecontroleerd citaat${[
+        stored.rejected ? `, ${stored.rejected} afgewezen (citaat niet letterlijk teruggevonden)` : "",
+        stored.unsupported ? `, ${stored.unsupported} afgewezen (citaat draagt de bewering niet)` : "",
+        stored.duplicates ? `, ${stored.duplicates} al bekend` : "",
+      ].join("")}.`,
+    ]
+      .filter(Boolean)
+      .join(" "),
+    cost,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Web search on every provider the organisation uses for research (also used by the red-team search)
 // ---------------------------------------------------------------------------
 
@@ -297,11 +360,13 @@ export async function searchAcrossProviders(
   ctx: IdeaContext,
   question: string,
   maxSearches: number,
-  opts: { providers?: ProviderId[]; avoidQueries?: string[] } = {},
+  opts: { providers?: ProviderId[]; avoidQueries?: string[]; focus?: SearchFocus } = {},
 ) {
   const providers = opts.providers ?? (await providersFor(ideaId, "research"));
   const settled = await Promise.allSettled(
-    providers.map((provider) => runAi(ideaId, purpose, (p) => searchQuestion(ctx, question, maxSearches, p, { avoidQueries: opts.avoidQueries }), { provider })),
+    providers.map((provider) =>
+      runAi(ideaId, purpose, (p) => searchQuestion(ctx, question, maxSearches, p, { avoidQueries: opts.avoidQueries, focus: opts.focus }), { provider }),
+    ),
   );
   let cost = 0;
   let searches = 0;
@@ -441,13 +506,15 @@ const sameQuestion = (a: string | null, b: string) => !!a && normalizeText(a) ==
 // Earlier searches for the same question of this idea within REUSE_DAYS (per provider, the latest one): their
 // passages are reused and their log rows copied (marked reused), so the same search is not paid for twice. Also
 // returns the other search terms of the last week, which the model is asked not to repeat.
-export async function cachedSearch(ideaId: string, question: string, providers: ProviderId[]) {
+// `kind` houdt gewone zoekopdrachten en zoekopdrachten naar tegenbewijs gescheiden (golf C, punt 10).
+export async function cachedSearch(ideaId: string, question: string, providers: ProviderId[], kind: SearchLogKind = "search") {
   const supabase = await supabaseServer();
   const since = new Date(Date.now() - REUSE_DAYS * 24 * 3600 * 1000).toISOString();
   const { data } = await supabase
     .from("research_search_log")
     .select("task_id, provider, query, question, urls, passages, reused, created_at")
     .eq("idea_id", ideaId)
+    .eq("kind", kind)
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(300);
@@ -483,8 +550,10 @@ export async function cachedSearch(ideaId: string, question: string, providers: 
   return { providers: reusedProviders, taskIds, excerptIds, logs, recentQueries, at };
 }
 
+export type SearchLogKind = "search" | "counter";
+
 // One row per search query in research_search_log. A failing insert never fails the research step, but is logged.
-async function writeSearchLog(task: TaskRow, question: string, logs: ProviderLog[]) {
+async function writeSearchLog(task: TaskRow, question: string, logs: ProviderLog[], kind: SearchLogKind = "search") {
   const rows = logs.flatMap((l) =>
     l.entries.map((e) => ({
       run_id: task.run_id,
@@ -497,6 +566,7 @@ async function writeSearchLog(task: TaskRow, question: string, logs: ProviderLog
       urls: e.urls as unknown as Json,
       passages: e.passages,
       reused: !!l.reused,
+      kind,
     })),
   );
   if (rows.length === 0) return;

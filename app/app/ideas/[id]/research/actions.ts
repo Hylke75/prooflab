@@ -485,6 +485,8 @@ export async function startResearchRun(ideaId: string, mode: "quick" | "deep"): 
   for (const q of qs) {
     tasks.push({ run_id: run.id, idea_id: ideaId, position: pos++, kind: "search", question_id: q.id, label: `Bronnen zoeken: vraag ${q.position}` });
     tasks.push({ run_id: run.id, idea_id: ideaId, position: pos++, kind: "extract", question_id: q.id, label: `Citaten controleren: vraag ${q.position}` });
+    // Golf C, punt 10: per vraag een verplichte, aparte zoekopdracht naar tegenbewijs.
+    tasks.push({ run_id: run.id, idea_id: ideaId, position: pos++, kind: "counter", question_id: q.id, label: `Tegenbewijs zoeken: vraag ${q.position}` });
   }
   if (mode === "deep") tasks.push({ run_id: run.id, idea_id: ideaId, position: pos++, kind: "reality_check", question_id: null, label: "Tegenbewijs en zwakke plekken zoeken" });
   await supabase.from("research_tasks").insert(tasks);

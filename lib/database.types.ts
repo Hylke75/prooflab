@@ -2245,6 +2245,7 @@ export type Database = {
           created_at: string
           id: string
           idea_id: string
+          kind: string
           passages: number
           provider: string
           query: string
@@ -2259,6 +2260,7 @@ export type Database = {
           created_at?: string
           id?: string
           idea_id: string
+          kind?: string
           passages?: number
           provider: string
           query: string
@@ -2276,6 +2278,7 @@ export type Database = {
           passages?: number
           provider?: string
           query?: string
+          kind?: string
           question?: string | null
           question_id?: string | null
           reused?: boolean

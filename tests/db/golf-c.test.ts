@@ -96,3 +96,26 @@ d("punt 8: jaar en regio per sizing-factor", () => {
     await expect(add("reach_pct", 2025, "  ")).rejects.toThrow();
   });
 });
+
+d("punt 10: zoekopdracht naar tegenbewijs", () => {
+  it("kent de stap 'counter' en logt zoektermen apart met kind 'counter'", async () => {
+    const out = await as(alice, async (c) => {
+      const q = (await c.query("insert into public.research_questions (idea_id, position, question, done_criterion) values ($1, 1, 'Hoeveel bureaus?', 'Eén aantal') returning id", [idea])).rows[0].id;
+      const run = (await c.query("insert into public.research_runs (idea_id, mode, budget_usd) values ($1, 'quick', 1.5) returning id", [idea])).rows[0].id;
+      const task = (await c.query("insert into public.research_tasks (run_id, idea_id, position, kind, label, question_id) values ($1, $2, 1, 'counter', 'Tegenbewijs zoeken', $3) returning id", [run, idea, q])).rows[0].id;
+      const ins = (kind: string | null) =>
+        c.query(
+          `insert into public.research_search_log (run_id, task_id, idea_id, question_id, provider, query${kind ? ", kind" : ""}) values ($1, $2, $3, $4, 'anthropic', 'bureaus'${kind ? ", $5" : ""}) returning kind`,
+          kind ? [run, task, idea, q, kind] : [run, task, idea, q],
+        );
+      const plain = (await ins(null)).rows[0].kind;
+      const counter = (await ins("counter")).rows[0].kind;
+      return { run, plain, counter };
+    });
+    expect(out).toMatchObject({ plain: "search", counter: "counter" });
+    await expect(
+      as(alice, (c) => c.query("insert into public.research_search_log (run_id, idea_id, provider, query, kind) values ($1, $2, 'anthropic', 'x', 'bevestiging')", [out.run, idea])),
+    ).rejects.toThrow();
+    await expect(as(alice, (c) => c.query("insert into public.research_tasks (run_id, idea_id, position, kind, label) values ($1, $2, 9, 'onbekend', 'x')", [out.run, idea]))).rejects.toThrow();
+  });
+});
