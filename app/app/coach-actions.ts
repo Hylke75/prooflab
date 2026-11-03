@@ -28,7 +28,7 @@ export async function askCoach(_: CoachAnswerState, form: FormData): Promise<Coa
     `Volgende stap volgens de regels: ${next.title}`,
   ].join("\n");
   try {
-    const res = await runAi(ideaId, "coach", () => coachAnswer(ideaContext(idea), context, question));
+    const res = await runAi(ideaId, "coach", (p) => coachAnswer(ideaContext(idea), context, question, p));
     return { answer: res.text, error: null };
   } catch (e) {
     return { answer: null, error: aiErrorMessage(e, "De coach kon nu geen antwoord geven. Probeer het later opnieuw.") };

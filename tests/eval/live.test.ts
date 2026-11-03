@@ -22,7 +22,7 @@ live("live extraction eval", () => {
   for (const c of CASES.filter((x) => x.live)) {
     it(`#${c.id} ${c.title}`, { timeout: 180_000 }, async () => {
       const refs = (c.excerpts ?? []).map((e) => ({ ref: e.ref, sourceRef: `B-${e.ref}`, title: e.domain, url: `https://${e.domain}`, text: e.text }));
-      const res = await extractClaims(idea, c.live!.question, refs);
+      const res = await extractClaims(idea, c.live!.question, refs, "anthropic");
       const byRef = new Map(refs.map((r) => [r.ref, r]));
       const accepted = res.data.claims.filter((k) => {
         const ex = byRef.get(k.excerpt_ref);

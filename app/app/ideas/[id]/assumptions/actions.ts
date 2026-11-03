@@ -6,8 +6,8 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { requireWritableIdea } from "@/lib/data";
 import { TEMPLATE_ASSUMPTIONS } from "@/lib/domain/recommend";
 import { aiConfigured } from "@/lib/env";
-import { extractClaims, searchQuestion, suggestAssumptions, type ExcerptRef } from "@/lib/ai/research";
-import { storeExtractedClaims, storeFoundSources } from "@/lib/research-runner";
+import { extractClaims, suggestAssumptions, type ExcerptRef } from "@/lib/ai/research";
+import { searchAcrossProviders, storeExtractedClaims, storeFoundSources } from "@/lib/research-runner";
 import { ideaContext } from "@/lib/idea-context";
 import { aiErrorMessage, runAi } from "@/lib/ai/guard";
 
@@ -84,8 +84,8 @@ export async function seedAssumptions(ideaId: string, _: ActionState): Promise<A
   if (aiConfigured()) {
     const { data: claims } = await supabase.from("claims").select("statement, status").eq("idea_id", ideaId).neq("status", "insufficient").limit(40);
     try {
-      const res = await runAi(ideaId, "assumptions", () =>
-        suggestAssumptions(ideaContext(idea), (claims ?? []).map((c) => `${c.statement} [${c.status}]`)),
+      const res = await runAi(ideaId, "assumptions", (p) =>
+        suggestAssumptions(ideaContext(idea), (claims ?? []).map((c) => `${c.statement} [${c.status}]`), p),
       );
       await supabase.from("assumptions").insert(res.data.assumptions.map((a) => ({ ...a, idea_id: ideaId, origin: "ai" })));
       refresh(ideaId);
@@ -110,7 +110,7 @@ export async function redTeamAssumption(ideaId: string, assumptionId: string, _:
   const ctx = ideaContext(idea);
   const question = `Welk bewijs spreekt deze aanname tegen: '${a.statement.replace(/["'<>]/g, " ")}'? Zoek alleen naar bronnen die laten zien dat dit niet of maar deels klopt (tegenvoorbeelden, mislukte vergelijkbare initiatieven, tegenvallende cijfers).`;
   try {
-    const search = await runAi(ideaId, "red_team:search", () => searchQuestion(ctx, question, 4));
+    const search = await searchAcrossProviders(ideaId, "red_team:search", ctx, question, 4);
     const excerptIds = (await storeFoundSources(ideaId, null, search.sources)).slice(0, 40);
     if (excerptIds.length === 0) {
       refresh(ideaId);
@@ -125,7 +125,7 @@ export async function redTeamAssumption(ideaId: string, assumptionId: string, _:
       url: e.sources?.url ?? null,
       text: e.text,
     }));
-    const extract = await runAi(ideaId, "red_team:extract", () => extractClaims(ctx, question, refs));
+    const extract = await runAi(ideaId, "red_team:extract", (p) => extractClaims(ctx, question, refs, p));
     const byRef = new Map(refs.map((r, i) => [r.ref, list[i]]));
     // Only counter-findings; each quote must literally carry its own (counter) statement.
     const counter = extract.data.claims.filter((c) => c.stance === "contradicts");

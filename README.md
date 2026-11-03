@@ -21,7 +21,7 @@ prijs-/aanbodtest) → bewijs met onzekerheidsinterval → Reality Check → bes
 
 - Next.js 16 (App Router, Turbopack), React 19, TypeScript strict, Tailwind v4 + de CSS uit de referentie-mock-ups
 - Supabase: Postgres met row level security op elke tabel, Auth (wachtwoord en magic link)
-- Claude API (`claude-opus-5-5`) met server-side webzoeken/-ophalen en citaten, gestructureerde uitvoer (Zod)
+- Drie AI-aanbieders achter één interface (`lib/ai/providers`): Claude (Anthropic, server-side webzoeken/-ophalen met citaten), ChatGPT (OpenAI Responses API met `web_search`) en Gemini (`generateContent` met `google_search`); gestructureerde uitvoer (Zod), modellen en prijzen in `lib/ai/providers/config.ts`
 - Vitest (unit, RLS en eval), Playwright (E2E)
 
 ## Lokaal starten
@@ -42,7 +42,10 @@ npm run dev                  # http://localhost:3000
 | `TRACKING_SALT` | voor live tests | Geheim voor de cookieloze, per test verschillende bezoekerscode (HMAC); geldt als sleutelversie `v1` |
 | `TRACKING_SALTS` | nee | Geheimen met versie, voor rotatie: `v2:nieuwgeheim,v1:oudgeheim` (eerste = huidige, elk geheim ≥ 16 tekens, geen komma's). Zonder deze variabele is `TRACKING_SALT` de enige versie (`v1`) |
 | `RESEND_WEBHOOK_SECRET` | nee | Ondertekeningsgeheim (`whsec_...`) van de Resend-webhook naar `/api/email/resend` voor harde bounces en spammeldingen |
-| `ANTHROPIC_API_KEY` | nee | Zet AI-onderzoek, AI-aannames, interviewcodering en AI-vragen in de Reality Check aan |
+| `ANTHROPIC_API_KEY` | nee | Claude (Anthropic). Eén AI-sleutel is genoeg om AI-onderzoek, AI-aannames, interviewcodering, de coach en AI-vragen in de Reality Check aan te zetten |
+| `OPENAI_API_KEY` | nee | ChatGPT (OpenAI, Responses API met `web_search`) |
+| `GEMINI_API_KEY` | nee | Gemini (Google, `generateContent` met `google_search`) |
+| `ANTHROPIC_MODEL`, `OPENAI_MODEL`, `GEMINI_MODEL` | nee | Ander model per aanbieder; standaardmodellen en prijzen staan in `lib/ai/providers/config.ts` |
 | `RESEARCH_BUDGET_USD` | nee | Maximum per diepe onderzoeksrun (standaard 3) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | nee | Persoonlijke enquête-uitnodigingen via Resend |
 | `SENTRY_DSN` | nee | Serverfouten naar een Sentry-compatibele dienst (Sentry, GlitchTip, Bugsink); zonder: alleen JSON-logregels |
@@ -50,8 +53,11 @@ npm run dev                  # http://localhost:3000
 | `RESEND_API_KEY`, `EMAIL_FROM` | nee | Verstuurt persoonlijke enquête-uitnodigingen via Resend (afzender op een geverifieerd domein); zonder deze twee download je de persoonlijke links als CSV |
 | `CRON_SECRET` | voor achtergrondtaken via cron | Geheim (minstens 16 tekens) waarmee Vercel Cron of een externe planner `/api/jobs/run` aanroept (`Authorization: Bearer <CRON_SECRET>`) |
 
-Zonder `ANTHROPIC_API_KEY` toont de app overal "AI niet verbonden" en werkt alles handmatig: bronnen en citaten
-toevoegen, interviews coderen, aannames vanuit een sjabloon. Er worden nooit gesimuleerde resultaten getoond als echt.
+Zonder een van `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` of `GEMINI_API_KEY` toont de app overal "AI niet verbonden" en werkt
+alles handmatig: bronnen en citaten toevoegen, interviews coderen, aannames vanuit een sjabloon. Er worden nooit gesimuleerde
+resultaten getoond als echt. Eigenaren kiezen onder Systeemstatus → AI-aanbieders per taak welke aanbieder werkt; is de gekozen
+aanbieder niet verbonden, dan neemt een verbonden aanbieder het over. Met meerdere sleutels zoeken de aanbieders los van elkaar
+naar bronnen (een bevinding telt alleen met een letterlijk citaat uit de opgehaalde pagina) en voorspelt elk model apart.
 
 Enquêtes verspreiden: persoonlijke links (`/s/<slug>?u=<token>`) en afmeldlinks (`/s/afmelden?u=<token>&e=<hash>`) zijn
 afgeleid van het trackinggeheim (token = HMAC van het willekeurige uitnodigings-id, alleen de sha256 wordt opgeslagen; e = HMAC

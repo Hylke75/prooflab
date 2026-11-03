@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { PageFrame } from "@/components/shell/PageFrame";
-import { aiConfigured, trackingConfigured } from "@/lib/env";
+import { configuredProviders, trackingConfigured } from "@/lib/env";
+import { PROVIDERS, PROVIDER_LABELS } from "@/lib/ai/providers/config";
 
 export const metadata: Metadata = { title: "Zo werkt ProofLab" };
 
@@ -60,7 +61,9 @@ export default function HelpPage() {
       <div className="grid-2 mt-18">
         <div className="card">
           <h2 className="as-h3">Status van koppelingen</h2>
-          <div className="data-row"><span>AI-onderzoek (Claude, webzoeken)</span><span className={`pill ${aiConfigured() ? "green" : "orange"}`}>{aiConfigured() ? "Verbonden" : "Niet verbonden"}</span></div>
+          {PROVIDERS.map((p) => (
+            <div className="data-row" key={p}><span>AI-onderzoek ({PROVIDER_LABELS[p].name}, webzoeken)</span><span className={`pill ${configuredProviders().includes(p) ? "green" : "orange"}`}>{configuredProviders().includes(p) ? "Verbonden" : "Niet verbonden"}</span></div>
+          ))}
           <div className="data-row"><span>Cookieloze meting op testpagina&apos;s</span><span className={`pill ${trackingConfigured() ? "green" : "orange"}`}>{trackingConfigured() ? "Actief" : "Niet geconfigureerd"}</span></div>
           <div className="data-row"><span>Advertentiekanalen (LinkedIn, Meta)</span><span className="pill gray">Handmatig via kanaallinks</span></div>
           <div className="data-row"><span>Betalingen</span><span className="pill gray">Niet in deze versie</span></div>

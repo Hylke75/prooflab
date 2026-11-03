@@ -355,7 +355,7 @@ export async function generatePromo(ideaId: string, expId: string, raw: unknown)
     let note: string | null = null;
     if (v.mode === "ai" && aiConfigured()) {
       try {
-        const res = await runAi(ideaId, "promo_posts", () => draftPromoPosts(input, platforms));
+        const res = await runAi(ideaId, "promo_posts", (p) => draftPromoPosts(input, platforms, p));
         const byPlatform = new Map(res.data.posts.map((p) => [p.platform, p.body]));
         const fallback = templatePosts(input, links, platforms);
         posts = platforms.map((k) => {

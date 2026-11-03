@@ -103,6 +103,8 @@ bestand opnieuw uit (ze zijn herhaalbaar), registreer daarna pas.
 | `INGEST_SECRET` | Vercel (server) + hash in `public.ingest_keys` | Zonder onderbreking: (1) hash van de nieuwe waarde toevoegen (`insert into public.ingest_keys (key_hash) values (encode(extensions.digest('<nieuw>', 'sha256'), 'hex'))`), (2) nieuwe waarde in Vercel zetten en uitrollen, (3) oude hash verwijderen. Meerdere hashes tegelijk zijn toegestaan |
 | `TRACKING_SALT` | Vercel (server) | Let op: de salt zit in de cookieloze bezoekerscode, in de contact-hash van webhooks en in de HMAC van afmeldlinks. Na roteren tellen terugkerende bezoekers van vandaag opnieuw mee en werken afmeldlinks uit al verstuurde e-mails niet meer. Alleen roteren bij een lek, liefst tussen twee metingen |
 | `ANTHROPIC_API_KEY` | Vercel (server) | Nieuwe sleutel in de Anthropic-console, in Vercel zetten, uitrollen, oude intrekken |
+| `OPENAI_API_KEY` | Vercel (server) | Zelfde patroon in het OpenAI-platform (API keys) |
+| `GEMINI_API_KEY` | Vercel (server) | Zelfde patroon in Google AI Studio (API keys) |
 | `RESEND_API_KEY` | Vercel (server) | Zelfde patroon in Resend. `EMAIL_FROM` alleen wijzigen naar een geverifieerd domein |
 | Supabase publishable key | Vercel (`NEXT_PUBLIC_…`) | Project settings → API keys: nieuwe publishable key maken, uitrollen, oude intrekken |
 | Supabase secret/service-role key | Niet in de app (alleen CI-lokaal en beheer) | Bij een lek intrekken in het dashboard; de app gebruikt hem niet |

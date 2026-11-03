@@ -70,7 +70,7 @@ export async function aiPlan(ideaId: string, _: ActionState): Promise<ActionStat
   if (!aiConfigured()) return { error: "AI is niet verbonden; pas de vragen handmatig aan." };
   const supabase = await supabaseServer();
   try {
-    const res = await runAi(ideaId, "plan", () => planResearch(ideaContext(idea)));
+    const res = await runAi(ideaId, "plan", (p) => planResearch(ideaContext(idea), p));
     // Manually edited questions are kept; template and earlier AI questions are replaced.
     const { data: existing } = await supabase.from("research_questions").select("id, position, origin").eq("idea_id", ideaId);
     const manual = (existing ?? []).filter((q) => q.origin === "manual");
@@ -609,8 +609,8 @@ export async function analyzeCustomerSignals(ideaId: string, _: ActionState, for
   try {
     for (let start = 0; start < analysed.length; start += BATCH) {
       const excerpts: SignalExcerpt[] = analysed.slice(start, start + BATCH).map((e, i) => ({ ...e, ref: `K${i + 1}` }));
-      const res = await runAi(ideaId, "customer_signals", () =>
-        analyzeSignals(ideaContext(idea), excerpts.map((e) => ({ ref: e.ref, title: e.source_title, text: e.text }))),
+      const res = await runAi(ideaId, "customer_signals", (p) =>
+        analyzeSignals(ideaContext(idea), excerpts.map((e) => ({ ref: e.ref, title: e.source_title, text: e.text })), p),
       );
       const v = verifySignalGroups(res.data.groups, excerpts);
       droppedQuotes += v.droppedQuotes;
