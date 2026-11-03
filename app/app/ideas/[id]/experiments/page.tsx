@@ -7,6 +7,7 @@ import { ExperimentBuilder } from "@/components/experiments/ExperimentBuilder";
 import { getIdea, getWorkspace } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadInformationValue, loadProgress } from "@/lib/progress";
+import { priorsByType } from "@/lib/experiment-metrics";
 import { stepsDone } from "@/lib/steps";
 import { recommend } from "@/lib/domain/recommend";
 import { EXPERIMENT_STATES, EXPERIMENT_TYPES, type AssumptionCategory, type ExperimentState, type ExperimentType } from "@/lib/domain/labels";
@@ -37,6 +38,11 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
     supabase.from("observations").select("id", { count: "exact", head: true }).eq("idea_id", id).not("interview_id", "is", null),
   ]);
   const wanted = typeof sp.assumption === "string" ? sp.assumption : null;
+  // Na opslaan (B1a) komt de gebruiker hier terug met ?opgeslagen=<id>: bevestiging en het concept gemarkeerd op het bord.
+  const savedId = typeof sp.opgeslagen === "string" ? sp.opgeslagen : null;
+  const saved = savedId ? (experiments ?? []).find((e) => e.id === savedId) : undefined;
+  // B1b: het benodigde aantal deelnemers volgt uit eerdere tests van hetzelfde type in de organisatie.
+  const priors = canWrite ? await priorsByType(id, Object.keys(EXPERIMENT_TYPES)) : {};
   // ?type=survey (from the coach's survey suggestion) preselects that test type.
   const wantedType = typeof sp.type === "string" && sp.type in EXPERIMENT_TYPES ? (sp.type as ExperimentType) : undefined;
   const selected = assumptions.find((a) => a.id === wanted) ?? assumptions[0];
@@ -58,13 +64,25 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
       </div>
       <Stepper current="test" ideaId={id} done={stepsDone(progress)} />
 
+      {saved && (
+        <div className="form-ok" role="status" style={{ marginBottom: 16 }}>
+          <strong>Test Card opgeslagen als concept.</strong> &quot;{saved.title}&quot; staat op het bord onder Voorbereiden.{" "}
+          <Link className="text-link" href={`/app/ideas/${id}/experiments/${saved.id}`}>Open het concept →</Link>
+        </div>
+      )}
       {(experiments ?? []).length > 0 && (
-        <div className="kpi-row" style={{ marginBottom: 20 }}>
+        <div className="kpi-row" id="bord" style={{ marginBottom: 20 }}>
           {COLUMNS.map((col) => (
             <div key={col.label} className="card tight">
               <div className="tiny" style={{ fontWeight: 600 }}>{col.label}</div>
               {(experiments ?? []).filter((e) => col.states.includes(e.state as ExperimentState)).map((e) => (
-                <Link key={e.id} href={`/app/ideas/${id}/experiments/${e.id}`} className="assumption-item" style={{ textDecoration: "none", marginTop: 10 }}>
+                <Link
+                  key={e.id}
+                  href={`/app/ideas/${id}/experiments/${e.id}`}
+                  className={`assumption-item${e.id === savedId ? " active just-saved" : ""}`}
+                  style={{ textDecoration: "none", marginTop: 10 }}
+                  aria-current={e.id === savedId ? "true" : undefined}
+                >
                   <span className="count">{EXPERIMENT_TYPES[e.type as ExperimentType].icon}</span>
                   <span>{e.title}</span>
                   <small>
@@ -129,6 +147,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           initialType={wantedType}
           researcher={ws.org?.name ?? ""}
           surveyDraftAction={draftSurveyWithCoach.bind(null, id)}
+          priors={priors}
           key={`${selected.id}|${wantedType ?? ""}`}
         />
       ) : (

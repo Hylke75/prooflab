@@ -134,26 +134,49 @@ type Exp = {
 // (row level security): the measured n and successes on their approved Learning Cards.
 async function earlierTests(exp: Exp): Promise<{ n: number; successes: number }[]> {
   if (!exp.idea_id) return [];
+  return earlierTestsOfType(exp.idea_id, exp.type, { excludeId: exp.id, before: exp.ended_at ?? undefined });
+}
+
+// Ook gebruikt door de Test Card (fase B1b): het benodigde aantal deelnemers volgt uit eerdere tests van dit type.
+export async function earlierTestsOfType(
+  ideaId: string,
+  type: string,
+  opts: { excludeId?: string; before?: string } = {},
+): Promise<{ n: number; successes: number }[]> {
   const supabase = await supabaseServer();
-  const { data: idea } = await supabase.from("ideas").select("org_id").eq("id", exp.idea_id).maybeSingle();
+  const { data: idea } = await supabase.from("ideas").select("org_id").eq("id", ideaId).maybeSingle();
   if (!idea?.org_id) return [];
-  const before = exp.ended_at ?? new Date().toISOString();
-  const { data } = await supabase
+  let q = supabase
     .from("learning_cards")
     .select("metrics, experiments!inner(id, type, state, ended_at, ideas!inner(org_id))")
     .eq("status", "approved")
-    .eq("experiments.type", exp.type)
+    .eq("experiments.type", type)
     .eq("experiments.ideas.org_id", idea.org_id)
     .in("experiments.state", ["ended", "analyzed", "decided"])
-    .lt("experiments.ended_at", before)
-    .neq("experiment_id", exp.id)
-    .limit(500);
+    .lt("experiments.ended_at", opts.before ?? new Date().toISOString());
+  if (opts.excludeId) q = q.neq("experiment_id", opts.excludeId);
+  const { data } = await q.limit(500);
   return (data ?? [])
     .map((c) => {
       const m = c.metrics as { n?: unknown; successes?: unknown } | null;
       return { n: Number(m?.n), successes: Number(m?.successes) };
     })
     .filter((t) => Number.isInteger(t.n) && Number.isInteger(t.successes) && t.n > 0);
+}
+
+// Prior per testtype voor de Test Card; zonder schema of rechten valt hij terug op de vlakke prior.
+export async function priorsByType(ideaId: string, types: readonly string[]): Promise<Record<string, BetaPrior>> {
+  const out: Record<string, BetaPrior> = {};
+  await Promise.all(
+    types.map(async (t) => {
+      try {
+        out[t] = empiricalPrior(await earlierTestsOfType(ideaId, t));
+      } catch {
+        out[t] = FLAT_PRIOR;
+      }
+    }),
+  );
+  return out;
 }
 
 export async function priorFor(exp: Exp): Promise<BetaPrior> {

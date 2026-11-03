@@ -1,15 +1,16 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { ActionForm, type FormState } from "@/components/ui/ActionForm";
+import { startTransition, useActionState, useMemo, useRef, useState, useTransition } from "react";
+import { type FormState } from "@/components/ui/ActionForm";
+import { SavingOverlay } from "@/components/ui/SavingOverlay";
 import { Icon } from "@/components/Icon";
 import { EXPERIMENT_TYPES, HONEST_REVEAL, NEUTRAL_INTERVIEW_GUIDE, type ExperimentType } from "@/lib/domain/labels";
-import { checkHypothesis } from "@/lib/domain/hypothesis";
 import { testCardDefaults, type Option } from "@/lib/domain/recommend";
-import { DECISION_RULES, PASS_PROBABILITY, FAIL_PROBABILITY, requiredSample, sampleFeasibility, wilson, type DecisionRule } from "@/lib/domain/stats";
+import { DECISION_RULES, PASS_PROBABILITY, FAIL_PROBABILITY, FLAT_PRIOR, wilson, type BetaPrior, type DecisionRule } from "@/lib/domain/stats";
+import { orderedErrors, sampleBand, validateTestCard, type FieldErrors } from "@/lib/domain/test-card";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { METHODS, type MethodVersion } from "@/lib/domain/method";
-import { RECRUITMENT_GROUPS, RECRUITMENT_KEYS, RECRUITMENT_REQUIRED_TYPES, recruitmentMissing, type RecruitmentGroup } from "@/lib/domain/recruitment";
+import { RECRUITMENT_GROUPS, RECRUITMENT_KEYS, RECRUITMENT_REQUIRED_TYPES, type RecruitmentGroup } from "@/lib/domain/recruitment";
 import { auditGuide, guideSummary } from "@/lib/domain/interview-audit";
 import { honestyWarnings, type PreparedVariant } from "@/lib/domain/copy-honesty";
 import { GuideAuditList } from "@/components/experiments/InterviewAudit";
@@ -23,7 +24,30 @@ type VariantsAction = (input: { assumption_id: string; type: "landing" | "pricin
 
 // primary: de huidige hoofdtest van de aanname (locked = al goedgekeurd of gestart), of null.
 type Assumption = { id: string; statement: string; primary?: { locked: boolean } | null };
-type Action = (s: FormState, f: FormData) => Promise<FormState>;
+type SaveState = FormState & { fieldErrors?: Record<string, string> };
+type Action = (s: SaveState, f: FormData) => Promise<SaveState>;
+
+// Veld → element dat focus krijgt bij een fout (B1a).
+const FIELD_FOCUS: Record<string, string> = {
+  title: "tc-title",
+  we_believe: "tc-believe",
+  target_group: "tc-target",
+  test_method: "tc-method",
+  metric_label: "tc-metric",
+  metric_numerator: "tc-num",
+  success_threshold_pct: "tc-succ",
+  fail_threshold_pct: "tc-fail",
+  success_count: "tc-count",
+  thresholds: "tc-lock",
+  min_sample: "tc-n",
+  max_duration_days: "tc-days",
+  recruitment_group: "tc-rg-0",
+  channels: "tc-ch-0",
+  guide: "tc-guide",
+  headline: "pg-head",
+  price_points: "pp-l-0",
+  survey: "tc-survey",
+};
 
 function minSuccesses(n: number, thresholdPct: number): number | null {
   for (let s = 0; s <= n; s++) if (wilson(s, n).low >= thresholdPct / 100) return s;
@@ -44,7 +68,9 @@ export function ExperimentBuilder({
   researcher = "",
   surveyDraftAction,
   method = "2026-11-c",
+  priors = {},
 }: {
+  priors?: Partial<Record<ExperimentType, BetaPrior>>;
   method?: MethodVersion;
   initialType?: ExperimentType;
   researcher?: string;
@@ -73,10 +99,23 @@ export function ExperimentBuilder({
   const [card, setCard] = useState(() => withSurveyMetric(defaults, survey));
   const [rule, setRule] = useState<DecisionRule>("probability");
   const [lastKey, setLastKey] = useState(`${type}|${assumption.id}`);
+  const titleFor = () => `${EXPERIMENT_TYPES[type].label}: ${assumption.statement.slice(0, 60)}`;
+  const [title, setTitle] = useState(titleFor);
+  // Fase B1b, stap 1: de drempels liggen vast vóórdat ProofLab rekent. Wijzigen kan daarna alleen met een motivering.
+  const [locked, setLocked] = useState(false);
+  const [lockedAt, setLockedAt] = useState<string | null>(null); // drempels zoals ze de eerste keer zijn vastgelegd
+  const [changing, setChanging] = useState(false);
+  const [changeReason, setChangeReason] = useState("");
+  const [lockError, setLockError] = useState<string | null>(null);
   if (lastKey !== `${type}|${assumption.id}`) {
     setLastKey(`${type}|${assumption.id}`);
     setCard(withSurveyMetric(defaults, survey));
     setRule("probability");
+    setTitle(titleFor());
+    setLocked(false);
+    setLockedAt(null);
+    setChanging(false);
+    setChangeReason("");
   }
   const updateSurvey = (next: SurveyConfig) => {
     setSurvey(next);
@@ -99,7 +138,6 @@ export function ExperimentBuilder({
     { label: "", amount: "", period: "per maand" },
   ]);
   const [successCount, setSuccessCount] = useState("3");
-  const [expectedPct, setExpectedPct] = useState("");
   const [perWeek, setPerWeek] = useState("");
   const chooseRule = (r: DecisionRule) => {
     setRule(r);
@@ -130,26 +168,97 @@ export function ExperimentBuilder({
     });
   };
 
-  const coach = checkHypothesis({
-    ...card,
-    success_threshold_pct: rule === "absolute" && type === "interview" ? Math.max(0.1, Math.min(100, ((Number(successCount) || 0) / (Number(card.min_sample) || 1)) * 100)) : Number(card.success_threshold_pct),
-    fail_threshold_pct: rule === "absolute" && type === "interview" ? null : card.fail_threshold_pct === null ? null : Number(card.fail_threshold_pct),
-    min_sample: Number(card.min_sample),
-    max_duration_days: Number(card.max_duration_days),
-  });
   const n = Number(card.min_sample) || 0;
   const needed = n > 0 ? minSuccesses(n, Number(card.success_threshold_pct)) : null;
-  // Beslisregel (methode 2026-11-b): vooraf rekenen hoeveel deelnemers nodig zijn bij de verwachte uitkomst.
+  // Beslisregel (methode 2026-11-b): vooraf rekenen hoeveel deelnemers nodig zijn.
   // Dossiers met methode 2026-11-a houden de intervalregel: geen beslisregel en geen vooraf berekend aantal.
   const v2 = METHODS[method].usesRules;
   const absoluteAllowed = v2 && type === "interview";
   const activeRule: DecisionRule = absoluteAllowed ? rule : "probability";
   const countN = Number(successCount) || 0;
   const thresholdPct = activeRule === "absolute" ? (n > 0 && countN > 0 ? Math.min(100, Math.round((countN / n) * 1000) / 10) : 0) : Number(card.success_threshold_pct);
-  const expected = Number(expectedPct);
-  const requiredN = expected > 0 && expected <= 100 ? requiredSample({ rule: activeRule, expectedPct: expected, thresholdPct, successCount: countN }) : undefined;
-  const feasibility =
-    requiredN === undefined ? null : sampleFeasibility({ requiredN, availablePerWeek: Number(perWeek) > 0 ? Number(perWeek) : null, maxDurationDays: Number(card.max_duration_days) || 0, minSample: n });
+  const prior = priors[type] ?? FLAT_PRIOR;
+  const band =
+    v2 && locked && thresholdPct > 0
+      ? sampleBand({ rule: activeRule, thresholdPct, successCount: countN, prior, availablePerWeek: Number(perWeek) > 0 ? Number(perWeek) : null, maxDurationDays: Number(card.max_duration_days) || 0 })
+      : null;
+  const thresholdKey = () => (activeRule === "absolute" ? `${countN}/${n}` : `${card.success_threshold_pct}|${card.fail_threshold_pct ?? ""}`);
+  const thresholdErrors = (): string | null => {
+    if (activeRule === "absolute") {
+      if (countN < 1) return "Leg vast hoeveel sterke handelingen minimaal nodig zijn.";
+      if (n < 5) return "Kies een minimale steekproef van minstens 5.";
+      if (countN > n) return "Het afgesproken aantal kan niet groter zijn dan de minimale steekproef.";
+      return null;
+    }
+    const succ = Number(card.success_threshold_pct);
+    const fail = card.fail_threshold_pct === null || String(card.fail_threshold_pct) === "" ? null : Number(card.fail_threshold_pct);
+    if (!(succ > 0) || succ > 100) return "Kies een succesdrempel tussen 0 en 100%.";
+    if (fail != null && (fail < 0 || fail > succ)) return "De faaldrempel ligt tussen 0% en de succesdrempel.";
+    return null;
+  };
+  const lockThresholds = () => {
+    const err = thresholdErrors();
+    if (err) return setLockError(err);
+    if (changing && lockedAt !== null && lockedAt !== thresholdKey() && changeReason.trim().length < 10) {
+      return setLockError("Leg in een zin uit waarom je de drempels wijzigt (minstens 10 tekens). De motivering wordt bewaard bij de Test Card.");
+    }
+    setLockError(null);
+    if (lockedAt === null) setLockedAt(thresholdKey());
+    setLocked(true);
+    setChanging(false);
+  };
+  const thresholdsChanged = lockedAt !== null && lockedAt !== thresholdKey();
+  const validPrices = prices.filter((p) => p.label.trim() && Number(p.amount.replace(",", ".")) > 0).length;
+  const liveErrors: FieldErrors = {
+    ...validateTestCard({
+      type,
+      title,
+      we_believe: card.we_believe,
+      target_group: card.target_group,
+      test_method: card.test_method,
+      metric_label: card.metric_label,
+      metric_numerator: card.metric_numerator,
+      metric_denominator: card.metric_denominator,
+      success_threshold_pct: activeRule === "absolute" ? thresholdPct : Number(card.success_threshold_pct),
+      fail_threshold_pct: activeRule === "absolute" || card.fail_threshold_pct === null || String(card.fail_threshold_pct) === "" ? null : Number(card.fail_threshold_pct),
+      min_sample: Number(card.min_sample) || null,
+      max_duration_days: Number(card.max_duration_days) || null,
+      rule: v2 ? activeRule : null,
+      success_count: activeRule === "absolute" ? countN : null,
+      thresholds_locked: locked,
+      recruitment_group: recruitment,
+      channels,
+      headline: page.headline,
+      price_points: validPrices,
+      guide_questions: guide.split("\n").map((x) => x.trim()).filter(Boolean).length,
+    }),
+    ...(surveyIssues.length ? { survey: "Maak de enquête eerst compleet (zie de meldingen bij de vragen)." } : {}),
+  };
+  // Opslaan (B1a): één knop, nooit uitgeschakeld. Eerst de controle op het scherm; bij fouten geen verzoek, wel
+  // een melding bij elk veld en een samenvatting bij de knop. De server controleert hetzelfde nog een keer.
+  const [saveState, saveAction, saving] = useActionState<SaveState, FormData>(action, { error: null });
+  const [tried, setTried] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const shown: FieldErrors = tried ? liveErrors : {};
+  const errs = orderedErrors(shown);
+  const serverOnly = tried && errs.length === 0 && saveState.error ? saveState.error : null;
+  const focusField = (field: string) => {
+    const el = document.getElementById(FIELD_FOCUS[field] ?? "");
+    if (el) {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      (el as HTMLElement).focus({ preventScroll: true });
+    }
+  };
+  const submit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setTried(true);
+    const first = orderedErrors(liveErrors)[0];
+    if (first) return focusField(first.field);
+    const fd = new FormData(e.currentTarget);
+    startTransition(() => saveAction(fd));
+  };
+  const fieldError = (f: string) => (shown[f] ? <p className="field-error" id={`err-${f}`} role="alert">{shown[f]}</p> : null);
+  const aria = (f: string) => (shown[f] ? { "aria-invalid": true as const, "aria-describedby": `err-${f}` } : {});
   const reachN = Number(reach) || 0;
   const set = (k: keyof typeof card, v: string) => setCard((c) => ({ ...c, [k]: v }));
 
@@ -189,25 +298,30 @@ export function ExperimentBuilder({
         <p className="tiny mt-8">Kan de uitkomst de beslissing veranderen? {options[tier].canChangeDecision}</p>
       </div>
 
-      <ActionForm action={action} submitLabel="Test Card opslaan als concept" pendingLabel="Opslaan…" className="grid-2" submitClass="btn primary hidden">
+      <form ref={formRef} className="grid-2" noValidate onSubmit={submit} aria-label="Test Card">
         <input type="hidden" name="assumption_id" value={assumption.id} />
         <input type="hidden" name="type" value={type} />
+        {locked && <input type="hidden" name="thresholds_locked" value="1" />}
+        {thresholdsChanged && <input type="hidden" name="threshold_change_reason" value={changeReason.trim()} />}
         <div className="card" style={{ marginTop: 18 }}>
           <div className="section-title"><h2 className="as-h3">Jouw Test Card</h2><span className="pill gray">Concept</span></div>
           <p className="explain" style={{ marginTop: -8, marginBottom: 14 }}>Een Test Card legt vóór de start vast wat je denkt, hoe je het toetst, wat je meet en wanneer het klopt. Na goedkeuring kan dat niet meer stil veranderen.</p>
-          <div className="form-line"><label htmlFor="tc-title">Naam van het experiment</label><input className="field" id="tc-title" name="title" defaultValue={`${EXPERIMENT_TYPES[type].label}: ${assumption.statement.slice(0, 60)}`} key={`t-${type}-${assumption.id}`} /></div>
-          <div className="form-line"><label htmlFor="tc-believe">Wij denken dat…</label><textarea className="field" id="tc-believe" name="we_believe" rows={3} value={card.we_believe} onChange={(e) => set("we_believe", e.target.value)} /></div>
-          <div className="form-line"><label htmlFor="tc-target">Bij wie?</label><input className="field" id="tc-target" name="target_group" value={card.target_group} onChange={(e) => set("target_group", e.target.value)} /></div>
-          <div className="form-line"><label htmlFor="tc-method">Dat toetsen we door…</label><input className="field" id="tc-method" name="test_method" value={card.test_method} onChange={(e) => set("test_method", e.target.value)} /></div>
-          <div className="form-line"><label htmlFor="tc-metric">En we meten…</label><input className="field" id="tc-metric" name="metric_label" value={card.metric_label} onChange={(e) => set("metric_label", e.target.value)} /></div>
+          <div className="form-line"><label htmlFor="tc-title">Naam van het experiment</label><input className="field" id="tc-title" name="title" value={title} onChange={(e) => setTitle(e.target.value)} {...aria("title")} />{fieldError("title")}</div>
+          <div className="form-line"><label htmlFor="tc-believe">Wij denken dat…</label><textarea className="field" id="tc-believe" name="we_believe" rows={3} value={card.we_believe} onChange={(e) => set("we_believe", e.target.value)} {...aria("we_believe")} />{fieldError("we_believe")}</div>
+          <div className="form-line"><label htmlFor="tc-target">Bij wie?</label><input className="field" id="tc-target" name="target_group" value={card.target_group} onChange={(e) => set("target_group", e.target.value)} {...aria("target_group")} />{fieldError("target_group")}</div>
+          <div className="form-line"><label htmlFor="tc-method">Dat toetsen we door…</label><input className="field" id="tc-method" name="test_method" value={card.test_method} onChange={(e) => set("test_method", e.target.value)} {...aria("test_method")} />{fieldError("test_method")}</div>
+          <div className="form-line"><label htmlFor="tc-metric">En we meten…</label><input className="field" id="tc-metric" name="metric_label" value={card.metric_label} onChange={(e) => set("metric_label", e.target.value)} {...aria("metric_label")} />{fieldError("metric_label")}</div>
           <div className="double-field">
-            <div className="form-line"><label htmlFor="tc-num">Teller</label><input className="field" id="tc-num" name="metric_numerator" value={card.metric_numerator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_numerator", e.target.value)} /></div>
+            <div className="form-line"><label htmlFor="tc-num">Teller</label><input className="field" id="tc-num" name="metric_numerator" value={card.metric_numerator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_numerator", e.target.value)} {...aria("metric_numerator")} /></div>
             <div className="form-line"><label htmlFor="tc-den">Noemer</label><input className="field" id="tc-den" name="metric_denominator" value={card.metric_denominator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_denominator", e.target.value)} /></div>
           </div>
+          {fieldError("metric_numerator")}
           {type === "survey" && <p className="field-hint" id="tc-metric-hint" style={{ marginTop: -8, marginBottom: 12 }}>Teller en noemer volgen uit de kernvraag en de succesopties in de enquête hiernaast.</p>}
           {v2 && <input type="hidden" name="decision_rule" value={activeRule} />}
+          <section className="tc-step" aria-labelledby="tc-step1">
+          <h3 id="tc-step1" className="tc-step-title"><span className="num">1</span> Wanneer is de test geslaagd?</h3>
           {v2 && (
-          <fieldset className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }}>
+          <fieldset disabled={locked} className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }}>
             <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Beslisregel</legend>
             {absoluteAllowed ? (
               <div className="row" role="radiogroup" aria-label="Beslisregel">
@@ -231,23 +345,114 @@ export function ExperimentBuilder({
             <>
               <input type="hidden" name="success_threshold_pct" value={thresholdPct || ""} />
               <div className="double-field">
-                <div className="form-line"><label htmlFor="tc-count">Geslaagd bij minimaal (aantal)</label><input className="field num" id="tc-count" name="success_count" type="number" min={1} value={successCount} onChange={(e) => setSuccessCount(e.target.value)} /></div>
-                <div className="form-line"><label htmlFor="tc-n">Uit (minimale steekproef)</label><input className="field num" id="tc-n" name="min_sample" type="number" min={5} value={card.min_sample} onChange={(e) => set("min_sample", e.target.value)} /></div>
+                <div className="form-line"><label htmlFor="tc-count">Geslaagd bij minimaal (aantal)</label><input className="field num" id="tc-count" name="success_count" type="number" min={1} value={successCount} readOnly={locked} onChange={(e) => setSuccessCount(e.target.value)} {...aria("success_count")} />{fieldError("success_count")}</div>
+                <div className="form-line"><label htmlFor="tc-n">Uit (minimale steekproef)</label><input className="field num" id="tc-n" name="min_sample" type="number" min={5} value={card.min_sample} readOnly={locked} onChange={(e) => set("min_sample", e.target.value)} {...aria("min_sample")} />{fieldError("min_sample")}</div>
               </div>
-              <div className="form-line"><label htmlFor="tc-days">Maximale looptijd (dagen)</label><input className="field num" id="tc-days" name="max_duration_days" type="number" min={1} max={180} value={card.max_duration_days} onChange={(e) => set("max_duration_days", e.target.value)} /></div>
             </>
           ) : (
-            <>
-              <div className="double-field">
-                <div className="form-line"><label htmlFor="tc-succ">Het klopt als ≥ (%)</label><input className="field num" id="tc-succ" name="success_threshold_pct" type="number" min={1} max={100} value={card.success_threshold_pct} onChange={(e) => set("success_threshold_pct", e.target.value)} /></div>
-                <div className="form-line"><label htmlFor="tc-fail">Het klopt niet als &lt; (%)</label><input className="field num" id="tc-fail" name="fail_threshold_pct" type="number" min={0} max={100} value={card.fail_threshold_pct ?? ""} onChange={(e) => set("fail_threshold_pct", e.target.value)} /></div>
-              </div>
-              <div className="double-field">
-                <div className="form-line"><label htmlFor="tc-n">Minimale steekproef</label><input className="field num" id="tc-n" name="min_sample" type="number" min={5} value={card.min_sample} onChange={(e) => set("min_sample", e.target.value)} /></div>
-                <div className="form-line"><label htmlFor="tc-days">Maximale looptijd (dagen)</label><input className="field num" id="tc-days" name="max_duration_days" type="number" min={1} max={180} value={card.max_duration_days} onChange={(e) => set("max_duration_days", e.target.value)} /></div>
-              </div>
-            </>
+            <div className="double-field">
+              <div className="form-line"><label htmlFor="tc-succ">Het klopt als ≥ (%)</label><input className="field num" id="tc-succ" name="success_threshold_pct" type="number" min={1} max={100} value={card.success_threshold_pct} readOnly={locked} onChange={(e) => set("success_threshold_pct", e.target.value)} {...aria("success_threshold_pct")} />{fieldError("success_threshold_pct")}</div>
+              <div className="form-line"><label htmlFor="tc-fail">Het klopt niet als &lt; (%)</label><input className="field num" id="tc-fail" name="fail_threshold_pct" type="number" min={0} max={100} value={card.fail_threshold_pct ?? ""} readOnly={locked} onChange={(e) => set("fail_threshold_pct", e.target.value)} {...aria("fail_threshold_pct")} />{fieldError("fail_threshold_pct")}</div>
+            </div>
           )}
+          {v2 && (
+            <div className="tc-lock" aria-live="polite">
+              {locked ? (
+                <>
+                  <p className="form-ok" style={{ margin: 0 }}>
+                    <Icon name="check" size="sm" /> Drempels vastgelegd{thresholdsChanged ? " (gewijzigd, met motivering)" : ""}. Ze veranderen niet meer stil.
+                  </p>
+                  <button type="button" className="text-link mt-8" id="tc-lock" onClick={() => { setLocked(false); setChanging(true); }}>
+                    Drempels wijzigen (met motivering)
+                  </button>
+                </>
+              ) : (
+                <>
+                  {changing && (
+                    <div className="form-line">
+                      <label htmlFor="tc-reason">Waarom wijzig je de drempels?</label>
+                      <textarea className="field" id="tc-reason" rows={2} value={changeReason} onChange={(e) => setChangeReason(e.target.value)} placeholder="Bijv. de opdrachtgever legde een hogere minimale omzet vast." />
+                      <p className="field-hint">De motivering wordt bewaard bij de Test Card. Een lagere lat om de test te laten slagen ondermijnt het besluit.</p>
+                    </div>
+                  )}
+                  <button type="button" className="btn white" id="tc-lock" onClick={lockThresholds} {...aria("thresholds")}>
+                    <Icon name="check" size="sm" /> {changing ? "Leg de drempels opnieuw vast" : "Leg drempels vast"}
+                  </button>
+                  {lockError && <p className="field-error" role="alert">{lockError}</p>}
+                  {fieldError("thresholds")}
+                  <p className="field-hint">Eerst de lat, dan pas het rekenwerk: zo past niemand de drempel aan op wat haalbaar lijkt.</p>
+                </>
+              )}
+            </div>
+          )}
+          </section>
+          <section className="tc-step" aria-labelledby="tc-step2">
+          <h3 id="tc-step2" className="tc-step-title"><span className="num">2</span> Hoeveel deelnemers heb je nodig?</h3>
+          {v2 && !locked && <p className="sub" style={{ fontSize: 14, marginTop: 0 }}>Leg eerst de drempels vast. Daarna rekent ProofLab uit hoeveel deelnemers je nodig hebt.</p>}
+          {v2 && band && (
+            <div id="tc-plan" aria-live="polite">
+              {band.requiredN != null ? (
+                <p className="tc-need">Je hebt ongeveer <strong className="num">{band.requiredN}</strong> deelnemers nodig.</p>
+              ) : (
+                <p className="tc-need">Met dit testtype is de drempel niet aantoonbaar te halen.</p>
+              )}
+              {band.advice && <div className="form-error" role="status">{band.advice}</div>}
+              <details className="mt-8">
+                <summary className="text-link">Hoe is dit berekend?</summary>
+                <div className="note" style={{ marginTop: 8 }}>
+                  <p style={{ marginTop: 0 }}>
+                    {band.basis === "earlier_tests"
+                      ? `Op basis van ${band.earlierTests} afgeronde ${EXPERIMENT_TYPES[type].label.toLowerCase()}s in je organisatie: wat die tests werkelijk lieten zien (25e, 50e en 75e percentiel).`
+                      : `Er zijn nog geen drie afgeronde ${EXPERIMENT_TYPES[type].label.toLowerCase()}s in je organisatie. ProofLab rekent daarom met scenario's net boven je succesdrempel: hoeveel deelnemers heb je nodig als het echte percentage de drempel ruim haalt?`}
+                  </p>
+                  <table className="table">
+                    <thead><tr><th scope="col">Scenario</th><th scope="col">Echt percentage</th><th scope="col">Benodigd</th></tr></thead>
+                    <tbody>
+                      {band.scenarios.map((sc) => (
+                        <tr key={sc.key}><td>{sc.label}</td><td className="num">{sc.ratePct}%</td><td className="num">{sc.requiredN ?? "niet haalbaar"}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="tiny">
+                    Regel: {activeRule === "absolute" ? `geslaagd als het afgesproken aantal van ${countN} is gehaald.` : `geslaagd als de kans dat het echte percentage boven ${thresholdPct}% ligt minstens ${PASS_PROBABILITY * 100}% is.`}{" "}
+                    Het getal hierboven is het {band.shown === "low" ? "voorzichtige" : "middelste"} scenario.{band.capacity != null ? ` Bereik in de looptijd: ongeveer ${band.capacity}.` : ""}
+                  </p>
+                  {activeRule === "probability" && needed !== null && (
+                    <p className="tiny">Met een minimale steekproef van {n} is het resultaat &quot;sterk bewezen&quot; (ook de ondergrens van het 95%-interval boven de drempel) vanaf {needed} keer {card.metric_label.toLowerCase()}.</p>
+                  )}
+                  {type === "survey" && (
+                    <SamplePlanner
+                      compact
+                      successPct={Number(card.success_threshold_pct)}
+                      failPct={card.fail_threshold_pct === null || String(card.fail_threshold_pct) === "" ? null : Number(card.fail_threshold_pct)}
+                      minSample={n}
+                    />
+                  )}
+                </div>
+              </details>
+            </div>
+          )}
+          <div className="double-field">
+            {activeRule !== "absolute" && (
+              <div className="form-line">
+                <label htmlFor="tc-n">Minimale steekproef</label>
+                <input className="field num" id="tc-n" name="min_sample" type="number" min={5} value={card.min_sample} onChange={(e) => set("min_sample", e.target.value)} {...aria("min_sample")} />
+                {fieldError("min_sample")}
+                {band?.requiredN != null && band.requiredN !== n && (
+                  <button type="button" className="text-link mt-8" onClick={() => set("min_sample", String(band.requiredN))}>Neem {band.requiredN} over</button>
+                )}
+              </div>
+            )}
+            <div className="form-line"><label htmlFor="tc-days">Maximale looptijd (dagen)</label><input className="field num" id="tc-days" name="max_duration_days" type="number" min={1} max={180} value={card.max_duration_days} onChange={(e) => set("max_duration_days", e.target.value)} {...aria("max_duration_days")} />{fieldError("max_duration_days")}</div>
+          </div>
+          {v2 && (
+            <div className="form-line">
+              <label htmlFor="tc-week">Beschikbare deelnemers per week (optioneel)</label>
+              <input className="field num" id="tc-week" name="available_per_week" type="number" min={0} value={perWeek} onChange={(e) => setPerWeek(e.target.value)} aria-describedby="tc-week-hint" />
+              <p className="field-hint" id="tc-week-hint">Hoeveel mensen uit de doelgroep je per week kunt bereiken. ProofLab toetst daarmee of de test binnen de looptijd haalbaar is.</p>
+            </div>
+          )}
+          </section>
           {!v2 && (
             needed !== null ? (
               <div className="note" style={{ marginTop: 0 }}>
@@ -258,62 +463,19 @@ export function ExperimentBuilder({
               <div className="note" style={{ marginTop: 0 }}>Met deze steekproef is de succesdrempel niet aantoonbaar te halen. Verhoog de steekproef.</div>
             )
           )}
-          {v2 && (
-          <>
-          <div className="double-field">
-            <div className="form-line">
-              <label htmlFor="tc-exp">Verwachte uitkomst (%)</label>
-              <input className="field num" id="tc-exp" name="expected_pct" type="number" min={1} max={100} step="any" value={expectedPct} onChange={(e) => setExpectedPct(e.target.value)} aria-describedby="tc-plan" required />
-            </div>
-            <div className="form-line">
-              <label htmlFor="tc-week">Beschikbare deelnemers per week</label>
-              <input className="field num" id="tc-week" name="available_per_week" type="number" min={0} value={perWeek} onChange={(e) => setPerWeek(e.target.value)} aria-describedby="tc-plan" />
-            </div>
-          </div>
-          <div id="tc-plan" aria-live="polite">
-            {requiredN === undefined ? (
-              <div className="note" style={{ marginTop: 0 }}>Vul de verwachte uitkomst in: dan rekent ProofLab vóór goedkeuring uit hoeveel deelnemers je nodig hebt om de drempel te kunnen halen.</div>
-            ) : (
-              <div className={feasibility && feasibility.warnings.length ? "form-error" : "note"} style={{ marginTop: 0 }}>
-                {requiredN !== null && (
-                  <p style={{ margin: 0 }}>
-                    Benodigd: <strong className="num">{requiredN}</strong> deelnemers om bij een uitkomst van {expected}%{" "}
-                    {activeRule === "absolute" ? `het aantal van ${countN} te halen` : `de kansregel te halen (≥ ${PASS_PROBABILITY * 100}% kans boven ${thresholdPct}%)`}.
-                    {feasibility?.capacity != null ? ` Bereik in de looptijd: ongeveer ${feasibility.capacity}.` : ""}
-                  </p>
-                )}
-                {feasibility?.warnings.map((w) => <p key={w} style={{ margin: "4px 0 0" }}>{w}</p>)}
-                {requiredN !== null && requiredN > n && (
-                  <button type="button" className="btn white sm mt-8" onClick={() => set("min_sample", String(requiredN))}>Neem {requiredN} over als minimale steekproef</button>
-                )}
-              </div>
-            )}
-            {activeRule === "probability" && needed !== null && (
-              <p className="field-hint">Ter informatie: met {n} deelnemers is het resultaat &quot;sterk bewezen&quot; (ook de ondergrens van het 95%-interval boven de drempel) vanaf {needed} keer {card.metric_label.toLowerCase()}.</p>
-            )}
-          </div>
-          </>
-          )}
-          {type === "survey" && (
-            <SamplePlanner
-              compact
-              successPct={Number(card.success_threshold_pct)}
-              failPct={card.fail_threshold_pct === null || String(card.fail_threshold_pct) === "" ? null : Number(card.fail_threshold_pct)}
-              minSample={n}
-            />
-          )}
           <div className="form-line"><label htmlFor="tc-bias">Verwachte vertekeningen</label><input className="field" id="tc-bias" name="expected_biases" value={card.expected_biases} onChange={(e) => set("expected_biases", e.target.value)} /></div>
           <fieldset className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }} aria-describedby="tc-rg-hint">
             <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
               Wervingsgroep{recruitmentRequired ? " (verplicht)" : " (standaard voor de gesprekken)"}
             </legend>
             <div className="row">
-              {RECRUITMENT_KEYS.map((k) => (
+              {RECRUITMENT_KEYS.map((k, i) => (
                 <label key={k} className="check-row" style={{ margin: "2px 10px 2px 0" }} title={RECRUITMENT_GROUPS[k].explain}>
-                  <input type="radio" name="recruitment_group" value={k} checked={recruitment === k} onChange={() => setRecruitment(k)} required={recruitmentRequired} /> {RECRUITMENT_GROUPS[k].label}
+                  <input type="radio" id={`tc-rg-${i}`} name="recruitment_group" value={k} checked={recruitment === k} onChange={() => setRecruitment(k)} required={recruitmentRequired} {...(i === 0 ? aria("recruitment_group") : {})} /> {RECRUITMENT_GROUPS[k].label}
                 </label>
               ))}
             </div>
+            {fieldError("recruitment_group")}
             <p className="field-hint" id="tc-rg-hint">
               {recruitment ? `${RECRUITMENT_GROUPS[recruitment as RecruitmentGroup].explain} ` : ""}
               {recruitmentRequired
@@ -324,24 +486,19 @@ export function ExperimentBuilder({
           <fieldset className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }}>
             <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Wervingskanalen</legend>
             <div className="row">
-              {Object.entries(CHANNELS).filter(([k]) => k !== "direct").map(([k, v]) => (
+              {Object.entries(CHANNELS).filter(([k]) => k !== "direct").map(([k, v], i) => (
                 <label key={k} className="check-row" style={{ margin: "2px 10px 2px 0" }}>
-                  <input type="checkbox" name="channels" value={k} checked={channels.includes(k)} onChange={(e) => setChannels((c) => (e.target.checked ? [...c, k] : c.filter((x) => x !== k)))} /> {v}
+                  <input type="checkbox" id={`tc-ch-${i}`} name="channels" value={k} checked={channels.includes(k)} onChange={(e) => setChannels((c) => (e.target.checked ? [...c, k] : c.filter((x) => x !== k)))} {...(i === 0 ? aria("channels") : {})} /> {v}
                 </label>
               ))}
             </div>
+            {fieldError("channels")}
           </fieldset>
           <div className="double-field">
             <div className="form-line"><label htmlFor="tc-reach">Verwacht bereik (personen)</label><input className="field num" id="tc-reach" name="expected_reach" type="number" min={0} value={reach} onChange={(e) => setReach(e.target.value)} /></div>
             <div className="form-line"><label htmlFor="tc-cost">Verwachte kosten (€)</label><input className="field num" id="tc-cost" name="cost_estimate_eur" type="number" min={0} defaultValue={0} /></div>
           </div>
           {reachN > 0 && reachN < n && <div className="form-error">Het verwachte bereik ({reachN}) haalt de minimale steekproef ({n}) niet. Voeg een kanaal toe of verleng de looptijd.</div>}
-          {!coach.ok && (
-            <div className="note">
-              <strong>Hypothesecoach:</strong>
-              <ul style={{ margin: "6px 0 0 16px", padding: 0 }}>{coach.issues.map((i) => <li key={i.message}>{i.message}</li>)}</ul>
-            </div>
-          )}
           {assumption.primary?.locked ? (
             <p className="field-hint">
               Deze aanname heeft al een goedgekeurde hoofdtest. Deze test wordt verkennend: hij geeft richting, maar beslist niet over de aanname.
@@ -356,11 +513,25 @@ export function ExperimentBuilder({
             Per aanname wijs je vooraf één hoofdtest aan; alleen die beslist over de aanname. Andere tests heten verkennend. Na goedkeuring ligt de keuze vast.
           </p>
           <div className="note">Je legt deze criteria vast vóór de test. Na goedkeuring zijn ze vergrendeld; wijzigen kan alleen met een nieuwe versie en een motivering.</div>
-          {surveyIssues.length > 0 && <div className="form-error">Maak de enquête eerst compleet (zie de meldingen bij de vragen).</div>}
-          {recruitmentMissing(type, recruitment) && <div className="form-error">Kies de wervingsgroep voordat je de Test Card opslaat.</div>}
-          <button className="btn primary" style={{ marginTop: 18, width: "100%" }} disabled={!coach.ok || surveyIssues.length > 0 || recruitmentMissing(type, recruitment)}>
-            Test Card opslaan als concept <Icon name="arrow" size="sm" />
-          </button>
+          <div className="tc-save" id="tc-save">
+            {errs.length > 0 && (
+              <div className="form-error" role="alert" aria-labelledby="tc-err-title">
+                <p id="tc-err-title" style={{ margin: 0 }}>Nog niet opgeslagen: {errs.length === 1 ? "1 punt" : `${errs.length} punten`} {errs.length === 1 ? "moet" : "moeten"} nog worden aangevuld.</p>
+                <ul style={{ margin: "6px 0 0 18px", padding: 0, fontWeight: 400 }}>
+                  {errs.map((x) => (
+                    <li key={x.field}>
+                      <button type="button" className="text-link" onClick={() => focusField(x.field)}>{x.label}</button>: {x.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {serverOnly && <div className="form-error" role="alert">{serverOnly}</div>}
+            <button type="submit" className="btn primary" style={{ marginTop: 18, width: "100%" }} disabled={saving}>
+              {saving ? "Opslaan…" : "Test Card opslaan als concept"} <Icon name="arrow" size="sm" />
+            </button>
+          </div>
+          <SavingOverlay active={saving} label="Test Card opslaan…" />
         </div>
 
         <div className="card" style={{ marginTop: 18 }}>
@@ -368,6 +539,7 @@ export function ExperimentBuilder({
           {type === "survey" ? (
             <>
               <input type="hidden" name="survey_config" value={JSON.stringify(survey)} />
+              <div id="tc-survey" tabIndex={-1}>{fieldError("survey")}</div>
               {surveyDraftId && <input type="hidden" name="survey_ai_draft_id" value={surveyDraftId} />}
               <SurveyEditor
                 value={survey}
@@ -384,7 +556,8 @@ export function ExperimentBuilder({
             <>
               <div className="form-line">
                 <label htmlFor="tc-guide">Gespreksleidraad (één vraag per regel)</label>
-                <textarea className="field" id="tc-guide" name="guide" rows={9} value={guide} onChange={(e) => setGuide(e.target.value)} aria-describedby="tc-guide-audit" />
+                <textarea className="field" id="tc-guide" name="guide" rows={9} value={guide} onChange={(e) => setGuide(e.target.value)} aria-describedby={shown.guide ? "err-guide tc-guide-audit" : "tc-guide-audit"} aria-invalid={shown.guide ? true : undefined} />
+                {fieldError("guide")}
                 <p className="field-hint">Vragen over gedrag in het verleden. Geen pitch en geen &quot;zou je dit kopen?&quot;.</p>
               </div>
               <div id="tc-guide-audit" aria-live="polite">
@@ -463,14 +636,14 @@ export function ExperimentBuilder({
                 )}
               </div>
               <div className="form-line mt-12"><label htmlFor="pg-name">Naam van het aanbod (merkneutraal)</label><input className="field" id="pg-name" name="product_name" value={page.product_name} onChange={(e) => setPage({ ...page, product_name: e.target.value })} /></div>
-              <div className="form-line"><label htmlFor="pg-head">Kop</label><input className="field" id="pg-head" name="headline" value={page.headline} onChange={(e) => setPage({ ...page, headline: e.target.value })} /></div>
+              <div className="form-line"><label htmlFor="pg-head">Kop</label><input className="field" id="pg-head" name="headline" value={page.headline} onChange={(e) => setPage({ ...page, headline: e.target.value })} {...aria("headline")} />{fieldError("headline")}</div>
               <div className="form-line"><label htmlFor="pg-sub">Ondertitel</label><input className="field" id="pg-sub" name="subline" value={page.subline} onChange={(e) => setPage({ ...page, subline: e.target.value })} /></div>
               <div className="form-line"><label htmlFor="pg-offer">Aanbod (wat krijgt iemand precies?)</label><textarea className="field" id="pg-offer" name="offer" rows={3} value={page.offer} onChange={(e) => setPage({ ...page, offer: e.target.value })} /></div>
               <div className="form-line"><label htmlFor="pg-cta">Knoptekst</label><input className="field" id="pg-cta" name="cta_label" value={page.cta_label} onChange={(e) => setPage({ ...page, cta_label: e.target.value })} /></div>
               {type === "pricing" &&
                 prices.map((p, i) => (
                   <div className="double-field" key={i}>
-                    <div className="form-line"><label htmlFor={`pp-l-${i}`}>Prijspunt {i + 1}: naam</label><input className="field" id={`pp-l-${i}`} name={`price_label_${i}`} value={p.label} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} /></div>
+                    <div className="form-line"><label htmlFor={`pp-l-${i}`}>Prijspunt {i + 1}: naam</label><input className="field" id={`pp-l-${i}`} name={`price_label_${i}`} {...(i === 0 ? aria("price_points") : {})} value={p.label} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} /></div>
                     <div className="form-line"><label htmlFor={`pp-a-${i}`}>Bedrag (€) en periode</label>
                       <div className="row" style={{ flexWrap: "nowrap" }}>
                         <input className="field num" id={`pp-a-${i}`} name={`price_amount_${i}`} inputMode="decimal" value={p.amount} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} />
@@ -479,13 +652,14 @@ export function ExperimentBuilder({
                     </div>
                   </div>
                 ))}
+              {type === "pricing" && fieldError("price_points")}
               <label className="check-row"><input type="checkbox" name="collect_email" defaultChecked={type === "landing"} /> Na de klik om een e-mailadres vragen (met toestemming)</label>
               <div className="form-line"><label htmlFor="pg-reveal">Bericht na de klik</label><textarea className="field" id="pg-reveal" name="reveal_message" rows={3} defaultValue="Bedankt! We nemen contact op zodra we kunnen starten." /></div>
               <p className="field-hint">Na elke klik toont ProofLab altijd ook: “{HONEST_REVEAL}” Dit is niet uit te zetten.</p>
             </>
           )}
         </div>
-      </ActionForm>
+      </form>
     </>
   );
 }

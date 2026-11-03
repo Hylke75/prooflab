@@ -238,7 +238,7 @@ export function sampleFeasibility(input: { requiredN: number | null; availablePe
   const warnings: string[] = [];
   const capacity = input.availablePerWeek != null && input.availablePerWeek > 0 ? Math.floor((input.availablePerWeek * input.maxDurationDays) / 7) : null;
   if (input.requiredN == null) {
-    warnings.push("Met deze verwachting is de drempel niet te halen, hoe groot de test ook wordt. Pas de verwachting of de drempel aan.");
+    warnings.push("De drempel is met dit testtype niet aantoonbaar te halen, hoe groot de test ook wordt. Kies een ander testtype of verleng de looptijd.");
     return { capacity, warnings };
   }
   if (capacity != null && capacity < input.requiredN) {
