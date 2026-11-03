@@ -34,8 +34,9 @@ import type { Json } from "@/lib/database.types";
 import type { AssumptionCategory, ObservationKind } from "@/lib/domain/labels";
 import { assumptionKind, metricFitsAssumption } from "@/lib/domain/assumption-kind";
 import { checkEnd, thresholdBlock } from "@/lib/domain/experiment-gates";
+import { fictionSignals, fictionWarning } from "@/lib/domain/practice";
 
-export type ActionState = { error: string | null; ok?: string | null; fieldErrors?: Record<string, string> };
+export type ActionState = { error: string | null; ok?: string | null; warning?: string | null; fieldErrors?: Record<string, string> };
 
 const refresh = (id: string) => revalidatePath(`/app/ideas/${id}`, "layout");
 
@@ -353,12 +354,21 @@ const InterviewSchema = z.object({
   transcript: text(60000).min(50, "Plak het transcript of je notities (minimaal 50 tekens)."),
   // Een bekende wordt in de database altijd eigen netwerk (is_acquaintance).
   recruitment_group: z.enum(RECRUITMENT_KEYS).optional(),
+  // B0: verplicht, zonder voorkeuze. Alleen een echt gesprek telt als bewijs.
+  is_practice: z.enum(["real", "practice"], { error: "Geef aan of dit een echt gesprek of een oefening is." }).transform((v) => v === "practice"),
 });
 
 export async function addInterview(ideaId: string, expId: string, _: ActionState, form: FormData): Promise<ActionState> {
   await requireWritableIdea(ideaId);
   const p = InterviewSchema.safeParse(Object.fromEntries(form));
-  if (!p.success) return { error: p.error.issues[0].message };
+  if (!p.success) {
+    const practiceIssue = p.error.issues.find((i) => i.path[0] === "is_practice");
+    const first = p.error.issues[0];
+    return {
+      error: first.path[0] === "is_practice" ? "Het interview is niet opgeslagen: kies of dit een echt gesprek of een oefening is." : first.message,
+      fieldErrors: practiceIssue ? { is_practice: practiceIssue.message } : undefined,
+    };
+  }
   if (form.get("consent_recorded") !== "on") return { error: "Zonder vastgelegde toestemming mag het gesprek niet worden verwerkt." };
   if (/@|\b\d{9,}\b|\b06[\s-]?\d{8}\b/.test(p.data.participant_label)) return { error: "Gebruik een pseudoniem, geen e-mailadres of telefoonnummer." };
   const supabase = await supabaseServer();
@@ -374,7 +384,24 @@ export async function addInterview(ideaId: string, expId: string, _: ActionState
   });
   if (error) return { error: "Opslaan mislukt." };
   refresh(ideaId);
-  return { error: null, ok: "Interview opgeslagen. Codeer nu de uitspraken." };
+  // B0: een als echt aangegeven gesprek met woorden als "fictief" of "test": opgeslagen, maar controleer de keuze.
+  const warning = p.data.is_practice ? null : fictionWarning(fictionSignals(p.data.transcript));
+  return {
+    error: null,
+    ok: p.data.is_practice ? "Oefengesprek opgeslagen. Het telt niet als bewijs." : "Interview opgeslagen. Codeer nu de uitspraken.",
+    warning,
+  };
+}
+
+// B0: een interview alsnog aangeven als echt gesprek of oefening. Naar "echt" kan alleen vanuit nog niet
+// aangegeven (achteraf oefendata tot bewijs maken kan niet); naar "oefening" kan altijd, want dat telt alleen minder.
+export async function setInterviewPractice(ideaId: string, interviewId: string, isPractice: boolean) {
+  await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  let q = supabase.from("interviews").update({ is_practice: isPractice }).eq("id", interviewId).eq("idea_id", ideaId);
+  if (!isPractice) q = q.is("is_practice", null);
+  await q;
+  refresh(ideaId);
 }
 
 export async function deleteInterview(ideaId: string, interviewId: string) {
@@ -449,7 +476,7 @@ export async function analyzeInterviewWithAi(ideaId: string, expId: string, inte
   if (!aiConfigured()) return { error: "AI is niet verbonden; codeer het interview handmatig." };
   const supabase = await supabaseServer();
   const [{ data: iv }, { data: exp }] = await Promise.all([
-    supabase.from("interviews").select("transcript").eq("id", interviewId).eq("idea_id", ideaId).single(),
+    supabase.from("interviews").select("transcript, is_practice").eq("id", interviewId).eq("idea_id", ideaId).single(),
     supabase.from("experiments").select("hypotheses(we_believe)").eq("id", expId).eq("idea_id", ideaId).single(),
   ]);
   if (!iv) return { error: "Interview niet gevonden." };
@@ -465,9 +492,16 @@ export async function analyzeInterviewWithAi(ideaId: string, expId: string, inte
       else rejected++;
     }
     refresh(ideaId);
+    // B0: lijkt het transcript fictief (volgens de AI of door woorden als "fictief" of "test")? Bij een als echt
+    // aangegeven gesprek: controleer de keuze.
+    const real = iv.is_practice === false;
+    const signals = real ? fictionSignals(iv.transcript) : [];
+    const aiNote = res.data.looks_fictional ? `De AI vindt dat dit transcript fictief lijkt${res.data.reason ? `: ${res.data.reason}` : ""}.` : null;
+    const warning = [aiNote, fictionWarning(signals), aiNote && real && !signals.length ? "Controleer de keuze echt gesprek." : null].filter(Boolean).join(" ") || null;
     return {
       error: null,
       ok: `${kept} observaties met letterlijk citaat vastgelegd${known ? `; ${known} waren al vastgelegd` : ""}${rejected ? `; ${rejected} afgewezen omdat het citaat niet in het transcript stond` : ""}. Controleer ze.`,
+      warning,
     };
   } catch (e) {
     return { error: aiErrorMessage(e, "De analyse is mislukt. Codeer het interview handmatig.") };

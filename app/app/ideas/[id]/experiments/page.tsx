@@ -15,6 +15,7 @@ import { createExperiment, draftSurveyWithCoach, proposeCopyVariants } from "./a
 import { aiConfigured } from "@/lib/env";
 import { TEST_ROLES, testRole } from "@/lib/domain/primary-test";
 import { assumptionKind } from "@/lib/domain/assumption-kind";
+import { countRealInterviewObservations } from "@/lib/practice-data";
 
 export const metadata: Metadata = { title: "Experimenten" };
 
@@ -32,11 +33,12 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
   const ws = await getWorkspace();
   const supabase = await supabaseServer();
   // Ordered by information value (research 3.9): the default suggestion is the test that can change the decision most per euro and week.
-  const [assumptions, progress, { data: experiments }, { count: interviewObs }] = await Promise.all([
+  // B0: alleen waarnemingen uit echte gesprekken tellen als ontdekkingsbewijs.
+  const [assumptions, progress, { data: experiments }, interviewObs] = await Promise.all([
     loadInformationValue(id),
     loadProgress(id),
     supabase.from("experiments").select("id, title, type, state, ends_at, hypotheses(assumption_id, assumptions(statement))").eq("idea_id", id).order("created_at", { ascending: false }),
-    supabase.from("observations").select("id", { count: "exact", head: true }).eq("idea_id", id).not("interview_id", "is", null),
+    countRealInterviewObservations(id),
   ]);
   const wanted = typeof sp.assumption === "string" ? sp.assumption : null;
   // Na opslaan (B1a) komt de gebruiker hier terug met ?opgeslagen=<id>: bevestiging en het concept gemarkeerd op het bord.
@@ -51,7 +53,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
   const primaries = assumptions.map((a) => ({ id: a.id, primary_experiment_id: a.primaryExperimentId }));
   const stateOf = (expId: string | null) => (experiments ?? []).find((e) => e.id === expId)?.state ?? null;
   const rec = selected
-    ? recommend({ category: selected.category as AssumptionCategory, evidence: selected.evidence, hasDiscoveryEvidence: (interviewObs ?? 0) > 0 })
+    ? recommend({ category: selected.category as AssumptionCategory, evidence: selected.evidence, hasDiscoveryEvidence: interviewObs > 0 })
     : null;
 
   return (

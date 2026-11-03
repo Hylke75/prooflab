@@ -11,6 +11,8 @@ import { getUser } from "@/lib/data";
 import { FORECAST_MOMENTS, type ForecastMoment, type ForecastState } from "@/lib/domain/forecast";
 import { todayInNL } from "@/lib/domain/sprint";
 import { loadIdeaWeights } from "@/lib/learning-data";
+import { withPracticeFlag } from "@/lib/domain/practice";
+import { countRealInterviewObservations, loadRealInterviewIds, realObservationFilter } from "@/lib/practice-data";
 
 export type AssumptionWithEvidence = {
   id: string;
@@ -46,20 +48,26 @@ type ObsLink = {
     kind: string;
     origin: string;
     review_status?: string | null;
+    interview_id?: string | null;
   } | null;
 };
 
 // Observations come through observations_for_idea, so a client scores with the same evidence as the
 // consultant (raw observations are consultant-only; the function leaves out the literal quote). Older
 // databases without that function fall back to the direct embed.
+// B0: waarnemingen uit een interview dat niet als echt gesprek is aangegeven (oefening of onbekend) tellen als
+// synthetisch, dus nergens als bewijs.
 async function loadObservationLinks(ideaId: string): Promise<ObsLink[]> {
+  const realIds = await loadRealInterviewIds(ideaId);
+  const practice = (rows: ObsLink[]): ObsLink[] =>
+    rows.map((l) => (l.observations ? { ...l, observations: withPracticeFlag({ ...l.observations, interview_id: l.observations.interview_id ?? null }, realIds) } : l));
   const supabase = await supabaseServer();
   const [links, obs] = await Promise.all([
     supabase.from("assumption_observations").select("assumption_id, relation, observation_id").eq("idea_id", ideaId),
     supabase.rpc("observations_for_idea", { p_idea: ideaId }),
   ]);
   if (!links.error && !obs.error) {
-    const byId = new Map((obs.data ?? []).map((o) => [o.id, o]));
+    const byId = new Map((obs.data ?? []).map((o) => [o.id, withPracticeFlag(o, realIds)]));
     return (links.data ?? []).map((l) => {
       const o = byId.get(l.observation_id);
       return {
@@ -67,21 +75,21 @@ async function loadObservationLinks(ideaId: string): Promise<ObsLink[]> {
         observation_id: l.observation_id,
         relation: l.relation,
         observations: o
-          ? { is_fact: o.is_fact, is_behaviour: o.is_behaviour, is_real_context: o.is_real_context, is_costly: o.is_costly, is_synthetic: o.is_synthetic, kind: o.kind, origin: o.origin, review_status: o.review_status ?? null }
+          ? { is_fact: o.is_fact, is_behaviour: o.is_behaviour, is_real_context: o.is_real_context, is_costly: o.is_costly, is_synthetic: o.is_synthetic, kind: o.kind, origin: o.origin, review_status: o.review_status ?? null, interview_id: o.interview_id }
           : null,
       };
     });
   }
   const full = await supabase
     .from("assumption_observations")
-    .select("assumption_id, observation_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin, review_status)")
+    .select("assumption_id, observation_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin, review_status, interview_id)")
     .eq("idea_id", ideaId);
-  if (!full.error) return full.data ?? [];
+  if (!full.error) return practice(full.data ?? []);
   const plain = await supabase
     .from("assumption_observations")
-    .select("assumption_id, observation_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin)")
+    .select("assumption_id, observation_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin, interview_id)")
     .eq("idea_id", ideaId);
-  return plain.data ?? [];
+  return practice(plain.data ?? []);
 }
 
 // Everything the probabilities of one idea are computed from, loaded once: assumptions, linked claims and
@@ -193,12 +201,9 @@ export type AssumptionWithVoi = AssumptionWithEvidence & { voi: VoiResult };
 
 // Research 3.9: assumptions in order of information value (what to test next and why).
 export const loadInformationValue = cache(async (ideaId: string): Promise<AssumptionWithVoi[]> => {
-  const supabase = await supabaseServer();
-  const [list, { count: interviewObs }] = await Promise.all([
-    loadAssumptions(ideaId),
-    supabase.from("observations").select("id", { count: "exact", head: true }).eq("idea_id", ideaId).not("interview_id", "is", null),
-  ]);
-  return orderByInformationValue(list, (interviewObs ?? 0) > 0);
+  // B0: alleen waarnemingen uit echte gesprekken tellen als ontdekkingsbewijs.
+  const [list, interviewObs] = await Promise.all([loadAssumptions(ideaId), countRealInterviewObservations(ideaId)]);
+  return orderByInformationValue(list, interviewObs > 0);
 });
 
 export function orderByInformationValue(list: AssumptionWithEvidence[], hasDiscoveryEvidence: boolean): AssumptionWithVoi[] {
@@ -262,6 +267,8 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
   const supabase = await supabaseServer();
   const count = { count: "exact" as const, head: true };
   const forecastState = loadForecastState(ideaId);
+  // B0: waarnemingen uit oefen- of niet-aangegeven gesprekken tellen niet mee.
+  const realObs = realObservationFilter(await loadRealInterviewIds(ideaId));
   const [questions, claims, verified, weak, competitors, alternatives, segments, experiments, cards, checks, decisions, behaviour, sizing, reports] = await Promise.all([
     supabase.from("research_questions").select("id, status, position").eq("idea_id", ideaId).order("position").order("created_at"),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId),
@@ -274,7 +281,7 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     supabase.from("learning_cards").select("experiment_id, status, approved_at").eq("idea_id", ideaId),
     supabase.from("reality_checks").select("created_at").eq("idea_id", ideaId).order("created_at", { ascending: false }).limit(1),
     supabase.from("decisions").select("decided_at, client_confirmed_at").eq("idea_id", ideaId).order("decided_at", { ascending: false }),
-    supabase.from("observations").select("id", count).eq("idea_id", ideaId).eq("is_behaviour", true).eq("is_synthetic", false),
+    supabase.from("observations").select("id", count).eq("idea_id", ideaId).eq("is_behaviour", true).eq("is_synthetic", false).or(realObs),
     supabase.from("sizing_factors").select("key, claims(status)").eq("idea_id", ideaId).eq("key", "base_count"),
     loadReportMeta(ideaId),
   ]);
@@ -285,7 +292,7 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     decisive
       ? supabase.from("claims").select("id", count).eq("idea_id", ideaId).eq("question_id", decisive.id).eq("status", "verified")
       : Promise.resolve({ count: 0 }),
-    supabase.from("observations").select("id", count).eq("idea_id", ideaId).eq("is_synthetic", false).not("experiment_id", "is", null),
+    supabase.from("observations").select("id", count).eq("idea_id", ideaId).eq("is_synthetic", false).not("experiment_id", "is", null).or(realObs),
   ]);
   const forecast = await forecastState;
   const assumptions = rankAssumptions(await loadAssumptions(ideaId));

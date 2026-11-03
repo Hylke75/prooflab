@@ -6,6 +6,7 @@ import { ideaMethodVersion } from "@/lib/method-data";
 import { QUALITY_VALUES, SurveyConfigSchema, type Answers, type Quality, type SurveyConfig, type SurveyCountRow } from "@/lib/domain/survey";
 import { surveySplitFromCounts, type ExportRow, type SurveySplit } from "@/lib/domain/survey-results";
 import { interviewRecruitment, type RecruitmentGroup } from "@/lib/domain/recruitment";
+import { countsAsEvidence } from "@/lib/domain/practice";
 
 export type LandingConfig = {
   headline: string;
@@ -229,10 +230,12 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
     }
   } else if (exp.type === "interview") {
     const [{ data: interviews }, { data: obs }] = await Promise.all([
-      supabase.from("interviews").select("id, consent_recorded, is_acquaintance, dmu_role, recruited_via, recruitment_group").eq("experiment_id", exp.id),
+      supabase.from("interviews").select("id, consent_recorded, is_acquaintance, dmu_role, recruited_via, recruitment_group, is_practice").eq("experiment_id", exp.id),
       supabase.from("observations").select("interview_id, kind, review_status").eq("experiment_id", exp.id).eq("is_synthetic", false),
     ]);
-    const valid = (interviews ?? []).filter((i) => i.consent_recorded);
+    // B0: alleen echte gesprekken met vastgelegde toestemming tellen; oefeningen en niet-aangegeven gesprekken niet.
+    const consented = (interviews ?? []).filter((i) => i.consent_recorded);
+    const valid = consented.filter((i) => countsAsEvidence(i.is_practice));
     n = valid.length;
     // Aantalregel: een gesprek telt alleen met een vastgelegde aanbetaling of herhaalaankoop (afgekeurde
     // AI-codering telt niet). Anders: het probleem herkend in eigen recent gedrag.
@@ -257,8 +260,12 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
       groups.set(g, row);
     }
     byRecruitment = [...groups.values()];
-    const excluded = (interviews ?? []).length - valid.length;
+    const excluded = (interviews ?? []).length - consented.length;
     if (excluded) warnings.push(`${excluded} interview(s) zonder vastgelegde toestemming tellen niet mee.`);
+    const practice = consented.filter((i) => i.is_practice === true).length;
+    const unmarked = consented.filter((i) => i.is_practice == null).length;
+    if (practice) warnings.push(`${practice} interview(s) zijn een oefening of fictief en tellen niet als bewijs.`);
+    if (unmarked) warnings.push(`${unmarked} interview(s) zijn nog niet aangegeven als echt gesprek of oefening en tellen niet mee tot dat gebeurt.`);
     if (valid.length && valid.filter((i) => i.is_acquaintance).length / valid.length > 0.5) warnings.push("Meer dan de helft van de geïnterviewden zijn bekenden.");
   } else {
     // Distinct visitors are counted in the database: a page of rows would silently cap large tests.

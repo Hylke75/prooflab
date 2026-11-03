@@ -22,7 +22,9 @@ import { aiConfigured, env, trackingConfigured } from "@/lib/env";
 import { pct } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { DMU_ROLES, EXPERIMENT_STATES, EXPERIMENT_TYPES, OBSERVATION_KINDS, type ExperimentState, type ExperimentType } from "@/lib/domain/labels";
-import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, reviewObservation, setPrimaryTest, transitionExperiment } from "../actions";
+import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, reviewObservation, setInterviewPractice, setPrimaryTest, transitionExperiment } from "../actions";
+import { fictionSignals, fictionWarning, PRACTICE_LABELS, practiceStatus } from "@/lib/domain/practice";
+import { PracticeChoice } from "@/components/experiments/PracticeChoice";
 import { canDesignatePrimary, TEST_ROLES, testRole } from "@/lib/domain/primary-test";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 import { assumptionKind, assumptionKindLabel, metricFitsAssumption } from "@/lib/domain/assumption-kind";
@@ -360,72 +362,97 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
               <AiQualityCard measures={[{ title: "AI-codering van interviews: geaccepteerd", measure: quality.coding }]} />
             </div>
           )}
-          {interviews.map((iv) => (
-            <div className="card mt-18" key={iv.id}>
-              <div className="section-title">
-                <div>
-                  <h3>{iv.participant_label}</h3>
-                  <p className="tiny">{DMU_ROLES[iv.dmu_role as keyof typeof DMU_ROLES]} · {iv.segment ?? "segment onbekend"} · via {CHANNELS[iv.recruited_via as keyof typeof CHANNELS] ?? iv.recruited_via} · {new Date(iv.held_on).toLocaleDateString("nl-NL")}{iv.is_acquaintance ? " · bekende" : ""} · wervingsgroep {recruitmentLabel(interviewRecruitment(iv.is_acquaintance, iv.recruitment_group, exp.recruitment_group)).toLowerCase()}</p>
+          {interviews.map((iv) => {
+            // B0: echt gesprek, oefening of nog niet aangegeven. Alleen een echt gesprek telt als bewijs.
+            const practice = practiceStatus(iv.is_practice);
+            const practiceLabel = PRACTICE_LABELS[practice];
+            const fiction = practice === "real" ? fictionWarning(fictionSignals(iv.transcript)) : null;
+            return (
+              <div className="card mt-18" key={iv.id}>
+                <div className="section-title">
+                  <div>
+                    <h3>{iv.participant_label}</h3>
+                    <p className="tiny">{DMU_ROLES[iv.dmu_role as keyof typeof DMU_ROLES]} · {iv.segment ?? "segment onbekend"} · via {CHANNELS[iv.recruited_via as keyof typeof CHANNELS] ?? iv.recruited_via} · {new Date(iv.held_on).toLocaleDateString("nl-NL")}{iv.is_acquaintance ? " · bekende" : ""} · wervingsgroep {recruitmentLabel(interviewRecruitment(iv.is_acquaintance, iv.recruitment_group, exp.recruitment_group)).toLowerCase()}</p>
+                  </div>
+                  <div className="row" style={{ gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <span className={`pill ${practiceLabel.pill}`}>{practiceLabel.label}</span>
+                    <span className="pill gray">{iv.record_type === "transcript" ? "Transcript" : "Notities (minder herleidbaar)"}</span>
+                  </div>
                 </div>
-                <span className="pill gray">{iv.record_type === "transcript" ? "Transcript" : "Notities (minder herleidbaar)"}</span>
+                {practice === "unknown" && (
+                  <div className="note" style={{ marginTop: 0 }}>
+                    Bij dit gesprek is nog niet aangegeven of het echt was of een oefening. Tot dat gebeurt telt het niet als bewijs.
+                    <div className="row mt-8" style={{ gap: 8, flexWrap: "wrap" }}>
+                      <form action={setInterviewPractice.bind(null, id, iv.id, false)}><button className="btn white sm">Echt gesprek</button><FormPendingOverlay /></form>
+                      <form action={setInterviewPractice.bind(null, id, iv.id, true)}><button className="btn white sm">Oefening of fictief</button><FormPendingOverlay /></form>
+                    </div>
+                  </div>
+                )}
+                {fiction && (
+                  <div className="note" role="note" style={{ marginTop: 0 }}>
+                    <strong>Let op:</strong> {fiction}{" "}
+                    <form action={setInterviewPractice.bind(null, id, iv.id, true)} style={{ display: "inline" }}><button className="text-link">Toch markeren als oefening</button><FormPendingOverlay /></form>
+                  </div>
+                )}
+                <details>
+                  <summary className="text-link">Transcript tonen</summary>
+                  <div className="quote" style={{ whiteSpace: "pre-wrap", maxHeight: 280, overflow: "auto" }}>{iv.transcript}</div>
+                </details>
+                <TranscriptAuditList turns={auditTranscript(iv.transcript, { productNames, interviewerNames })} />
+                {(iv.observations ?? []).map((o) => (
+                  <div className="evidence-event" key={o.id}>
+                    <div className="icon-circle">{o.kind === "problem_confirmed" ? "✓" : o.kind === "problem_absent" || o.kind === "counter_example" ? "✕" : "•"}</div>
+                    <div style={{ flex: 1 }}>
+                      <strong>{OBSERVATION_KINDS[o.kind as keyof typeof OBSERVATION_KINDS]}: {o.summary}</strong>
+                      {practice !== "real" && <> <span className={`pill ${practiceLabel.pill}`}>{practiceLabel.label}</span></>}
+                      {o.quote && <blockquote className="quote">“{o.quote}”</blockquote>}
+                      <p>
+                        {o.origin !== "ai"
+                          ? "Handmatig gecodeerd"
+                          : o.review_status === "accepted"
+                            ? `AI-codering, geaccepteerd door consultant${o.reviewed_at ? ` op ${new Date(o.reviewed_at).toLocaleDateString("nl-NL")}` : ""}`
+                            : o.review_status === "rejected"
+                              ? `AI-codering, afgewezen door consultant${o.reviewed_at ? ` op ${new Date(o.reviewed_at).toLocaleDateString("nl-NL")}` : ""}; telt niet mee`
+                              : `AI-voorstel, citaat letterlijk gecontroleerd; nog niet beoordeeld${quality && codingIsProposalOnly(quality.coding) ? " (AI-codering blijft een voorstel)" : ""}`}
+                      </p>
+                      {o.origin === "ai" && !o.review_status && (
+                        <div className="row mt-8">
+                          <form action={reviewObservation.bind(null, id, o.id, "accepted")}><button className="btn white sm">Accepteer codering</button><FormPendingOverlay /></form>
+                          <form action={reviewObservation.bind(null, id, o.id, "rejected")}><button className="btn white sm">Wijs af</button><FormPendingOverlay /></form>
+                        </div>
+                      )}
+                    </div>
+                    {state !== "decided" && o.origin === "manual" && <form action={deleteObservation.bind(null, id, o.id)}><button className="text-link">Verwijder</button><FormPendingOverlay /></form>}
+                  </div>
+                ))}
+                {running && (
+                  <div className="grid-2 mt-12">
+                    <details>
+                      <summary className="text-link">+ Observatie coderen</summary>
+                      <ActionForm action={addObservation.bind(null, id, expId, iv.id)} submitLabel="Vastleggen" submitClass="btn white sm" resetOnSuccess>
+                        <select className="field mt-8" name="kind" aria-label="Soort observatie" defaultValue="problem_confirmed">
+                          {Object.entries(OBSERVATION_KINDS).filter(([k]) => ["problem_confirmed", "problem_absent", "current_behaviour", "current_spend", "counter_example", "objection", "opinion", "other"].includes(k)).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                        </select>
+                        <input className="field mt-8" name="summary" placeholder="Korte samenvatting" aria-label="Samenvatting" />
+                        <textarea className="field mt-8" name="quote" rows={3} placeholder="Letterlijk citaat uit het transcript" aria-label="Citaat" />
+                        <select className="field mt-8" name="relation" aria-label="Relatie tot de aanname" defaultValue="supports">
+                          <option value="supports">Ondersteunt de aanname</option>
+                          <option value="contradicts">Spreekt de aanname tegen</option>
+                          <option value="neutral">Neutraal</option>
+                        </select>
+                      </ActionForm>
+                    </details>
+                    <div className="row" style={{ alignItems: "flex-start", justifyContent: "flex-end" }}>
+                      {aiConfigured() && (
+                        <ActionForm action={analyzeInterviewWithAi.bind(null, id, expId, iv.id)} submitLabel="Laat AI uitspraken markeren" submitClass="btn ai sm" pendingLabel="Analyseren…"><span /></ActionForm>
+                      )}
+                      <form action={deleteInterview.bind(null, id, iv.id)}><button className="text-link" style={{ color: "var(--color-risk-text)", marginTop: 12 }}>Interview verwijderen</button><FormPendingOverlay /></form>
+                    </div>
+                  </div>
+                )}
               </div>
-              <details>
-                <summary className="text-link">Transcript tonen</summary>
-                <div className="quote" style={{ whiteSpace: "pre-wrap", maxHeight: 280, overflow: "auto" }}>{iv.transcript}</div>
-              </details>
-              <TranscriptAuditList turns={auditTranscript(iv.transcript, { productNames, interviewerNames })} />
-              {(iv.observations ?? []).map((o) => (
-                <div className="evidence-event" key={o.id}>
-                  <div className="icon-circle">{o.kind === "problem_confirmed" ? "✓" : o.kind === "problem_absent" || o.kind === "counter_example" ? "✕" : "•"}</div>
-                  <div style={{ flex: 1 }}>
-                    <strong>{OBSERVATION_KINDS[o.kind as keyof typeof OBSERVATION_KINDS]}: {o.summary}</strong>
-                    {o.quote && <blockquote className="quote">“{o.quote}”</blockquote>}
-                    <p>
-                      {o.origin !== "ai"
-                        ? "Handmatig gecodeerd"
-                        : o.review_status === "accepted"
-                          ? `AI-codering, geaccepteerd door consultant${o.reviewed_at ? ` op ${new Date(o.reviewed_at).toLocaleDateString("nl-NL")}` : ""}`
-                          : o.review_status === "rejected"
-                            ? `AI-codering, afgewezen door consultant${o.reviewed_at ? ` op ${new Date(o.reviewed_at).toLocaleDateString("nl-NL")}` : ""}; telt niet mee`
-                            : `AI-voorstel, citaat letterlijk gecontroleerd; nog niet beoordeeld${quality && codingIsProposalOnly(quality.coding) ? " (AI-codering blijft een voorstel)" : ""}`}
-                    </p>
-                    {o.origin === "ai" && !o.review_status && (
-                      <div className="row mt-8">
-                        <form action={reviewObservation.bind(null, id, o.id, "accepted")}><button className="btn white sm">Accepteer codering</button><FormPendingOverlay /></form>
-                        <form action={reviewObservation.bind(null, id, o.id, "rejected")}><button className="btn white sm">Wijs af</button><FormPendingOverlay /></form>
-                      </div>
-                    )}
-                  </div>
-                  {state !== "decided" && o.origin === "manual" && <form action={deleteObservation.bind(null, id, o.id)}><button className="text-link">Verwijder</button><FormPendingOverlay /></form>}
-                </div>
-              ))}
-              {running && (
-                <div className="grid-2 mt-12">
-                  <details>
-                    <summary className="text-link">+ Observatie coderen</summary>
-                    <ActionForm action={addObservation.bind(null, id, expId, iv.id)} submitLabel="Vastleggen" submitClass="btn white sm" resetOnSuccess>
-                      <select className="field mt-8" name="kind" aria-label="Soort observatie" defaultValue="problem_confirmed">
-                        {Object.entries(OBSERVATION_KINDS).filter(([k]) => ["problem_confirmed", "problem_absent", "current_behaviour", "current_spend", "counter_example", "objection", "opinion", "other"].includes(k)).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                      </select>
-                      <input className="field mt-8" name="summary" placeholder="Korte samenvatting" aria-label="Samenvatting" />
-                      <textarea className="field mt-8" name="quote" rows={3} placeholder="Letterlijk citaat uit het transcript" aria-label="Citaat" />
-                      <select className="field mt-8" name="relation" aria-label="Relatie tot de aanname" defaultValue="supports">
-                        <option value="supports">Ondersteunt de aanname</option>
-                        <option value="contradicts">Spreekt de aanname tegen</option>
-                        <option value="neutral">Neutraal</option>
-                      </select>
-                    </ActionForm>
-                  </details>
-                  <div className="row" style={{ alignItems: "flex-start", justifyContent: "flex-end" }}>
-                    {aiConfigured() && (
-                      <ActionForm action={analyzeInterviewWithAi.bind(null, id, expId, iv.id)} submitLabel="Laat AI uitspraken markeren" submitClass="btn ai sm" pendingLabel="Analyseren…"><span /></ActionForm>
-                    )}
-                    <form action={deleteInterview.bind(null, id, iv.id)}><button className="text-link" style={{ color: "var(--color-risk-text)", marginTop: 12 }}>Interview verwijderen</button><FormPendingOverlay /></form>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
           {running && (
             <div className="card mt-18">
               <h3>Interview toevoegen</h3>
@@ -451,6 +478,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
                     <select className="field" id="iv-t" name="record_type" defaultValue="transcript"><option value="transcript">Transcript (bijv. uit Teams, Zoom of Fathom)</option><option value="notes">Eigen notities</option></select>
                   </div>
                 </div>
+                <PracticeChoice />
                 <div className="form-line"><label htmlFor="iv-x">Transcript of notities</label><textarea className="field" id="iv-x" name="transcript" rows={8} /></div>
                 <div className="form-line">
                   <label htmlFor="iv-g">Wervingsgroep</label>
