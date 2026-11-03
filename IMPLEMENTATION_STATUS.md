@@ -366,3 +366,18 @@ Uit `docs/VERBETERPLAN_WERKWIJZE.md`, golf B (punten 1, 2, 6, 15, 18 en 20). Mig
 - 🟡 Het goedkeuren van de eerste test wordt niet geblokkeerd zonder beslisregel (coach waarschuwt, regel heet dan "achteraf vastgelegd")
 - 🟡 Het voorspelmoment "bij het besluit" is één moment: wie vóór de verlengde testfase voorspelde, voorspelt na afloop niet opnieuw
 - [ ] Migratie nog toepassen op de live Supabase; e2e-journey en visuele controle van de nieuwe kaarten in de browser
+
+## Fase B2: onderzoek dat de grootste onzekerheid eerst raakt (8 november)
+
+Aanleiding: sjabloonvragen met de brede doelgroep, de prijsvraag niet onderzocht, $1,57 van max $1,50, de run liep alleen met een open tabblad, "Gemini: mislukt" zonder reden en de belangrijkste bevinding (een gratis alternatief) verstopt tussen 18 andere. Migratie `20261109090000_b2_onderzoek.sql` (nog niet live; de app werkt ook zonder, met het oude gedrag).
+
+- ✅ **1 Vragen uit de intake**: specifieke doelgroep, gebied, aanbod en genoemde prijs (`lib/research-questions.ts`); één beslissende vraag (`research_questions.is_decisive`, hooguit één per idee). Bestaande sjabloonvragen per rij bijwerken met "Vragen afleiden uit de intake" (gebeurt ook automatisch bij de start van een run); de consultant kan de beslissende vraag verplaatsen. `dossier.decisiveQuestion` gebruikt de gemarkeerde vraag
+- ✅ **2 Volgorde**: de beslissende vraag altijd eerst (zoeken, citaten, tegenbewijs); snelle check = die kern, daarna de rest zolang het budget het toelaat (`lib/research-steps.ts`)
+- ✅ **3 Hard plafond**: bovengrens per stap uit de prijstabel; een stap start alleen als uitgegeven + bovengrens ≤ plafond, en mag binnen de stap niet meer reserveren. Schatting vóór de start ("geschat: $x–$y van max $z"). Gedateerde modelvarianten worden als het gevraagde model geprijsd
+- ✅ **4 Op de server**: keten van porties via `after()` en `/api/research/[runId]/advance` met het token van de consultant, lease per run (`research_run_leases`), melding als coachnotitie bij afronden (`docs/OPERATIONS.md` §11)
+- ✅ **5 Reden bij een mislukte aanbieder** (timeout, quotum, geweigerd, …) en "Opnieuw proberen" per aanbieder of stap
+- ✅ **6 Kaart "Wat dit betekent voor je grootste onzekerheid"**: max. 3 bevindingen, "Risico" bij ondermijnend; AI-voorstel als slotstap van de run (regel als terugval), aan te passen door de consultant (`uncertainty_findings`)
+- ✅ **7 Samenvoegen**: dezelfde bewering of hetzelfde cijfer uit dezelfde bron wordt één bevinding met meerdere vindplaatsen (`lib/research-dedupe.ts`)
+- ✅ Tests: `research-questions`, `research-steps`, `research-worker`, `research-failures`, `research-dedupe`, `research-uncertainty`, `research-b2-acceptance` (snelle check op het testdossier: prijsvraag eerst, binnen $1,50, melding)
+- 🟡 Een run duurt hooguit zo lang als het toegangstoken geldig is (minstens een uur na de start); daarna pauzeert hij tot iemand van het team de pagina opent. Previews met Deployment Protection hebben `VERCEL_AUTOMATION_BYPASS_SECRET` nodig
+- [ ] Migratie toepassen op de live Supabase (na akkoord); snelle check op het testdossier met de echte API's en visuele controle van de kaart en het paneel
