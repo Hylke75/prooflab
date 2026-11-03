@@ -42,9 +42,15 @@ npm run dev                  # http://localhost:3000
 | `TRACKING_SALT` | voor live tests | Geheim voor de cookieloze, per test verschillende bezoekerscode (HMAC) |
 | `ANTHROPIC_API_KEY` | nee | Zet AI-onderzoek, AI-aannames, interviewcodering en AI-vragen in de Reality Check aan |
 | `RESEARCH_BUDGET_USD` | nee | Maximum per diepe onderzoeksrun (standaard 3) |
+| `RESEND_API_KEY`, `EMAIL_FROM` | nee | Verstuurt persoonlijke enquête-uitnodigingen via Resend (afzender op een geverifieerd domein); zonder deze twee download je de persoonlijke links als CSV |
 
 Zonder `ANTHROPIC_API_KEY` toont de app overal "AI niet verbonden" en werkt alles handmatig: bronnen en citaten
 toevoegen, interviews coderen, aannames vanuit een sjabloon. Er worden nooit gesimuleerde resultaten getoond als echt.
+
+Enquêtes verspreiden: persoonlijke links (`/s/<slug>?u=<token>`) en afmeldlinks (`/s/afmelden?u=<token>&e=<hash>`) zijn
+afgeleid van `TRACKING_SALT` (token = HMAC van het willekeurige uitnodigings-id, alleen de sha256 wordt opgeslagen; e = HMAC
+van het e-mailadres voor de afmeldlijst per organisatie). Wissel `TRACKING_SALT` daarom niet terwijl er uitnodigingen lopen:
+herinneringen en de afmeldlijst werken dan niet meer voor eerder gemailde adressen. Zet in Resend open- en kliktracking uit.
 
 ### Database
 

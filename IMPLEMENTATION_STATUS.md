@@ -183,5 +183,14 @@ AI-uitkomsten zijn gelabeld als AI-voorstel tot een consultant ze accepteert.
 - [x] Meting: kernvraag over alle geloofwaardige antwoorden (oordeel pas na de eindconditie), plus splitsing per herkomst en kanaal; waarschuwingen open link > 50%, te snelle antwoorden, te weinig uitgenodigde respondenten (`lib/domain/survey-results.ts`, `lib/experiment-metrics.ts`)
 - [x] Resultaten op de experimentpagina, CSV-export voor het onderzoeksteam (geen e-mailadressen; contactgegevens in open antwoorden verwijderd), open antwoorden als bron van het type enquête voor de klantsignalen
 - [x] Learning Card met observatie `survey_answer` (nooit gedrag); dossierlabel telt enquêtes niet als gedragsexperiment; Reality Check "Enquête positief, gedrag nog niet gezien"; rapport: "zelfrapportage, geen waargenomen gedrag" en splitsing per herkomst
-- [ ] Opdrachtgevers zien geen enquêtecijfers op de experimentpagina (ruwe antwoorden zijn alleen voor het onderzoeksteam leesbaar); zij zien de uitkomst via Learning Card en rapport. Een geaggregeerde RPC is nodig om dat te veranderen
+- [x] Opdrachtgevers zien op de experimentpagina alleen de kernvraag (uitkomst, splitsing per herkomst, 95%-interval) via `survey_key_answers`; overige antwoorden blijven bij het onderzoeksteam
 - [ ] Visuele controle in de browser tegen een database met de enquêtemigratie (de live Supabase heeft die migratie nog niet)
+
+## Enquêtes verspreiden en uitnodigingsberichten (3 november)
+
+- ✅ Publieke enquêtepagina `/s/<slug>` (cookieloos, merkneutraal, alle vragen op één pagina met foutoverzicht, voorwaardelijke vragen, toestemming, honeypot, invulduur); persoonlijke links `?u=<token>`, open links `?utm_source=<kanaal>`; gesloten/gepauzeerd/al ingevuld/afgemeld netjes afgevangen; `POST /api/s/<slug>` met dezelfde regels als `/api/t`
+- ✅ Afmelden `/s/afmelden` (bevestigingsknop, niets op GET) en one-click `List-Unsubscribe` (`/api/s/afmelden`); afmeldlijst per organisatie op HMAC van het adres
+- ✅ Verspreiden bij het experiment: open link per kanaal, bulkuitnodigingen (plakken of CSV, max. 2.000, ontdubbeld, afgemelde en al uitgenodigde adressen overgeslagen, verplichte grondslag, bewerkbare e-mail met voorbeeld), versturen in batches met voortgang, één herinnering na ≥ 3 dagen
+- 🟡 Versturen via Resend vraagt `RESEND_API_KEY` en `EMAIL_FROM`; zonder koppeling "e-mail niet gekoppeld" en een CSV met persoonlijke links en afmeldlinks
+- ✅ Uitnodigingsberichten per platform (LinkedIn, LinkedIn-DM via Expandi, Instagram, Facebook, X, WhatsApp, nieuwsbrief) voor enquêtes, landing- en prijstests: sjablonen met lengtelimieten en kanaallink, AI-concepten (`promo_posts`) met eerlijkheidscontrole, bewerken, kopiëren, opnieuw genereren
+- ⬜ Aparte kolom `survey_invitations.reminded_at` (nu afgeleid uit `sent_at` t.o.v. `created_at`)
