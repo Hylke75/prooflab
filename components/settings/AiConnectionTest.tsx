@@ -10,7 +10,7 @@ export function AiConnectionTest() {
   return (
     <form action={action} className="mt-18">
       <div className="row">
-        <button className="btn soft" disabled={pending}>{pending ? "Bezig met testen…" : "Test verbinding"}</button>
+        <button className="btn ai" disabled={pending}>{pending ? "Bezig met testen…" : "Test verbinding"}</button>
         <span className="tiny">Stelt elke gekoppelde AI één korte vraag (kost een fractie van een cent).</span>
       </div>
       {state.error && <div className="form-error mt-12" role="alert">{state.error}</div>}

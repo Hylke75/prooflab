@@ -135,7 +135,7 @@ export function CoachFeed({ ideaId, notes, canWrite, onNavigate }: { ideaId: str
       )}
       {canWrite && (
         <form action={reviewAction} className="coach-feed-review">
-          <button className="btn soft sm" disabled={reviewing}>
+          <button className="btn ai sm" disabled={reviewing}>
             <Icon name="spark" size="sm" /> {reviewing ? "De coach kijkt mee…" : "Laat de coach nu meekijken"}
           </button>
           <div role="status" aria-live="polite">

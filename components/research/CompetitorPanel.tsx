@@ -68,7 +68,7 @@ export function CompetitorPanel({
           <strong>Maandelijkse controle.</strong> ProofLab haalt de bronpagina&apos;s en websites opnieuw op en controleert of de citaten en prijzen er
           nog letterlijk staan. Geen AI-oordeel; verdwenen citaten maken een bevinding &quot;verouderd&quot;, er wordt niets verwijderd.
           {competitors.some((c) => recheckDue(c.last_checked_at)) && ` ${competitors.filter((c) => recheckDue(c.last_checked_at)).length} aanbieder(s) langer dan ${RECHECK_DAYS} dagen niet gecontroleerd.`}
-          <ActionForm action={recheckAll} submitLabel="Alles opnieuw controleren" submitClass="btn white sm" pendingLabel="Pagina's ophalen…">
+          <ActionForm action={recheckAll} submitLabel="Alles opnieuw controleren" submitClass="btn ai sm" pendingLabel="Pagina's ophalen…">
             <span />
           </ActionForm>
         </div>
@@ -135,7 +135,7 @@ export function CompetitorPanel({
                   </div>
                 ))}
                 {canWrite && recheckActions?.[current.id] && (
-                  <ActionForm action={recheckActions[current.id]} submitLabel="Opnieuw controleren" submitClass="btn white sm" pendingLabel="Pagina's ophalen…">
+                  <ActionForm action={recheckActions[current.id]} submitLabel="Opnieuw controleren" submitClass="btn ai sm" pendingLabel="Pagina's ophalen…">
                     <span />
                   </ActionForm>
                 )}

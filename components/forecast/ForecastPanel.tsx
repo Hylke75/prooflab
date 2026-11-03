@@ -138,7 +138,7 @@ export function ForecastPanel({ view, compact = false }: { view: ForecastView; c
           <ActionForm
             action={requestAiForecast.bind(null, view.ideaId)}
             submitLabel={view.aiPending.length > 1 ? `${view.aiPending.length} AI-voorspellingen toevoegen` : "AI-voorspelling toevoegen"}
-            submitClass="btn white"
+            submitClass="btn ai"
             pendingLabel="AI denkt na…"
           >
             <p className="tiny mt-12">

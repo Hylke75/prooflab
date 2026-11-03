@@ -96,7 +96,7 @@ export function CustomerSignals({
                 (bijv. reviews van een concurrent). Antwoorden uit LinkedIn-outreach verschijnen hier vanzelf.
               </p>
             ) : aiConnected ? (
-              <ActionForm action={analyzeCustomerSignals.bind(null, ideaId)} submitLabel="Analyseer klantsignalen" pendingLabel="Analyseren…" submitClass="btn soft sm">
+              <ActionForm action={analyzeCustomerSignals.bind(null, ideaId)} submitLabel="Analyseer klantsignalen" pendingLabel="Analyseren…" submitClass="btn ai sm">
                 <fieldset style={{ border: 0, padding: 0, margin: "8px 0 0" }}>
                   <legend className="tiny" style={{ fontWeight: 700 }}>Bronnen met klantsignalen</legend>
                   {sources.map((s) => (

@@ -2,13 +2,21 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { Landing } from "@/components/landing/Landing";
 import { getUser } from "@/lib/data";
+import { resolveAppUrl } from "@/lib/domain/app-url";
+
+const appUrl = resolveAppUrl({
+  APP_URL: process.env.APP_URL,
+  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+  VERCEL_ENV: process.env.VERCEL_ENV,
+  VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+});
 
 const TITLE = "ProofLab · Van idee naar bewijs in vijf weken";
 const DESCRIPTION =
   "Validatiesprints voor consultants: onderzoek met controleerbare bronnen, tests met vooraf vastgelegde drempels en een besluit dat je opdrachtgever kan narekenen.";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
+  metadataBase: new URL(appUrl),
   title: { absolute: TITLE },
   description: DESCRIPTION,
   alternates: { canonical: "/" },

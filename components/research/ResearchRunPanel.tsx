@@ -225,10 +225,10 @@ export function ResearchRunPanel({
           </p>
           {canWrite && !active && (
             <div className="row mt-12">
-              <button className="btn primary sm" onClick={() => begin("quick")} disabled={pending}>
+              <button className="btn ai sm" onClick={() => begin("quick")} disabled={pending}>
                 <Icon name="spark" size="sm" /> Snelle marktcheck (3 vragen)
               </button>
-              <button className="btn white sm" onClick={() => begin("deep")} disabled={pending}>
+              <button className="btn ai sm" onClick={() => begin("deep")} disabled={pending}>
                 Diep onderzoek (alle vragen + tegenbewijs)
               </button>
             </div>

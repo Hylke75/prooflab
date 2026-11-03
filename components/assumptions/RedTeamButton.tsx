@@ -37,7 +37,7 @@ export function RedTeamButton({ ideaId, assumptions, canWrite }: { ideaId: strin
             <strong>{a.statement}</strong>
           </div>
           {connected && (
-            <ActionForm action={redTeamAssumption.bind(null, ideaId, a.id)} submitLabel="Zoek tegenbewijs" submitClass="btn white sm" pendingLabel="Zoeken… (kan een minuut duren)">
+            <ActionForm action={redTeamAssumption.bind(null, ideaId, a.id)} submitLabel="Zoek tegenbewijs" submitClass="btn ai sm" pendingLabel="Zoeken… (kan een minuut duren)">
               <span />
             </ActionForm>
           )}

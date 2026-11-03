@@ -154,7 +154,7 @@ export function PromoPosts(p: Props) {
         </div>
       </div>
       <div className="row">
-        {p.aiReady && <button type="button" className="btn primary" disabled={busy} onClick={() => all("ai")}>{busy ? "Bezig…" : p.posts.length ? "Alles opnieuw met AI" : "Maak berichten met AI"}</button>}
+        {p.aiReady && <button type="button" className="btn ai" disabled={busy} onClick={() => all("ai")}>{busy ? "Bezig…" : p.posts.length ? "Alles opnieuw met AI" : "Maak berichten met AI"}</button>}
         <button type="button" className={`btn ${p.aiReady ? "white" : "primary"}`} disabled={busy} onClick={() => all("template")}>{p.posts.length ? "Alles opnieuw uit sjablonen" : "Maak berichten uit sjablonen"}</button>
       </div>
       <div aria-live="polite">

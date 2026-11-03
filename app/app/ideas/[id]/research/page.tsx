@@ -234,57 +234,13 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
             </div>
           </div>
 
-          <div className="grid-2">
-            <div className="stack">
-              <ResearchRunPanel
-                ideaId={id}
-                canWrite={canWrite}
-                providers={PROVIDERS.map((p) => ({ id: p, name: providerLabel(p), keyEnv: PROVIDER_KEY_ENV[p], connected: configuredProviders().includes(p) }))}
-                searchWith={canWrite && aiConfigured() ? (await researchProviders(idea.org_id)).map((p) => PROVIDER_LABELS[p].name) : []}
-                run={run ? { id: run.id, status: run.status, mode: run.mode, cost: Number(run.cost_usd), budget: Number(run.budget_usd), tasks: (tasks ?? []).map((t) => ({ label: t.label, status: t.status, detail: t.detail })) } : null}
-                searchLog={groupSearchLog((logRows ?? []).filter((r) => r.kind !== "counter"), questions)}
-                cbsAction={fetchCbsFigures.bind(null, id)}
-              />
-              {/* Golf C, punt 10: tegenbewijs apart, met het eigen zoeklogboek. */}
-              {(counterClaims.length > 0 || counterLog.length > 0 || counterTasks.length > 0) && (
-                <div className="card">
-                  <div className="section-title">
-                    <h3>Tegenbewijs</h3>
-                    <span className={`pill ${counterClaims.length ? "coral" : "gray"}`}>
-                      {counterClaims.length} tegenbevinding{counterClaims.length === 1 ? "" : "en"}
-                    </span>
-                  </div>
-                  <p className="sub">
-                    Per onderzoeksvraag zoekt ProofLab apart naar bronnen die het idee tegenspreken. Elke tegenbevinding heeft een letterlijk gecontroleerd citaat.
-                    Niets gevonden bewijst niet dat het idee klopt.
-                  </p>
-                  {counterTasks.map((t, i) => (
-                    <div className="quickline" key={i}>
-                      <span className="num risk" aria-hidden="true">{t.status === "done" ? "✓" : t.status === "failed" ? "!" : "…"}</span>
-                      <div><strong>{t.label}</strong><span>{t.detail ?? (t.status === "pending" ? "Nog niet gestart." : t.status === "skipped" ? "Overgeslagen." : "")}</span></div>
-                    </div>
-                  ))}
-                  {counterLog.length > 0 && <SearchLogList questions={counterLog} canWrite={canWrite} title="Zoeklogboek tegenbewijs" />}
-                </div>
-              )}
-              {challenges.length > 0 && (
-                <div className="card">
-                  <div className="section-title"><h3>Tegenargumenten</h3><span className="pill coral">Advocaat van de duivel</span></div>
-                  {challenges.map((c, i) => (
-                    <div className="quickline" key={i}>
-                      <span className="num risk" aria-hidden="true">!</span>
-                      <div><strong>{c.title}</strong><span>{c.detail}</span></div>
-                    </div>
-                  ))}
-                  <div className="note">Deze punten zijn kritische vragen van de AI, geen bewijs. Neem ze mee in de Reality Check.</div>
-                </div>
-              )}
-            </div>
+          {/* Eén kolom: de vragen en het onderzoekslogboek bevatten lange zinnen die in een halve kolom onleesbaar werden. */}
+          <div className="stack research-stack">
             <div className="card">
               <div className="section-title">
                 <h3>Onderzoekskaart</h3>
                 {canWrite && aiConfigured() && (
-                  <ActionForm action={aiPlan.bind(null, id)} submitLabel="Laat AI opnieuw voorstellen" submitClass="text-link" pendingLabel="Bezig…">
+                  <ActionForm action={aiPlan.bind(null, id)} submitLabel="Laat AI opnieuw voorstellen" submitClass="btn ai sm" pendingLabel="Bezig…">
                     <span />
                   </ActionForm>
                 )}
@@ -294,17 +250,17 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                 const [label, pill] = QSTATUS[q.status as keyof typeof QSTATUS];
                 return (
                   <details key={q.id} className="quickline" style={{ display: "block" }}>
-                    <summary style={{ display: "flex", gap: 11, alignItems: "center", cursor: "pointer", listStyle: "none" }}>
+                    <summary style={{ display: "flex", gap: 11, alignItems: "flex-start", cursor: "pointer", listStyle: "none" }}>
                       <span className="num">{q.position}</span>
-                      <div style={{ flex: 1 }}>
+                      <div className="question-text">
                         <strong>{q.question}</strong>
-                        <span>
+                        <span className="question-meta">
+                          <span className={`pill ${pill}`}>{label}</span>
                           {METHOD[q.method as keyof typeof METHOD]}
                           {isExpectedSource(q.expected_source) ? ` · Brontype: ${EXPECTED_SOURCES[q.expected_source]}` : ""} · {qClaims.length} bevinding{qClaims.length === 1 ? "" : "en"}
                           {q.ai_original ? ` · AI-concept · ${describeDraftEdit(draftEdit(q.ai_original, questionDraftText(q))).toLowerCase()}` : ""}
                         </span>
                       </div>
-                      <span className={`pill ${pill}`}>{label}</span>
                     </summary>
                     <div style={{ padding: "10px 0 4px 39px" }}>
                       {q.why_it_matters && <p className="tiny">Waarom: {q.why_it_matters}</p>}
@@ -363,6 +319,49 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                 </details>
               )}
             </div>
+            <ResearchRunPanel
+              ideaId={id}
+              canWrite={canWrite}
+              providers={PROVIDERS.map((p) => ({ id: p, name: providerLabel(p), keyEnv: PROVIDER_KEY_ENV[p], connected: configuredProviders().includes(p) }))}
+              searchWith={canWrite && aiConfigured() ? (await researchProviders(idea.org_id)).map((p) => PROVIDER_LABELS[p].name) : []}
+              run={run ? { id: run.id, status: run.status, mode: run.mode, cost: Number(run.cost_usd), budget: Number(run.budget_usd), tasks: (tasks ?? []).map((t) => ({ label: t.label, status: t.status, detail: t.detail })) } : null}
+              searchLog={groupSearchLog((logRows ?? []).filter((r) => r.kind !== "counter"), questions)}
+              cbsAction={fetchCbsFigures.bind(null, id)}
+            />
+            {/* Golf C, punt 10: tegenbewijs apart, met het eigen zoeklogboek. */}
+            {(counterClaims.length > 0 || counterLog.length > 0 || counterTasks.length > 0) && (
+              <div className="card">
+                <div className="section-title">
+                  <h3>Tegenbewijs</h3>
+                  <span className={`pill ${counterClaims.length ? "coral" : "gray"}`}>
+                    {counterClaims.length} tegenbevinding{counterClaims.length === 1 ? "" : "en"}
+                  </span>
+                </div>
+                <p className="sub">
+                  Per onderzoeksvraag zoekt ProofLab apart naar bronnen die het idee tegenspreken. Elke tegenbevinding heeft een letterlijk gecontroleerd citaat.
+                  Niets gevonden bewijst niet dat het idee klopt.
+                </p>
+                {counterTasks.map((t, i) => (
+                  <div className="quickline" key={i}>
+                    <span className="num risk" aria-hidden="true">{t.status === "done" ? "✓" : t.status === "failed" ? "!" : "…"}</span>
+                    <div><strong>{t.label}</strong><span>{t.detail ?? (t.status === "pending" ? "Nog niet gestart." : t.status === "skipped" ? "Overgeslagen." : "")}</span></div>
+                  </div>
+                ))}
+                {counterLog.length > 0 && <SearchLogList questions={counterLog} canWrite={canWrite} title="Zoeklogboek tegenbewijs" />}
+              </div>
+            )}
+            {challenges.length > 0 && (
+              <div className="card">
+                <div className="section-title"><h3>Tegenargumenten</h3><span className="pill coral">Advocaat van de duivel</span></div>
+                {challenges.map((c, i) => (
+                  <div className="quickline" key={i}>
+                    <span className="num risk" aria-hidden="true">!</span>
+                    <div><strong>{c.title}</strong><span>{c.detail}</span></div>
+                  </div>
+                ))}
+                <div className="note">Deze punten zijn kritische vragen van de AI, geen bewijs. Neem ze mee in de Reality Check.</div>
+              </div>
+            )}
           </div>
 
           <div className="section-title mt-24"><h2>Bevindingen per onderzoeksvraag</h2></div>

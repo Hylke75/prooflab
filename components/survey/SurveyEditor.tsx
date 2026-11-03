@@ -141,7 +141,7 @@ export function SurveyEditor({
 
       <div className="mt-12">
         {draftAction && (
-          <button type="button" className="btn soft sm" onClick={askDraft} disabled={pending} aria-describedby="sv-draft-hint">
+          <button type="button" className="btn ai sm" onClick={askDraft} disabled={pending} aria-describedby="sv-draft-hint">
             {pending ? "De coach maakt een opzet…" : "Laat de coach een eerste opzet maken"}
           </button>
         )}
