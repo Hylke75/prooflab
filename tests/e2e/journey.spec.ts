@@ -109,6 +109,9 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.getByLabel("Kop", { exact: true }).fill("Vind de perfecte eventlocatie in minuten.");
   await page.getByLabel("Ondertitel", { exact: true }).fill("Een persoonlijke selectie, zonder eindeloos zoeken.");
   await page.getByLabel("Minimale steekproef", { exact: true }).fill("5");
+  // Methode 2026-11-b: de verwachte uitkomst is verplicht; daarmee rekent ProofLab vooraf het benodigde aantal uit.
+  await page.getByLabel("Verwachte uitkomst (%)", { exact: true }).fill("30");
+  await expect(page.getByText(/Benodigd: \d+ deelnemers/)).toBeVisible();
   await page.getByRole("radio", { name: "Koud", exact: true }).check();
   await page.getByRole("button", { name: /Test Card opslaan als concept/ }).click();
   await page.waitForURL(/\/experiments\/[0-9a-f-]{36}/);
