@@ -6,6 +6,7 @@ import { OutcomeDefinition } from "@/components/forecast/OutcomeDefinition";
 import { OutcomeFollowUp } from "@/components/forecast/OutcomeFollowUp";
 import { BaseRateSummary } from "@/components/forecast/BaseRate";
 import { BaseRatePicker } from "@/components/forecast/BaseRatePicker";
+import { CalibrationGuide } from "@/components/forecast/CalibrationGuide";
 import { getIdea } from "@/lib/data";
 import { loadProgress } from "@/lib/progress";
 import { loadForecastView } from "@/lib/forecast-data";
@@ -64,6 +65,7 @@ export default async function OutcomePage({ params }: PageProps<"/app/ideas/[id]
             </div>
             <div className="stack">
               <ForecastPanel view={view} />
+              <CalibrationGuide view={view} />
             </div>
           </div>
 

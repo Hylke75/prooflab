@@ -50,20 +50,59 @@ export type Database = {
         }
         Relationships: []
       }
+      expandi_campaign_hooks: {
+        Row: {
+          experiment_id: string
+          idea_id: string
+          url: string
+          label: string | null
+          pushed_count: number
+          last_push_at: string | null
+          created_by: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          experiment_id: string
+          idea_id: string
+          url: string
+          label?: string | null
+          pushed_count?: number
+          last_push_at?: string | null
+          created_by?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          experiment_id?: string
+          idea_id?: string
+          url?: string
+          label?: string | null
+          pushed_count?: number
+          last_push_at?: string | null
+          created_by?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       email_suppressions: {
         Row: {
           org_id: string
           email_hash: string
+          reason: string
           created_at: string
         }
         Insert: {
           org_id: string
           email_hash: string
+          reason?: string
           created_at?: string
         }
         Update: {
           org_id?: string
           email_hash?: string
+          reason?: string
           created_at?: string
         }
         Relationships: []
@@ -76,6 +115,7 @@ export type Database = {
           platform: string
           body: string
           origin: string
+          code: string
           created_by: string
           created_at: string
         }
@@ -86,6 +126,7 @@ export type Database = {
           platform: string
           body: string
           origin?: string
+          code?: string
           created_by?: string
           created_at?: string
         }
@@ -96,6 +137,7 @@ export type Database = {
           platform?: string
           body?: string
           origin?: string
+          code?: string
           created_by?: string
           created_at?: string
         }
@@ -113,6 +155,10 @@ export type Database = {
           sent_at: string | null
           reminded_at: string | null
           email_hash: string | null
+          provider_message_id: string | null
+          reminder_message_id: string | null
+          salt_version: string
+          delivery_issue: string | null
           responded_at: string | null
           created_by: string
           created_at: string
@@ -129,6 +175,10 @@ export type Database = {
           sent_at?: string | null
           reminded_at?: string | null
           email_hash?: string | null
+          provider_message_id?: string | null
+          reminder_message_id?: string | null
+          salt_version?: string
+          delivery_issue?: string | null
           responded_at?: string | null
           created_by?: string
           created_at?: string
@@ -145,6 +195,10 @@ export type Database = {
           sent_at?: string | null
           reminded_at?: string | null
           email_hash?: string | null
+          provider_message_id?: string | null
+          reminder_message_id?: string | null
+          salt_version?: string
+          delivery_issue?: string | null
           responded_at?: string | null
           created_by?: string
           created_at?: string
@@ -164,6 +218,7 @@ export type Database = {
           answers: Json
           consent_given: boolean
           duration_ms: number | null
+          content: string | null
           created_at: string
           retention_until: string
         }
@@ -178,6 +233,7 @@ export type Database = {
           answers: Json
           consent_given: boolean
           duration_ms?: number | null
+          content?: string | null
           created_at?: string
           retention_until?: string
         }
@@ -192,6 +248,7 @@ export type Database = {
           answers?: Json
           consent_given?: boolean
           duration_ms?: number | null
+          content?: string | null
           created_at?: string
           retention_until?: string
         }
@@ -212,6 +269,7 @@ export type Database = {
           created_at: string
           resolved_at: string | null
           resolved_by: string | null
+          helpful: boolean | null
         }
         Insert: {
           id?: string
@@ -227,6 +285,7 @@ export type Database = {
           created_at?: string
           resolved_at?: string | null
           resolved_by?: string | null
+          helpful?: boolean | null
         }
         Update: {
           id?: string
@@ -242,6 +301,7 @@ export type Database = {
           created_at?: string
           resolved_at?: string | null
           resolved_by?: string | null
+          helpful?: boolean | null
         }
         Relationships: []
       }
@@ -1665,6 +1725,9 @@ export type Database = {
           created_at: string
           created_by: string
           id: string
+          use_learned_weights: boolean
+          learned_weights_changed_at: string | null
+          learned_weights_changed_by: string | null
           name: string
         }
         Insert: {
@@ -1672,6 +1735,9 @@ export type Database = {
           created_at?: string
           created_by?: string
           id?: string
+          use_learned_weights?: boolean
+          learned_weights_changed_at?: string | null
+          learned_weights_changed_by?: string | null
           name: string
         }
         Update: {
@@ -1679,6 +1745,9 @@ export type Database = {
           created_at?: string
           created_by?: string
           id?: string
+          use_learned_weights?: boolean
+          learned_weights_changed_at?: string | null
+          learned_weights_changed_by?: string | null
           name?: string
         }
         Relationships: []
@@ -2225,6 +2294,7 @@ export type Database = {
       test_events: {
         Row: {
           channel: string
+          content: string | null
           created_at: string
           day: string
           event_type: string
@@ -2236,6 +2306,7 @@ export type Database = {
         }
         Insert: {
           channel?: string
+          content?: string | null
           created_at?: string
           day?: string
           event_type: string
@@ -2247,6 +2318,7 @@ export type Database = {
         }
         Update: {
           channel?: string
+          content?: string | null
           created_at?: string
           day?: string
           event_type?: string
@@ -2397,6 +2469,8 @@ export type Database = {
       }
       job_survey_batch: { Args: { p_key: string; p_job: string; p_ids: string[] }; Returns: Json }
       job_survey_mark: { Args: { p_key: string; p_job: string; p_invitation: string; p_action: string; p_error: string | null }; Returns: string | null }
+      job_suppressed_hashes: { Args: { p_key: string; p_job: string; p_hashes: string[] }; Returns: string[] }
+      job_survey_sent: { Args: { p_key: string; p_job: string; p_invitation: string; p_message_id: string }; Returns: boolean }
       claim_invitations: { Args: never; Returns: number }
       confirm_decision: { Args: { p_comment: string; p_decision: string }; Returns: boolean }
       create_organization: { Args: { p_name: string }; Returns: string }
@@ -2404,7 +2478,7 @@ export type Database = {
       is_org_member: { Args: { p_org: string }; Returns: boolean }
       is_org_owner: { Args: { p_org: string }; Returns: boolean }
       record_test_event: {
-        Args: { p_channel: string; p_event: string; p_key: string; p_rate_bucket: string; p_slug: string; p_variant: string; p_visitor: string }
+        Args: { p_channel: string; p_content?: string | null; p_event: string; p_key: string; p_rate_bucket: string; p_slug: string; p_variant: string; p_visitor: string }
         Returns: boolean
       }
       submit_test_form: {
@@ -2413,6 +2487,7 @@ export type Database = {
           p_channel: string
           p_consent: boolean
           p_consent_text: string
+          p_content?: string | null
           p_email: string | null
           p_key: string
           p_rate_bucket: string
@@ -2433,13 +2508,14 @@ export type Database = {
       get_public_survey: { Args: { p_slug: string; p_token_hash: string | null }; Returns: Json }
       survey_key_answers: {
         Args: { p_experiment: string }
-        Returns: { id: string; source: string; channel: string; duration_ms: number | null; created_at: string; key_answer: Json | null }[]
+        Returns: { id: string; source: string; channel: string; duration_ms: number | null; created_at: string; key_answer: Json | null; content: string | null }[]
       }
       submit_survey: {
         Args: {
           p_answers: Json
           p_channel: string
           p_consent: boolean
+          p_content?: string | null
           p_duration_ms: number
           p_key: string
           p_rate_bucket: string
@@ -2449,6 +2525,16 @@ export type Database = {
         }
         Returns: string
       }
+      experiment_content_counts: {
+        Args: { p_experiment: string }
+        Returns: { content: string | null; viewers: number; clickers: number; submitters: number }[]
+      }
+      record_email_event: {
+        Args: { p_event: string; p_key: string; p_message_id: string | null; p_permanent: boolean; p_subtype: string | null; p_webhook_id: string }
+        Returns: string
+      }
+      dsr_search: { Args: { p_email: string; p_hashes: string[]; p_org: string }; Returns: Json }
+      dsr_erase: { Args: { p_email: string; p_hashes: string[]; p_org: string; p_suppress: boolean }; Returns: Json }
       unsubscribe_invitation: { Args: { p_email_hash: string; p_key: string; p_token_hash: string }; Returns: boolean }
       record_outreach_event: {
         Args: { p_campaign: string | null; p_contact_hash: string; p_dedupe: string; p_event: string; p_key: string; p_message: string | null; p_token_hash: string }
@@ -2471,6 +2557,24 @@ export type Database = {
       own_base_rate: {
         Args: { p_org: string; p_project_type: string | null; p_min?: number }
         Returns: { resolved: number; achieved: number }[]
+      }
+      set_learned_weights: { Args: { p_org: string; p_on: boolean }; Returns: boolean }
+      learning_evidence_counts: {
+        Args: { p_org: string }
+        Returns: { dimension: string; kind: string; achieved: string; direction: string; dossiers: number }[]
+      }
+      idea_uses_learned_weights: { Args: { p_idea: string }; Returns: boolean }
+      idea_learning_counts: {
+        Args: { p_idea: string }
+        Returns: { dimension: string; kind: string; achieved: string; direction: string; dossiers: number }[]
+      }
+      survey_behaviour_agreement: {
+        Args: { p_org: string }
+        Returns: { survey_verdict: string; behaviour_verdict: string; assumptions: number }[]
+      }
+      coach_note_stats: {
+        Args: { p_org: string }
+        Returns: { idea_id: string; rule: string; status: string; days_to_resolve: number | null; helpful: boolean | null; decision_brier: number | null }[]
       }
       observations_for_idea: {
         Args: { p_idea: string }

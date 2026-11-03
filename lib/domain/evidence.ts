@@ -2,6 +2,7 @@
 // say, real-world vs lab setting, and how much the participant invested. Synthetic = 0.
 
 import type { ClaimStatus, ObservationKind } from "./labels";
+import type { LrOverrides } from "./calibration";
 
 export type ObservationDims = {
   isFact: boolean;
@@ -118,10 +119,13 @@ export function assumptionStatusFromVerdicts(verdicts: CardVerdict[]): "supporte
 //   accepted them, not at all when rejected, and at half strength (in log-odds) while unreviewed.
 // - The result is clamped to 1%–99%: ProofLab never shows certainty.
 //
-// The LRs are starting assumptions, to be calibrated on our own resolved dossiers (research 3.4).
+// The LRs are starting assumptions, to be calibrated on our own resolved dossiers (research 3.4). An
+// organisation can switch on learned factors (lib/domain/calibration.ts): they are passed in as overrides
+// per observation kind, with a separate factor for contradicting evidence; without overrides the result is
+// exactly the default calculation, so it stays reproducible.
 // ---------------------------------------------------------------------------
 
-export type LrEntry = { lr: number; label: string; against?: boolean; why: string };
+export type LrEntry = { lr: number; label: string; against?: boolean; why: string; lrAgainst?: number; learned?: boolean };
 
 export const OBSERVATION_LR: Record<ObservationKind, LrEntry> = {
   opinion: { lr: 1.1, label: "Mening of uitgesproken koopintentie", why: "Intentiecorrectie: zeggen is niet doen." },
@@ -209,18 +213,20 @@ export function assumptionProbability(
   claims: ProbabilityClaim[],
   observations: ProbabilityObservation[],
   prior = 0.5,
+  overrides: LrOverrides = {},
 ): AssumptionProbability {
   const groups = new Map<string, Omit<Contribution, "logOdds">>();
   const ignored = { synthetic: 0, rejected: 0, neutral: 0 };
   let counted = 0;
   const add = (key: string, label: string, entry: LrEntry, supports: boolean, weight: number) => {
-    if (entry.lr === 1) {
+    const factor = supports ? entry.lr : (entry.lrAgainst ?? entry.lr);
+    if (factor === 1) {
       ignored.neutral++;
       return;
     }
     const direction = supports ? "supports" : "contradicts";
     const k = `${key}:${direction}:${weight}`;
-    const g = groups.get(k) ?? { key: k, label, direction, count: 0, lr: supports ? entry.lr : 1 / entry.lr, weight };
+    const g = groups.get(k) ?? { key: k, label, direction, count: 0, lr: supports ? factor : 1 / factor, weight };
     g.count++;
     groups.set(k, g);
     counted++;
@@ -241,9 +247,11 @@ export function assumptionProbability(
       }
       if (o.reviewStatus !== "accepted") weight = AI_UNREVIEWED_WEIGHT;
     }
-    const entry = OBSERVATION_LR[o.kind as ObservationKind] ?? OBSERVATION_LR.other;
+    const base = OBSERVATION_LR[o.kind as ObservationKind] ?? OBSERVATION_LR.other;
+    const learned = overrides[o.kind as ObservationKind];
+    const entry: LrEntry = learned ? { ...base, lr: learned.lr, lrAgainst: learned.lrAgainst, learned: true } : base;
     const supports = entry.against ? false : o.relation === "supports";
-    const label = weight < 1 ? `${entry.label} (AI-codering, nog niet beoordeeld)` : entry.label;
+    const label = `${entry.label}${learned ? " (geleerde factor)" : ""}${weight < 1 ? " (AI-codering, nog niet beoordeeld)" : ""}`;
     add(`obs:${o.kind}`, label, entry, supports, weight);
   }
   const contributions: Contribution[] = [...groups.values()]

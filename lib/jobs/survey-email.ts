@@ -34,29 +34,46 @@ export function readProgress(raw: unknown, total: number): SurveyJobProgress {
   };
 }
 
-export type SurveyBatchItem = { id: string; email: string; status: string; suppressed: boolean };
+export type SurveyBatchItem = {
+  id: string;
+  email: string;
+  status: string;
+  // Salt version that derived this invitation's token and address hash (salt rotation).
+  salt_version: string;
+  // Hard bounce or spam complaint (recorded by the Resend webhook): never mailed again.
+  delivery_issue: string | null;
+  // The stored address hash is on the suppression list.
+  suppressed: boolean;
+};
 export type SurveyBatch = {
   experiment: { id: string; type: string; state: string; slug: string | null; config: unknown; ends_at: string | null } | null;
   items: SurveyBatchItem[];
 };
 export type MarkAction = "claim" | "fail" | "release" | "suppress";
 
-// The guarded RPCs job_survey_batch and job_survey_mark.
+// The guarded RPCs job_survey_batch, job_suppressed_hashes, job_survey_mark and job_survey_sent.
 export interface SurveyJobDb {
   batch(jobId: string, ids: string[]): Promise<SurveyBatch | null>;
+  // Which of these address hashes are on the organisation's do-not-mail list.
+  suppressedHashes(jobId: string, hashes: string[]): Promise<Set<string>>;
   mark(jobId: string, invitationId: string, action: MarkAction, error?: string | null): Promise<string | null>;
+  // The Resend message id of a sent mail (bounces and complaints refer to it).
+  recordSent(jobId: string, invitationId: string, messageId: string): Promise<void>;
 }
 
 export type SendFn = (mail: { to: string; subject: string; text: string; html: string; listUnsubscribe: string; idempotencyKey: string }) => Promise<
   { ok: true; id: string | null } | { ok: false; error: string; retryable: boolean }
 >;
 
-export type LinksFn = (slug: string, invitationId: string, email: string) => { link: string; unsubscribe: string; oneClick: string };
+// Links from the invitation's own salt version; throws when that version is no longer configured.
+export type LinksFn = (slug: string, invitationId: string, email: string, saltVersion: string) => { link: string; unsubscribe: string; oneClick: string };
 
 export type SurveyEmailDeps = {
   db: SurveyJobDb;
   send: SendFn;
   links: LinksFn;
+  // The address hash under every configured salt version.
+  hashes: (email: string) => string[];
   emailReady: () => boolean;
   gapMs?: number;
   sleep?: (ms: number) => Promise<void>;
@@ -100,6 +117,9 @@ export function makeSurveyEmailHandler(kind: "survey_invite" | "survey_reminder"
       if (!config.success) throw new PermanentJobError("De enquête is ongeldig.", prog);
       const survey: SurveyConfig = config.data;
       const byId = new Map(batch.items.map((i) => [i.id, i]));
+      // Unsubscribed under any salt version (also before a rotation), e.g. via another survey since the upload.
+      const hashesOf = new Map(batch.items.map((i) => [i.id, deps.hashes(i.email)]));
+      const listed = await deps.db.suppressedHashes(job.id, [...hashesOf.values()].flat());
 
       for (const id of slice) {
         if (ctx.now() >= ctx.deadline) return { outcome: "yield", progress: prog };
@@ -110,8 +130,24 @@ export function makeSurveyEmailHandler(kind: "survey_invite" | "survey_reminder"
           prog.done++;
           continue;
         }
-        if (item.suppressed) {
+        if (item.delivery_issue) {
+          // Bounced or complained: never mailed again (the database refuses the claim as well).
+          prog.skipped++;
+          prog.done++;
+          continue;
+        }
+        if (item.suppressed || hashesOf.get(id)!.some((h) => listed.has(h))) {
           await deps.db.mark(job.id, id, "suppress");
+          prog.skipped++;
+          prog.done++;
+          continue;
+        }
+        let links: ReturnType<LinksFn>;
+        try {
+          links = deps.links(exp.slug, id, item.email, item.salt_version);
+        } catch (e) {
+          // Salt version no longer configured: the personal link cannot be made, so this person is not mailed.
+          pushError(e instanceof Error ? e.message : "Persoonlijke link kon niet worden gemaakt.");
           prog.skipped++;
           prog.done++;
           continue;
@@ -123,7 +159,6 @@ export function makeSurveyEmailHandler(kind: "survey_invite" | "survey_reminder"
           prog.done++;
           continue;
         }
-        const links = deps.links(exp.slug, id, item.email);
         const mail = renderInvitationEmail({
           template,
           name: kind === "survey_invite" ? (payload.names?.[id] ?? null) : null,
@@ -140,6 +175,7 @@ export function makeSurveyEmailHandler(kind: "survey_invite" | "survey_reminder"
         }
         if (res.ok) {
           prog.sent++;
+          if (res.id) await deps.db.recordSent(job.id, id, res.id.slice(0, 100));
           streak = 0;
           streakStart = -1;
         } else if (res.retryable) {

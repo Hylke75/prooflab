@@ -6,6 +6,7 @@ import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import type { ReportSnapshot } from "@/lib/report";
 import { pct } from "@/lib/domain/stats";
+import { describeWeights } from "@/lib/domain/calibration";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { createReportVersion, shareReportVersion } from "./actions";
 import { PrintButton } from "./PrintButton";
@@ -279,7 +280,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             {r.assumptions.some((a) => "probability" in a && a.probability) && (
               <p className="explain">
                 Geschatte kans dat de aanname klopt: een beginwaarde (meestal 50%), bijgewerkt met een vaste factor per soort bewijs. Uitspraken
-                tellen nauwelijks, gedrag en betalingen sterk. Tussen haakjes de bandbreedte als die factoren de helft zwakker of sterker zijn.
+                tellen nauwelijks, gedrag en betalingen sterk. Tussen haakjes de bandbreedte als die factoren de helft zwakker of sterker zijn.{" "}
+                {"weights" in r && r.weights ? describeWeights(r.weights) : "Gebruikte factoren: de vaste standaardfactoren van ProofLab (rapport gemaakt vóór geleerde factoren bestonden)."}
               </p>
             )}
           </section>

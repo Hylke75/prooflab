@@ -12,6 +12,8 @@ import { loadInformationValue, loadProgress } from "@/lib/progress";
 import { AI_UNREVIEWED_WEIGHT, CLAIM_LR, fmtLr, OBSERVATION_LR, type LrEntry } from "@/lib/domain/evidence";
 import { DECISION_BOUNDARY, EUR_PER_COST_UNIT, TEST_LR } from "@/lib/domain/recommend";
 import { stepsDone } from "@/lib/steps";
+import { loadIdeaWeights } from "@/lib/learning-data";
+import { describeWeights, type WeightsInUse } from "@/lib/domain/calibration";
 import { aiConfigured } from "@/lib/env";
 import { ASSUMPTION_CATEGORIES, type AssumptionCategory, type AssumptionStatus } from "@/lib/domain/labels";
 import { addAssumption, deleteAssumption, linkClaim, seedAssumptions, setImportance, setPrior, unlinkClaim } from "./actions";
@@ -21,7 +23,7 @@ export const metadata: Metadata = { title: "Aannames" };
 const lrText = (e: LrEntry) => (e.lr === 1 ? "telt niet mee" : e.against ? `÷ ${fmtLr(e.lr)} (tegenbewijs)` : `× ${fmtLr(e.lr)} (tegen: ÷ ${fmtLr(e.lr)})`);
 
 // The factors behind the probabilities and the ranking, visible as they are used in code.
-function HowWeCalculate() {
+function HowWeCalculate({ weights }: { weights: WeightsInUse }) {
   const rows = [...Object.values(OBSERVATION_LR), ...Object.values(CLAIM_LR)];
   return (
     <details className="card mt-18">
@@ -48,7 +50,10 @@ function HowWeCalculate() {
         Een test is geschikt als een duidelijke uitkomst de kans over de beslisgrens van {DECISION_BOUNDARY * 100}% kan duwen. Kosten = weken doorlooptijd + € / {EUR_PER_COST_UNIT}.
         Factor van één duidelijke testuitkomst: interviews × {fmtLr(TEST_LR.interview)}, landingpage × {fmtLr(TEST_LR.landing)}, prijs-/aanbodtest × {fmtLr(TEST_LR.pricing)}.
       </p>
-      <p className="tiny mt-8">Deze factoren zijn startaannames. Zodra er genoeg afgeronde dossiers met een vastgelegde uitkomst zijn, worden ze daarop geijkt.</p>
+      <p className="tiny mt-8">
+        Deze factoren zijn startaannames. Een werkruimte kan geleerde factoren aanzetten op de pagina Voorspelkwaliteit; die worden geschat uit eigen
+        afgeronde dossiers, per soort bewijs pas vanaf voldoende dossiers. {describeWeights(weights)}
+      </p>
     </details>
   );
 }
@@ -57,11 +62,12 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
   const { id } = await params;
   const { idea, canWrite } = await getIdea(id);
   const supabase = await supabaseServer();
-  const [ranked, progress, { data: claims }, { data: links }] = await Promise.all([
+  const [ranked, progress, { data: claims }, { data: links }, weights] = await Promise.all([
     loadInformationValue(id),
     loadProgress(id),
     supabase.from("claims").select("id, statement, status").eq("idea_id", id).order("created_at"),
     supabase.from("assumption_claims").select("assumption_id, claim_id, relation, claims(statement, status)").eq("idea_id", id),
+    loadIdeaWeights(id),
   ]);
   const board: BoardAssumption[] = ranked.map((a) => ({
     ...a,
@@ -122,7 +128,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
       )}
 
       <RedTeamButton ideaId={id} assumptions={board} canWrite={canWrite} />
-      {board.length > 0 && <HowWeCalculate />}
+      {board.length > 0 && <HowWeCalculate weights={weights.inUse} />}
 
       {canWrite && (
         <div className="card mt-18">

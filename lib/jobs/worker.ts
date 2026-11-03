@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { env, trackingConfigured, emailConfigured } from "@/lib/env";
 import { supabaseAnon } from "@/lib/supabase/server";
 import { sendEmail, SEND_GAP_MS } from "@/lib/email";
-import { personalLinks } from "@/lib/survey-links";
+import { allEmailHashes, personalLinks } from "@/lib/survey-links";
 import type { Json } from "@/lib/database.types";
 import { WORKER_BUDGET_MS, runJobs, type JobHandler, type JobRow, type JobStore, type RunSummary } from "./core";
 import { makeSurveyEmailHandler, type SurveyBatch, type SurveyJobDb } from "./survey-email";
@@ -56,6 +56,17 @@ function surveyDb(): SurveyJobDb {
       if (error) rpcError("job_survey_batch", error);
       return (data ?? null) as SurveyBatch | null;
     },
+    async suppressedHashes(jobId, hashes) {
+      if (!hashes.length) return new Set<string>();
+      const { data, error } = await db.rpc("job_suppressed_hashes", { p_key: key, p_job: jobId, p_hashes: hashes });
+      if (error) rpcError("job_suppressed_hashes", error);
+      return new Set(data ?? []);
+    },
+    async recordSent(jobId, invitationId, messageId) {
+      const { error } = await db.rpc("job_survey_sent", { p_key: key, p_job: jobId, p_invitation: invitationId, p_message_id: messageId });
+      // The mail did leave; a missing message id only weakens bounce matching, so it is logged, not retried.
+      if (error) console.error("job_survey_sent", error.message);
+    },
     async mark(jobId, invitationId, action, err) {
       const { data, error } = await db.rpc("job_survey_mark", { p_key: key, p_job: jobId, p_invitation: invitationId, p_action: action, p_error: err ?? null });
       if (error) rpcError("job_survey_mark", error);
@@ -65,7 +76,7 @@ function surveyDb(): SurveyJobDb {
 }
 
 function handlers(): Record<string, JobHandler> {
-  const deps = { db: surveyDb(), send: sendEmail, links: personalLinks, emailReady: emailConfigured, gapMs: SEND_GAP_MS };
+  const deps = { db: surveyDb(), send: sendEmail, links: personalLinks, hashes: allEmailHashes, emailReady: emailConfigured, gapMs: SEND_GAP_MS };
   return {
     survey_invite: makeSurveyEmailHandler("survey_invite", deps),
     survey_reminder: makeSurveyEmailHandler("survey_reminder", deps),

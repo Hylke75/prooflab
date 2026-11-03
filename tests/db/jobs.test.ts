@@ -258,6 +258,36 @@ d("background jobs", () => {
     expect(again.created).toBe(true);
   });
 
+  it("never claims a bounced address, stores the message ids and checks suppression hashes of the job's organisation", async () => {
+    await drain();
+    const bounced = await invitation(alice, S, `bounce-${randomUUID()}@voorbeeld.nl`);
+    await db.query("update public.survey_invitations set status = 'failed', delivery_issue = 'bounced' where id = $1", [bounced]);
+    const good = await invitation(alice, S, `goed-${randomUUID()}@voorbeeld.nl`);
+    const j = await enqueue(alice, S.idea, "survey_invite", { experiment_id: S.e, template: { subject: "a", body: "b" }, ids: [bounced, good] }, null);
+    await claim();
+    const batch = await as("anon", async (c) => (await c.query("select public.job_survey_batch($1, $2, $3) as b", [ingestKey, j.id, [bounced, good]])).rows[0].b);
+    const byId = Object.fromEntries(batch.items.map((i: { id: string }) => [i.id, i]));
+    expect(byId[bounced]).toMatchObject({ delivery_issue: "bounced", salt_version: "v1" });
+    expect(await mark(j.id, bounced, "claim")).toBeNull();
+    expect(await mark(j.id, bounced, "suppress")).toBeNull();
+    expect((await db.query("select status from public.survey_invitations where id = $1", [bounced])).rows[0].status).toBe("failed");
+    expect(await mark(j.id, good, "claim")).not.toBeNull();
+    const sent = (inv: string, id: string) => as("anon", async (c) => (await c.query("select public.job_survey_sent($1, $2, $3, $4) as ok", [ingestKey, j.id, inv, id])).rows[0].ok);
+    expect(await sent(good, "msg_1")).toBe(true);
+    expect((await db.query("select provider_message_id from public.survey_invitations where id = $1", [good])).rows[0].provider_message_id).toBe("msg_1");
+    // An invitation outside the job is not touched.
+    const outside = await invitation(alice, S, `buiten-${randomUUID()}@voorbeeld.nl`);
+    expect(await sent(outside, "msg_2")).toBe(false);
+    await expect(as("anon", (c) => c.query("select public.job_survey_sent($1, $2, $3, 'x')", ["wrong-key", j.id, good]))).rejects.toThrow(/FORBIDDEN/);
+
+    const h = sha(`oud-${randomUUID()}`);
+    await db.query("insert into public.email_suppressions (org_id, email_hash) values ($1, $2)", [S.org, h]);
+    await db.query("insert into public.email_suppressions (org_id, email_hash) values ($1, $2)", [other.org, sha("ander")]);
+    const listed = await as("anon", async (c) => (await c.query("select public.job_suppressed_hashes($1, $2, $3) as h", [ingestKey, j.id, [h, sha("ander"), sha("niemand")]])).rows[0].h);
+    expect(listed).toEqual([h]);
+    await expect(as("anon", (c) => c.query("select public.job_suppressed_hashes($1, $2, '{}')", ["wrong-key", j.id]))).rejects.toThrow(/FORBIDDEN/);
+  });
+
   it("claims a reminder only three days after the first mail and only once", async () => {
     await drain();
     const due = await invitation(alice, S, `oud-${randomUUID()}@voorbeeld.nl`, "sent");

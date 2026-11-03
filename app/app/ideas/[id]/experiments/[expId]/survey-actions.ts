@@ -8,15 +8,26 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { requireWritableIdea } from "@/lib/data";
-import { aiConfigured, emailConfigured, env, trackingConfigured } from "@/lib/env";
+import { aiConfigured, emailConfigured, env, trackingConfigured, trackingSalts } from "@/lib/env";
 import { SurveyConfigSchema, type SurveyConfig } from "@/lib/domain/survey";
 import { MAX_INVITES, canRemind, checkTemplate, isEmail, linksCsv, normalizeEmail, sliceBatches, channelLink } from "@/lib/domain/survey-distribution";
-import { emailHash, invitationToken, tokenHash } from "@/lib/domain/survey-tokens";
+import { emailHash, emailHashes, invitationToken, tokenHash } from "@/lib/domain/survey-tokens";
 import { personalLinks } from "@/lib/survey-links";
 import { MAX_JOB_IDS, SurveyJobPayloadSchema } from "@/lib/jobs/survey-email";
 import { kickWorker, workerConfigured } from "@/lib/jobs/worker";
 import { jobNeedsWorker, latestSurveyJob, type StartJobResult, type SurveyJob } from "@/lib/survey-jobs";
-import { PROMO_MIN, PROMO_PLATFORMS, PROMO_PLATFORM_KEYS, finalizePost, isPromoPlatform, templatePosts, type PromoInput, type PromoPlatform } from "@/lib/domain/promo";
+import {
+  PROMO_MIN,
+  PROMO_PLATFORMS,
+  PROMO_PLATFORM_KEYS,
+  finalizePost,
+  isPromoPlatform,
+  newPostCode,
+  postLink,
+  templatePosts,
+  type PromoInput,
+  type PromoPlatform,
+} from "@/lib/domain/promo";
 import { aiErrorMessage, runAi } from "@/lib/ai/guard";
 import { draftPromoPosts } from "@/lib/ai/promo";
 import type { LandingConfig } from "@/lib/experiment-metrics";
@@ -93,9 +104,14 @@ export async function createInvitations(ideaId: string, expId: string, input: { 
     const emails = [...unique.keys()];
     if (emails.length === 0) return fail("Er staan geen geldige e-mailadressen in de lijst.");
 
+    // New invitations use the current salt version; the suppression list is checked under every known version,
+    // so someone who unsubscribed before a salt rotation stays suppressed.
     const salt = env.trackingSalt;
+    const version = env.trackingSaltVersion;
     const hashOf = new Map(emails.map((e) => [e, emailHash(salt, e)]));
-    const suppressed = await suppressedHashes(exp.org_id, [...hashOf.values()]);
+    const allHashes = new Map(emails.map((e) => [e, emailHashes(trackingSalts, e)]));
+    const suppressedRaw = await suppressedHashes(exp.org_id, [...allHashes.values()].flat());
+    const suppressed = new Set(emails.filter((e) => allHashes.get(e)!.some((h) => suppressedRaw.has(h))).map((e) => hashOf.get(e)!));
     const supabase = await supabaseServer();
     const existing = new Set<string>();
     for (const chunk of sliceBatches(emails, 200)) {
@@ -107,7 +123,7 @@ export async function createInvitations(ideaId: string, expId: string, input: { 
     for (const chunk of sliceBatches(fresh, 500)) {
       const rows = chunk.map((email) => {
         const id = randomUUID();
-        return { id, email, email_hash: hashOf.get(email)!, experiment_id: expId, idea_id: ideaId, token_hash: tokenHash(invitationToken(salt, id)) };
+        return { id, email, email_hash: hashOf.get(email)!, salt_version: version, experiment_id: expId, idea_id: ideaId, token_hash: tokenHash(invitationToken(salt, id)) };
       });
       const { error } = await supabase.from("survey_invitations").insert(rows);
       if (error) return fail("De uitnodigingen konden niet worden opgeslagen. Probeer het opnieuw.");
@@ -179,7 +195,7 @@ export async function startInvitationSend(
       if (!recipients.success) return fail("Ongeldige invoer.");
       const byEmail = new Map(recipients.data.map((r) => [normalizeEmail(r.email), r.name]));
       for (const chunk of sliceBatches([...byEmail.keys()], 200)) {
-        const { data, error } = await supabase.from("survey_invitations").select("id, email").eq("experiment_id", expId).in("status", ["pending", "failed"]).in("email", chunk);
+        const { data, error } = await supabase.from("survey_invitations").select("id, email").eq("experiment_id", expId).in("status", ["pending", "failed"]).is("delivery_issue", null).in("email", chunk);
         if (error) return fail("De uitnodigingen konden niet worden geladen.");
         for (const r of data ?? []) {
           ids.push(r.id);
@@ -193,6 +209,7 @@ export async function startInvitationSend(
         .select("id")
         .eq("experiment_id", expId)
         .in("status", ["pending", "failed"])
+        .is("delivery_issue", null)
         .order("created_at")
         .limit(MAX_JOB_IDS);
       if (error) return fail("De uitnodigingen konden niet worden geladen.");
@@ -219,6 +236,7 @@ export async function startReminderSend(ideaId: string, expId: string, input: { 
       .eq("status", "sent")
       .is("error", null)
       .is("reminded_at", null)
+      .is("delivery_issue", null)
       .order("sent_at")
       .limit(MAX_JOB_IDS);
     if (error) return fail("De uitnodigingen konden niet worden geladen.");
@@ -265,14 +283,15 @@ export async function exportInvitationLinks(ideaId: string, expId: string): Prom
     const supabase = await supabaseServer();
     const { data, error } = await supabase
       .from("survey_invitations")
-      .select("id, email")
+      .select("id, email, salt_version")
       .eq("experiment_id", expId)
       .in("status", ["pending", "failed"])
+      .is("delivery_issue", null)
       .order("created_at")
       .limit(MAX_INVITES * 5);
     if (error) return fail("De uitnodigingen konden niet worden geladen.");
     const rows = (data ?? []).map((r) => {
-      const l = personalLinks(slug, r.id, r.email);
+      const l = personalLinks(slug, r.id, r.email, r.salt_version);
       return { email: r.email, link: l.link, unsubscribe: l.unsubscribe };
     });
     return { csv: linksCsv(rows), count: rows.length };
@@ -325,7 +344,10 @@ export async function generatePromo(ideaId: string, expId: string, raw: unknown)
     if (!platforms) return fail("Onbekend platform.");
     const input = promoInput(exp, { incentive: v.incentive || null, dmIncludesLink: !!v.dmIncludesLink });
     if (!input) return fail("Deze test heeft geen publieke pagina.");
-    const links = promoLinks(exp);
+    // Every post gets its own code and link (utm_content), so responses can be attributed per post.
+    const base = promoLinks(exp);
+    const codes = Object.fromEntries(platforms.map((k) => [k, newPostCode(k)])) as Record<PromoPlatform, string>;
+    const links = Object.fromEntries(platforms.map((k) => [k, postLink(base[k], codes[k])])) as Record<PromoPlatform, string>;
 
     let posts: { platform: PromoPlatform; body: string }[];
     let origin: "ai" | "template" = "template";
@@ -353,7 +375,7 @@ export async function generatePromo(ideaId: string, expId: string, raw: unknown)
     if (delError) return fail("De vorige berichten konden niet worden vervangen.");
     const { error } = await supabase
       .from("promo_posts")
-      .insert(posts.filter((p) => p.body.length >= PROMO_MIN).map((p) => ({ experiment_id: expId, idea_id: ideaId, platform: p.platform, body: p.body.slice(0, 3000), origin })));
+      .insert(posts.filter((p) => p.body.length >= PROMO_MIN).map((p) => ({ experiment_id: expId, idea_id: ideaId, platform: p.platform, code: codes[p.platform], body: p.body.slice(0, 3000), origin })));
     if (error) return fail("De berichten konden niet worden opgeslagen.");
     refresh(ideaId, expId);
     return { ok: note ?? (origin === "ai" ? "AI-concepten gemaakt. Lees ze na voor je ze plaatst." : "Berichten gemaakt.") };

@@ -241,6 +241,8 @@ export function Invitations(p: Props) {
           ["Mislukt", c.failed],
           ["Ingevuld", c.responded],
           ["Afgemeld", c.unsubscribed],
+          ["Onbestelbaar", c.bounced],
+          ["Spam gemeld", c.complained],
         ].map(([label, n]) => (
           <div className="live-stat" role="listitem" key={label}>
             <small>{label}</small>

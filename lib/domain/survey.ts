@@ -128,7 +128,8 @@ export function validateAnswers(config: SurveyConfig, raw: unknown): { ok: true;
   return { ok: true, answers: out };
 }
 
-export type ResponseRow = { answers: Answers; source: "invitation" | "open_link"; channel: string; duration_ms: number | null };
+// content: the post code (utm_content) of the open link the response came through, if any.
+export type ResponseRow = { answers: Answers; source: "invitation" | "open_link"; channel: string; duration_ms: number | null; content?: string | null };
 
 // Very fast completions are not believable answers (likely a bot or click-through). Two seconds per question,
 // at least eight seconds overall.

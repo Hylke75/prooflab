@@ -3,11 +3,12 @@ import { z } from "zod";
 import { supabaseAnon } from "@/lib/supabase/server";
 import { env, trackingConfigured } from "@/lib/env";
 import { consentText, isSameOriginJson, variantFor, visitorFromRequest } from "@/lib/public-test";
-import { channelFrom } from "@/lib/domain/tracking";
+import { channelFrom, contentFrom } from "@/lib/domain/tracking";
 
 const Body = z.object({
   event: z.enum(["view", "cta_click", "submit"]),
   utm_source: z.string().max(40).optional(),
+  utm_content: z.string().max(40).optional(), // post code of the invitation post
   email: z.string().trim().email().max(254).optional().or(z.literal("")),
   consent: z.boolean().optional(),
   website: z.string().max(0).optional(), // honeypot: real people leave it empty
@@ -40,6 +41,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/t/[slug]">)
   const t = test as { type: string; config: { price_points?: unknown[]; researcher?: string } };
   const variant = String(t.type === "pricing" ? variantFor(visitor.hash, t.config.price_points?.length ?? 1) : 0);
   const channel = channelFrom(b.utm_source);
+  const content = contentFrom(b.utm_content);
 
   if (b.event === "submit") {
     const email = b.email ? b.email : null;
@@ -55,6 +57,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/t/[slug]">)
       p_consent: !!b.consent,
       p_consent_text: consentText(t.config.researcher ?? "de onderzoeker"),
       p_rate_bucket: visitor.bucket,
+      p_content: content,
     });
     if (error) return NextResponse.json({ ok: false }, { status: 400 });
     return NextResponse.json({ ok: true, counted: data });
@@ -67,6 +70,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/t/[slug]">)
     p_variant: variant,
     p_channel: channel,
     p_rate_bucket: visitor.bucket,
+    p_content: content,
   });
   if (error) return NextResponse.json({ ok: false }, { status: 400 });
   return NextResponse.json({ ok: true, counted: data });

@@ -4,6 +4,7 @@ import { SurveyConfigSchema } from "@/lib/domain/survey";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { channelLink, defaultInvitation, defaultReminder, invitationCounts, publicPath } from "@/lib/domain/survey-distribution";
 import { PROMO_PLATFORMS, PROMO_PLATFORM_KEYS, type PromoPlatform } from "@/lib/domain/promo";
+import { maskCampaignUrl } from "@/lib/integrations/expandi-push";
 import { latestSurveyJob } from "@/lib/survey-jobs";
 import { CopyButton } from "./CopyButton";
 import { Invitations } from "./Invitations";
@@ -25,9 +26,10 @@ export async function Distribution({ ideaId, exp, canWrite }: { ideaId: string; 
   const supabase = await supabaseServer();
   const slug = exp.public_slug;
 
-  const [{ data: posts }, { data: invitations }, job] = await Promise.all([
-    open ? supabase.from("promo_posts").select("id, platform, body, origin").eq("experiment_id", exp.id).order("created_at") : Promise.resolve({ data: [] }),
-    survey ? supabase.from("survey_invitations").select("status, sent_at, reminded_at, error").eq("experiment_id", exp.id).limit(20000) : Promise.resolve({ data: [] }),
+  const [{ data: posts }, { data: invitations }, { data: hook }, job] = await Promise.all([
+    open ? supabase.from("promo_posts").select("id, platform, body, origin, code").eq("experiment_id", exp.id).order("created_at") : Promise.resolve({ data: [] }),
+    survey ? supabase.from("survey_invitations").select("status, sent_at, reminded_at, error, delivery_issue").eq("experiment_id", exp.id).limit(20000) : Promise.resolve({ data: [] }),
+    open ? supabase.from("expandi_campaign_hooks").select("url, pushed_count, last_push_at").eq("experiment_id", exp.id).maybeSingle() : Promise.resolve({ data: null }),
     survey ? latestSurveyJob(exp.id) : Promise.resolve(null),
   ]);
   const counts = invitationCounts(invitations ?? []);
@@ -87,6 +89,14 @@ export async function Distribution({ ideaId, exp, canWrite }: { ideaId: string; 
         />
       )}
 
+      {survey && c && (
+        <p className="tiny mt-8" role="note">
+          {env.resendWebhookSecret
+            ? `Bounces en spammeldingen: ${counts.bounced} onbestelbaar, ${counts.complained} als spam gemeld (via de Resend-webhook; die adressen worden niet opnieuw gemaild).`
+            : "Bounces en spammeldingen worden niet bijgehouden: de Resend-webhook is niet gekoppeld (RESEND_WEBHOOK_SECRET ontbreekt). Onbestelbare adressen blijven dan als verstuurd staan."}
+        </p>
+      )}
+
       {open && (
         <PromoPosts
           ideaId={ideaId}
@@ -95,6 +105,7 @@ export async function Distribution({ ideaId, exp, canWrite }: { ideaId: string; 
           aiReady={aiConfigured()}
           posts={posts ?? []}
           links={links}
+          expandi={hook ? { masked: maskCampaignUrl(hook.url), pushed: hook.pushed_count, lastPush: hook.last_push_at } : null}
         />
       )}
     </section>

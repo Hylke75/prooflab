@@ -3,6 +3,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { CalibrationChart } from "@/components/forecast/CalibrationChart";
+import { CoachEffect, LearnedWeights, SurveyAgreement } from "@/components/forecast/Learning";
+import { loadLearningView } from "@/lib/learning-data";
 import { calendarDate } from "@/components/sprint/SprintCard";
 import { getWorkspace } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
@@ -30,7 +32,8 @@ export default async function ForecastsPage() {
   if (!ws.org) redirect("/app");
   const org = ws.org.id;
   const supabase = await supabaseServer();
-  const [scores, calibration, allOutcomes, upcoming, ...baseRates] = await Promise.all([
+  const [learning, scores, calibration, allOutcomes, upcoming, ...baseRates] = await Promise.all([
+    loadLearningView(org),
     supabase.rpc("forecast_scores", { p_org: org }),
     supabase.rpc("forecast_calibration", { p_org: org }),
     supabase.from("idea_outcomes").select("idea_id, achieved"),
@@ -239,6 +242,24 @@ export default async function ForecastsPage() {
             ))}
           </div>
         </div>
+      )}
+
+      {learning && (
+        <>
+          <div className="section-title mt-24">
+            <h2>Leren van uitkomsten</h2>
+          </div>
+          <p className="sub">
+            Wat leren afgeronde dossiers over het bewijs en de coach? Alles hieronder is beschrijvend en wordt per afgerond dossier betrouwbaarder.
+          </p>
+          <LearnedWeights view={learning} />
+          <div className="mt-24">
+            <CoachEffect view={learning} />
+          </div>
+          <div className="grid-2 mt-24">
+            <SurveyAgreement view={learning} />
+          </div>
+        </>
       )}
     </PageFrame>
   );

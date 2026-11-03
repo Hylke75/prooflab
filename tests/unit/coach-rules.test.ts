@@ -7,6 +7,7 @@ import {
   planNoteChanges,
   projectedSample,
   RULES,
+  ruleLabel,
   type CoachFacts,
   type StoredNote,
 } from "@/lib/coach/rules";
@@ -233,5 +234,69 @@ describe("reconciling rule output with stored notes", () => {
     const praise = evaluateRules(facts({ observations: [{ kind: "deposit", isBehaviour: true, isSynthetic: false, createdAt: iso(-1) }] }));
     const old = { id: "p", code: "praise_first_behaviour", source: "rules", status: "done", resolvedAt: iso(-60) };
     expect(planNoteChanges(praise, [old], NOW).create.map((d) => d.code)).not.toContain("praise_first_behaviour");
+  });
+});
+
+describe("starting calibration: forecast_overconfident", () => {
+  const br = { low: 0.1, high: 0.4 }; // midpoint 25%
+  const calm = (over: Partial<CoachFacts> = {}) =>
+    facts({
+      baseRate: br,
+      orgResolved: 3,
+      forecasts: [
+        { moment: "intake", kind: "consultant", probability: 0.3 },
+        { moment: "research", kind: "consultant", probability: 0.35 },
+      ],
+      ...over,
+    });
+
+  it("stays quiet when forecasts are near the base rate", () => {
+    expect(evaluateRules(calm())).toEqual([]);
+  });
+
+  it("asks about a forecast more than 25 points from the base rate, at the latest such moment", () => {
+    const f = calm({
+      forecasts: [
+        { moment: "intake", kind: "consultant", probability: 0.8 },
+        { moment: "research", kind: "client", probability: 0.6 },
+      ],
+    });
+    const n = evaluateRules(f).find((x) => x.code.startsWith("forecast_overconfident"))!;
+    expect(n.code).toBe("forecast_overconfident:research");
+    expect(n.kind).toBe("question");
+    expect(n.audience).toBe("consultant");
+    expect(n.href).toBe(`${base}/outcome#kalibratiehulp`);
+    expect(n.body).toMatch(/basispercentage/);
+    expect(n.body).toContain("(10–40%)");
+    // Blind rule: the note names no value, person or direction.
+    expect(n.body).not.toMatch(/60%|80%|hoger|lager|opdrachtgever/i);
+    expect(n.body.length).toBeLessThanOrEqual(400);
+    expect(n.body.split(/[.!?](\s|$)/).filter((s) => s && s.trim().length > 1).length).toBeLessThanOrEqual(3);
+  });
+
+  it("is silent once a behaviour test ended, without a base rate, with ten own outcomes, or after resolution", () => {
+    const far: Partial<CoachFacts> = { forecasts: [{ moment: "research", kind: "consultant", probability: 0.9 }] };
+    const code = "forecast_overconfident:research";
+    expect(codes(calm(far))).toContain(code);
+    expect(codes(calm({ ...far, experiments: [exp({ type: "pricing", state: "ended" })] }))).not.toContain(code);
+    // An interview is not behaviour; a landing page still running has not ended.
+    expect(codes(calm({ ...far, experiments: [exp({ type: "interview", state: "ended" }), exp({ id: "e2", type: "landing", state: "live" })] }))).toContain(code);
+    expect(codes(calm({ ...far, baseRate: null }))).not.toContain(code);
+    expect(codes(calm({ ...far, orgResolved: 10 }))).not.toContain(code);
+    expect(codes(calm({ ...far, outcome: { defined: true, due: null, resolved: true, checkins: [] } }))).not.toContain(code);
+  });
+
+  it("ignores AI forecasts and forecasts without a visible probability", () => {
+    const f = calm({ forecasts: [{ moment: "research", kind: "ai", probability: 0.95 }, { moment: "research", kind: "consultant" }] });
+    expect(codes(f)).not.toContain("forecast_overconfident:research");
+  });
+
+  it("has a Dutch label for every rule on the learning page", () => {
+    for (const code of Object.keys(RULES)) {
+      const prefix = code === "praise_preregistered" ? "praise_prereg" : code === "forecast_missing" ? "forecast" : code;
+      expect(ruleLabel(prefix)).not.toBe(prefix);
+    }
+    expect(ruleLabel("ai")).toBe("AI-coach");
+    expect(ruleLabel("onbekend")).toBe("onbekend");
   });
 });

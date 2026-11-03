@@ -21,7 +21,19 @@ describe("backoff", () => {
 // A fake database with the same semantics as the SQL functions (claim_jobs, complete_job, job_survey_*).
 // ---------------------------------------------------------------------------
 
-type Inv = { id: string; email: string; status: string; sent_at: string | null; reminded_at: string | null; error: string | null; suppressed: boolean };
+type Inv = {
+  id: string;
+  email: string;
+  status: string;
+  sent_at: string | null;
+  reminded_at: string | null;
+  error: string | null;
+  suppressed: boolean;
+  salt_version: string;
+  delivery_issue: string | null;
+  provider_message_id: string | null;
+  reminder_message_id: string | null;
+};
 
 const SURVEY_CONFIG = {
   title: "Hoe plannen eventbureaus?",
@@ -40,6 +52,8 @@ class FakeDb implements JobStore, SurveyJobDb {
   experiment = { id: randomUUID(), type: "survey", state: "live", slug: "abcdef12345678", config: SURVEY_CONFIG as unknown, ends_at: null as string | null };
   clock = Date.parse("2026-11-04T10:00:00Z");
   marks: { id: string; action: MarkAction }[] = [];
+  // Hashes on the organisation's suppression list (any salt version).
+  suppressionList = new Set<string>();
 
   addJob(kind: string, ids: string[], extra: Partial<JobRow> = {}) {
     const id = randomUUID();
@@ -63,7 +77,7 @@ class FakeDb implements JobStore, SurveyJobDb {
   addInvitations(n: number, over: Partial<Inv> = {}) {
     return Array.from({ length: n }, (_, i) => {
       const id = randomUUID();
-      this.invitations.set(id, { id, email: `p${this.invitations.size}-${i}@voorbeeld.nl`, status: "pending", sent_at: null, reminded_at: null, error: null, suppressed: false, ...over });
+      this.invitations.set(id, { id, email: `p${this.invitations.size}-${i}@voorbeeld.nl`, status: "pending", sent_at: null, reminded_at: null, error: null, suppressed: false, salt_version: "v1", delivery_issue: null, provider_message_id: null, reminder_message_id: null, ...over });
       return id;
     });
   }
@@ -109,6 +123,15 @@ class FakeDb implements JobStore, SurveyJobDb {
       items: ids.filter((id) => this.invitations.has(id)).map((id) => ({ ...this.invitations.get(id)! })),
     };
   }
+  async suppressedHashes(_jobId: string, hashes: string[]) {
+    return new Set(hashes.filter((h) => this.suppressionList.has(h)));
+  }
+  async recordSent(jobId: string, invitationId: string, messageId: string) {
+    const inv = this.invitations.get(invitationId);
+    if (!inv) return;
+    if (this.jobs.get(jobId)!.kind === "survey_invite") inv.provider_message_id = messageId;
+    else inv.reminder_message_id = messageId;
+  }
   async mark(jobId: string, invitationId: string, action: MarkAction, error?: string | null) {
     this.marks.push({ id: invitationId, action });
     const j = this.jobs.get(jobId)!;
@@ -116,6 +139,7 @@ class FakeDb implements JobStore, SurveyJobDb {
     if (!inv) return null;
     if (j.status !== "running" && (action === "claim" || action === "suppress")) return null;
     if (action === "claim" && this.experiment.state !== "live") return null;
+    if (inv.delivery_issue && action !== "release") return null;
     const now = new Date(this.clock).toISOString();
     if (j.kind === "survey_invite") {
       if (action === "claim" && ["pending", "failed"].includes(inv.status)) return Object.assign(inv, { status: "sent", sent_at: now, error: null }).sent_at;
@@ -148,7 +172,12 @@ function handlers(db: FakeDb, send: SendFn, emailReady = true) {
   const deps = {
     db,
     send,
-    links: (slug: string, id: string) => ({ link: `https://app.test/s/${slug}?u=${id}`, unsubscribe: `https://app.test/s/afmelden?u=${id}`, oneClick: `https://app.test/api/s/afmelden?u=${id}` }),
+    links: (slug: string, id: string, _email: string, version: string) => {
+      if (!["v1", "v2"].includes(version)) throw new Error(`Sleutelversie ${version} staat niet meer in TRACKING_SALTS`);
+      return { link: `https://app.test/s/${slug}?u=${version}-${id}`, unsubscribe: `https://app.test/s/afmelden?u=${id}`, oneClick: `https://app.test/api/s/afmelden?u=${id}` };
+    },
+    // Hash of the address under two salt versions.
+    hashes: (email: string) => [`v2:${email}`, `v1:${email}`],
     emailReady: () => emailReady,
     gapMs: 0,
     sleep: async () => {},
@@ -189,6 +218,39 @@ describe("survey e-mail job", () => {
     await run(db, m.send);
     expect(m.sent).toHaveLength(30);
     expect(db.jobs.get(again)!.status).toBe("done");
+  });
+
+  it("skips bounced or complained addresses, checks suppression under every salt version and uses the invitation's salt", async () => {
+    const db = new FakeDb();
+    const [ok, old] = db.addInvitations(2);
+    db.invitations.get(old)!.salt_version = "v2";
+    const [bounced] = db.addInvitations(1, { delivery_issue: "bounced", status: "failed" });
+    const [unsubOld] = db.addInvitations(1);
+    db.suppressionList.add(`v1:${db.invitations.get(unsubOld)!.email}`);
+    const [gone] = db.addInvitations(1, { salt_version: "v0" });
+    const job = db.addJob("survey_invite", [ok, old, bounced, unsubOld, gone]);
+    const m = mailer();
+    await run(db, m.send);
+    expect(m.sent.map((x) => x.to).sort()).toEqual([db.invitations.get(ok)!.email, db.invitations.get(old)!.email].sort());
+    expect(m.sent.find((x) => x.to === db.invitations.get(old)!.email)!.text).toContain(`v2-${old}`);
+    expect(db.invitations.get(bounced)!.status).toBe("failed");
+    expect(db.invitations.has(unsubOld)).toBe(false);
+    expect(db.invitations.get(gone)!.status).toBe("pending");
+    const p = readProgress(db.jobs.get(job)!.progress, 5);
+    expect(p).toMatchObject({ sent: 2, skipped: 3 });
+    expect(p.errors.join(" ")).toMatch(/Sleutelversie v0/);
+  });
+
+  it("stores the Resend message id of the first mail and of the reminder", async () => {
+    const db = new FakeDb();
+    const [a] = db.addInvitations(1);
+    db.addJob("survey_invite", [a]);
+    await run(db, mailer(() => ({ ok: true, id: "msg_first" })).send);
+    expect(db.invitations.get(a)!.provider_message_id).toBe("msg_first");
+    db.invitations.get(a)!.sent_at = new Date(db.clock - 4 * 86_400_000).toISOString();
+    db.addJob("survey_reminder", [a]);
+    await run(db, mailer(() => ({ ok: true, id: "msg_reminder" })).send);
+    expect(db.invitations.get(a)!).toMatchObject({ provider_message_id: "msg_first", reminder_message_id: "msg_reminder" });
   });
 
   it("uses names only for the greeting and one idempotency key per claim", async () => {
