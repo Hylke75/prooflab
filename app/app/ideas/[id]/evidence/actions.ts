@@ -22,6 +22,8 @@ import { deviates, isFinalAction } from "@/lib/domain/decision-rule";
 import { loadRuleCheck } from "@/lib/decision-rule-data";
 import { EXTEND_MAX_WEEKS, EXTEND_MIN_WEEKS, extensionBlocker } from "@/lib/domain/extension";
 import { againstFor } from "@/lib/against-data";
+import { isConclusiveDecision } from "@/lib/domain/dossier-status";
+import { DECISIONS } from "@/lib/domain/labels";
 
 import { fieldErrorsFrom, savedNothing } from "@/lib/domain/form-errors";
 
@@ -238,6 +240,15 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   refresh(ideaId);
   if (p.data.action === "extend")
     return { error: null, ok: `Verlengde testfase van ${p.data.extend_weeks} weken vastgelegd. Het definitieve besluit en de uitkomstklok volgen daarna.` };
+  // B1: na verder testen, bijsturen of pauzeren is het dossier niet besloten; de bevestiging zegt wat nu volgt.
+  if (!isConclusiveDecision(p.data.action))
+    return {
+      error: null,
+      ok:
+        p.data.action === "pause"
+          ? "Besluit vastgelegd: pauzeren. Het definitieve besluit (doorgaan of stoppen) volgt als het dossier terugkomt."
+          : `Besluit vastgelegd: ${DECISIONS[p.data.action].label.toLowerCase()}. Ontwerp de volgende test; het definitieve besluit volgt daarna.`,
+    };
   return { error: null, ok: "Besluit vastgelegd. De opdrachtgever kan het nu bevestigen; werk daarna het rapport bij." };
 }
 

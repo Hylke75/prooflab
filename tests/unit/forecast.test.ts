@@ -193,6 +193,7 @@ function progress(forecast: Partial<ForecastState> | undefined, over: Partial<Id
     latestRealityCheckAt: "2026-10-21T10:00:00Z",
     decisions: 0,
     latestDecisionAt: null,
+    latestDecisionAction: null,
     latestDecisionConfirmed: false,
     reports: 0,
     latestReportAt: null,

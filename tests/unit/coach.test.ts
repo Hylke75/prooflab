@@ -32,6 +32,7 @@ function progress(over: Partial<IdeaProgress> = {}): IdeaProgress {
     latestRealityCheckAt: null,
     decisions: 0,
     latestDecisionAt: null,
+    latestDecisionAction: null,
     latestDecisionConfirmed: false,
     reports: 0,
     latestReportAt: null,
@@ -39,6 +40,8 @@ function progress(over: Partial<IdeaProgress> = {}): IdeaProgress {
     behaviourObservations: 0,
     ...over,
   };
+  // Zonder opgegeven actie is een besluit in deze testdata definitief (doorgaan).
+  if (over.latestDecisionAction === undefined) base.latestDecisionAction = base.decisions > 0 ? "continue" : null;
   // Fase B1c: de dossierstatus volgt uit dezelfde tellers. Markt is klaar met een beantwoorde beslissende vraag
   // met geverifieerde bron; aannames zijn klaar zodra er een hoofdtest is (hier: zodra er een test bestaat).
   return {
@@ -56,6 +59,7 @@ function progress(over: Partial<IdeaProgress> = {}): IdeaProgress {
       experimentsEnded: base.experimentsEnded,
       realTestObservations: base.behaviourObservations,
       decisions: base.decisions,
+      latestDecisionAction: base.latestDecisionAction,
     },
   };
 }
@@ -151,6 +155,43 @@ describe("nextAction", () => {
     };
     expect(nextAction(learned(done)).title).toBe("Wacht op bevestiging van het besluit");
     expect(nextAction(learned({ ...done, latestDecisionConfirmed: true })).title).toBe("Kies de volgende aanname om te toetsen");
+  });
+});
+
+describe("nextAction na een niet-definitief besluit (B1)", () => {
+  const decided = {
+    latestRealityCheckAt: "2026-10-21T10:00:00Z",
+    decisions: 1,
+    latestDecisionAt: "2026-10-22T10:00:00Z",
+    reports: 1,
+    latestReportAt: "2026-10-23T09:00:00Z",
+    latestReportShared: false,
+  };
+
+  it.each(["test_more", "extend", "adjust", "pause"])("zegt na %s niet 'Deel het rapport' en niet 'Besloten'", (action) => {
+    const p = learned({ ...decided, latestDecisionAction: action });
+    expect(nextAction(p).title).not.toMatch(/Deel het rapport|rapport/);
+    expect(sprintStage(p)).toBeLessThan(5);
+  });
+
+  it("wijst na verder testen naar een nieuwe test voor de grootste onzekerheid", () => {
+    expect(nextAction(learned({ ...decided, latestDecisionAction: "test_more" }))).toMatchObject({ title: "Ontwerp de volgende test", href: `${base}/experiments?assumption=a1` });
+    expect(sprintStage(learned({ ...decided, latestDecisionAction: "test_more" }))).toBe(3);
+  });
+
+  it("wijst na bijsturen naar de aannames en na pauzeren naar het besluit", () => {
+    expect(nextAction(learned({ ...decided, latestDecisionAction: "adjust" })).href).toBe(`${base}/assumptions`);
+    expect(nextAction(learned({ ...decided, latestDecisionAction: "pause" })).title).toBe("Het dossier is gepauzeerd");
+  });
+
+  it("gaat na doorgaan wel naar het rapport", () => {
+    expect(nextAction(learned({ ...decided, latestDecisionAction: "continue" })).title).toBe("Deel het rapport met de opdrachtgever");
+  });
+
+  it("laat een lopende vervolgtest voorgaan", () => {
+    expect(nextAction(learned({ ...decided, latestDecisionAction: "test_more", experiments: [exp("analyzed", { hasApprovedCard: true }), exp("live")] })).title).toBe(
+      "Werf deelnemers voor je lopende test",
+    );
   });
 });
 

@@ -15,6 +15,7 @@ const empty: DossierInput = {
   experimentsEnded: 0,
   realTestObservations: 0,
   decisions: 0,
+  latestDecisionAction: null,
 };
 const status = (over: Partial<DossierInput>) => getDossierStatus({ ...empty, ...over });
 const step = (over: Partial<DossierInput>, key: string) => status(over).steps.find((s) => s.key === key)!;
@@ -71,8 +72,8 @@ describe("getDossierStatus: stappen met bewijs (B1c)", () => {
   });
 
   it("telt een besluit zonder bewijs niet als stap met bewijs", () => {
-    expect(step({ decisions: 1 }, "decide")).toMatchObject({ state: "done", hasEvidence: false });
-    expect(step({ decisions: 1, realTestObservations: 2 }, "decide").hasEvidence).toBe(true);
+    expect(step({ decisions: 1, latestDecisionAction: "continue" }, "decide")).toMatchObject({ state: "done", hasEvidence: false });
+    expect(step({ decisions: 1, latestDecisionAction: "continue", realTestObservations: 2 }, "decide").hasEvidence).toBe(true);
   });
 });
 
@@ -87,7 +88,7 @@ describe("getDossierStatus: huidige stap (B1c)", () => {
     expect(status({ questions: 2 }).current).toBe("market");
     expect(status({ questions: 2, decisiveQuestion: { status: "answered", verifiedClaims: 1 }, assumptions: 2 }).current).toBe("assumptions");
     expect(
-      status({ decisiveQuestion: { status: "answered", verifiedClaims: 1 }, criticalWithPrimaryTest: 1, experimentsEnded: 1, decisions: 1 }).current,
+      status({ decisiveQuestion: { status: "answered", verifiedClaims: 1 }, criticalWithPrimaryTest: 1, experimentsEnded: 1, decisions: 1, latestDecisionAction: "stop" }).current,
     ).toBe("done");
   });
 
@@ -96,5 +97,37 @@ describe("getDossierStatus: huidige stap (B1c)", () => {
     const s = sprintStatus({ start: "2026-11-02", weeks: 5, today: "2026-11-03", stage: 3, testsStarted: true });
     if (!s.planned) throw new Error("niet gepland");
     expect(s.milestones.find((m) => m.status === "current")?.phase).toBe("test");
+  });
+});
+
+describe("getDossierStatus: besluit (B1, na verder testen, bijsturen of pauzeren)", () => {
+  const tested = { decisiveQuestion: { status: "answered", verifiedClaims: 1 }, criticalWithPrimaryTest: 1, experiments: 1, experimentsEnded: 1, decisions: 1 } as const;
+
+  it("is alleen klaar na doorgaan of stoppen", () => {
+    expect(status({ ...tested, latestDecisionAction: "continue" })).toMatchObject({ current: "done", currentLabel: "Besloten" });
+    expect(status({ ...tested, latestDecisionAction: "stop" }).current).toBe("done");
+  });
+
+  it.each([
+    ["test_more", "Verder testen"],
+    ["extend", "Verlengde testfase"],
+    ["adjust", "Bijsturen"],
+  ])("staat na %s op Testen, niet op Besloten", (action, label) => {
+    const s = status({ ...tested, latestDecisionAction: action });
+    expect(s.current).toBe("test");
+    expect(s.currentLabel).toBe(label);
+    expect(s.steps[3]).toMatchObject({ state: "running", statusLabel: label });
+    expect(s.steps[3].why).toMatch(/definitieve besluit/);
+  });
+
+  it("staat na pauzeren op Besluit · gepauzeerd", () => {
+    const s = status({ ...tested, latestDecisionAction: "pause" });
+    expect(s.current).toBe("decide");
+    expect(s.currentLabel).toBe("Besluit · gepauzeerd");
+    expect(s.steps[3].state).toBe("running");
+  });
+
+  it("toont een lopende vervolgtest na verder testen als Test loopt", () => {
+    expect(status({ ...tested, experiments: 2, experimentsLive: 1, latestDecisionAction: "test_more" }).currentLabel).toBe("Test loopt");
   });
 });

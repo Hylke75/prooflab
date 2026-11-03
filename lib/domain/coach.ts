@@ -15,7 +15,7 @@ export type ExperimentSummary = {
   hasApprovedCard: boolean;
 };
 
-import { getDossierStatus, type DossierInput } from "./dossier-status";
+import { getDossierStatus, isConclusiveDecision, type DossierInput } from "./dossier-status";
 import { dossierInput } from "@/lib/steps";
 
 export type IdeaProgress = {
@@ -42,6 +42,8 @@ export type IdeaProgress = {
   latestRealityCheckAt: string | null;
   decisions: number;
   latestDecisionAt: string | null;
+  // Actie van het laatste besluit (decisions.action): alleen doorgaan of stoppen rondt stap Besluit af.
+  latestDecisionAction: string | null;
   latestDecisionConfirmed: boolean;
   reports: number;
   latestReportAt: string | null;
@@ -170,6 +172,10 @@ export function nextAction(p: IdeaProgress): NextAction {
     if (atDecision) return atDecision;
   }
   if (decisionDue(p)) return { title: "Neem het besluit", detail: "Doorgaan, bijsturen, verder testen, pauzeren of stoppen. Jij beslist, de check adviseert.", href: `${base}/evidence`, icon: "shield" };
+  // Na verder testen, bijsturen, een verlengde testfase of pauzeren is het dossier niet besloten: eerst de volgende
+  // test (of de terugkeer na de pauze), pas na een definitief besluit het rapport delen.
+  const open = openDecisionAction(p);
+  if (open) return open;
   if (p.reports === 0) return { title: "Maak het eerste rapport", detail: "Bundel beslisvraag, bronnen, tests en besluit in een vaste rapportversie.", href: `${base}/report`, icon: "file" };
   if (reportStale(p)) return { title: "Werk het rapport bij", detail: "Er is een besluit genomen na de laatste rapportversie. Maak een nieuwe versie.", href: `${base}/report`, icon: "file" };
   if (!p.latestReportShared) return { title: "Deel het rapport met de opdrachtgever", detail: "De laatste versie is nog niet gedeeld. De opdrachtgever ziet alleen gedeelde versies.", href: `${base}/report`, icon: "file" };
@@ -180,6 +186,24 @@ export function nextAction(p: IdeaProgress): NextAction {
     href: `${base}/assumptions`,
     icon: "layers",
   };
+}
+
+// De volgende stap na een besluit dat het traject gaande houdt; null zonder besluit of na doorgaan/stoppen.
+export function openDecisionAction(p: IdeaProgress): NextAction | null {
+  if (p.decisions === 0 || isConclusiveDecision(p.latestDecisionAction)) return null;
+  const base = `/app/ideas/${p.ideaId}`;
+  const risk = p.topAssumption ? `Grootste resterende risico: "${p.topAssumption.statement}".` : "Kies de aanname die het besluit nu tegenhoudt.";
+  const testHref = p.topAssumption ? `${base}/experiments?assumption=${p.topAssumption.id}` : `${base}/experiments`;
+  switch (p.latestDecisionAction) {
+    case "adjust":
+      return { title: "Stuur bij en ontwerp een nieuwe test", detail: `Het besluit was bijsturen. Pas aanbod, doelgroep of belofte aan en toets opnieuw. ${risk}`, href: `${base}/assumptions`, icon: "layers" };
+    case "pause":
+      return { title: "Het dossier is gepauzeerd", detail: "Leg vast wat er moet veranderen om terug te komen. Na nieuw bewijs volgt het definitieve besluit: doorgaan of stoppen.", href: `${base}/evidence`, icon: "clock" };
+    case "extend":
+      return { title: "Verzamel gedragsbewijs in de verlengde testfase", detail: `Start of loop de vervolgtest. Het definitieve besluit volgt na de verlengde testfase. ${risk}`, href: testHref, icon: "flask" };
+    default:
+      return { title: "Ontwerp de volgende test", detail: `Het besluit was verder testen: het bewijs is nog te zwak of onbeslist. ${risk}`, href: testHref, icon: "flask" };
+  }
 }
 
 // Opvolging van de uitkomst: de tussenstand na drie maanden en de uitkomst na zes maanden (of op de meetdatum).

@@ -18,6 +18,7 @@ export function dossierInput(p: IdeaProgress): DossierInput {
       experimentsEnded: p.experimentsEnded,
       realTestObservations: p.behaviourObservations,
       decisions: p.decisions,
+      latestDecisionAction: p.latestDecisionAction,
     }
   );
 }
