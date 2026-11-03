@@ -14,6 +14,8 @@ export const metadata: Metadata = { title: "Rapportage" };
 
 const eur = (n: number | null | undefined) => (n == null ? "onbekend" : `€ ${Math.round(n).toLocaleString("nl-NL")}`);
 const int = (n: number) => Math.round(n).toLocaleString("nl-NL");
+const pct0 = (n: number) => `${Math.round(n * 100)}%`;
+const SIGNAL_KINDS: Record<string, string> = { job: "Taak", pain: "Pijnpunt", gain: "Gewenst resultaat", objection: "Bezwaar" };
 const date = (s: string | null | undefined) => (s ? new Date(s).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" }) : "onbekend");
 const SECTIONS: Record<string, string> = { market: "Markt en trends", customers: "Klant en probleem", competition: "Concurrentie", pricing: "Prijs en koopproces", sizing: "Marktomvang", regulation: "Regels en context", other: "Overig" };
 type Version = { id: string; version: number; created_at: string; shared_at: string | null; client_viewed_at: string | null };
@@ -210,6 +212,14 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               <thead><tr><th>Aanbieder</th><th>Type</th><th>Positionering</th><th>Prijs</th></tr></thead>
               <tbody>{r.competitors.map((c, i) => <tr key={i}><td>{c.name}</td><td>{c.kind}</td><td>{c.positioning ?? "—"}</td><td>{c.price}</td></tr>)}</tbody>
             </table>
+            {r.signals && r.signals.length > 0 && (
+              <>
+                <p className="mt-12"><strong>Wat klanten zelf zeggen</strong> (kwalitatieve signalen uit reviews, fora en outreach; geen gedrag):</p>
+                <ul style={{ margin: "6px 0 0 18px" }}>
+                  {r.signals.slice(0, 8).map((sg, i) => <li key={i}>{SIGNAL_KINDS[sg.kind] ?? sg.kind}: {sg.label} ({sg.mentions}× letterlijk teruggevonden)</li>)}
+                </ul>
+              </>
+            )}
           </section>
 
           <section className="report-section">
@@ -221,6 +231,15 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             </table>
             {r.sizing[1] && <p className="tiny mt-8 mono">Formule (realistisch): {r.sizing[1].formula}</p>}
             <p>{r.sizing[1]?.status}. Dit is omzetpotentieel onder de getoonde aannames, geen winst en geen voorspelling.</p>
+            {r.simulation && (
+              <p className="mt-8">
+                Met bandbreedtes per factor ({int(r.simulation.draws)} trekkingen, scenario {r.simulation.label.toLowerCase()}): SOM-omzet tussen {eur(r.simulation.somRevenue.p10)} en {eur(r.simulation.somRevenue.p90)} (80% van de uitkomsten), mediaan {eur(r.simulation.somRevenue.p50)}.
+                {r.simulation.pAboveThreshold != null && r.simulation.threshold != null
+                  ? ` Kans dat de omzet ${r.simulation.thresholdIsBreakEven ? "het break-evenpunt" : "de drempel"} van ${eur(r.simulation.threshold)} haalt: ${pct0(r.simulation.pAboveThreshold)}.`
+                  : ""}
+                {r.simulation.mainDriver ? ` De grootste onzekerheid zit in de factor "${r.simulation.mainDriver}".` : ""}
+              </p>
+            )}
             {r.unit && (
               <p className="mt-8">
                 Financieel: marge per klant {eur(r.unit.marginPerCustomerYear)} per jaar, terugverdientijd {r.unit.paybackMonths == null ? "onbekend" : `${r.unit.paybackMonths.toFixed(1)} maanden`}, klantwaarde/wervingskosten {r.unit.ltvToCac == null ? "onbekend" : `${r.unit.ltvToCac.toFixed(1)}×`}, break-even bij {r.unit.breakEvenCustomers ?? "onbekend"} klanten.
@@ -233,9 +252,28 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             <span className="eyebrow">06 / AANNAMES EN RISICO&apos;S</span>
             <h3>Wat moet waar zijn?</h3>
             <table className="table">
-              <thead><tr><th>Aanname</th><th>Belang</th><th>Bewijs</th><th>Status</th></tr></thead>
-              <tbody>{r.assumptions.map((a, i) => <tr key={i}><td>{a.statement}</td><td className="num">{a.importance}/5</td><td className="num">{a.evidence}%</td><td>{{ untested: "Niet getest", testing: "Wordt getest", supported: "Ondersteund", refuted: "Weerlegd", inconclusive: "Onbeslist" }[a.status as "untested"]}</td></tr>)}</tbody>
+              <thead><tr><th>Aanname</th><th>Belang</th>{r.assumptions.some((a) => "probability" in a && a.probability) ? <th>Geschatte kans</th> : <th>Bewijs</th>}<th>Status</th></tr></thead>
+              <tbody>
+                {r.assumptions.map((a, i) => (
+                  <tr key={i}>
+                    <td>{a.statement}{"premortem" in a && a.premortem ? <span className="tiny"> (uit de pre-mortem)</span> : null}</td>
+                    <td className="num">{a.importance}/5</td>
+                    {"probability" in a && a.probability ? (
+                      <td className="num">{pct0(a.probability.point)} <span className="tiny">({pct0(a.probability.low)}–{pct0(a.probability.high)})</span></td>
+                    ) : (
+                      <td className="num">{a.evidence}%</td>
+                    )}
+                    <td>{{ untested: "Niet getest", testing: "Wordt getest", supported: "Ondersteund", refuted: "Weerlegd", inconclusive: "Onbeslist" }[a.status as "untested"]}</td>
+                  </tr>
+                ))}
+              </tbody>
             </table>
+            {r.assumptions.some((a) => "probability" in a && a.probability) && (
+              <p className="explain">
+                Geschatte kans dat de aanname klopt: een beginwaarde (meestal 50%), bijgewerkt met een vaste factor per soort bewijs. Uitspraken
+                tellen nauwelijks, gedrag en betalingen sterk. Tussen haakjes de bandbreedte als die factoren de helft zwakker of sterker zijn.
+              </p>
+            )}
           </section>
 
           <section className="report-section">
@@ -299,6 +337,59 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               </p>
             )}
           </section>
+
+          {r.prediction && (
+            <section className="report-section">
+              <span className="eyebrow">10 / VOORSPELLING EN UITKOMST</span>
+              <h3>{r.prediction.result ? `Uitkomst: ${r.prediction.result.achieved.toLowerCase()}.` : "Wat verwachten we, en hoe toetsen we dat?"}</h3>
+              {r.prediction.outcome.statement ? (
+                <p>
+                  Geslaagd betekent: {r.prediction.outcome.statement}
+                  {r.prediction.outcome.target != null ? ` (doel: ${r.prediction.outcome.target}${r.prediction.outcome.metric ? ` ${r.prediction.outcome.metric}` : ""})` : ""}. Gemeten zes maanden na het
+                  besluit{r.prediction.outcome.due ? `, op ${date(r.prediction.outcome.due)}` : ""}.
+                </p>
+              ) : (
+                <p>Er is nog niet vastgelegd wanneer dit idee geslaagd is.</p>
+              )}
+              <p className="mt-8">
+                Basispercentage:{" "}
+                {r.prediction.baseRate.low != null && r.prediction.baseRate.high != null
+                  ? `${pct0(r.prediction.baseRate.low)}–${pct0(r.prediction.baseRate.high)}`
+                  : "onbekend"}
+                {r.prediction.baseRate.reference ? ` (${r.prediction.baseRate.reference.label}; bron: ${r.prediction.baseRate.reference.source_title}). ${r.prediction.baseRate.reference.caveat}` : ""}
+                {r.prediction.baseRate.own ? " (eigen afgeronde dossiers)." : ""}
+                {r.prediction.baseRate.note ? ` ${r.prediction.baseRate.note}` : ""}
+              </p>
+              {r.prediction.moments.length > 0 && (
+                <table className="table mt-12">
+                  <thead><tr><th>Moment</th><th>Mensen (gemiddeld, spreiding)</th><th>AI</th>{r.prediction.result ? <th>Brier per voorspelling</th> : null}</tr></thead>
+                  <tbody>
+                    {r.prediction.moments.map((m) => (
+                      <tr key={m.moment}>
+                        <td>{m.moment}</td>
+                        <td className="num">{m.people ? `${pct0(m.people.mean)} (${pct0(m.people.min)}–${pct0(m.people.max)}, n=${m.people.n})` : "—"}</td>
+                        <td className="num">{m.ai != null ? pct0(m.ai) : "—"}</td>
+                        {r.prediction.result ? <td className="num">{m.forecasts.map((f) => `${f.who} ${f.brier?.toFixed(2)}`).join(" · ")}</td> : null}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <p className="explain">
+                Iedereen geeft zijn kans zonder de anderen te zien. Een AI-voorspelling telt niet mee in het gemiddelde en is geen bewijs. De Brier-score
+                meet achteraf hoe goed een kans was: 0 is perfect, 0,25 is wat je haalt met steeds 50%.
+              </p>
+              {r.prediction.checkins.map((c, i) => (
+                <p className="mt-8" key={i}>Tussenstand {date(c.at)}: {c.onTrack.toLowerCase()}{c.value != null ? ` (stand: ${c.value})` : ""}. {c.note}</p>
+              ))}
+              {r.prediction.result && (
+                <p className="mt-8">
+                  Vastgelegd op {date(r.prediction.result.at)}: {r.prediction.result.achieved.toLowerCase()}
+                  {r.prediction.result.value != null ? ` (werkelijk: ${r.prediction.result.value})` : ""}. {r.prediction.result.evidence}
+                </p>
+              )}
+            </section>
+          )}
 
           <section className="report-section" style={{ breakBefore: "page" }}>
             <span className="eyebrow">BRONNEN</span>

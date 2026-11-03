@@ -2,6 +2,7 @@ import "server-only";
 import type { Dossier } from "@/lib/dossier";
 import { CLAIM_STATUS, COMPETITOR_KINDS, DECISIONS, EVIDENCE_TYPES, EXPERIMENT_TYPES, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type DecisionAction, type EvidenceType, type ExperimentType, type SourceType } from "@/lib/domain/labels";
 import type { Finding } from "@/lib/domain/reality-check";
+import { ACHIEVED_LABELS, FORECAST_MOMENTS, FORECASTER_LABELS, MOMENT_LABELS, ON_TRACK_LABELS, aggregate, brier, type Achieved, type ForecasterKind, type OnTrack } from "@/lib/domain/forecast";
 
 // A report is an immutable snapshot: re-rendering version N later shows exactly what was
 // known at the time, even if the dossier has changed since.
@@ -72,7 +73,45 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       factors: s.factors,
     })),
     unit: d.unit,
-    assumptions: d.assumptions.map((a) => ({ statement: a.statement, importance: a.importance, evidence: Math.round(a.evidence * 100), status: a.status })),
+    assumptions: d.assumptions.map((a) => {
+      const p = d.probabilities.find((x) => x.id === a.id);
+      return {
+        statement: a.statement,
+        importance: a.importance,
+        evidence: Math.round(a.evidence * 100),
+        status: a.status,
+        premortem: a.origin === "premortem",
+        probability: p ? { point: p.probability, low: p.band.low, high: p.band.high, prior: p.prior } : null,
+      };
+    }),
+    simulation: d.simulation
+      ? { label: d.simulation.label, draws: d.simulation.draws, somCount: d.simulation.somCount, somRevenue: d.simulation.somRevenue, threshold: d.simulation.threshold, pAboveThreshold: d.simulation.pAboveThreshold, thresholdIsBreakEven: d.simulation.thresholdIsBreakEven, mainDriver: d.simulation.drivers[0]?.key ?? null }
+      : null,
+    signals: d.signals.map((s) => ({ kind: s.kind, label: s.label, mentions: s.mentions })),
+    prediction: {
+      outcome: d.prediction.outcome,
+      baseRate: d.prediction.baseRate,
+      moments: FORECAST_MOMENTS.map((m) => {
+        const rows = d.prediction.forecasts.filter((f) => f.moment === m);
+        const people = rows.filter((f) => f.forecaster_kind !== "ai").map((f) => Number(f.probability));
+        const ai = rows.find((f) => f.forecaster_kind === "ai");
+        return {
+          moment: MOMENT_LABELS[m].label,
+          people: aggregate(people),
+          ai: ai ? Number(ai.probability) : null,
+          forecasts: rows.map((f) => ({
+            who: FORECASTER_LABELS[f.forecaster_kind as ForecasterKind],
+            probability: Number(f.probability),
+            rationale: f.rationale,
+            brier: d.prediction.result ? brier(Number(f.probability), d.prediction.result.achieved as Achieved) : null,
+          })),
+        };
+      }).filter((m) => m.forecasts.length > 0),
+      checkins: d.prediction.checkins.map((c) => ({ at: c.created_at, onTrack: ON_TRACK_LABELS[c.on_track as OnTrack], value: c.current_value, note: c.note })),
+      result: d.prediction.result
+        ? { achieved: ACHIEVED_LABELS[d.prediction.result.achieved as Achieved], value: d.prediction.result.actual_value, evidence: d.prediction.result.evidence, at: d.prediction.result.resolved_at }
+        : null,
+    },
     experiments: d.experiments
       .filter((e) => !["draft", "ready_for_review"].includes(e.state))
       .map((e) => ({

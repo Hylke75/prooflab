@@ -6,6 +6,7 @@ import { SprintCard, UnplannedSprints, calendarDate } from "@/components/sprint/
 import { getWorkspace, type Workspace } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadAssumptions, loadProgress } from "@/lib/progress";
+import { OpenNotesBadge } from "@/components/coach/OpenNotesBadge";
 import { nextAction, sprintStage, type IdeaProgress } from "@/lib/domain/coach";
 import { SPRINT_PHASES, sprintStatus, testDay, todayInNL } from "@/lib/domain/sprint";
 import { DECISIONS, type DecisionAction } from "@/lib/domain/labels";
@@ -177,6 +178,7 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
                   </span>
                   <span className="row" style={{ gap: 6 }}>
                     {idea.is_demo && <span className="pill orange">Demo</span>}
+                    <OpenNotesBadge ideaId={idea.id} />
                     {s.planned && s.state === "running" && <span className={`pill ${s.behind ? "coral" : "gray"}`}>Week {s.week}/{s.weeks}{s.behind ? " · loopt achter" : ""}</span>}
                     <span className={`pill ${idea.status === "active" ? "blue" : "gray"}`}>{ideaStatusLabel(idea.status, p)}</span>
                   </span>

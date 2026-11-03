@@ -106,6 +106,37 @@ export async function loadDossier(idea: Idea) {
     top: a.probability.top.map((c) => ({ label: c.label, direction: c.direction, count: c.count, lr: c.lr, weight: c.weight, explanation: explainContribution(c) })),
   }));
 
+  // Prediction loop and customer signals. Forecasts follow the blind rule: the snapshot holds the forecasts
+  // the person making the report can see.
+  const [forecastsRes, outcomeRes, checkinsRes, refRes, signalsRes] = await Promise.all([
+    supabase.from("forecasts").select("moment, forecaster_kind, probability, rationale, created_at").eq("idea_id", id).order("created_at"),
+    supabase.from("idea_outcomes").select("achieved, actual_value, evidence, resolved_at").eq("idea_id", id).maybeSingle(),
+    supabase.from("outcome_checkins").select("on_track, current_value, note, created_at").eq("idea_id", id).order("created_at"),
+    idea.reference_class && !idea.reference_class.startsWith("own:") && idea.reference_class !== "none"
+      ? supabase.from("reference_classes").select("label, source_title, source_url, caveat").eq("id", idea.reference_class).maybeSingle()
+      : Promise.resolve({ data: null }),
+    supabase.from("customer_signals").select("kind, label, mentions").eq("idea_id", id).order("mentions", { ascending: false }).limit(12),
+  ]);
+  const prediction = {
+    outcome: {
+      statement: idea.outcome_statement ?? null,
+      metric: idea.outcome_metric ?? null,
+      target: idea.outcome_target ?? null,
+      due: idea.outcome_due ?? null,
+    },
+    baseRate: {
+      low: idea.base_rate_low ?? null,
+      high: idea.base_rate_high ?? null,
+      note: idea.base_rate_note ?? null,
+      reference: refRes.data ?? null,
+      own: idea.reference_class?.startsWith("own:") ?? false,
+    },
+    forecasts: forecastsRes.data ?? [],
+    result: outcomeRes.data ?? null,
+    checkins: checkinsRes.data ?? [],
+  };
+  const signals = signalsRes.data ?? [];
+
   const approvedCards = (cards.data ?? []).filter((c) => c.status === "approved");
   const label = dossierLabel({
     claims: (claims.data ?? []).map((c) => ({ status: c.status, domain: c.claim_sources?.[0]?.sources?.domain ?? null, sourceType: c.claim_sources?.[0]?.sources?.source_type ?? null })),
@@ -143,6 +174,8 @@ export async function loadDossier(idea: Idea) {
     probabilities,
     simulation: simulations.find((s) => s.kind === "realistic") ?? simulations[0] ?? null,
     simulations,
+    prediction,
+    signals,
   };
 }
 
