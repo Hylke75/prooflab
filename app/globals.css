@@ -424,7 +424,8 @@ details.quickline[open]>summary::after{transform:rotate(180deg)}
 .nav-mark{flex:none;font-weight:700;color:var(--color-primary);min-width:12px;text-align:center}
 .nav-mark.running{color:var(--color-warning-text)}
 .nav-link.active .nav-mark{color:var(--color-on-dark)}
-.nav-link.active .nav-mark~.nav-dot{display:none}
+/* Bij stappen staat rechts de status (✓ of •); de actieve stip zou daarmee te verwarren zijn. */
+.nav-link[data-step] .nav-dot{display:none!important}
 .nav-divider{border:0;border-top:1px solid var(--color-border);margin:14px 8px 14px 16px}
 .idea-switch{position:relative;margin:0 0 12px 8px}
 .idea-switch-btn{width:100%;display:flex;align-items:center;gap:10px;min-height:56px;padding:10px 14px;border:0;border-radius:var(--radius-inner);background:var(--color-surface-soft);color:var(--color-heading);text-align:left;cursor:pointer;transition:background-color var(--dur) ease-out}
