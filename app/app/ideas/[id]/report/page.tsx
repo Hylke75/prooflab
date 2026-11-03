@@ -353,6 +353,33 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 <strong>Learning Card.</strong> We dachten: {c.believed} We zagen: {c.observed} Daaruit leren we: {c.learned} Daarom: {c.therefore} (betrouwbaarheid: {{ low: "laag", medium: "middel", high: "hoog" }[c.reliability as "low"]})
               </div>
             ))}
+            {/* Golf C, punt 19: momentopname van de aantallen (rapporten van vóór 7 november 2026 hebben die niet). */}
+            {r.tallies && r.tallies.tests.length > 0 && (
+              <div className="mt-12" style={{ breakInside: "avoid" }}>
+                <strong style={{ fontSize: 13 }}>Momentopname van de aantallen</strong>
+                <p className="tiny">{r.tallies.note}</p>
+                <div style={{ overflowX: "auto" }}>
+                  <table className="table mt-8">
+                    <caption className="sr-only">Aantallen per test, bron, kanaal en wervingsgroep</caption>
+                    <thead>
+                      <tr><th scope="col">Test</th><th scope="col">n</th><th scope="col">Successen</th><th scope="col">Per bron</th><th scope="col">Per kanaal</th><th scope="col">Per wervingsgroep</th></tr>
+                    </thead>
+                    <tbody>
+                      {r.tallies.tests.map((t, i) => (
+                        <tr key={i}>
+                          <th scope="row" style={{ textAlign: "left", fontWeight: 700 }}>{t.test} <span className="tiny">({t.type})</span></th>
+                          <td className="num">{t.n}</td>
+                          <td className="num">{t.successes}</td>
+                          <td className="tiny">{t.bySource.map((x) => `${x.source} ${x.successes}/${x.n}`).join(" · ") || "—"}</td>
+                          <td className="tiny">{t.byChannel.map((x) => `${CHANNELS[x.channel as keyof typeof CHANNELS] ?? x.channel} ${x.successes}/${x.n}`).join(" · ") || "—"}</td>
+                          <td className="tiny">{t.byGroup.map((x) => `${x.group} ${x.n}`).join(" · ") || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="report-section">

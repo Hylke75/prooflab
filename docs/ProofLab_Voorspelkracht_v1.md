@@ -573,3 +573,21 @@ in een run een eigen stap **"Tegenbewijs zoeken"**, direct na het zoeken en uitl
   en de steuncontrole mag het niet afwijzen.
 - Het scherm toont het tegenbewijs apart ("Tegenbewijs"), met per vraag de uitkomst van de stap en een eigen
   zoeklogboek. Niets gevonden staat er eerlijk bij, met de kanttekening dat dit niet bewijst dat het idee klopt.
+
+### 10.4 Momentopname van aantallen bij elk rapport (punt 19)
+
+Bewaartermijnen beschermen deelnemers, maar gaan in tegen herleidbaarheid: na 180 of 365 dagen zijn e-mailadressen,
+transcripten, citaten en open antwoorden weg (`purge_expired_personal_data`).
+
+- Elk rapport bewaart daarom in zijn onveranderlijke momentopname (`reports.snapshot.tallies`,
+  `lib/domain/report-counts.ts`) een **geanonimiseerde telling**: per test n en successen, uitgesplitst per bron
+  (bij enquêtes uitnodiging of open link, anders het kanaal), per kanaal en per wervingsgroep (bij interviews:
+  bekenden en onbekenden, alleen het aantal), en bij enquêtes de kernvraag per bron met het aantal opgeslagen
+  antwoorden. Afgebroken en lopende tests staan erin met hun aantallen.
+- Er staan geen persoonsgegevens in: geen namen, adressen, citaten, open antwoorden of tijdstippen per persoon.
+- De momentopname valt niet onder de bewaartermijn. Rapporten zijn na het maken niet te wijzigen of te verwijderen en
+  de opruimtaak raakt ze niet (gecontroleerd in `tests/db/golf-c.test.ts`).
+- **Gevolg voor herleiding.** Binnen de bewaartermijn is elk getal in een rapport terug te voeren op de ruwe
+  antwoorden, events en citaten. **Na de bewaartermijn kan herleiding alleen nog op aantallen**: wie het rapport
+  later controleert, kan nagaan hoeveel deelnemers per bron, kanaal en groep er waren en hoeveel succesvol, maar niet
+  meer wat individuele deelnemers zeiden of deden.

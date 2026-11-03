@@ -119,3 +119,59 @@ d("punt 10: zoekopdracht naar tegenbewijs", () => {
     await expect(as(alice, (c) => c.query("insert into public.research_tasks (run_id, idea_id, position, kind, label) values ($1, $2, 9, 'onbekend', 'x')", [out.run, idea]))).rejects.toThrow();
   });
 });
+
+d("punt 19: momentopname van aantallen valt niet onder de bewaartermijn", () => {
+  it("purge_expired_personal_data wist verlopen persoonsgegevens maar laat de momentopname in het rapport staan", async () => {
+    const tallies = {
+      version: 1,
+      note: "Geanonimiseerde aantallen op het moment van dit rapport.",
+      tests: [
+        {
+          test: "Gesprekken",
+          type: "Klantinterview",
+          state: "completed",
+          n: 1,
+          successes: 1,
+          byChannel: [{ channel: "network", n: 1, successes: 1 }],
+          bySource: [{ source: "network", n: 1, successes: 1 }],
+          byGroup: [{ group: "bekenden", n: 1, successes: null }],
+          keyQuestion: null,
+        },
+      ],
+      totals: { tests: 1, n: 1, successes: 1 },
+    };
+    const ids = await as(alice, async (c) => {
+      const a = (await c.query("insert into public.assumptions (idea_id, statement, category, importance) values ($1, 'Bureaus willen dit', 'desirability', 5) returning id", [idea])).rows[0].id;
+      const h = (
+        await c.query(
+          `insert into public.hypotheses (idea_id, assumption_id, we_believe, target_group, test_method, metric_label, metric_numerator, metric_denominator, success_threshold_pct, min_sample, max_duration_days)
+           values ($1, $2, 'Bureaus herkennen het probleem', 'NL bureaus', 'interviews', 'herkend', 'herkend', 'gesprekken', 30, 5, 14) returning id`,
+          [idea, a],
+        )
+      ).rows[0].id;
+      const e = (await c.query("insert into public.experiments (idea_id, hypothesis_id, type, title) values ($1, $2, 'interview', 'Gesprekken') returning id", [idea, h])).rows[0].id;
+      const iv = (
+        await c.query(
+          "insert into public.interviews (experiment_id, idea_id, participant_label, dmu_role, recruited_via, held_on, record_type, transcript, consent_recorded, is_acquaintance) values ($1, $2, 'Eventmanager A', 'user', 'network', current_date, 'notes', 'Piet zei: we zoeken dit al jaren.', true, true) returning id",
+          [e, idea],
+        )
+      ).rows[0].id;
+      const report = (await c.query("insert into public.reports (idea_id, version, snapshot) values ($1, 1, $2) returning id", [idea, JSON.stringify({ version: 1, tallies })])).rows[0].id;
+      return { iv: iv as string, report: report as string };
+    });
+    const before = (await db.query("select snapshot from public.reports where id = $1", [ids.report])).rows[0].snapshot;
+
+    // De bewaartermijn van het interview is verlopen; de opruimtaak draait (als de planner, zonder gebruikersrol).
+    await db.query("update public.interviews set retention_until = current_date - 1 where id = $1", [ids.iv]);
+    await db.query("select public.purge_expired_personal_data()");
+
+    const iv = (await db.query("select transcript from public.interviews where id = $1", [ids.iv])).rows[0];
+    expect(iv.transcript).toBe("[verwijderd na afloop van de bewaartermijn]");
+    const after = (await db.query("select snapshot from public.reports where id = $1", [ids.report])).rows[0].snapshot;
+    expect(after).toEqual(before);
+    expect(after.tallies).toEqual(tallies);
+    // De opruimfunctie raakt de rapporttabel nergens aan.
+    const body = (await db.query("select prosrc from pg_proc where proname = 'purge_expired_personal_data'")).rows[0].prosrc as string;
+    expect(body).not.toMatch(/reports/);
+  });
+});

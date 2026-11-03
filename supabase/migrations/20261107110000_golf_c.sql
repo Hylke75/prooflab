@@ -51,3 +51,14 @@ alter table public.research_tasks add constraint research_tasks_kind_check
 alter table public.research_search_log
   add column kind text not null default 'search' check (kind in ('search', 'counter'));
 create index research_search_log_kind_idx on public.research_search_log(idea_id, kind, created_at desc);
+
+-- ---------------------------------------------------------------------------
+-- Punt 19. Momentopname van aantallen bij elk rapport
+-- ---------------------------------------------------------------------------
+-- Geen nieuwe tabel: elk rapport bewaart in reports.snapshot het veld 'tallies' (lib/domain/report-counts.ts) met
+-- geanonimiseerde aantallen per test, bron, kanaal en wervingsgroep, en de kernvraag van enquêtes per bron. Rapporten
+-- zijn onveranderlijk (reports_guard) en purge_expired_personal_data raakt de tabel niet; na de bewaartermijn kan
+-- herleiding dus alleen op deze aantallen.
+
+comment on column public.reports.snapshot is
+  'Onveranderlijke momentopname van het dossier. Het veld tallies bevat geanonimiseerde aantallen (n en successen per test, bron, kanaal en wervingsgroep; kernvraag van enquêtes per bron) en valt niet onder de bewaartermijn.';
