@@ -4,6 +4,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { assumptionEvidence, type AssumptionProbability, type ObservationDims } from "@/lib/domain/evidence";
 import { METHODS, type MethodVersion } from "@/lib/domain/method";
 import { dedupeByPerson } from "@/lib/domain/per-person";
+import { excludedTests, experimentFromSourceKey, isStarted, testOutcomesFrom, withoutExcludedTests, type TestExclusion } from "@/lib/domain/test-counts";
 import { ideaMethodVersion, loadIdeaCaps, loadSourceRefs } from "@/lib/method-data";
 import type { AssumptionCategory, ClaimStatus } from "@/lib/domain/labels";
 import { rankByInformationValue, type VoiResult } from "@/lib/domain/recommend";
@@ -30,6 +31,8 @@ export type AssumptionWithEvidence = {
   priorLocked: boolean;
   // Golf A, punt 11: de vooraf aangewezen hoofdtest (experiment-id) of null.
   primaryExperimentId: string | null;
+  // Fase B0, punt 4: gestarte tests van deze aanname die niet meetellen in kans en rangorde, met de reden.
+  excludedTests: TestExclusion[];
 };
 
 type ObsLink = {
@@ -100,7 +103,7 @@ async function loadObservationLinks(ideaId: string): Promise<ObsLink[]> {
 // observations, evidence factors (default or learned), the source of every signal and the caps (method 2026-11-b).
 export const loadAssumptionInputs = cache(async (ideaId: string) => {
   const supabase = await supabaseServer();
-  const [{ data: assumptions }, { data: links }, obsLinks, weights, refs, caps, method] = await Promise.all([
+  const [{ data: assumptions }, { data: links }, obsLinks, weights, refs, caps, method, { data: experiments }, { data: cards }, { data: interviewObs }] = await Promise.all([
     supabase.from("assumptions").select("*").eq("idea_id", ideaId).order("created_at"),
     // claims.relevance (golf C): indirect bewijs telt half in methode 2026-11-c. Opdrachtgevers lezen claims via
     // dezelfde RLS (can_read_idea), dus ze rekenen met dezelfde weging.
@@ -111,8 +114,23 @@ export const loadAssumptionInputs = cache(async (ideaId: string) => {
     loadSourceRefs(ideaId),
     loadIdeaCaps(ideaId),
     ideaMethodVersion(ideaId),
+    // Fase B0, punt 4: uitkomst en n per test, om onbesliste tests en tests onder de steekproef niet mee te tellen.
+    // Experimenten, hypotheses, Learning Cards en observaties (zonder citaat) zijn ook voor opdrachtgevers leesbaar.
+    supabase.from("experiments").select("id, title, type, state, hypotheses(assumption_id, min_sample)").eq("idea_id", ideaId),
+    supabase.from("learning_cards").select("experiment_id, status, verdict, metrics").eq("idea_id", ideaId),
+    supabase.from("observations").select("experiment_id, interview_id, is_synthetic").eq("idea_id", ideaId).not("interview_id", "is", null),
   ]);
-  return { assumptions: assumptions ?? [], links: links ?? [], obsLinks: obsLinks ?? [], weights, refs, caps, method };
+  return {
+    assumptions: assumptions ?? [],
+    links: links ?? [],
+    obsLinks: obsLinks ?? [],
+    weights,
+    refs,
+    caps,
+    method,
+    tests: testOutcomesFrom(experiments ?? [], cards ?? [], interviewObs ?? []),
+    interviewObs: interviewObs ?? [],
+  };
 });
 export type AssumptionInputs = Awaited<ReturnType<typeof loadAssumptionInputs>>;
 
@@ -128,10 +146,17 @@ const obsDims = (o: NonNullable<ObsLink["observations"]>): ObservationDims => ({
 // version (lib/domain/method): the dossier's own version, or another one for the comparison before a switch.
 export function computeAssumptions(inputs: AssumptionInputs, version: MethodVersion): AssumptionWithEvidence[] {
   const method = METHODS[version];
-  const { links, obsLinks, weights, refs, caps } = inputs;
+  const { links, weights, refs, caps } = inputs;
+  // Fase B0, punt 4: waarnemingen (en enquêtebevindingen) uit een onbesliste test of een test onder de minimale
+  // steekproef blijven bestaan, maar tellen niet mee in de bewijsas, de kans en dus de rangorde.
+  const excluded = excludedTests(inputs.tests);
+  const obsLinks = withoutExcludedTests(inputs.obsLinks, (l) => l.observations?.experiment_id, excluded);
   return inputs.assumptions.map((a) => {
-    const claims = links
-      .filter((l) => l.assumption_id === a.id && l.claims)
+    const claims = withoutExcludedTests(
+      links.filter((l) => l.assumption_id === a.id && l.claims),
+      (l) => experimentFromSourceKey(refs.get(`claim:${l.claim_id}`)?.key),
+      excluded,
+    )
       .map((l) => {
         const ref = refs.get(`claim:${l.claim_id}`);
         return {
@@ -185,9 +210,22 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
       priorRationale: a.prior_rationale ?? null,
       priorLocked: !!a.prior_locked_at,
       primaryExperimentId: a.primary_experiment_id ?? null,
+      excludedTests: inputs.tests
+        .filter((t) => t.assumptionId === a.id && isStarted(t.state))
+        .map((t) => excluded.get(t.experimentId))
+        .filter((x): x is TestExclusion => !!x),
     };
   });
 }
+
+// Er is kwalitatief bewijs uit interviews (voor de informatiewaarde), zonder interviews uit tests die niet meetellen.
+export function hasDiscoveryEvidence(inputs: Pick<AssumptionInputs, "tests" | "interviewObs">): boolean {
+  const excluded = excludedTests(inputs.tests);
+  return inputs.interviewObs.some((o) => !o.experiment_id || !excluded.has(o.experiment_id));
+}
+
+// Per test waarom hij niet meetelt in kans en rangorde (voor de testpagina).
+export const loadTestExclusions = cache(async (ideaId: string): Promise<Map<string, TestExclusion>> => excludedTests((await loadAssumptionInputs(ideaId)).tests));
 
 // Computes the evidence axis and the probability of every assumption from linked claims and observations,
 // with the method version of the dossier.
@@ -205,12 +243,8 @@ export type AssumptionWithVoi = AssumptionWithEvidence & { voi: VoiResult };
 
 // Research 3.9: assumptions in order of information value (what to test next and why).
 export const loadInformationValue = cache(async (ideaId: string): Promise<AssumptionWithVoi[]> => {
-  const supabase = await supabaseServer();
-  const [list, { count: interviewObs }] = await Promise.all([
-    loadAssumptions(ideaId),
-    supabase.from("observations").select("id", { count: "exact", head: true }).eq("idea_id", ideaId).not("interview_id", "is", null),
-  ]);
-  return orderByInformationValue(list, (interviewObs ?? 0) > 0);
+  const [list, inputs] = await Promise.all([loadAssumptions(ideaId), loadAssumptionInputs(ideaId)]);
+  return orderByInformationValue(list, hasDiscoveryEvidence(inputs));
 });
 
 export function orderByInformationValue(list: AssumptionWithEvidence[], hasDiscoveryEvidence: boolean): AssumptionWithVoi[] {

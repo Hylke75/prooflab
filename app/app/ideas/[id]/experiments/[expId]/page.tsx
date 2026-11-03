@@ -24,6 +24,8 @@ import { CHANNELS } from "@/lib/domain/tracking";
 import { DMU_ROLES, EXPERIMENT_STATES, EXPERIMENT_TYPES, OBSERVATION_KINDS, type ExperimentState, type ExperimentType } from "@/lib/domain/labels";
 import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, reviewObservation, setPrimaryTest, transitionExperiment } from "../actions";
 import { canDesignatePrimary, TEST_ROLES, testRole } from "@/lib/domain/primary-test";
+import { isStarted } from "@/lib/domain/test-counts";
+import { loadTestExclusions } from "@/lib/progress";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export const metadata: Metadata = { title: "Experiment" };
@@ -74,6 +76,8 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
   const publicUrl = exp.public_slug ? `${env.appUrl}/t/${exp.public_slug}` : null;
   const running = state === "live" || state === "paused";
   const v = m.verdict;
+  // Fase B0, punt 4: telt deze test mee in kans en rangorde? Zelfde regel en gegevens als de risicokaart.
+  const exclusion = isStarted(state) ? (await loadTestExclusions(id)).get(expId) ?? null : null;
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Experimenten", exp.title]} coach="experiments" ideaId={id}>
@@ -125,6 +129,11 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
             <RuleSummary
               o={{ rule: v.rule, label: v.label, probability: v.probability, probabilityFail: v.probabilityFail, successCount: v.successCount, successes: m.successes, n: m.n, interval: v.interval, thresholdPct: Number(h.success_threshold_pct), failThresholdPct: h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct) }}
             />
+          )}
+          {exclusion && (
+            <p className="tiny mt-8">
+              <span className="pill orange">{exclusion.text.charAt(0).toUpperCase() + exclusion.text.slice(1)}</span> Deze test verandert de kans en de rangorde van de aanname niet. De waarnemingen blijven zichtbaar.
+            </p>
           )}
           {v.kind !== "running" && <ResultMeter v={v} success={Number(h.success_threshold_pct)} fail={h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct)} bayes={m.bayes} />}
         </div>

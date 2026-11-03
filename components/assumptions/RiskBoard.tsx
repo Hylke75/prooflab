@@ -29,6 +29,8 @@ export type BoardAssumption = {
   priorLocked: boolean;
   voi: VoiResult;
   claims: { id: string; statement: string; relation: string; status: string }[];
+  // Fase B0, punt 4: tests die niet meetellen in kans en rangorde (onbeslist of onder de minimale steekproef).
+  excludedTests?: { experimentId: string; title: string; text: string }[];
 };
 
 type Action = (s: FormState, f: FormData) => Promise<FormState>;
@@ -215,6 +217,15 @@ export function RiskBoard({
           {current.supporting} ondersteunend en {current.contradicting} tegensprekend bewijs gekoppeld (waarnemingen per persoon geteld).
           {current.probability.counted === 0 ? " We weten hier nog weinig van." : ""}
         </p>
+        {(current.excludedTests ?? []).length > 0 && (
+          <ul className="tiny" style={{ margin: "6px 0 0 18px", lineHeight: 1.6 }} aria-label="Tests die niet meetellen in kans en rangorde">
+            {current.excludedTests!.map((t) => (
+              <li key={t.experimentId}>
+                <Link className="text-link" href={`/app/ideas/${ideaId}/experiments/${t.experimentId}`}>{t.title}</Link>: {t.text} voor kans en rangorde. De waarnemingen blijven zichtbaar.
+              </li>
+            ))}
+          </ul>
+        )}
         {current.claims.length > 0 && (
           <div className="mt-12">
             {current.claims.map((c) => (
