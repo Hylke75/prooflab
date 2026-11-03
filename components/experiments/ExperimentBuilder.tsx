@@ -421,7 +421,7 @@ export function ExperimentBuilder({
               {band.requiredN != null ? (
                 <p className="tc-need">Je hebt ongeveer <strong className="num">{band.requiredN}</strong> deelnemers nodig.</p>
               ) : (
-                <p className="tc-need">Met dit testtype is de drempel niet aantoonbaar te halen.</p>
+                <p className="tc-need">Met dit testtype is de drempel niet aantoonbaar te halen. Opslaan als concept kan; goedkeuren niet.</p>
               )}
               {band.advice && <div className="form-error" role="status">{band.advice}</div>}
               <details className="mt-8">
