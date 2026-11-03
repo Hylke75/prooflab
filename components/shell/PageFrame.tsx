@@ -21,6 +21,7 @@ export async function PageFrame({
   ideaId,
   section,
   badge,
+  coachCollapsed = false,
   children,
 }: {
   crumbs: string[];
@@ -30,6 +31,8 @@ export async function PageFrame({
   // en het tabblad in de kop van een ideepagina.
   section?: string;
   badge?: string;
+  // Klapt het coachpaneel rechts in (opent via de coachknop), voor pagina's met een eigen coachblok.
+  coachCollapsed?: boolean;
   children: React.ReactNode;
 }) {
   const ws = await getWorkspace();
@@ -79,7 +82,7 @@ export async function PageFrame({
           <section className="screen active">{children}</section>
         </div>
       </main>
-      <Coach data={coachFor(coach, progress, { audience, isClientDecider: access?.isClientDecider, currentIdea })} aiConnected={aiConfigured()} notes={notes} />
+      <Coach data={coachFor(coach, progress, { audience, isClientDecider: access?.isClientDecider, currentIdea })} aiConnected={aiConfigured()} notes={notes} collapsed={coachCollapsed} />
       {ideaId && access?.canWrite && <CoachWatch ideaId={ideaId} />}
       {ideaId && progress && <SyncIdeaSteps ideaId={ideaId} states={stepStates(progress)} />}
     </>

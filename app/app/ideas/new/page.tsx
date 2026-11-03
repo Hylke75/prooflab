@@ -15,7 +15,7 @@ export default async function NewIdeaPage() {
   const supabase = await supabaseServer();
   const { data: clients } = await supabase.from("clients").select("id, name").order("name");
   return (
-    <PageFrame crumbs={["Werkruimte", "Nieuw idee"]} coach="intake">
+    <PageFrame crumbs={["Werkruimte", "Nieuw idee"]} coach="intake" coachCollapsed>
       <div className="section-row">
         <div>
           <div className="eyebrow">Nieuw idee · Beslissing en idee</div>
