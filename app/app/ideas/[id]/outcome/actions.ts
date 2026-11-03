@@ -300,6 +300,7 @@ export async function saveCheckin(ideaId: string, _: ActionState, form: FormData
   const p = CheckinSchema.safeParse(Object.fromEntries(form));
   if (!p.success) return { error: p.error.issues[0].message };
   if (!idea.outcome_due) return { error: "De tussenstand volgt drie maanden na het besluit. Er is nog geen besluit met een uitkomstdatum." };
+  if (idea.outcome_question === "stop_review") return { error: "Na een stop- of pauzebesluit is er geen doel meer om de tussenstand van te geven." };
   const fu = followUp({ outcomeDue: idea.outcome_due, clockStart: idea.outcome_clock_start, checkins: 0, resolved: false, today: todayInNL() });
   if (fu.checkinDate && todayInNL() < fu.checkinDate) return { error: `De tussenstand kan vanaf ${fu.checkinDate}, drie maanden na het besluit.` };
   const supabase = await supabaseServer();
@@ -322,6 +323,7 @@ export async function resolveOutcome(ideaId: string, _: ActionState, form: FormD
   if (!p.success) return { error: p.error.issues[0].message };
   if (!idea.outcome_statement) return { error: "Leg eerst vast wanneer dit idee geslaagd is." };
   if (!idea.outcome_due) return { error: "De uitkomst wordt gemeten zes maanden na het besluit. Neem eerst het besluit." };
+  if (idea.outcome_question === "stop_review") return { error: STOPPED_MESSAGE };
   if (todayInNL() < idea.outcome_due && p.data.confirm_early !== "on")
     return { error: `De uitkomstdatum is ${idea.outcome_due}. Eerder vastleggen kan alleen als de uitkomst al zeker is; vink dat dan expliciet aan.` };
   const supabase = await supabaseServer();
@@ -329,8 +331,40 @@ export async function resolveOutcome(ideaId: string, _: ActionState, form: FormD
   if (error) {
     if (error.code === "23505") return { error: "De uitkomst is al vastgelegd. Een uitkomst is een vast feit en wordt niet herschreven." };
     if (error.message.includes("OUTCOME_UNDEFINED")) return { error: "Leg eerst vast wanneer dit idee geslaagd is." };
+    if (error.message.includes("OUTCOME_STOPPED")) return { error: STOPPED_MESSAGE };
     return { error: "De uitkomst kon niet worden opgeslagen." };
   }
   refresh(ideaId);
   return { error: null, ok: "Uitkomst vastgelegd. De voorspellingen zijn nu gescoord." };
+}
+
+// ---------------------------------------------------------------------------
+// Golf B, punt 1: na een stop of pauze "Was stoppen achteraf terecht?" in plaats van de uitkomst
+// ---------------------------------------------------------------------------
+
+const STOPPED_MESSAGE = "Na een stop- of pauzebesluit vervalt de uitkomstvraag. Leg in plaats daarvan vast of stoppen achteraf terecht was.";
+const NOT_STOPPED = "Deze vraag hoort bij een dossier dat met stoppen of pauzeren is afgesloten.";
+
+const StopReviewSchema = z.object({
+  justified: z.enum(["yes", "no", "unknown"], { message: "Kies of stoppen achteraf terecht was." }),
+  evidence: z.string().trim().min(10, "Beschrijf het bewijs: waaruit blijkt dat stoppen wel of niet terecht was?").max(2000),
+  confirm_early: z.string().optional(),
+});
+
+export async function resolveStopReview(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const { idea } = await requireWritableIdea(ideaId);
+  const p = StopReviewSchema.safeParse(Object.fromEntries(form));
+  if (!p.success) return { error: p.error.issues[0].message };
+  if (idea.outcome_question !== "stop_review" || !idea.outcome_due) return { error: NOT_STOPPED };
+  if (todayInNL() < idea.outcome_due && p.data.confirm_early !== "on")
+    return { error: `De vraag staat open vanaf ${idea.outcome_due}. Eerder vastleggen kan alleen als het antwoord al zeker is; vink dat dan expliciet aan.` };
+  const supabase = await supabaseServer();
+  const { error } = await supabase.from("stop_reviews").insert({ idea_id: ideaId, justified: p.data.justified, evidence: p.data.evidence });
+  if (error) {
+    if (error.code === "23505") return { error: "Het antwoord is al vastgelegd. Het is een vast feit en wordt niet herschreven." };
+    if (error.message.includes("STOP_REVIEW_NOT_APPLICABLE")) return { error: NOT_STOPPED };
+    return { error: "Het antwoord kon niet worden opgeslagen." };
+  }
+  refresh(ideaId);
+  return { error: null, ok: "Vastgelegd. Het telt mee bij de terechte stops, niet in de kalibratie van slagingskansen." };
 }

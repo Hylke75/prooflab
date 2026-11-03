@@ -34,9 +34,12 @@ export default async function ForecastsPage() {
   if (!ws.org) redirect("/app");
   const org = ws.org.id;
   const supabase = await supabaseServer();
-  const [caps, learning, scores, calibration, allOutcomes, upcoming, ...baseRates] = await Promise.all([
+  const [caps, learning, stops, questions, scores, calibration, allOutcomes, upcoming, ...baseRates] = await Promise.all([
     loadOrgCaps(org),
     loadLearningView(org),
+    // Golf B: zonder deze functie of kolom (oudere database) is er geen stopvraag en tellen alle uitkomsten mee.
+    supabase.rpc("stop_review_counts", { p_org: org }),
+    supabase.from("ideas").select("id, outcome_question").eq("org_id", org).eq("outcome_question", "stop_review"),
     supabase.rpc("forecast_scores", { p_org: org }),
     supabase.rpc("forecast_calibration", { p_org: org }),
     supabase.from("idea_outcomes").select("idea_id, achieved"),
@@ -47,7 +50,11 @@ export default async function ForecastsPage() {
   const unavailable = scores.error || calibration.error || allOutcomes.error || upcoming.error;
   // Only this organisation's ideas: an outcome is recorded after the decision, so its idea has a due date.
   const orgIdeas = new Set((upcoming.data ?? []).map((i) => i.id));
-  const resolved = (allOutcomes.data ?? []).filter((o) => orgIdeas.has(o.idea_id));
+  // Dossiers met de stopvraag hebben geen slagingskans om te scoren (golf B, punt 1).
+  const stopped = new Set((questions.error ? [] : questions.data ?? []).map((q) => q.id));
+  const stopRow = stops.error ? null : stops.data?.[0] ?? null;
+  const stopCounts = stopRow ? { stopped: Number(stopRow.stopped), justified: Number(stopRow.justified), notJustified: Number(stopRow.not_justified), unknown: Number(stopRow.unknown), open: Number(stopRow.open) } : null;
+  const resolved = (allOutcomes.data ?? []).filter((o) => orgIdeas.has(o.idea_id) && !stopped.has(o.idea_id));
   const resolvedIds = new Set(resolved.map((o) => o.idea_id));
 
   // Per moment, from the raw forecasts of resolved ideas (visible to everyone once the outcome is known).
@@ -86,7 +93,7 @@ export default async function ForecastsPage() {
     return { type: t, label: PROJECT_TYPES[t].label, resolved: row ? Number(row.resolved) : 0, achieved: row ? Number(row.achieved) : null };
   });
   const today = todayInNL();
-  const pending = (upcoming.data ?? []).filter((i) => !resolvedIds.has(i.id));
+  const pending = (upcoming.data ?? []).filter((i) => !resolvedIds.has(i.id) && !stopped.has(i.id));
 
   return (
     <PageFrame crumbs={["Werkruimte", "Voorspelkwaliteit"]} coach="forecasts">
@@ -244,6 +251,31 @@ export default async function ForecastsPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {!unavailable && stopCounts && stopCounts.stopped > 0 && (
+        <div className="card mt-24" id="terechte-stops">
+          <div className="section-title">
+            <h3>Terechte stops</h3>
+            <span className="pill gray">{stopCounts.stopped} gestopt of gepauzeerd</span>
+          </div>
+          <p className="sub">
+            Na een stop- of pauzebesluit vervalt de uitkomstvraag. Zes maanden later kijken we terug: was stoppen achteraf terecht? Deze dossiers tellen niet mee in
+            de Brier-scores, de kalibratie of het eigen basispercentage: hun voorspellingen worden niet gescoord als slagingskans.
+          </p>
+          <div className="kpi-row" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))", margin: "12px 0 4px" }}>
+            <div><div className="tiny">Terecht</div><div className="mini-kpi num" style={{ fontSize: 24 }}>{stopCounts.justified}</div></div>
+            <div><div className="tiny">Onterecht</div><div className="mini-kpi num" style={{ fontSize: 24 }}>{stopCounts.notJustified}</div></div>
+            <div><div className="tiny">Onbekend</div><div className="mini-kpi num" style={{ fontSize: 24 }}>{stopCounts.unknown}</div></div>
+            <div><div className="tiny">Nog open</div><div className="mini-kpi num" style={{ fontSize: 24 }}>{stopCounts.open}</div></div>
+          </div>
+          {stopCounts.justified + stopCounts.notJustified > 0 && (
+            <p className="tiny">
+              {pct(stopCounts.justified / (stopCounts.justified + stopCounts.notJustified))} van de beoordeelde stops was terecht ({stopCounts.justified} van{" "}
+              {stopCounts.justified + stopCounts.notJustified}; &lsquo;onbekend&rsquo; telt niet mee).
+            </p>
+          )}
         </div>
       )}
 

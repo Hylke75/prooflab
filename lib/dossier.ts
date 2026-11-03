@@ -120,7 +120,8 @@ export async function loadDossier(idea: Idea) {
 
   // Prediction loop and customer signals. Forecasts follow the blind rule: the snapshot holds the forecasts
   // the person making the report can see.
-  const [forecastsRes, outcomeRes, checkinsRes, refRes, signalsRes] = await Promise.all([
+  const stopped = idea.outcome_question === "stop_review";
+  const [forecastsRes, outcomeRes, checkinsRes, refRes, signalsRes, stopRes] = await Promise.all([
     supabase.from("forecasts").select("moment, forecaster_kind, probability, rationale, model, created_at").eq("idea_id", id).order("created_at"),
     supabase.from("idea_outcomes").select("achieved, actual_value, evidence, resolved_at").eq("idea_id", id).maybeSingle(),
     supabase.from("outcome_checkins").select("on_track, current_value, note, created_at").eq("idea_id", id).order("created_at"),
@@ -135,6 +136,7 @@ export async function loadDossier(idea: Idea) {
       ? supabase.from("reference_classes").select("label, source_title, source_url, caveat").eq("id", idea.reference_class).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from("customer_signals").select("kind, label, mentions").eq("idea_id", id).order("mentions", { ascending: false }).limit(12),
+    stopped ? supabase.from("stop_reviews").select("justified, evidence, reviewed_at").eq("idea_id", id).maybeSingle() : Promise.resolve({ data: null }),
   ]);
   const prediction = {
     outcome: {
@@ -153,6 +155,9 @@ export async function loadDossier(idea: Idea) {
     forecasts: forecastsRes.data ?? [],
     result: outcomeRes.data ?? null,
     checkins: checkinsRes.data ?? [],
+    // Golf B, punt 1: na een stop of pauze de stopvraag in plaats van de uitkomstvraag.
+    question: stopped ? ("stop_review" as const) : ("success" as const),
+    stopReview: stopRes.data ?? null,
   };
   const signals = signalsRes.data ?? [];
 

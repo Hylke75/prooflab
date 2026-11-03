@@ -67,7 +67,8 @@ export type CoachFacts = {
   decisions: { id: string; decidedAt: string; confirmed: boolean }[]; // oldest first
   decisionDeadline: string | null;
   clientDeciderInvited: boolean;
-  outcome: { defined: boolean; due: string | null; resolved: boolean; checkins: string[]; clockStart?: string | null };
+  // question: "stop_review" na een stop of pauze (golf B, punt 1); resolved geldt dan voor de stopvraag.
+  outcome: { defined: boolean; due: string | null; resolved: boolean; checkins: string[]; clockStart?: string | null; question?: "success" | "stop_review" };
   // Probabilities only for forecasts the reviewing consultant may see (blind rule, enforced by the database).
   forecasts: { moment: string; kind: string; probability?: number }[];
   // Base rate chosen for this dossier (null: none or "no good reference") and the number of resolved dossiers
@@ -123,6 +124,7 @@ export function openForecastMoment(f: CoachFacts): ForecastMoment | null {
     realityCheckDone: !!f.realityCheck,
     outcomeDue: f.outcome.due,
     clockStart: f.outcome.clockStart ?? null,
+    stopped: f.outcome.question === "stop_review",
     today: f.today,
   });
 }
@@ -421,6 +423,15 @@ export const RULES: Record<string, Rule> = {
   outcome_due: (f, base) => {
     if (f.outcome.resolved || !f.outcome.due || f.decisions.length === 0) return null;
     if (daysBetween(f.today, f.outcome.due) > 0) return null;
+    if (f.outcome.question === "stop_review")
+      return {
+        code: "stop_review_due",
+        kind: "warning",
+        title: "Was stoppen achteraf terecht?",
+        body: "Zes maanden na het stop- of pauzebesluit: leg met bewijs vast of stoppen terecht was. Het telt mee bij de terechte stops, niet in de kalibratie van slagingskansen.",
+        href: `${base}/outcome#uitkomst`,
+        audience: "consultant",
+      };
     return {
       code: "outcome_due",
       kind: "warning",
@@ -433,7 +444,7 @@ export const RULES: Record<string, Rule> = {
 
   outcome_checkin: (f, base) => {
     const last = f.decisions[f.decisions.length - 1];
-    if (f.outcome.resolved || !last || !f.outcome.defined) return null;
+    if (f.outcome.resolved || !last || !f.outcome.defined || f.outcome.question === "stop_review") return null;
     if (f.outcome.due && daysBetween(f.today, f.outcome.due) <= 0) return null; // outcome_due takes over
     const decided = last.decidedAt.slice(0, 10);
     if (daysBetween(decided, f.today) < 90) return null;
@@ -535,6 +546,7 @@ export const RULE_LABELS: Record<string, string> = {
   base_rate_missing: "Basispercentage ontbreekt",
   forecast_overconfident: "Voorspelling ver van basispercentage",
   outcome_due: "Uitkomst vastleggen",
+  stop_review_due: "Was stoppen terecht?",
   outcome_checkin: "Check-in na drie maanden",
   sprint_behind: "Sprint loopt achter",
   no_customer_voice: "Stem van de klant ontbreekt",
@@ -580,6 +592,7 @@ export const NOT_DONE: Record<string, string> = {
   forecast: "We zien nog geen voorspelling van het team bij dit moment.",
   forecast_overconfident: "We zien nog geen afgeronde landingpage- of prijstest die de afwijking onderbouwt.",
   outcome_due: "We zien nog geen vastgelegde uitkomst.",
+  stop_review_due: "We zien nog geen antwoord op de vraag of stoppen terecht was.",
   outcome_checkin: "We zien nog geen tussenstand na drie maanden.",
   sprint_behind: "We zien nog niet dat het dossier de sprintweek heeft ingehaald.",
   no_customer_voice: "We zien nog geen bron met de stem van de klant (review, forum, interview of enquête).",

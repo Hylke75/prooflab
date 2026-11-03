@@ -1,8 +1,8 @@
 import { ActionForm } from "@/components/ui/ActionForm";
 import { calendarDate } from "@/components/sprint/SprintCard";
-import { resolveOutcome, saveCheckin } from "@/app/app/ideas/[id]/outcome/actions";
+import { resolveOutcome, resolveStopReview, saveCheckin } from "@/app/app/ideas/[id]/outcome/actions";
 import type { ForecastView } from "@/lib/forecast-data";
-import { ACHIEVED_LABELS, ON_TRACK_LABELS, brier, explainBrier, MOMENT_LABELS, pct, type Achieved, type OnTrack } from "@/lib/domain/forecast";
+import { ACHIEVED_LABELS, JUSTIFIED_LABELS, ON_TRACK_LABELS, STOP_REVIEW_QUESTION, brier, explainBrier, MOMENT_LABELS, pct, type Achieved, type Justified, type OnTrack } from "@/lib/domain/forecast";
 
 const long = (d: string) => calendarDate(d, { day: "numeric", month: "long", year: "numeric" });
 const fmt = (n: number) => n.toLocaleString("nl-NL");
@@ -15,8 +15,10 @@ function Choice({ name, value, label, id }: { name: string; value: string; label
   );
 }
 
-// Interim check-in from three months after the decision, the final outcome from the outcome date.
+// Interim check-in from three months after the decision, the final outcome from the outcome date. Na een stop of
+// pauze vervalt de uitkomstvraag en volgt na zes maanden "Was stoppen achteraf terecht?".
 export function OutcomeFollowUp({ view }: { view: ForecastView }) {
+  if (view.question === "stop_review") return <StopReviewFollowUp view={view} />;
   const fu = view.followUp;
   const o = view.outcome;
   const early = !!fu.outcomeDate && view.today < fu.outcomeDate;
@@ -163,5 +165,70 @@ function ForecastScores({ view, achieved }: { view: ForecastView; achieved: Achi
       )}
       <div className="note">De uitkomst telt als 1 (gehaald), 0,5 (deels) of 0 (niet gehaald). De score is het kwadraat van het verschil met de gegeven kans. Eén dossier zegt weinig: of iemand goed gekalibreerd is, blijkt pas over veel afgeronde dossiers.</div>
     </div>
+  );
+}
+
+// Golf B, punt 1: de stopvraag. Voorspellingen bij dit dossier worden niet gescoord als slagingskans.
+function StopReviewFollowUp({ view }: { view: ForecastView }) {
+  const fu = view.followUp;
+  const r = view.stopReview;
+  const early = !!fu.outcomeDate && view.today < fu.outcomeDate;
+  return (
+    <>
+      <div className="card" id="uitkomst" style={{ scrollMarginTop: 100 }}>
+        <div className="section-title">
+          <h3>{STOP_REVIEW_QUESTION}</h3>
+          {r ? (
+            <span className={`pill ${r.justified === "yes" ? "green" : r.justified === "no" ? "coral" : "gray"}`}>{JUSTIFIED_LABELS[r.justified]}</span>
+          ) : fu.outcomeDue ? (
+            <span className="pill orange">Nu vast te leggen</span>
+          ) : (
+            <span className="pill gray">{fu.outcomeDate ? `Op ${long(fu.outcomeDate)}` : "Zes maanden na het besluit"}</span>
+          )}
+        </div>
+        <p className="sub">
+          Dit dossier is gestopt of gepauzeerd. De oorspronkelijke uitkomstvraag is daarmee vervallen: of het doel gehaald wordt, valt niet meer te meten.
+          Zes maanden na het besluit kijken we terug: was stoppen achteraf terecht?
+        </p>
+        {r ? (
+          <>
+            <div className="data-row"><span>Vastgelegd op</span><strong>{new Date(r.reviewedAt).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" })}</strong></div>
+            <p className="sub">Bewijs: {r.evidence}</p>
+          </>
+        ) : !fu.outcomeDate ? null : view.canWrite ? (
+          <ActionForm action={resolveStopReview.bind(null, view.ideaId)} submitLabel="Antwoord vastleggen">
+            {early && <p className="sub">De vraag staat open vanaf {long(fu.outcomeDate)}. Leg het antwoord alleen eerder vast als het al zeker is.</p>}
+            <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+              <legend className="field-label">{STOP_REVIEW_QUESTION}</legend>
+              <div className="choice-grid" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+                {(Object.keys(JUSTIFIED_LABELS) as Justified[]).map((k) => (
+                  <Choice key={k} name="justified" value={k} label={JUSTIFIED_LABELS[k]} id={`sr-${k}`} />
+                ))}
+              </div>
+            </fieldset>
+            <label className="field-label" htmlFor="sr-evidence">Bewijs</label>
+            <textarea className="field" id="sr-evidence" name="evidence" rows={3} style={{ minHeight: 90 }} maxLength={2000} required minLength={10} placeholder="Bijv. een concurrent lanceerde hetzelfde aanbod en haalde in zes maanden twee klanten; het budget ging naar een idee dat wel liep." />
+            {early && (
+              <label className="check-row mt-12">
+                <input type="checkbox" name="confirm_early" required /> Het antwoord staat nu al vast; ik leg het vóór de datum vast.
+              </label>
+            )}
+            <p className="field-hint">Een vastgelegd antwoord is een vast feit. Het telt mee bij de terechte stops op de pagina Voorspelkwaliteit.</p>
+          </ActionForm>
+        ) : (
+          <p className="sub">Het onderzoeksteam legt het antwoord vast op {long(fu.outcomeDate)}.</p>
+        )}
+      </div>
+      <div className="card">
+        <div className="section-title">
+          <h3>Voorspellingen</h3>
+          <span className="pill gray">Niet gescoord</span>
+        </div>
+        <p className="sub">
+          De voorspellingen bij dit dossier gingen over de kans dat het doel gehaald zou worden. Na de stop is die uitkomst niet meer te meten, dus ze worden
+          niet gescoord als slagingskans en tellen niet mee in de kalibratie of de eigen basisrate.
+        </p>
+      </div>
+    </>
   );
 }

@@ -399,14 +399,14 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               </p>
               {r.prediction.moments.length > 0 && !("revealed" in r.prediction && r.prediction.revealed === false) && (
                 <table className="table mt-12">
-                  <thead><tr><th>Moment</th><th>Mensen (gemiddeld, spreiding)</th><th>AI</th>{r.prediction.result ? <th>Brier per voorspelling</th> : null}</tr></thead>
+                  <thead><tr><th>Moment</th><th>Mensen (gemiddeld, spreiding)</th><th>AI</th>{r.prediction.result && !r.prediction.stop ? <th>Brier per voorspelling</th> : null}</tr></thead>
                   <tbody>
                     {r.prediction.moments.map((m) => (
                       <tr key={m.moment}>
                         <td>{m.moment}</td>
                         <td className="num">{m.people ? `${pct0(m.people.mean)} (${pct0(m.people.min)}–${pct0(m.people.max)}, n=${m.people.n})` : "—"}</td>
                         <td className="num">{m.ai != null ? pct0(m.ai) : "—"}</td>
-                        {r.prediction.result ? <td className="num">{m.forecasts.map((f) => `${f.who} ${f.brier?.toFixed(2)}`).join(" · ")}</td> : null}
+                        {r.prediction.result && !r.prediction.stop ? <td className="num">{m.forecasts.map((f) => `${f.who} ${f.brier?.toFixed(2)}`).join(" · ")}</td> : null}
                       </tr>
                     ))}
                   </tbody>
@@ -422,6 +422,15 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 Iedereen geeft zijn kans zonder de anderen te zien. Een AI-voorspelling telt niet mee in het gemiddelde en is geen bewijs. De Brier-score
                 meet achteraf hoe goed een kans was: 0 is perfect, 0,25 is wat je haalt met steeds 50%.
               </p>
+              {r.prediction.stop && (
+                <p className="mt-8">
+                  Dit dossier is gestopt of gepauzeerd. De oorspronkelijke uitkomstvraag is daarmee vervallen en de voorspellingen worden niet gescoord als
+                  slagingskans. Zes maanden na het besluit volgt de vraag: was stoppen achteraf terecht?{" "}
+                  {r.prediction.stop.review
+                    ? `Vastgelegd op ${date(r.prediction.stop.review.at)}: ${r.prediction.stop.review.justified.toLowerCase()}. ${r.prediction.stop.review.evidence}`
+                    : "Nog niet beantwoord."}
+                </p>
+              )}
               {r.prediction.checkins.map((c, i) => (
                 <p className="mt-8" key={i}>Tussenstand {date(c.at)}: {c.onTrack.toLowerCase()}{c.value != null ? ` (stand: ${c.value})` : ""}. {c.note}</p>
               ))}

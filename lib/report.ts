@@ -2,7 +2,7 @@ import "server-only";
 import type { Dossier } from "@/lib/dossier";
 import { CLAIM_STATUS, COMPETITOR_KINDS, DECISIONS, EVIDENCE_TYPES, EXPERIMENT_TYPES, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type DecisionAction, type EvidenceType, type ExperimentType, type SourceType } from "@/lib/domain/labels";
 import type { Finding } from "@/lib/domain/reality-check";
-import { ACHIEVED_LABELS, FORECAST_MOMENTS, FORECASTER_LABELS, MOMENT_LABELS, ON_TRACK_LABELS, aggregate, brier, type Achieved, type ForecasterKind, type OnTrack } from "@/lib/domain/forecast";
+import { ACHIEVED_LABELS, FORECAST_MOMENTS, FORECASTER_LABELS, JUSTIFIED_LABELS, MOMENT_LABELS, ON_TRACK_LABELS, aggregate, brier, type Achieved, type ForecasterKind, type Justified, type OnTrack } from "@/lib/domain/forecast";
 import { ensembleMean } from "@/lib/ai/providers/select";
 import { PROVIDER_LABELS, providerOfModel } from "@/lib/ai/providers/config";
 
@@ -114,10 +114,10 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       baseRate: d.prediction.baseRate,
       // Blind rule: before the outcome is known a report (also a shared one) only says how many forecasts
       // exist per moment; probabilities and reasons appear once the outcome is recorded.
-      revealed: d.prediction.result != null,
+      revealed: d.prediction.result != null || d.prediction.stopReview != null,
       moments: FORECAST_MOMENTS.map((m) => {
         const rows = d.prediction.forecasts.filter((f) => f.moment === m);
-        if (d.prediction.result == null) {
+        if (d.prediction.result == null && d.prediction.stopReview == null) {
           return { moment: MOMENT_LABELS[m].label, count: rows.length, people: null, ai: null, forecasts: [] as { who: string; probability: number; rationale: string; brier: number | null }[] };
         }
         const people = rows.filter((f) => f.forecaster_kind !== "ai").map((f) => Number(f.probability));
@@ -131,7 +131,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
             who: aiName(f.forecaster_kind, f.model) ?? FORECASTER_LABELS[f.forecaster_kind as ForecasterKind],
             probability: Number(f.probability),
             rationale: f.rationale,
-            brier: d.prediction.result ? brier(Number(f.probability), d.prediction.result.achieved as Achieved) : null,
+            // Bij een gestopt dossier wordt een voorspelling niet gescoord als slagingskans.
+            brier: d.prediction.result && d.prediction.question === "success" ? brier(Number(f.probability), d.prediction.result.achieved as Achieved) : null,
           })),
         };
       }).filter((m) => m.count > 0),
@@ -139,6 +140,15 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       result: d.prediction.result
         ? { achieved: ACHIEVED_LABELS[d.prediction.result.achieved as Achieved], value: d.prediction.result.actual_value, evidence: d.prediction.result.evidence, at: d.prediction.result.resolved_at }
         : null,
+      // Na een stop of pauze: "Was stoppen achteraf terecht?" (null bij de succesvraag en in oudere rapporten).
+      stop:
+        d.prediction.question === "stop_review"
+          ? {
+              review: d.prediction.stopReview
+                ? { justified: JUSTIFIED_LABELS[d.prediction.stopReview.justified as Justified], evidence: d.prediction.stopReview.evidence, at: d.prediction.stopReview.reviewed_at }
+                : null,
+            }
+          : null,
     },
     experiments: d.experiments
       .filter((e) => !["draft", "ready_for_review"].includes(e.state))

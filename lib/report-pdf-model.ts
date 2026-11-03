@@ -285,7 +285,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
   // 11 Prediction (blind until the outcome is known)
   if (r.prediction) {
     const p = r.prediction;
-    const revealed = p.result != null && (p as { revealed?: boolean }).revealed !== false;
+    const revealed = (p.result != null || !!p.stop?.review) && (p as { revealed?: boolean }).revealed !== false;
     const blocks: Block[] = [];
     blocks.push(
       p.outcome.statement
@@ -312,7 +312,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
           m.moment,
           m.people ? `${pct0(m.people.mean)} (${pct0(m.people.min)}–${pct0(m.people.max)}, n=${m.people.n})` : "—",
           m.ai != null ? pct0(m.ai) : "—",
-          m.forecasts.map((f) => `${f.who} ${f.brier?.toFixed(2) ?? "—"}`).join(" · "),
+          p.stop ? "Niet gescoord (gestopt)" : m.forecasts.map((f) => `${f.who} ${f.brier?.toFixed(2) ?? "—"}`).join(" · "),
         ]),
       });
     } else if (p.moments.length) {
@@ -323,6 +323,12 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
     }
     blocks.push({ t: "p", small: true, muted: true, text: "Iedereen geeft zijn kans zonder de anderen te zien. Een AI-voorspelling telt niet mee in het gemiddelde en is geen bewijs." });
     for (const c of p.checkins) blocks.push({ t: "p", text: `Tussenstand ${nlDate(c.at)}: ${c.onTrack.toLowerCase()}${c.value != null ? ` (stand: ${c.value})` : ""}. ${c.note ?? ""}` });
+    // Golf B, punt 1: na een stop of pauze de stopvraag; voorspellingen worden niet gescoord als slagingskans.
+    if (p.stop)
+      blocks.push({
+        t: "p",
+        text: `Dit dossier is gestopt of gepauzeerd. De oorspronkelijke uitkomstvraag is daarmee vervallen en de voorspellingen worden niet gescoord als slagingskans. Zes maanden na het besluit volgt de vraag: was stoppen achteraf terecht? ${p.stop.review ? `Vastgelegd op ${nlDate(p.stop.review.at)}: ${p.stop.review.justified.toLowerCase()}. ${p.stop.review.evidence}` : "Nog niet beantwoord."}`,
+      });
     if (p.result) blocks.push({ t: "p", text: `Vastgelegd op ${nlDate(p.result.at)}: ${p.result.achieved.toLowerCase()}${p.result.value != null ? ` (werkelijk: ${p.result.value})` : ""}. ${p.result.evidence}` });
     chapters.push({ id: "prediction", eyebrow: "11 / VOORSPELLING EN UITKOMST", title: p.result ? `Uitkomst: ${p.result.achieved.toLowerCase()}.` : "Wat verwachten we, en hoe toetsen we dat?", blocks });
   }

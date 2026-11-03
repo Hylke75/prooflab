@@ -23,7 +23,9 @@ import {
   type FollowUp,
   type ForecastMoment,
   type ForecasterKind,
+  type Justified,
   type OnTrack,
+  type OutcomeQuestion,
 } from "@/lib/domain/forecast";
 
 // Een referentieklasse uit de vaste lijst, of een door AI voorgesteld en door ProofLab nagelopen voorstel voor dit
@@ -51,6 +53,7 @@ export type ForecastRow = {
 
 export type OutcomeRow = { achieved: Achieved; actualValue: number | null; evidence: string; resolvedAt: string };
 export type CheckinRow = { id: string; onTrack: OnTrack; currentValue: number | null; note: string; createdAt: string };
+export type StopReviewRow = { justified: Justified; evidence: string; reviewedAt: string };
 
 export type ForecastView = {
   ideaId: string;
@@ -75,6 +78,9 @@ export type ForecastView = {
   // Best effort: forecasts of others stay hidden until you forecast, so the database has the final say.
   definitionLocked: boolean;
   resolved: OutcomeRow | null;
+  // Golf B, punt 1: na een stop of pauze de stopvraag in plaats van de uitkomstvraag.
+  question: OutcomeQuestion;
+  stopReview: StopReviewRow | null;
   checkins: CheckinRow[];
   followUp: FollowUp;
   today: string;
@@ -97,7 +103,7 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
   const { idea, canWrite } = access;
   const ws = await getWorkspace();
   const supabase = await supabaseServer();
-  const [classes, forecasts, outcome, checkins, own, anyForecast, orgResolved, behaviour, proposals] = await Promise.all([
+  const [classes, forecasts, outcome, checkins, own, anyForecast, orgResolved, behaviour, proposals, stopReview] = await Promise.all([
     supabase.from("reference_classes").select("*").order("position"),
     supabase.from("forecasts").select("*").eq("idea_id", idea.id).order("created_at"),
     supabase.from("idea_outcomes").select("*").eq("idea_id", idea.id).maybeSingle(),
@@ -109,6 +115,8 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
     supabase.from("experiments").select("id", { count: "exact", head: true }).eq("idea_id", idea.id).in("type", ["landing", "pricing"]).in("state", ["ended", "analyzed", "decided"]),
     // Ontbreekt de tabel (oudere database), dan zijn er gewoon geen voorstellen.
     supabase.from("reference_proposals").select("id, label, rate, source_url, source_title, quote").eq("idea_id", idea.id).order("created_at", { ascending: false }).limit(10),
+    // Ontbreekt de tabel (oudere database), dan is er geen stopvraag.
+    state.question === "stop_review" ? supabase.from("stop_reviews").select("justified, evidence, reviewed_at").eq("idea_id", idea.id).maybeSingle() : Promise.resolve({ data: null, error: null }),
   ]);
   if (classes.error || forecasts.error || outcome.error || checkins.error) return null;
 
@@ -202,6 +210,8 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
     resolved: outcome.data
       ? { achieved: outcome.data.achieved as Achieved, actualValue: outcome.data.actual_value == null ? null : Number(outcome.data.actual_value), evidence: outcome.data.evidence, resolvedAt: outcome.data.resolved_at }
       : null,
+    question: state.question ?? "success",
+    stopReview: stopReview.data ? { justified: stopReview.data.justified as Justified, evidence: stopReview.data.evidence, reviewedAt: stopReview.data.reviewed_at } : null,
     checkins: (checkins.data ?? []).map((c) => ({ id: c.id, onTrack: c.on_track as OnTrack, currentValue: c.current_value == null ? null : Number(c.current_value), note: c.note, createdAt: c.created_at })),
     followUp: followUp(state),
     today: state.today,
@@ -212,7 +222,7 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
   };
 });
 
-export type OutcomeReminder = { ideaId: string; title: string; kind: "checkin" | "outcome"; date: string };
+export type OutcomeReminder = { ideaId: string; title: string; kind: "checkin" | "outcome" | "stop_review"; date: string };
 
 // Dashboard reminders for consultants, across all ideas of the organisation (also ones decided long ago):
 // a check-in from three months after the decision, the outcome from the outcome date.
@@ -227,20 +237,27 @@ export async function loadOutcomeReminders(orgId: string, today: string): Promis
     .order("outcome_due");
   if (error || !ideas?.length) return [];
   const ids = ideas.map((i) => i.id);
-  const [checkins, outcomes] = await Promise.all([
+  const [checkins, outcomes, questions, stopReviews] = await Promise.all([
     supabase.from("outcome_checkins").select("idea_id").in("idea_id", ids),
     supabase.from("idea_outcomes").select("idea_id").in("idea_id", ids),
+    // Golf B: zonder deze kolom of tabel (oudere database) geldt overal de succesvraag.
+    supabase.from("ideas").select("id, outcome_question").in("id", ids),
+    supabase.from("stop_reviews").select("idea_id").in("idea_id", ids),
   ]);
   if (checkins.error || outcomes.error) return [];
+  const stopped = new Set((questions.error ? [] : questions.data ?? []).filter((q) => q.outcome_question === "stop_review").map((q) => q.id));
+  const reviewed = new Set((stopReviews.error ? [] : stopReviews.data ?? []).map((r) => r.idea_id));
   return ideas.flatMap((i): OutcomeReminder[] => {
+    const question: OutcomeQuestion = stopped.has(i.id) ? "stop_review" : "success";
     const fu = followUp({
       outcomeDue: i.outcome_due,
       clockStart: i.outcome_clock_start,
       checkins: (checkins.data ?? []).filter((c) => c.idea_id === i.id).length,
-      resolved: (outcomes.data ?? []).some((o) => o.idea_id === i.id),
+      resolved: question === "stop_review" ? reviewed.has(i.id) : (outcomes.data ?? []).some((o) => o.idea_id === i.id),
+      question,
       today,
     });
-    if (fu.outcomeDue) return [{ ideaId: i.id, title: i.title, kind: "outcome" as const, date: fu.outcomeDate! }];
+    if (fu.outcomeDue) return [{ ideaId: i.id, title: i.title, kind: question === "stop_review" ? ("stop_review" as const) : ("outcome" as const), date: fu.outcomeDate! }];
     if (fu.checkinDue) return [{ ideaId: i.id, title: i.title, kind: "checkin" as const, date: fu.checkinDate! }];
     return [];
   });

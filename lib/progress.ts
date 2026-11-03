@@ -209,15 +209,19 @@ async function loadReportMeta(ideaId: string): Promise<{ created_at: string; sha
 export const loadForecastState = cache(async (ideaId: string): Promise<ForecastState | undefined> => {
   const supabase = await supabaseServer();
   const user = await getUser();
-  const [idea, own, checkins, outcome] = await Promise.all([
+  const [idea, own, checkins, outcome, question, stopReview] = await Promise.all([
     supabase.from("ideas").select("outcome_statement, outcome_due, outcome_clock_start, reference_class").eq("id", ideaId).maybeSingle(),
     user
       ? supabase.from("forecasts").select("moment").eq("idea_id", ideaId).eq("forecaster_id", user.id)
       : Promise.resolve({ data: [] as { moment: string }[], error: null }),
     supabase.from("outcome_checkins").select("id", { count: "exact", head: true }).eq("idea_id", ideaId),
     supabase.from("idea_outcomes").select("idea_id").eq("idea_id", ideaId).maybeSingle(),
+    // Golf B: los opgevraagd, zodat een database zonder deze kolom en tabel gewoon de succesvraag houdt.
+    supabase.from("ideas").select("outcome_question").eq("id", ideaId).maybeSingle(),
+    supabase.from("stop_reviews").select("idea_id").eq("idea_id", ideaId).maybeSingle(),
   ]);
   if (idea.error || own.error || checkins.error || outcome.error || !idea.data) return undefined;
+  const stopped = !question.error && question.data?.outcome_question === "stop_review";
   return {
     outcomeDefined: !!idea.data.outcome_statement,
     baseRateChosen: !!idea.data.reference_class,
@@ -225,7 +229,8 @@ export const loadForecastState = cache(async (ideaId: string): Promise<ForecastS
     clockStart: idea.data.outcome_clock_start,
     ownMoments: (own.data ?? []).map((f) => f.moment).filter((m): m is ForecastMoment => (FORECAST_MOMENTS as readonly string[]).includes(m)),
     checkins: checkins.count ?? 0,
-    resolved: !!outcome.data,
+    resolved: stopped ? !stopReview.error && !!stopReview.data : !!outcome.data,
+    question: stopped ? "stop_review" : "success",
     today: todayInNL(),
   };
 });

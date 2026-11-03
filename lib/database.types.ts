@@ -536,6 +536,13 @@ export type Database = {
         }
         Relationships: []
       }
+      // Golf B (punt 1): "Was stoppen achteraf terecht?"
+      stop_reviews: {
+        Row: { idea_id: string; justified: string; evidence: string; reviewed_by: string; reviewed_at: string }
+        Insert: { idea_id: string; justified: string; evidence: string; reviewed_by?: string; reviewed_at?: string }
+        Update: { idea_id?: string; justified?: string; evidence?: string; reviewed_by?: string; reviewed_at?: string }
+        Relationships: []
+      }
       outcome_checkins: {
         Row: {
           id: string
@@ -1446,6 +1453,7 @@ export type Database = {
       ideas: {
         Row: {
           outcome_clock_start: string | null
+          outcome_question: string
           outcome_min_value_per_customer: number | null
           outcome_revenue_target: number | null
           outcome_measure_date: string | null
@@ -1487,6 +1495,7 @@ export type Database = {
         }
         Insert: {
           outcome_clock_start?: string | null
+          outcome_question?: string
           outcome_min_value_per_customer?: number | null
           outcome_revenue_target?: number | null
           outcome_measure_date?: string | null
@@ -1528,6 +1537,7 @@ export type Database = {
         }
         Update: {
           outcome_clock_start?: string | null
+          outcome_question?: string
           outcome_min_value_per_customer?: number | null
           outcome_revenue_target?: number | null
           outcome_measure_date?: string | null
@@ -2882,6 +2892,10 @@ export type Database = {
       own_base_rate: {
         Args: { p_org: string; p_project_type: string | null; p_min?: number }
         Returns: { resolved: number; achieved: number }[]
+      }
+      stop_review_counts: {
+        Args: { p_org: string }
+        Returns: { stopped: number; justified: number; not_justified: number; unknown: number; open: number }[]
       }
       set_learned_weights: { Args: { p_org: string; p_on: boolean }; Returns: boolean }
       learning_evidence_counts: {

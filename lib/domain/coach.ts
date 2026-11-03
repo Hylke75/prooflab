@@ -182,6 +182,8 @@ export function followUpAction(p: IdeaProgress): NextAction | null {
   if (!p.forecast) return null;
   const base = `/app/ideas/${p.ideaId}`;
   const fu = followUpFor(p);
+  if (fu?.outcomeDue && p.forecast.question === "stop_review")
+    return { title: "Was stoppen achteraf terecht?", detail: "Zes maanden na het stop- of pauzebesluit: leg met bewijs vast of stoppen terecht was.", href: `${base}/outcome#uitkomst`, icon: "check" };
   if (fu?.outcomeDue) return { title: "Leg de uitkomst vast", detail: "De meetdatum is bereikt: is het doel gehaald? Leg het vast met bewijs, dan worden de voorspellingen gescoord.", href: `${base}/outcome#uitkomst`, icon: "check" };
   if (fu?.checkinDue) return { title: "Geef de tussenstand", detail: "Drie maanden na het besluit: ligt het doel op koers? Een korte tussenstand houdt de uitkomstmeting eerlijk.", href: `${base}/outcome#tussenstand`, icon: "clock" };
   return null;
