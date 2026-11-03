@@ -378,3 +378,12 @@ details.quickline>summary{list-style:none;display:flex;align-items:center;gap:12
 details.quickline>summary::-webkit-details-marker{display:none}
 details.quickline>summary::after{content:"";margin-left:auto;flex:none;width:32px;height:32px;border-radius:var(--radius-pill);background:var(--color-surface-muted) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23004A6D' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center/16px no-repeat;transition:transform var(--dur) ease-out}
 details.quickline[open]>summary::after{transform:rotate(180deg)}
+/* ---- Redesign: terug-naar-boven-knop (components/ui/BackToTop.tsx) ---- */
+.back-to-top{position:fixed;right:24px;bottom:24px;z-index:27;width:56px;height:56px;border:0;border-radius:var(--radius-pill);background:var(--color-accent);color:var(--color-on-dark);display:grid;place-items:center;box-shadow:var(--shadow-hover);animation:appear var(--dur) ease-out both;transition:background-color var(--dur) ease-out,transform var(--dur) ease-out}
+.back-to-top svg.i{transform:rotate(-90deg);width:22px;height:22px}
+.back-to-top:hover{background:var(--color-primary);transform:translateY(-2px)}
+.back-to-top:focus-visible{outline:2px solid var(--color-primary);outline-offset:3px}
+@media(max-width:1160px){.back-to-top{bottom:96px}}
+@media print{.back-to-top{display:none!important}}
+/* Beweging uit voor wie dat vraagt: ook geen optil-effecten bij hover. */
+@media(prefers-reduced-motion:reduce){.idea:hover,a.card:hover,.card.interactive:hover,.exp-option:hover,.suggestion:hover,.back-to-top:hover{transform:none!important}}

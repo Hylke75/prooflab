@@ -1,5 +1,6 @@
 import { ShellProvider } from "@/components/shell/ShellProvider";
 import { Sidebar } from "@/components/shell/Sidebar";
+import { BackToTop } from "@/components/ui/BackToTop";
 import { getWorkspace } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { aiConfigured } from "@/lib/env";
@@ -21,6 +22,7 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
         />
         {children}
       </div>
+      <BackToTop />
     </ShellProvider>
   );
 }
