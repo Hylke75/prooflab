@@ -81,7 +81,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
         <div className={`verdict mt-18 ${v.kind}`}>
           <strong>{v.kind === "running" ? "Nog geen uitspraak" : v.kind === "pass" ? "Geslaagd volgens de vooraf vastgelegde regel" : v.kind === "fail" ? "Niet geslaagd" : "Onbeslist"}</strong>
           <p className="sub" style={{ marginTop: 4 }}>{v.reason}</p>
-          {v.kind !== "running" && <ResultMeter v={v} success={Number(h.success_threshold_pct)} fail={h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct)} />}
+          {v.kind !== "running" && <ResultMeter v={v} success={Number(h.success_threshold_pct)} fail={h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct)} bayes={m.bayes} />}
         </div>
       )}
       {m.warnings.map((w) => <div className="note" key={w}>{w}</div>)}

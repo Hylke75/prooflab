@@ -354,18 +354,34 @@ export async function deleteSegment(ideaId: string, segmentId: string) {
 export async function saveScenario(ideaId: string, scenarioId: string, _: ActionState, form: FormData): Promise<ActionState> {
   await requireWritableIdea(ideaId);
   const supabase = await supabaseServer();
-  const { data: factors } = await supabase.from("sizing_factors").select("id, key, unit").eq("scenario_id", scenarioId).eq("idea_id", ideaId);
+  const { data: factors } = await supabase.from("sizing_factors").select("id, key, unit, label").eq("scenario_id", scenarioId).eq("idea_id", ideaId);
+  const rows: { id: string; value: number; claim_id: string | null; note: string | null; low_value: number | null; high_value: number | null }[] = [];
+  // Validate every factor first, so an error never leaves a half-saved scenario.
   for (const f of factors ?? []) {
     // Same reading as quotes: "41.230" is forty-one thousand, "2,5" is two and a half.
     const value = numericFromInput(String(form.get(`value_${f.key}`) ?? ""));
     if (value == null || value < 0) return { error: "Alle waarden moeten positieve getallen zijn." };
     if (f.unit === "percent" && value > 100) return { error: "Percentages liggen tussen 0 en 100." };
+    // Optional 90% range for the Monte Carlo simulation: both bounds or neither.
+    const rawLow = String(form.get(`low_${f.key}`) ?? "").trim();
+    const rawHigh = String(form.get(`high_${f.key}`) ?? "").trim();
+    let low: number | null = null;
+    let high: number | null = null;
+    if (rawLow || rawHigh) {
+      low = numericFromInput(rawLow);
+      high = numericFromInput(rawHigh);
+      if (low == null || high == null) return { error: `${f.label}: vul beide grenzen van de bandbreedte in, of laat ze allebei leeg.` };
+      if (low < 0 || high < 0) return { error: `${f.label}: de bandbreedte bestaat uit positieve getallen.` };
+      if (f.unit === "percent" && high > 100) return { error: `${f.label}: percentages liggen tussen 0 en 100.` };
+      if (low > high) return { error: `${f.label}: de ondergrens is hoger dan de bovengrens.` };
+      if (value < low || value > high) return { error: `${f.label}: de waarde ligt buiten de eigen bandbreedte.` };
+    }
     const claim = String(form.get(`claim_${f.key}`) ?? "");
-    await supabase
-      .from("sizing_factors")
-      .update({ value, claim_id: /^[0-9a-f-]{36}$/.test(claim) ? claim : null, note: blank(form.get(`note_${f.key}`)) })
-      .eq("id", f.id)
-      .eq("idea_id", ideaId);
+    rows.push({ id: f.id, value, claim_id: /^[0-9a-f-]{36}$/.test(claim) ? claim : null, note: blank(form.get(`note_${f.key}`)), low_value: low, high_value: high });
+  }
+  for (const { id, ...row } of rows) {
+    const { error } = await supabase.from("sizing_factors").update(row).eq("id", id).eq("idea_id", ideaId);
+    if (error) return { error: "Opslaan mislukt. Probeer het opnieuw." };
   }
   await supabase.from("sizing_scenarios").update({ updated_at: new Date().toISOString() }).eq("id", scenarioId).eq("idea_id", ideaId);
   return done(ideaId, "Scenario opgeslagen.");
