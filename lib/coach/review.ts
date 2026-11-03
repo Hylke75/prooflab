@@ -158,6 +158,7 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
     },
     forecasts: (forecasts.data ?? []).map((f) => ({ moment: f.moment, kind: f.forecaster_kind, probability: Number(f.probability) })),
     baseRateChosen: !!idea.reference_class,
+    idea: { decisionQuestion: idea.decision_question, keyUncertainty: idea.key_uncertainty },
     baseRate: idea.base_rate_low != null && idea.base_rate_high != null ? { low: Number(idea.base_rate_low), high: Number(idea.base_rate_high) } : null,
     // Unknown (schema missing) counts as "enough": then the starting-calibration rule stays quiet.
     orgResolved: orgResolved.error ? Number.POSITIVE_INFINITY : Number(orgResolved.data?.[0]?.resolved ?? 0),

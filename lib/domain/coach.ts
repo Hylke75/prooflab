@@ -242,6 +242,8 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
       if (!p.hasAlternatives) add("Breng het huidige alternatief in kaart", `${base}/research?tab=competitors`, "compass");
       if (p.segments === 0) add("Leg gebruiker en betaler vast", `${base}/research?tab=customers`, "users");
       if (!p.sizingEstablished) add("Onderbouw het basisaantal van de marktomvang", `${base}/research?tab=sizing`, "trend");
+      // Aannames en pre-mortem mogen parallel aan het onderzoek: niets wacht op het einde van week 1.
+      if (p.assumptions === 0) add("Schrijf alvast de eerste aannames op", `${base}/assumptions#nieuwe-aanname`, "layers");
       if (p.weakClaims > 0) insight = ["Let hierop", `${p.weakClaims} bevinding(en) hebben nog onvoldoende bewijs. Zoekcijfers en AI-conclusies zijn geen bewijs dat klanten willen betalen.`];
       else if (!p.sizingEstablished) insight = ["Let hierop", "Het basisaantal van de marktomvang heeft nog geen bron. Tot die tijd is de omvang een verkenning, geen feit."];
       if (items.length === 0) add("Ga door naar de aannames", `${base}/assumptions`, "layers");

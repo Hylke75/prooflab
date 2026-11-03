@@ -7,6 +7,7 @@ import {
   evaluateRules,
   hypotheticalQuestions,
   openForecastMoment,
+  paymentFocused,
   planNoteChanges,
   projectedSample,
   RULES,
@@ -31,7 +32,7 @@ function facts(over: Partial<CoachFacts> = {}): CoachFacts {
     claims: [{ id: "c1", statement: "Er zijn 41.230 vestigingen", exactSources: [{ sourceType: "official_statistic", isPrimary: true }] }],
     competitorKinds: ["direct", "status_quo"],
     sourceTypes: ["official_statistic", "review_site"],
-    assumptions: [],
+    assumptions: [{ id: "a0", statement: "Eventmanagers zoeken zelf locaties", importance: 3, status: "untested" }],
     experiments: [],
     interviews: [],
     observations: [],
@@ -351,5 +352,33 @@ describe('"Gedaan": is het werk echt gedaan?', () => {
   it("heeft voor elke regel een concrete melding", () => {
     const rules = Object.keys(RULE_LABELS).filter((r) => r !== "ai" && !r.startsWith("praise"));
     for (const r of rules) expect(NOT_DONE[r], r).toMatch(/^We zien nog/);
+  });
+});
+
+describe("assumptions_early: aannames al in week 1", () => {
+  const week1 = { assumptions: [], sprint: { week: 1, weeks: 5, state: "running" as const, behindReason: null } };
+
+  it("biedt aannames en pre-mortem parallel aan het onderzoek aan, zonder te blokkeren", () => {
+    const n = evaluateRules(facts(week1)).find((x) => x.code === "assumptions_early");
+    expect(n).toMatchObject({ kind: "tip", title: "Begin al met aannames en een pre-mortem", href: `${base}/assumptions#nieuwe-aanname` });
+    expect(n?.body).toContain("pre-mortem");
+  });
+
+  it("legt de nadruk op betalingsbereidheid als de beslisvraag of onzekerheid daarover gaat", () => {
+    for (const idea of [
+      { decisionQuestion: "Investeren we in een eerste versie?", keyUncertainty: "of eventmanagers hiervoor willen betalen" },
+      { decisionQuestion: "Lanceren we tegen deze prijs?", keyUncertainty: null },
+      { decisionQuestion: "Starten we als het budget van klanten dit toelaat?", keyUncertainty: null },
+    ]) {
+      expect(evaluateRules(facts({ ...week1, idea })).find((x) => x.code === "assumptions_early")?.title).toBe("Leg de betaalaanname nu al vast");
+    }
+    expect(paymentFocused("Investeren we in een eerste versie?", "of de techniek werkt")).toBe(false);
+  });
+
+  it("zwijgt zodra er aannames of tests zijn, of later in de sprint", () => {
+    expect(codes(facts())).not.toContain("assumptions_early");
+    expect(codes(facts({ ...week1, experiments: [exp()] }))).not.toContain("assumptions_early");
+    expect(codes(facts({ ...week1, sprint: { week: 3, weeks: 5, state: "running", behindReason: null } }))).not.toContain("assumptions_early");
+    expect(checkNoteDone({ code: "assumptions_early", source: "rules" }, facts(week1))).toEqual({ done: false, message: "We zien nog geen aannames in het dossier." });
   });
 });

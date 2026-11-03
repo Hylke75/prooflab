@@ -76,6 +76,8 @@ export type CoachFacts = {
   // Of er een basispercentage is gekozen, ook "geen goede referentie" (dan is voorspellen toegestaan). Onbekend
   // telt als niet gekozen: de coach vraagt nooit om een voorspelling die de pagina weigert.
   baseRateChosen?: boolean;
+  // Beslisvraag en grootste onzekerheid uit de intake (optioneel voor aanroepers die ze niet kennen).
+  idea?: { decisionQuestion: string; keyUncertainty: string | null };
   orgResolved?: number;
   outreach: { replies: number; latestReplyAt: string | null; latestImportAt: string | null };
 };
@@ -136,6 +138,14 @@ export function projectedSample(e: { n: number; startedAt: string | null; endsAt
   return { projected: Math.floor((e.n / elapsedDays) * totalDays), elapsedDays, totalDays };
 }
 
+// Gaat de beslisvraag of de grootste onzekerheid over betalingsbereidheid? Dan is de belangrijkste aanname al bij
+// de intake bekend, en hoeft die niet op het einde van het onderzoek te wachten.
+const PAYMENT = /\b(betal\w*|prijs\w*|prijzen|budget\w*|kosten|kost|tarie[fv]\w*|willen\s+betalen|betalingsbereid\w*|geld\s+voor)\b/i;
+
+export function paymentFocused(...texts: (string | null | undefined)[]): boolean {
+  return texts.some((t) => !!t && PAYMENT.test(t));
+}
+
 type Rule = (f: CoachFacts, base: string) => CoachNoteDraft | CoachNoteDraft[] | null;
 
 export const RULES: Record<string, Rule> = {
@@ -147,6 +157,23 @@ export const RULES: Record<string, Rule> = {
       title: "Huidige alternatieven ontbreken nog",
       body: "Er zijn bevindingen, maar nog geen huidig alternatief of 'niets doen' in kaart. Klanten vergelijken je idee met wat ze nu al doen; dat is vaak de echte concurrent.",
       href: `${base}/research?tab=competitors`,
+      audience: "consultant",
+    };
+  },
+
+  // Aannames en pre-mortem al in week 1, parallel aan het onderzoek. Er wordt niets geblokkeerd.
+  assumptions_early: (f, base) => {
+    if (f.assumptions.length > 0 || f.experiments.length > 0 || f.decisions.length > 0) return null;
+    if (f.sprint && f.sprint.state === "running" && f.sprint.week > 2) return null; // critical_untested en sprint_behind nemen het over
+    const pay = paymentFocused(f.idea?.decisionQuestion, f.idea?.keyUncertainty);
+    return {
+      code: "assumptions_early",
+      kind: "tip",
+      title: pay ? "Leg de betaalaanname nu al vast" : "Begin al met aannames en een pre-mortem",
+      body: pay
+        ? "De beslisvraag of de grootste onzekerheid gaat over betalen of prijs. Schrijf die aanname nu al op en doe de pre-mortem: dan kun je een prijs- of aanbodtest voorbereiden terwijl het marktonderzoek loopt."
+        : "Je hoeft niet te wachten tot het onderzoek af is. Schrijf de belangrijkste aannames op en doe de pre-mortem ('het is mislukt: waarom?'); het onderzoek kan ze daarna gericht toetsen.",
+      href: `${base}/assumptions#nieuwe-aanname`,
       audience: "consultant",
     };
   },
@@ -491,6 +518,7 @@ export const RULES: Record<string, Rule> = {
 // Short Dutch names per rule code (the part before ':'), for the learning page.
 export const RULE_LABELS: Record<string, string> = {
   alternatives_missing: "Huidige alternatieven ontbreken",
+  assumptions_early: "Aannames al in week 1",
   single_secondary_source: "Eén secundaire bron",
   opinions_no_behaviour: "Veel meningen, geen gedrag",
   critical_untested: "Kritieke aanname niet getest",
@@ -556,6 +584,7 @@ export const NOT_DONE: Record<string, string> = {
   sprint_behind: "We zien nog niet dat het dossier de sprintweek heeft ingehaald.",
   no_customer_voice: "We zien nog geen bron met de stem van de klant (review, forum, interview of enquête).",
   outreach_unimported: "We zien nog geen opgenomen LinkedIn-antwoorden bij de bronnen.",
+  assumptions_early: "We zien nog geen aannames in het dossier.",
 };
 
 export type DoneCheck = { done: true } | { done: false; message: string };
