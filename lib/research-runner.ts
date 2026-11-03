@@ -19,7 +19,8 @@ import { passagesPerRun, twoZeroRunsInARow } from "@/lib/domain/research-health"
 import { CBS_STATLINE_URL, CBS_TABLE, cbsKeywords, cbsLine, fetchCbsCompanyCounts, isSizeQuestion, type JsonFetcher } from "@/lib/integrations/cbs";
 import type { Idea } from "@/lib/data";
 import type { Json } from "@/lib/database.types";
-import { keepAfterSupportCheck, type SupportCheck } from "@/lib/domain/support";
+import { isSupportCheck, keepAfterSupportCheck, type SupportCheck } from "@/lib/domain/support";
+import { decideMerge, knownSupportVerdict, type KnownFinding } from "@/lib/research-dedupe";
 import { groundedScope } from "@/lib/domain/claim-scope";
 
 type RunState = { status: string; done: number; total: number; current: string | null; cost: number; budget: number; error: string | null };
@@ -346,7 +347,7 @@ async function runTask(task: TaskRow, idea: Idea, mode: RunMode, runWith: Provid
     }
 
     const stored = await storeExtractedClaims(idea.id, q!.id, byRef, res.data.claims);
-    const { rejected, duplicates, unsupported } = stored;
+    const { rejected, duplicates, unsupported, merged } = stored;
     const kept = stored.claimIds.length;
 
     let competitors = 0;
@@ -374,8 +375,8 @@ async function runTask(task: TaskRow, idea: Idea, mode: RunMode, runWith: Provid
       competitors++;
     }
     return {
-      output: { claims: kept, rejected, duplicates, unsupported, competitors },
-      detail: `${kept} bevindingen met gecontroleerd citaat${rejected ? `, ${rejected} afgewezen (citaat niet letterlijk teruggevonden)` : ""}${unsupported ? `, ${unsupported} afgewezen (citaat draagt de bewering niet)` : ""}${duplicates ? `, ${duplicates} al bekend` : ""}${competitors ? `, ${competitors} aanbieders` : ""}.`,
+      output: { claims: kept, claim_ids: stored.claimIds, merged_ids: stored.mergedIds, rejected, duplicates, merged, unsupported, competitors },
+      detail: `${kept} bevindingen met gecontroleerd citaat${rejected ? `, ${rejected} afgewezen (citaat niet letterlijk teruggevonden)` : ""}${unsupported ? `, ${unsupported} afgewezen (citaat draagt de bewering niet)` : ""}${merged ? `, ${merged} samengevoegd met een bestaande bevinding (extra vindplaats)` : ""}${duplicates - merged ? `, ${duplicates - merged} al bekend op dezelfde plek` : ""}${competitors ? `, ${competitors} aanbieders` : ""}.`,
       cost: res.usage.cost + stored.cost,
     };
   }
@@ -443,14 +444,15 @@ async function runCounterTask(task: TaskRow, idea: Idea, mode: RunMode, runWith:
   cost += stored.cost;
   const n = stored.claimIds.length;
   return {
-    output: { ...base, claims: n, claim_ids: stored.claimIds, rejected: stored.rejected, unsupported: stored.unsupported, duplicates: stored.duplicates, not_counter: skipped },
+    output: { ...base, claims: n, claim_ids: stored.claimIds, merged_ids: stored.mergedIds, rejected: stored.rejected, unsupported: stored.unsupported, duplicates: stored.duplicates, merged: stored.merged, not_counter: skipped },
     detail: [
       res ? `${res.sources.length} bronnen, ${newIds.length} passages bewaard (${res.searches} zoekopdrachten naar tegenbewijs).` : "",
       cache.providers.size ? `${cache.excerptIds.length} passages hergebruikt van een eerdere zoekopdracht naar tegenbewijs.` : "",
       `${n} tegenbevinding${n === 1 ? "" : "en"} met gecontroleerd citaat${[
         stored.rejected ? `, ${stored.rejected} afgewezen (citaat niet letterlijk teruggevonden)` : "",
         stored.unsupported ? `, ${stored.unsupported} afgewezen (citaat draagt de bewering niet)` : "",
-        stored.duplicates ? `, ${stored.duplicates} al bekend` : "",
+        stored.merged ? `, ${stored.merged} samengevoegd met een bestaande bevinding (extra vindplaats)` : "",
+        stored.duplicates - stored.merged ? `, ${stored.duplicates - stored.merged} al bekend op dezelfde plek` : "",
       ].join("")}.`,
     ]
       .filter(Boolean)
@@ -770,21 +772,37 @@ type StoredExcerpt = { id: string; text: string; source_id: string };
 
 // Stores extracted claims whose quote is literally in the excerpt (same figures) and that the support
 // check does not reject. `stance` overrides the link direction (red team: the quote carries a counter-finding).
+// Fase B2, punt 7: dezelfde bewering, of hetzelfde cijfer uit dezelfde bron, wordt geen tweede bevinding maar een
+// extra vindplaats (claim_sources) van de bestaande bevinding (lib/research-dedupe.ts). Dezelfde vindplaats voegt
+// niets toe. `duplicates` telt beide; `merged` alleen de extra vindplaatsen.
 export async function storeExtractedClaims(
   ideaId: string,
   questionId: string | null,
   byRef: Map<string, StoredExcerpt>,
   claims: ExtractedClaim[],
   opts: { stance?: "supports" | "contradicts" } = {},
-): Promise<{ claimIds: string[]; rejected: number; duplicates: number; unsupported: number; cost: number }> {
+): Promise<{ claimIds: string[]; mergedIds: string[]; rejected: number; duplicates: number; merged: number; unsupported: number; cost: number }> {
   const supabase = await supabaseServer();
   let rejected = 0;
   let duplicates = 0;
+  let merged = 0;
   let unsupported = 0;
   let cost = 0;
   const claimIds: string[] = [];
-  const { data: knownClaims } = await supabase.from("claims").select("statement").eq("idea_id", ideaId);
-  const seenStatements = new Set((knownClaims ?? []).map((c) => normalizeText(c.statement)));
+  const mergedIds: string[] = [];
+  const [{ data: knownClaims }, { data: knownLinks }] = await Promise.all([
+    supabase.from("claims").select("id, statement, numeric_value, unit").eq("idea_id", ideaId),
+    supabase.from("claim_sources").select("claim_id, source_id, excerpt_id, quote, support_check").eq("idea_id", ideaId),
+  ]);
+  const known: KnownFinding[] = (knownClaims ?? []).map((k) => ({
+    id: k.id,
+    statement: k.statement,
+    numericValue: k.numeric_value == null ? null : Number(k.numeric_value),
+    unit: k.unit,
+    links: (knownLinks ?? [])
+      .filter((l) => l.claim_id === k.id)
+      .map((l) => ({ sourceId: l.source_id, excerptId: l.excerpt_id, quote: l.quote, supportCheck: l.support_check })),
+  }));
   for (const c of claims) {
     const ex = byRef.get(c.excerpt_ref);
     if (!ex) {
@@ -792,25 +810,52 @@ export async function storeExtractedClaims(
       continue;
     }
     const stance = opts.stance ?? c.stance;
-    const check = checkQuote(c.quote, ex.text, stance === "supports" ? c.statement : undefined);
+    const decision = decideMerge({ statement: c.statement, numericValue: c.numeric_value, unit: c.unit, sourceId: ex.source_id, excerptId: ex.id, quote: c.quote }, known);
+    // Bij samenvoegen moet het citaat de bestaande bewering dragen (zelfde cijfers), niet alleen de nieuwe formulering.
+    const statement = decision.action === "new" ? c.statement : decision.into.statement;
+    const check = checkQuote(c.quote, ex.text, stance === "supports" ? statement : undefined);
     // Claims whose quote cannot be found verbatim are not stored: an AI paraphrase is not evidence.
     if (check !== "exact") {
       rejected++;
       continue;
     }
-    // The same finding from a repeated run is not stored again (it would inflate the evidence count).
-    if (seenStatements.has(normalizeText(c.statement))) {
+    // The same finding at the same location (a repeated run) adds nothing (it would inflate the evidence count).
+    if (decision.action === "same_location") {
       duplicates++;
       continue;
     }
-    // Second, independent check: does the literal quote actually carry the statement?
-    const support = await aiSupportCheck(ideaId, c.statement, c.quote);
+    // Second, independent check: does the literal quote actually carry the statement? An earlier verdict on exactly
+    // this quote for this finding is reused.
+    const reused = decision.action === "merge" ? knownSupportVerdict(decision.into, c.quote) : null;
+    const support: { verdict: SupportCheck; reason: string | null; cost: number } =
+      reused && isSupportCheck(reused) ? { verdict: reused, reason: "Zelfde citaat als een eerdere vindplaats.", cost: 0 } : await aiSupportCheck(ideaId, statement, c.quote);
     cost += support.cost;
     if (!keepAfterSupportCheck(support.verdict)) {
       unsupported++;
       continue;
     }
-    seenStatements.add(normalizeText(c.statement));
+    const link = {
+      idea_id: ideaId,
+      source_id: ex.source_id,
+      excerpt_id: ex.id,
+      quote: c.quote,
+      stance,
+      quote_check: check,
+      support_check: support.verdict,
+      ai_support_check: support.verdict === "unchecked" ? null : support.verdict,
+      support_checked_by: support.verdict === "unchecked" ? null : "ai",
+      support_note: support.reason,
+    };
+    if (decision.action === "merge") {
+      const { error } = await supabase.from("claim_sources").insert({ ...link, claim_id: decision.into.id });
+      if (error) continue;
+      decision.into.links.push({ sourceId: ex.source_id, excerptId: ex.id, quote: c.quote, supportCheck: support.verdict });
+      await recomputeClaim(decision.into.id);
+      duplicates++;
+      merged++;
+      if (!mergedIds.includes(decision.into.id)) mergedIds.push(decision.into.id);
+      continue;
+    }
     const { data: claim } = await supabase
       .from("claims")
       .insert({
@@ -836,23 +881,18 @@ export async function storeExtractedClaims(
       .select("id")
       .single();
     if (!claim) continue;
-    await supabase.from("claim_sources").insert({
-      claim_id: claim.id,
-      idea_id: ideaId,
-      source_id: ex.source_id,
-      excerpt_id: ex.id,
-      quote: c.quote,
-      stance,
-      quote_check: check,
-      support_check: support.verdict,
-      ai_support_check: support.verdict === "unchecked" ? null : support.verdict,
-      support_checked_by: support.verdict === "unchecked" ? null : "ai",
-      support_note: support.reason,
-    });
+    await supabase.from("claim_sources").insert({ ...link, claim_id: claim.id });
     await recomputeClaim(claim.id);
     claimIds.push(claim.id);
+    known.push({
+      id: claim.id,
+      statement: c.statement,
+      numericValue: c.numeric_value,
+      unit: c.unit,
+      links: [{ sourceId: ex.source_id, excerptId: ex.id, quote: c.quote, supportCheck: support.verdict }],
+    });
   }
-  return { claimIds, rejected, duplicates, unsupported, cost };
+  return { claimIds, mergedIds, rejected, duplicates, merged, unsupported, cost };
 }
 
 function parsePageAge(age: string | null): string | null {
