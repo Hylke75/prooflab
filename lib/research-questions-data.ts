@@ -61,11 +61,13 @@ export async function ensureDecisiveQuestion(ideaId: string, intake: IntakeFacts
     q.expected_source = next.expected_source;
     if (q.position - 1 === plan.decisiveIndex && !marked) decisiveId = q.id;
   }
-  if (!hasColumn) return questions[0].id;
   if (!decisiveId) {
     const idx = pickDecisiveIndex(questions, intake);
     if (idx >= 0) decisiveId = questions[idx].id;
   }
+  // Zonder de B2-migratie kan de markering niet worden opgeslagen; de run gebruikt het teruggegeven id wel als
+  // eerste vraag.
+  if (!hasColumn) return decisiveId ?? questions[0].id;
   if (!decisiveId && questions.length < 5) {
     // Geen vraag raakt de onzekerheid: de afgeleide beslissende vraag komt erbij.
     const used = new Set(questions.map((q) => q.position));

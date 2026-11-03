@@ -104,7 +104,12 @@ export const PRICES: Record<ProviderId, Record<string, Price>> = {
 
 export function priceFor(provider: ProviderId, model?: string | null): Price {
   const table = PRICES[provider];
-  return (model && table[model]) || table[DEFAULT_MODELS[provider]];
+  if (model && table[model]) return table[model];
+  // Fase B2: een aanbieder antwoordt soms met een gedateerde variant van het gevraagde model (bijv. "<model>-20261001").
+  // Die krijgt de prijs van het model waar hij mee begint, niet die van het zware model: anders boekt de run meer
+  // dan de reservering en lijkt het plafond overschreden.
+  const prefix = model ? Object.keys(table).find((k) => model.startsWith(`${k}-`)) : undefined;
+  return (prefix && table[prefix]) || table[DEFAULT_MODELS[provider]];
 }
 
 export type TokenUsage = {

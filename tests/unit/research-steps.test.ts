@@ -12,7 +12,7 @@ import {
   stepEstimateUsd,
 } from "@/lib/research-steps";
 import { decisiveFirst } from "@/lib/research-questions";
-import { DEFAULT_RESEARCH_MODELS, estimateCostUsd } from "@/lib/ai/providers/config";
+import { DEFAULT_RESEARCH_MODELS, estimateCostUsd, priceFor } from "@/lib/ai/providers/config";
 import { fakeSupabase, runnerRpcs } from "./helpers/fake-supabase";
 import { seedRun } from "./helpers/research-fixtures";
 
@@ -83,6 +83,12 @@ describe("kostenplafond", () => {
     expect(used[0]).toBe("anthropic");
     // Diep onderzoek gebruikt elke verbonden aanbieder.
     expect(providersForRun([...all], "deep", 3)).toEqual([...all]);
+  });
+
+  it("prijst een gedateerde modelvariant als het gevraagde model, niet als het zware model", () => {
+    const research = DEFAULT_RESEARCH_MODELS.anthropic;
+    expect(priceFor("anthropic", `${research}-20261101`)).toEqual(priceFor("anthropic", research));
+    expect(priceFor("anthropic", "iets-onbekends")).toEqual(priceFor("anthropic"));
   });
 
   it("toont vóór de start een schatting die nooit boven het plafond uitkomt", () => {

@@ -512,8 +512,9 @@ export async function startResearchRun(ideaId: string, mode: "quick" | "deep"): 
     await kickResearchRun(running[0].id, { refresh: true });
     return { runId: running[0].id };
   }
-  await ensureDecisiveQuestion(ideaId, idea);
-  const qs = decisiveFirst(await loadRunQuestions(supabase, ideaId));
+  const decisiveId = await ensureDecisiveQuestion(ideaId, idea);
+  // De beslissende vraag eerst, ook als de markering nog niet kan worden opgeslagen (vóór de B2-migratie).
+  const qs = decisiveFirst((await loadRunQuestions(supabase, ideaId)).map((q) => ({ ...q, is_decisive: q.id === decisiveId })));
   if (qs.length === 0) return { error: "Maak eerst een onderzoekskaart." };
   const budget = runBudgetUsd(mode, env.researchBudgetUsd);
   const { data: run, error } = await supabase.from("research_runs").insert({ idea_id: ideaId, mode, budget_usd: budget, status: "queued" }).select("id").single();
