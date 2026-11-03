@@ -228,7 +228,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                   <div className="section-title"><h3>Tegenargumenten</h3><span className="pill coral">Advocaat van de duivel</span></div>
                   {challenges.map((c, i) => (
                     <div className="quickline" key={i}>
-                      <span className="num">!</span>
+                      <span className="num risk" aria-hidden="true">!</span>
                       <div><strong>{c.title}</strong><span>{c.detail}</span></div>
                     </div>
                   ))}
