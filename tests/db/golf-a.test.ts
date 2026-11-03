@@ -225,4 +225,44 @@ d("golf A", () => {
     await as(client, (c) => c.query("select public.claim_invitations()"));
     await expect(as(client, (c) => c.query("select public.change_assumption_prior($1, 0.4, 'Andere inschatting van de klant', 'Ik denk er anders over')", [a]))).rejects.toThrow(/NOT_FOUND|permission/);
   });
+
+  it("punt 11: één hoofdtest per aanname, van die aanname, aan te wijzen vóór de goedkeuring en daarna vast", async () => {
+    const t1 = await testFor(owner, A.idea, "landing", { recruitment: "cold" });
+    const t2 = await testFor(owner, A.idea, "survey", { assumption: t1.assumption, recruitment: "warm" });
+    const other = await testFor(owner, A.idea, "pricing", { recruitment: "cold" });
+    const setPrimary = (e: string | null) => as(owner, (c) => c.query("update public.assumptions set primary_experiment_id = $2 where id = $1", [t1.assumption, e]));
+    await expect(setPrimary(other.experiment)).rejects.toThrow(/PRIMARY_TEST/);
+    await setPrimary(t1.experiment);
+    await setPrimary(t2.experiment); // beide nog concept: omwisselen mag
+    await setPrimary(t1.experiment);
+    await as(owner, async (c) => {
+      for (const s of ["ready_for_review", "approved"]) await c.query("update public.experiments set state = $2 where id = $1", [t1.experiment, s]);
+    });
+    await expect(setPrimary(t2.experiment)).rejects.toThrow(/al goedgekeurd of gestart/);
+    await expect(setPrimary(null)).rejects.toThrow(/PRIMARY_TEST/);
+    const audit = (await db.query("select detail from public.audit_events where row_id = $1 and action = 'primary_test' order by id", [t1.assumption])).rows;
+    expect(audit.map((r) => r.detail.to)).toEqual([t1.experiment, t2.experiment, t1.experiment]);
+
+    // Een goedgekeurde test kan niet achteraf hoofdtest worden.
+    await as(owner, async (c) => {
+      for (const s of ["ready_for_review", "approved"]) await c.query("update public.experiments set state = $2 where id = $1", [other.experiment, s]);
+    });
+    await expect(as(owner, (c) => c.query("update public.assumptions set primary_experiment_id = $2 where id = $1", [other.assumption, other.experiment]))).rejects.toThrow(
+      /vóór de goedkeuring/,
+    );
+
+    // Een verwijderde concepttest laat geen hoofdtest achter.
+    const t3 = await testFor(owner, A.idea, "landing", { recruitment: "cold" });
+    await as(owner, (c) => c.query("update public.assumptions set primary_experiment_id = $2 where id = $1", [t3.assumption, t3.experiment]));
+    await as(owner, (c) => c.query("delete from public.experiments where id = $1", [t3.experiment]));
+    expect((await db.query("select primary_experiment_id from public.assumptions where id = $1", [t3.assumption])).rows[0].primary_experiment_id).toBeNull();
+
+    // Wie alleen meekijkt, wijst niets aan.
+    const client = await user(`klant6-${randomUUID()}@example.com`);
+    await as(owner, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_decider')", [A.idea, client.email]));
+    await as(client, (c) => c.query("select public.claim_invitations()"));
+    const t4 = await testFor(owner, A.idea, "landing", { recruitment: "cold" });
+    const n = await as(client, async (c) => (await c.query("update public.assumptions set primary_experiment_id = $2 where id = $1", [t4.assumption, t4.experiment])).rowCount);
+    expect(n).toBe(0);
+  });
 });

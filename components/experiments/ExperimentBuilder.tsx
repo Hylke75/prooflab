@@ -21,7 +21,8 @@ import { metricFromKey, surveyErrors } from "@/lib/domain/survey-editor";
 type VariantsResult = { error: string | null; variants: PreparedVariant[]; draftNotes: string[]; draftWarnings: string[] };
 type VariantsAction = (input: { assumption_id: string; type: "landing" | "pricing"; headline: string; subline: string; offer: string }) => Promise<VariantsResult>;
 
-type Assumption = { id: string; statement: string };
+// primary: de huidige hoofdtest van de aanname (locked = al goedgekeurd of gestart), of null.
+type Assumption = { id: string; statement: string; primary?: { locked: boolean } | null };
 type Action = (s: FormState, f: FormData) => Promise<FormState>;
 
 function minSuccesses(n: number, thresholdPct: number): number | null {
@@ -339,6 +340,19 @@ export function ExperimentBuilder({
               <ul style={{ margin: "6px 0 0 16px", padding: 0 }}>{coach.issues.map((i) => <li key={i.message}>{i.message}</li>)}</ul>
             </div>
           )}
+          {assumption.primary?.locked ? (
+            <p className="field-hint">
+              Deze aanname heeft al een goedgekeurde hoofdtest. Deze test wordt verkennend: hij geeft richting, maar beslist niet over de aanname.
+            </p>
+          ) : (
+            <label className="check-row">
+              <input type="checkbox" name="is_primary" defaultChecked={!assumption.primary} key={`primary-${assumption.id}`} />{" "}
+              {assumption.primary ? "Maak dit de hoofdtest van deze aanname (vervangt de huidige hoofdtest, die nog niet is goedgekeurd)" : "Dit is de hoofdtest van deze aanname"}
+            </label>
+          )}
+          <p className="field-hint">
+            Per aanname wijs je vooraf één hoofdtest aan; alleen die beslist over de aanname. Andere tests heten verkennend. Na goedkeuring ligt de keuze vast.
+          </p>
           <div className="note">Je legt deze criteria vast vóór de test. Na goedkeuring zijn ze vergrendeld; wijzigen kan alleen met een nieuwe versie en een motivering.</div>
           {surveyIssues.length > 0 && <div className="form-error">Maak de enquête eerst compleet (zie de meldingen bij de vragen).</div>}
           {recruitmentMissing(type, recruitment) && <div className="form-error">Kies de wervingsgroep voordat je de Test Card opslaat.</div>}

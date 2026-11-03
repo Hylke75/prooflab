@@ -21,7 +21,8 @@ import { aiConfigured, env, trackingConfigured } from "@/lib/env";
 import { pct } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { DMU_ROLES, EXPERIMENT_STATES, EXPERIMENT_TYPES, OBSERVATION_KINDS, type ExperimentState, type ExperimentType } from "@/lib/domain/labels";
-import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, reviewObservation, transitionExperiment } from "../actions";
+import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, reviewObservation, setPrimaryTest, transitionExperiment } from "../actions";
+import { canDesignatePrimary, TEST_ROLES, testRole } from "@/lib/domain/primary-test";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export const metadata: Metadata = { title: "Experiment" };
@@ -37,6 +38,14 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
   const state = exp.state as ExperimentState;
   const m = await experimentMetrics(exp, h);
   const { data: cards } = await supabase.from("learning_cards").select("id").eq("experiment_id", expId);
+  // Hoofdtest of verkennend (golf A, punt 11).
+  const { data: primaryOf } = await supabase.from("assumptions").select("id, primary_experiment_id").eq("id", h.assumption_id).maybeSingle();
+  const role = testRole(exp.id, h.assumption_id, primaryOf ? [primaryOf] : []);
+  const { data: currentPrimary } =
+    primaryOf?.primary_experiment_id && role !== "primary"
+      ? await supabase.from("experiments").select("state").eq("id", primaryOf.primary_experiment_id).maybeSingle()
+      : { data: null };
+  const designate = canDesignatePrimary(exp, currentPrimary);
   const interviews =
     type === "interview" && canWrite
       ? (await supabase.from("interviews").select("*, observations(*)").eq("experiment_id", expId).order("held_on")).data ?? []
@@ -119,6 +128,18 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
             <h2 className="as-h3">Test Card</h2>
             <span className={`pill ${h.locked_at ? "dark" : "gray"}`}>{h.locked_at ? `Vergrendeld ${new Date(h.locked_at).toLocaleDateString("nl-NL")}` : "Concept"}</span>
           </div>
+          <div className="data-row">
+            <span>Rol</span>
+            <strong style={{ textAlign: "right" }}>
+              <span className={`pill ${role === "primary" ? "blue" : "gray"}`}>{TEST_ROLES[role].label}</span>{" "}
+              <span className="tiny">{TEST_ROLES[role].explain}</span>
+            </strong>
+          </div>
+          {canWrite && role !== "primary" && designate.ok && (
+            <ActionForm action={setPrimaryTest.bind(null, id, expId)} submitLabel="Wijs aan als hoofdtest" submitClass="btn white sm" pendingLabel="Bezig…">
+              <span className="tiny">Alleen de hoofdtest beslist over de aanname. Na goedkeuring ligt deze keuze vast.</span>
+            </ActionForm>
+          )}
           <div className="data-row"><span>Wij denken dat</span><strong style={{ textAlign: "right" }}>{h.we_believe}</strong></div>
           <div className="data-row"><span>Bij</span><strong style={{ textAlign: "right" }}>{h.target_group}</strong></div>
           <div className="data-row"><span>Dat toetsen we door</span><strong style={{ textAlign: "right" }}>{h.test_method}</strong></div>

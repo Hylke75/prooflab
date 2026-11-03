@@ -799,6 +799,7 @@ export type Database = {
           status: string
           prior_rationale: string | null
           prior_locked_at: string | null
+          primary_experiment_id: string | null
         }
         Insert: {
           prior?: number | null
@@ -812,6 +813,7 @@ export type Database = {
           status?: string
           prior_rationale?: string | null
           prior_locked_at?: string | null
+          primary_experiment_id?: string | null
         }
         Update: {
           prior?: number | null
@@ -825,6 +827,7 @@ export type Database = {
           status?: string
           prior_rationale?: string | null
           prior_locked_at?: string | null
+          primary_experiment_id?: string | null
         }
         Relationships: [
           {

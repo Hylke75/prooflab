@@ -12,6 +12,7 @@ import { recommend } from "@/lib/domain/recommend";
 import { EXPERIMENT_STATES, EXPERIMENT_TYPES, type AssumptionCategory, type ExperimentState, type ExperimentType } from "@/lib/domain/labels";
 import { createExperiment, draftSurveyWithCoach, proposeCopyVariants } from "./actions";
 import { aiConfigured } from "@/lib/env";
+import { TEST_ROLES, testRole } from "@/lib/domain/primary-test";
 
 export const metadata: Metadata = { title: "Experimenten" };
 
@@ -32,13 +33,16 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
   const [assumptions, progress, { data: experiments }, { count: interviewObs }] = await Promise.all([
     loadInformationValue(id),
     loadProgress(id),
-    supabase.from("experiments").select("id, title, type, state, ends_at, hypotheses(assumptions(statement))").eq("idea_id", id).order("created_at", { ascending: false }),
+    supabase.from("experiments").select("id, title, type, state, ends_at, hypotheses(assumption_id, assumptions(statement))").eq("idea_id", id).order("created_at", { ascending: false }),
     supabase.from("observations").select("id", { count: "exact", head: true }).eq("idea_id", id).not("interview_id", "is", null),
   ]);
   const wanted = typeof sp.assumption === "string" ? sp.assumption : null;
   // ?type=survey (from the coach's survey suggestion) preselects that test type.
   const wantedType = typeof sp.type === "string" && sp.type in EXPERIMENT_TYPES ? (sp.type as ExperimentType) : undefined;
   const selected = assumptions.find((a) => a.id === wanted) ?? assumptions[0];
+  // Hoofdtest per aanname (golf A, punt 11): de rest is verkennend.
+  const primaries = assumptions.map((a) => ({ id: a.id, primary_experiment_id: a.primaryExperimentId }));
+  const stateOf = (expId: string | null) => (experiments ?? []).find((e) => e.id === expId)?.state ?? null;
   const rec = selected
     ? recommend({ category: selected.category as AssumptionCategory, evidence: selected.evidence, hasDiscoveryEvidence: (interviewObs ?? 0) > 0 })
     : null;
@@ -63,7 +67,9 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
                 <Link key={e.id} href={`/app/ideas/${id}/experiments/${e.id}`} className="assumption-item" style={{ textDecoration: "none", marginTop: 10 }}>
                   <span className="count">{EXPERIMENT_TYPES[e.type as ExperimentType].icon}</span>
                   <span>{e.title}</span>
-                  <small>{EXPERIMENT_STATES[e.state as ExperimentState].label}</small>
+                  <small>
+                    {EXPERIMENT_STATES[e.state as ExperimentState].label} · {TEST_ROLES[testRole(e.id, e.hypotheses?.assumption_id, primaries)].label.toLowerCase()}
+                  </small>
                 </Link>
               ))}
             </div>
@@ -107,7 +113,10 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
         </div>
       ) : canWrite && rec ? (
         <ExperimentBuilder
-          assumptions={assumptions.map((a) => ({ id: a.id, statement: a.statement }))}
+          assumptions={assumptions.map((a) => {
+            const state = stateOf(a.primaryExperimentId);
+            return { id: a.id, statement: a.statement, primary: a.primaryExperimentId ? { locked: !!state && !["draft", "ready_for_review"].includes(state) } : null };
+          })}
           initialAssumption={selected.id}
           options={rec.options}
           warning={rec.warning}

@@ -7,6 +7,7 @@
 --      netwerk) en evidence_recruitment_refs voor de afnemende factor van methode 2026-11-c.
 --   5. Startkans van een aanname: onderbouwing bij een afwijking van 50%, vergrendeld bij het eerste bewijs,
 --      daarna alleen wijzigen met een reden (change_assumption_prior), elke wijziging in het auditspoor.
+--   11. Hoofdtest per aanname (assumptions.primary_experiment_id), aan te wijzen vóór de goedkeuring.
 --
 -- Bestaande dossiers houden hun methodeversie en rekenen dus niet anders.
 
@@ -225,3 +226,58 @@ revoke execute on function public.lock_assumption_prior(), public.guard_assumpti
   public.change_assumption_prior(uuid, numeric, text, text) from public, anon;
 revoke execute on function public.lock_assumption_prior(), public.guard_assumption_prior() from authenticated;
 grant execute on function public.change_assumption_prior(uuid, numeric, text, text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 11. Hoofdtest per aanname
+-- ---------------------------------------------------------------------------
+
+-- Per aanname één vooraf aangewezen hoofdtest; de andere tests van de aanname zijn verkennend
+-- (lib/domain/primary-test.ts). Aanwijzen kan zolang de test een concept is of ter review ligt, en alleen als de
+-- huidige hoofdtest dat ook nog is: daarna ligt de keuze vast. Elke wijziging komt in het auditspoor.
+alter table public.assumptions
+  add column if not exists primary_experiment_id uuid references public.experiments(id) on delete set null;
+create index if not exists assumptions_primary_experiment_fk on public.assumptions(primary_experiment_id);
+
+create or replace function public.guard_assumption_primary()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  v_new_state text;
+  v_new_assumption uuid;
+  v_old_state text;
+  v_org uuid;
+begin
+  if tg_op = 'UPDATE' and new.primary_experiment_id is not distinct from old.primary_experiment_id then
+    return new;
+  end if;
+  if new.primary_experiment_id is not null then
+    select e.state, h.assumption_id into v_new_state, v_new_assumption
+    from public.experiments e join public.hypotheses h on h.id = e.hypothesis_id
+    where e.id = new.primary_experiment_id and e.idea_id = new.idea_id;
+    if v_new_assumption is distinct from new.id then
+      raise exception 'PRIMARY_TEST: de hoofdtest moet een test van deze aanname zijn' using errcode = 'P0001';
+    end if;
+    if v_new_state not in ('draft', 'ready_for_review') then
+      raise exception 'PRIMARY_TEST: een hoofdtest wijs je aan vóór de goedkeuring' using errcode = 'P0001';
+    end if;
+  end if;
+  if tg_op = 'UPDATE' and old.primary_experiment_id is not null then
+    select state into v_old_state from public.experiments where id = old.primary_experiment_id;
+    -- Een verwijderde test (concept) laat geen vastgelegde keuze achter.
+    if v_old_state is not null and v_old_state not in ('draft', 'ready_for_review') then
+      raise exception 'PRIMARY_TEST: de hoofdtest van deze aanname is al goedgekeurd of gestart; die keuze ligt vast' using errcode = 'P0001';
+    end if;
+  end if;
+  -- Geen audit als de hoofdtest wegvalt doordat de (concept)test zelf is verwijderd.
+  if tg_op = 'UPDATE' and (new.primary_experiment_id is not null or v_old_state is not null) then
+    select org_id into v_org from public.ideas where id = old.idea_id;
+    insert into public.audit_events (idea_id, org_id, actor_id, table_name, row_id, action, detail)
+    values (old.idea_id, v_org, auth.uid(), 'assumptions', old.id::text, 'primary_test',
+            jsonb_build_object('from', old.primary_experiment_id, 'to', new.primary_experiment_id));
+  end if;
+  return new;
+end $$;
+drop trigger if exists assumptions_primary_guard on public.assumptions;
+create trigger assumptions_primary_guard before insert or update of primary_experiment_id on public.assumptions
+  for each row execute function public.guard_assumption_primary();
+
+revoke execute on function public.guard_assumption_primary() from public, anon, authenticated;

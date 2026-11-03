@@ -27,6 +27,8 @@ export type AssumptionWithEvidence = {
   // Golf A, punt 5: onderbouwing van de startkans en of die vergrendeld is (er hangt bewijs aan de aanname).
   priorRationale: string | null;
   priorLocked: boolean;
+  // Golf A, punt 11: de vooraf aangewezen hoofdtest (experiment-id) of null.
+  primaryExperimentId: string | null;
 };
 
 type ObsLink = {
@@ -164,6 +166,7 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
       contradicting: e.contradicting,
       priorRationale: a.prior_rationale ?? null,
       priorLocked: !!a.prior_locked_at,
+      primaryExperimentId: a.primary_experiment_id ?? null,
     };
   });
 }

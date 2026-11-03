@@ -10,6 +10,7 @@ import { checkQuote } from "@/lib/domain/verify";
 import { KIND_DEFAULTS } from "@/lib/domain/evidence";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { RECRUITMENT_KEYS, recruitmentMissing } from "@/lib/domain/recruitment";
+import { canDesignatePrimary } from "@/lib/domain/primary-test";
 import { experimentMetrics, loadSurveyResponses, surveyConfigOf, type LandingConfig, type PricingConfig } from "@/lib/experiment-metrics";
 import { pct, requiredSample } from "@/lib/domain/stats";
 import { ideaMethodVersion } from "@/lib/method-data";
@@ -197,6 +198,11 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
     .single();
   if (error || !exp) return { error: "Het experiment kon niet worden opgeslagen." };
   await supabase.from("assumptions").update({ status: "testing" }).eq("id", v.assumption_id).eq("idea_id", ideaId).eq("status", "untested");
+  // Hoofdtest (golf A, punt 11): vooraf aanwijzen. Kan het niet (de huidige hoofdtest ligt al vast), dan blijft
+  // deze test verkennend; de testpagina laat zien waarom.
+  if (form.get("is_primary") === "on") {
+    await supabase.from("assumptions").update({ primary_experiment_id: exp.id }).eq("id", v.assumption_id).eq("idea_id", ideaId);
+  }
   refresh(ideaId);
   redirect(`/app/ideas/${ideaId}/experiments/${exp.id}`);
 }
@@ -236,6 +242,26 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
     draft: "Terug naar concept.",
   };
   return { error: null, ok: msg[to] ?? "Bijgewerkt." };
+}
+
+// Wijs deze test aan als hoofdtest van zijn aanname (golf A, punt 11). Alleen vóór de goedkeuring, en alleen als de
+// huidige hoofdtest ook nog niet is goedgekeurd; de database controleert hetzelfde en legt de wijziging vast.
+export async function setPrimaryTest(ideaId: string, expId: string, _: ActionState): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  const { data: exp } = await supabase.from("experiments").select("id, state, hypotheses(assumption_id)").eq("id", expId).eq("idea_id", ideaId).maybeSingle();
+  const assumptionId = exp?.hypotheses?.assumption_id;
+  if (!exp || !assumptionId) return { error: "Test niet gevonden." };
+  const { data: a } = await supabase.from("assumptions").select("primary_experiment_id").eq("id", assumptionId).maybeSingle();
+  const { data: current } = a?.primary_experiment_id
+    ? await supabase.from("experiments").select("state").eq("id", a.primary_experiment_id).maybeSingle()
+    : { data: null };
+  const check = canDesignatePrimary(exp, current);
+  if (!check.ok) return { error: check.reason };
+  const { error } = await supabase.from("assumptions").update({ primary_experiment_id: expId }).eq("id", assumptionId).eq("idea_id", ideaId);
+  if (error) return { error: error.message.includes("PRIMARY_TEST") ? error.message.replace(/^.*?: /, "") : "De hoofdtest kon niet worden aangewezen." };
+  refresh(ideaId);
+  return { error: null, ok: "Dit is nu de hoofdtest van de aanname. De andere tests van deze aanname zijn verkennend." };
 }
 
 export async function deleteDraft(ideaId: string, expId: string) {

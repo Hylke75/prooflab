@@ -1,3 +1,4 @@
+import { chanceOfLuck } from "@/lib/domain/primary-test";
 import { DECISION_RULES, FAIL_PROBABILITY, PASS_PROBABILITY, pct, type DecisionRule, type Interval, type VerdictLabel } from "@/lib/domain/stats";
 
 // Uitkomst van een test volgens de vooraf vastgelegde beslisregel: de regel, de kans of het aantal, het
@@ -47,6 +48,14 @@ export function RuleSummary({ o, compact = false }: { o: RuleOutcome; compact?: 
         <span>{o.rule === "absolute" ? "Aantal" : o.rule === "probability" ? "Kans" : "Regel"}</span>
         <strong style={{ textAlign: "right" }}>{ruleLine(o)}</strong>
       </div>
+      {chanceOfLuck(o) != null && (
+        <div className="data-row">
+          <span>Kans op toeval</span>
+          <strong style={{ textAlign: "right" }}>
+            {pct(chanceOfLuck(o)!, 0)} <span className="tiny">(1 − {pct(o.probability!, 0)}: de kans dat het echte percentage toch niet boven de drempel ligt)</span>
+          </strong>
+        </div>
+      )}
       {o.interval && (
         <div className="data-row">
           <span>95%-interval (ter informatie)</span>

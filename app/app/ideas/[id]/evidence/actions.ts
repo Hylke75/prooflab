@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { getIdea, requireWritableIdea } from "@/lib/data";
-import { assumptionStatusFromVerdicts, type CardVerdict } from "@/lib/domain/evidence";
+import type { CardVerdict } from "@/lib/domain/evidence";
+import { assumptionStatusFromCards } from "@/lib/domain/primary-test";
+import { METHODS } from "@/lib/domain/method";
+import { ideaMethodVersion } from "@/lib/method-data";
 import { dossierSummaryForAi, factsFrom, loadDossier } from "@/lib/dossier";
 import { runRealityCheck, type Finding } from "@/lib/domain/reality-check";
 import { aiConfigured } from "@/lib/env";
@@ -52,14 +55,23 @@ export async function approveLearningCard(ideaId: string, cardId: string, _: Act
   if (error || !approved?.length) return { error: "Goedkeuren is niet gelukt. Ververs de pagina en probeer het opnieuw." };
   const assumptionId = card.experiments?.hypotheses?.assumption_id;
   if (assumptionId) {
-    // Every approved test of this assumption counts, not only the latest one.
-    const { data: verdicts } = await supabase
-      .from("learning_cards")
-      .select("verdict, experiments!inner(hypotheses!inner(assumption_id))")
-      .eq("idea_id", ideaId)
-      .eq("status", "approved")
-      .eq("experiments.hypotheses.assumption_id", assumptionId);
-    const status = assumptionStatusFromVerdicts((verdicts ?? []).map((v) => v.verdict as CardVerdict));
+    // Tot en met methode 2026-11-b telt elke goedgekeurde test van deze aanname, niet alleen de laatste. Vanaf
+    // 2026-11-c beslist alleen de vooraf aangewezen hoofdtest; verkennende tests geven richting.
+    const [{ data: verdicts }, { data: a }, version] = await Promise.all([
+      supabase
+        .from("learning_cards")
+        .select("verdict, experiment_id, experiments!inner(hypotheses!inner(assumption_id))")
+        .eq("idea_id", ideaId)
+        .eq("status", "approved")
+        .eq("experiments.hypotheses.assumption_id", assumptionId),
+      supabase.from("assumptions").select("primary_experiment_id").eq("id", assumptionId).maybeSingle(),
+      ideaMethodVersion(ideaId),
+    ]);
+    const status = assumptionStatusFromCards(
+      (verdicts ?? []).map((v) => ({ verdict: v.verdict as CardVerdict, experimentId: v.experiment_id })),
+      a?.primary_experiment_id ?? null,
+      METHODS[version].primaryDecides,
+    );
     await supabase.from("assumptions").update({ status }).eq("id", assumptionId).eq("idea_id", ideaId);
   }
   if (card.experiments?.state === "ended") await supabase.from("experiments").update({ state: "analyzed" }).eq("id", card.experiments.id);
