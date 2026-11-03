@@ -9,6 +9,9 @@ import { aiConfigured } from "@/lib/env";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadOpenNotes } from "@/lib/coach/review";
 import { CoachWatch } from "@/components/coach/CoachWatch";
+import { SyncIdeaSteps } from "./ShellProvider";
+import { STEPS, stepForPath, stepStates } from "@/lib/steps";
+import Link from "next/link";
 
 const IDEA_PAGES: CoachPage[] = ["overview", "research", "assumptions", "experiments", "evidence", "report"];
 
@@ -17,12 +20,16 @@ export async function PageFrame({
   crumbs,
   coach,
   ideaId,
+  section,
   badge,
   children,
 }: {
   crumbs: string[];
   coach: CoachPage;
   ideaId?: string;
+  // Het deel van het adres na /app/ideas/[id] ("/research", "/outcome", "" voor het overzicht). Bepaalt de stap
+  // en het tabblad in de kop van een ideepagina.
+  section?: string;
   badge?: string;
   children: React.ReactNode;
 }) {
@@ -38,17 +45,35 @@ export async function PageFrame({
   const audience = access ? (access.canWrite ? "consultant" : "client") : ws.org ? "consultant" : "client";
   // The trajectory coach's open notes for this dossier; consultants also trigger a (throttled) review.
   const notes = ideaId && access ? await loadOpenNotes(ideaId, audience) : undefined;
+  // Tabbladen onder een stap (Markt: Marktverkenning | Bronnen & koppelingen; Besluit: Bewijs & besluit |
+  // Voorspelling & uitkomst). Het zijn gewone links tussen de bestaande adressen.
+  const stepKey = ideaId && section !== undefined ? stepForPath(section) : null;
+  const step = stepKey ? STEPS.find((x) => x.key === stepKey) : undefined;
+  const tabs = (step?.tabs ?? []).filter((t) => !t.consultantOnly || access?.canWrite);
   return (
     <>
       <main className="main" id="main" tabIndex={-1}>
-        <Topbar crumbs={crumbs} initials={initials} email={ws.user.email} name={name} badge={badge} />
+        <Topbar crumbs={crumbs} initials={initials} email={ws.user.email} name={name} badge={badge} isConsultant={!!ws.org} isOwner={ws.org?.role === "owner"} />
         <div className="workspace">
           {access && progress && IDEA_PAGES.includes(coach) && <SprintStrip idea={access.idea} progress={progress} canWrite={access.canWrite} today={todayInNL()} />}
+          {ideaId && step && tabs.length > 1 && (
+            <nav className="step-tabs no-print" aria-label={`Tabbladen van ${step.label}`}>
+              {tabs.map((t) => {
+                const active = section === t.path || !!section?.startsWith(`${t.path}/`);
+                return (
+                  <Link key={t.path} href={`/app/ideas/${ideaId}${t.path}`} className={active ? "active" : undefined} aria-current={active ? "page" : undefined}>
+                    {t.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          )}
           <section className="screen active">{children}</section>
         </div>
       </main>
       <Coach data={coachFor(coach, progress, { audience, isClientDecider: access?.isClientDecider })} aiConnected={aiConfigured()} notes={notes} />
       {ideaId && access?.canWrite && <CoachWatch ideaId={ideaId} />}
+      {ideaId && progress && <SyncIdeaSteps ideaId={ideaId} states={stepStates(progress)} />}
     </>
   );
 }

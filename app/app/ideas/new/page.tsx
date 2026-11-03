@@ -18,7 +18,7 @@ export default async function NewIdeaPage() {
     <PageFrame crumbs={["Werkruimte", "Nieuw idee"]} coach="intake">
       <div className="section-row">
         <div>
-          <div className="eyebrow">Stap 1 van 5 · Beslissing en idee</div>
+          <div className="eyebrow">Nieuw idee · Beslissing en idee</div>
           <h1>
             Elk sterk idee begint
             <br />
@@ -27,7 +27,7 @@ export default async function NewIdeaPage() {
           <p className="sub">Je hoeft nog geen businessplan te hebben. We onderzoeken het samen.</p>
         </div>
       </div>
-      <Stepper current="idea" />
+      <Stepper />
       <div className="intake-layout">
         <IntakeWizard clients={clients ?? []} today={todayInNL()} />
         <aside className="card tip-card">

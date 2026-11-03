@@ -2,52 +2,71 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Icon, type IconName } from "@/components/Icon";
+import { Icon } from "@/components/Icon";
 import { Drawer } from "@/components/ui/Drawer";
+import { menuItems, stepForPath, stepMark, type MenuItem } from "@/lib/steps";
+import { IdeaSwitcher } from "./IdeaSwitcher";
 import { useShell } from "./ShellProvider";
 
 type IdeaLink = { id: string; title: string };
 
-const IDEA_NAV: { suffix: string; label: string; icon: IconName }[] = [
-  { suffix: "/research", label: "Marktverkenning", icon: "compass" },
-  { suffix: "/assumptions", label: "Aannames", icon: "layers" },
-  { suffix: "/experiments", label: "Experimenten", icon: "flask" },
-  { suffix: "/evidence", label: "Bewijs & besluit", icon: "shield" },
-  { suffix: "/report", label: "Rapportage", icon: "file" },
-  // Not one of the five stepper steps: the prediction loop runs alongside them and continues after the decision.
-  { suffix: "/outcome", label: "Voorspelling & uitkomst", icon: "trend" },
-];
-
-// Consultant-only pages of the current idea.
-const IDEA_TEAM_NAV: { suffix: string; label: string; icon: IconName }[] = [
-  { suffix: "/integrations", label: "Bronnen & koppelingen", icon: "users" },
-];
-
 export function Sidebar({
   workspaceName,
   isConsultant,
-  isOwner = false,
   ideas,
   aiConnected,
 }: {
   workspaceName: string;
   isConsultant: boolean;
-  isOwner?: boolean;
   ideas: IdeaLink[];
   aiConnected: boolean;
 }) {
   const pathname = usePathname();
-  const { sidebarOpen, close } = useShell();
-  const match = pathname.match(/^\/app\/ideas\/([0-9a-f-]{36})(\/[a-z-]+)?/i);
+  const { sidebarOpen, close, ideaSteps } = useShell();
+  const match = pathname.match(/^\/app\/ideas\/([0-9a-f-]{36})(\/.*)?$/i);
   const currentId = match?.[1] ?? null;
-  const current = currentId ? ideas.find((i) => i.id === currentId) : null;
   const sub = match?.[2] ?? "";
+  const activeStep = currentId ? stepForPath(sub) : null;
+  const states = currentId && ideaSteps?.ideaId === currentId ? ideaSteps.states : null;
+  const { idea, workspace } = menuItems({ ideaId: currentId, isConsultant });
 
-  const link = (href: string, label: string, icon: IconName, active: boolean) => (
-    <Link key={href} href={href} className={`nav-link${active ? " active" : ""}`} aria-current={active ? "page" : undefined} onClick={close}>
-      <Icon name={icon} /> {label} <span className="nav-dot" />
-    </Link>
-  );
+  const isActive = (item: MenuItem): boolean => {
+    if (item.step) return activeStep === item.step;
+    if (item.key === "overview") return sub === "";
+    if (item.key === "report") return sub === "/report" || sub.startsWith("/report/");
+    if (item.key === "ideas") return pathname === "/app";
+    return pathname === item.href || pathname.startsWith(`${item.href}/`);
+  };
+
+  const link = (item: MenuItem) => {
+    const active = isActive(item);
+    const state = item.step ? states?.[item.step] : undefined;
+    const mark = stepMark(state);
+    return (
+      <Link
+        key={item.key}
+        href={item.href}
+        className={`nav-link${active ? " active" : ""}`}
+        aria-current={active ? "page" : undefined}
+        onClick={close}
+        data-step={item.step}
+        data-step-state={item.step ? (state ?? "empty") : undefined}
+      >
+        <Icon name={item.icon} />
+        <span className="nav-label">
+          {item.number !== undefined && <span className="nav-no">{item.number}</span>}
+          {item.label}
+        </span>
+        {mark && (
+          <span className={`nav-mark ${state}`}>
+            <span aria-hidden="true">{mark.mark}</span>
+            <span className="sr-only">, {mark.spoken}</span>
+          </span>
+        )}
+        <span className="nav-dot" />
+      </Link>
+    );
+  };
 
   return (
     <Drawer as="aside" open={sidebarOpen} onClose={close} modalQuery="(max-width: 850px)" className={`sidebar${sidebarOpen ? " open" : ""}`} id="sidebar" label="Hoofdnavigatie">
@@ -57,37 +76,16 @@ export function Sidebar({
       <div className="brand">
         <span className="mark" aria-hidden="true">◉</span>ProofLab<span style={{ color: "var(--color-accent)" }}>.</span>
       </div>
-      <div className="nav-heading">Werkruimte</div>
+      <IdeaSwitcher ideas={ideas} currentId={currentId} canCreate={isConsultant} onNavigate={close} />
+      {idea.length > 0 && (
+        <nav className="side-nav" aria-label="Dit idee">
+          {idea.map(link)}
+        </nav>
+      )}
+      <hr className="nav-divider" />
       <nav className="side-nav" aria-label="Werkruimte">
-        {link("/app", "Overzicht", "home", pathname === "/app")}
-        {isConsultant && link("/app/clients", "Klanten", "users", pathname.startsWith("/app/clients"))}
-        {isConsultant && link("/app/forecasts", "Voorspelkwaliteit", "trend", pathname.startsWith("/app/forecasts"))}
-        {isConsultant && link("/app/privacy", "Privacyverzoeken", "settings", pathname.startsWith("/app/privacy"))}
-        {isOwner && link("/app/status", "Systeemstatus", "settings", pathname.startsWith("/app/status"))}
+        {workspace.map(link)}
       </nav>
-      {currentId && (
-        <>
-          <div className="nav-heading">Huidig idee</div>
-          {current && (
-            <div className="idea-switch">
-              <small>Idee</small>
-              {current.title}
-            </div>
-          )}
-          <nav className="side-nav" aria-label="Huidig idee">
-            {/* Dossieroverzicht: alleen voor het team; opdrachtgevers gaan vanaf de dossierlink naar het rapport. */}
-            {isConsultant && link(`/app/ideas/${currentId}`, "Dossieroverzicht", "home", sub === "")}
-            {IDEA_NAV.map((n) => link(`/app/ideas/${currentId}${n.suffix}`, n.label, n.icon, sub === n.suffix || (sub.startsWith(n.suffix) && n.suffix !== "")))}
-            {isConsultant && IDEA_TEAM_NAV.map((n) => link(`/app/ideas/${currentId}${n.suffix}`, n.label, n.icon, sub === n.suffix))}
-          </nav>
-        </>
-      )}
-      {isConsultant && (
-        <>
-          <div className="nav-heading">Aan de slag</div>
-          <nav className="side-nav" aria-label="Aan de slag">{link("/app/ideas/new", "Nieuw idee", "plus", pathname === "/app/ideas/new")}</nav>
-        </>
-      )}
       <div className="sidebar-bottom">
         <div className="workspace-label">Mijn werkruimte</div>
         <div className="work-chip">

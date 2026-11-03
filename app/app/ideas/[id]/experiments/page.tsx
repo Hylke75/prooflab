@@ -8,7 +8,7 @@ import { getIdea, getWorkspace } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadInformationValue, loadProgress } from "@/lib/progress";
 import { priorsByType } from "@/lib/experiment-metrics";
-import { stepsDone } from "@/lib/steps";
+import { stepStates } from "@/lib/steps";
 import { recommend } from "@/lib/domain/recommend";
 import { EXPERIMENT_STATES, EXPERIMENT_TYPES, type AssumptionCategory, type ExperimentState, type ExperimentType } from "@/lib/domain/labels";
 import { createExperiment, draftSurveyWithCoach, proposeCopyVariants } from "./actions";
@@ -57,15 +57,15 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
     : null;
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Experimenten"]} coach="experiments" ideaId={id}>
+    <PageFrame crumbs={["Werkruimte", idea.title, "Testen"]} coach="experiments" ideaId={id} section="/experiments">
       <div className="section-row">
         <div>
-          <div className="eyebrow">Stap 4 van 5 · Testen</div>
+          <div className="eyebrow">Stap 3 van 4 · Testen</div>
           <h1>Niet raden. Testen.</h1>
           <p className="sub">Kies een kleine proef waarmee je snel echt gedrag kunt observeren.</p>
         </div>
       </div>
-      <Stepper current="test" ideaId={id} done={stepsDone(progress)} />
+      <Stepper current="test" ideaId={id} states={stepStates(progress)} />
 
       {saved && (
         <div className="form-ok" role="status" style={{ marginBottom: 16 }}>

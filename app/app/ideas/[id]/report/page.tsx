@@ -78,7 +78,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   const newest = all[0];
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Rapportage"]} coach="report" ideaId={id}>
+    <PageFrame crumbs={["Werkruimte", idea.title, "Rapport"]} coach="report" ideaId={id} section="/report">
       <div className="section-row report-controls">
         <div>
           <div className="eyebrow">Uitkomst · Onderzoeksdossier</div>

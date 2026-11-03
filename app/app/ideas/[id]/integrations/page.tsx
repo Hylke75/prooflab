@@ -47,7 +47,7 @@ export default async function IntegrationsPage({ params }: PageProps<"/app/ideas
   const signalsHref = `/app/ideas/${id}/research?tab=customers#klantsignalen`;
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Bronnen & koppelingen"]} coach="research" ideaId={id}>
+    <PageFrame crumbs={["Werkruimte", idea.title, "Bronnen & koppelingen"]} coach="research" ideaId={id} section="/integrations">
       <div className="section-row">
         <div>
           <div className="eyebrow">Bronnen & koppelingen</div>

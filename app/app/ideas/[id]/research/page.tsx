@@ -21,7 +21,7 @@ import { UnitEconomicsPanel } from "@/components/research/UnitEconomicsPanel";
 import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadProgress } from "@/lib/progress";
-import { stepsDone } from "@/lib/steps";
+import { stepStates } from "@/lib/steps";
 import { aiConfigured, configuredProviders } from "@/lib/env";
 import { isProvider, PROVIDER_KEY_ENV, PROVIDER_LABELS, PROVIDERS, providerLabel } from "@/lib/ai/providers/config";
 import { ensembleProviders } from "@/lib/ai/providers/select";
@@ -178,10 +178,10 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     ) : null;
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Marktverkenning"]} coach="research" ideaId={id} badge={run?.mode === "quick" && run.status === "done" ? "Snelle marktcheck · voorlopig" : undefined}>
+    <PageFrame crumbs={["Werkruimte", idea.title, "Marktverkenning"]} coach="research" ideaId={id} section="/research" badge={run?.mode === "quick" && run.status === "done" ? "Snelle marktcheck · voorlopig" : undefined}>
       <div className="section-row">
         <div>
-          <div className="eyebrow">Stap 2 van 5 · Onderzoek</div>
+          <div className="eyebrow">Stap 1 van 4 · Markt</div>
           <h1>Begrijp je markt.</h1>
           <p className="sub">Een marktbeeld met zicht op concurrenten, doelgroepen, kansen en onzekerheden. Elke conclusie verwijst naar een controleerbare bron.</p>
         </div>
@@ -189,7 +189,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
           Naar aannames →
         </Link>
       </div>
-      <Stepper current="market" ideaId={id} done={stepsDone(progress)} />
+      <Stepper current="market" ideaId={id} states={stepStates(progress)} />
 
       <div className="insight-banner">
         <div>

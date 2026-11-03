@@ -15,7 +15,7 @@ import { loadDossier } from "@/lib/dossier";
 import { loadProgress } from "@/lib/progress";
 import { loadCalibration } from "@/lib/method-data";
 import { Probability } from "@/components/ui/Probability";
-import { stepsDone } from "@/lib/steps";
+import { stepStates } from "@/lib/steps";
 import { asEvidenceLevel, explainStrength, outcomeWithLevel, strength, strengthLabel, testEvidenceLevel, type EvidenceLevel } from "@/lib/domain/evidence";
 import { ASSUMPTION_CATEGORIES, DECISIONS, OBSERVATION_KINDS, type DecisionAction, type ObservationKind } from "@/lib/domain/labels";
 import type { Finding } from "@/lib/domain/reality-check";
@@ -50,15 +50,15 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
   const lock = forecastFirstLock(progress);
   if (lock) {
     return (
-      <PageFrame crumbs={["Werkruimte", idea.title, "Bewijs & besluit"]} coach="evidence" ideaId={id}>
+      <PageFrame crumbs={["Werkruimte", idea.title, "Bewijs & besluit"]} coach="evidence" ideaId={id} section="/evidence">
         <div className="section-row">
           <div>
-            <div className="eyebrow">Stap 5 van 5 · Leren en beslissen</div>
+            <div className="eyebrow">Stap 4 van 4 · Besluit</div>
             <h1>Wat weten we nu echt?</h1>
             <p className="sub">Eerst je eigen voorspelling; daarna alle signalen op één plek, inclusief tegenbewijs.</p>
           </div>
         </div>
-        <Stepper current="decide" ideaId={id} done={stepsDone(progress)} />
+        <Stepper current="decide" ideaId={id} states={stepStates(progress)} />
         <div className="grid-2">
           <ForecastFirstLock ideaId={id} moment={lock} what="de bewijspagina met de sterkte van het bewijs, de kansen per aanname en de Reality Check" client={!canWrite} />
           {lock === "decision" && <DecisionForecast ideaId={id} />}
@@ -96,16 +96,16 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
   ) as Partial<Record<DecisionAction, string>>;
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Bewijs & besluit"]} coach="evidence" ideaId={id}>
+    <PageFrame crumbs={["Werkruimte", idea.title, "Bewijs & besluit"]} coach="evidence" ideaId={id} section="/evidence">
       <div className="section-row">
         <div>
-          <div className="eyebrow">Stap 5 van 5 · Leren en beslissen</div>
+          <div className="eyebrow">Stap 4 van 4 · Besluit</div>
           <h1>Wat weten we nu echt?</h1>
           <p className="sub">Alle signalen op één plek. Inclusief tegenbewijs en de beperkingen van je tests.</p>
         </div>
         <Link className="btn white" href={`/app/ideas/${id}/report`}>Bekijk rapport →</Link>
       </div>
-      <Stepper current="decide" ideaId={id} done={stepsDone(progress)} />
+      <Stepper current="decide" ideaId={id} states={stepStates(progress)} />
 
       {phase && (
         <div className="note" role="status">

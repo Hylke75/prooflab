@@ -21,6 +21,25 @@ async function login(page: Page) {
   }
 }
 
+// Fase 3: het menu heeft hooguit 9 zichtbare items zonder dubbele namen, en de stappen in het menu hebben dezelfde
+// namen en status als de stappenbalk (de menustatus volgt na het laden van de pagina, vandaar de wachtende checks).
+async function expectMenuMatchesStepper(page: Page) {
+  const sidebar = page.locator("#sidebar");
+  expect(await sidebar.locator(".idea-switch-btn, .side-nav a.nav-link").count()).toBeLessThanOrEqual(9);
+  const names = await sidebar.locator(".side-nav a.nav-link .nav-label").allTextContents();
+  expect(new Set(names).size).toBe(names.length);
+  const menuSteps = sidebar.locator("a.nav-link[data-step]");
+  const stepper = page.locator(".stepper [data-step]");
+  await expect(menuSteps).toHaveCount(4);
+  await expect(stepper).toHaveCount(4);
+  for (let i = 0; i < 4; i++) {
+    const s = stepper.nth(i);
+    await expect(menuSteps.nth(i)).toHaveAttribute("data-step", (await s.getAttribute("data-step")) ?? "");
+    await expect(menuSteps.nth(i)).toHaveAttribute("data-step-state", (await s.getAttribute("data-step-state")) ?? "");
+    await expect(menuSteps.nth(i).locator(".nav-label")).toContainText((await s.locator(".step-name").textContent()) ?? "");
+  }
+}
+
 async function visit(browser: Browser, url: string, ua: string, act: "view" | "click" | "submit") {
   const ctx = await browser.newContext({ userAgent: ua });
   const p = await ctx.newPage();
@@ -68,6 +87,7 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.getByRole("button", { name: "Start de marktverkenning" }).click();
   await page.waitForURL(/\/research/);
   await expect(page.getByRole("heading", { name: "Begrijp je markt." })).toBeVisible();
+  await expectMenuMatchesStepper(page);
   const ideaUrl = page.url().replace(/\/research.*$/, "");
   // Het dossieroverzicht toont de volgende stap (week 1: onderzoek, niet de voorspelling).
   await page.goto(ideaUrl);
@@ -178,6 +198,9 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.getByLabel("Waarom? (komt in het rapport)", { exact: true }).fill("De steekproef was klein en betaalbereidheid is nog niet getest.");
   await page.getByRole("button", { name: "Bewaar mijn keuze" }).click();
   await expect(page.getByText(/Besluit vastgelegd/)).toBeVisible();
+  await page.reload();
+  await expectMenuMatchesStepper(page);
+  await expect(page.locator("#sidebar a.nav-link[data-step=decide]")).toHaveAttribute("data-step-state", "done");
 
   // 7. Report snapshot with source footnote and decision
   await page.goto(`${ideaUrl}/report`);
@@ -195,6 +218,8 @@ test("beheer: systeemstatus voor de eigenaar, zonder CSP-schendingen", async ({ 
     if (/Content Security Policy|Refused to (load|execute|apply|connect)/i.test(m.text())) violations.push(m.text());
   });
   await login(page);
+  // Fase 3: Systeemstatus staat in het avatarmenu, alleen voor eigenaren.
+  await page.getByRole("button", { name: /^Account:/ }).click();
   await page.getByRole("link", { name: "Systeemstatus" }).click();
   await page.waitForURL(/\/app\/status/);
   await expect(page.getByRole("heading", { name: "Systeemstatus", level: 1 })).toBeVisible();
