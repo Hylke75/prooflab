@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { ActionForm } from "@/components/ui/ActionForm";
+import { ConfirmDialogForm } from "@/components/ui/ConfirmDialog";
 import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import type { ReportSnapshot } from "@/lib/report";
@@ -143,9 +144,18 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 </span>
                 {canWrite && isCurrent && !v.shared_at && (
                   <div style={{ flexBasis: "100%" }}>
-                    <ActionForm action={shareReportVersion.bind(null, id, v.id)} submitLabel={`Deel versie ${v.version} met opdrachtgever`} submitClass="btn primary sm" pendingLabel="Delen…">
-                      <p className="tiny">Delen is eenmalig en kan niet worden teruggedraaid. De opdrachtgever ziet daarna deze versie, zonder ruwe interviewcitaten of gegevens van testdeelnemers.</p>
-                    </ActionForm>
+                    <ConfirmDialogForm
+                      action={shareReportVersion.bind(null, id, v.id)}
+                      triggerLabel={`Deel versie ${v.version} met opdrachtgever`}
+                      title={`Versie ${v.version} delen met de opdrachtgever?`}
+                      confirmLabel="Ja, deel definitief"
+                      pendingLabel="Delen…"
+                    >
+                      <p>
+                        <strong>Dit kan niet worden teruggedraaid.</strong> Na het delen ziet de opdrachtgever deze versie blijvend, zonder ruwe
+                        interviewcitaten of gegevens van testdeelnemers. Wil je iets aanpassen, maak dan eerst een nieuwe versie.
+                      </p>
+                    </ConfirmDialogForm>
                   </div>
                 )}
               </div>

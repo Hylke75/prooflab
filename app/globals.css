@@ -459,3 +459,5 @@ details.quickline[open]>summary::after{transform:rotate(180deg)}
   .coach.collapsed~.coach-toggle:hover{background:var(--color-primary-hover)}
 }
 @media(prefers-reduced-motion:reduce){.coach.collapsed,.coach.collapsed.open{transition:none}}
+dialog.modal{border:0;color:var(--color-text);max-height:calc(100vh - 40px);overflow:auto}
+dialog.modal::backdrop{background:var(--color-overlay)}
