@@ -57,6 +57,8 @@ function progress(over: Partial<IdeaProgress> = {}): IdeaProgress {
       experiments: base.experiments.length,
       experimentsLive: base.experimentsLive,
       experimentsEnded: base.experimentsEnded,
+      // In deze testdata heeft een afgeronde test met goedgekeurde Learning Card een uitslag.
+      testsWithVerdict: base.learningCardsApproved,
       realTestObservations: base.behaviourObservations,
       decisions: base.decisions,
       latestDecisionAction: base.latestDecisionAction,

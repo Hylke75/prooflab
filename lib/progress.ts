@@ -10,6 +10,7 @@ import type { AssumptionCategory, ClaimStatus } from "@/lib/domain/labels";
 import { rankByInformationValue, type VoiResult } from "@/lib/domain/recommend";
 import type { IdeaProgress } from "@/lib/domain/coach";
 import { getUser } from "@/lib/data";
+import { testsWithVerdict } from "@/lib/domain/dossier-status";
 import { FORECAST_MOMENTS, type ForecastMoment, type ForecastState } from "@/lib/domain/forecast";
 import { todayInNL } from "@/lib/domain/sprint";
 import { loadIdeaWeights } from "@/lib/learning-data";
@@ -335,7 +336,7 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     supabase.from("competitors").select("id", count).eq("idea_id", ideaId).in("kind", ["alternative", "status_quo"]),
     supabase.from("segments").select("id", count).eq("idea_id", ideaId),
     supabase.from("experiments").select("id, title, state, started_at, ends_at, created_at").eq("idea_id", ideaId).order("created_at"),
-    supabase.from("learning_cards").select("experiment_id, status, approved_at").eq("idea_id", ideaId),
+    supabase.from("learning_cards").select("experiment_id, status, approved_at, verdict").eq("idea_id", ideaId),
     supabase.from("reality_checks").select("created_at").eq("idea_id", ideaId).order("created_at", { ascending: false }).limit(1),
     supabase.from("decisions").select("action, decided_at, client_confirmed_at").eq("idea_id", ideaId).order("decided_at", { ascending: false }),
     supabase.from("observations").select("id", count).eq("idea_id", ideaId).eq("is_behaviour", true).eq("is_synthetic", false).or(realObs),
@@ -410,6 +411,8 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
       experiments: expList.length,
       experimentsLive: states.filter((s) => s === "live" || s === "paused").length,
       experimentsEnded: states.filter((s) => ["ended", "analyzed", "decided"].includes(s)).length,
+      // B1: alleen een afgeronde test met uitslag geslaagd of niet geslaagd (onbeslist telt niet).
+      testsWithVerdict: testsWithVerdict(expList, cardList),
       realTestObservations: realTestObs.count ?? 0,
       decisions: decisionList.length,
       latestDecisionAction: decisionList[0]?.action ?? null,
