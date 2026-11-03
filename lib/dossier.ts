@@ -10,6 +10,8 @@ import type { DossierFacts } from "@/lib/domain/reality-check";
 import type { ClaimStatus } from "@/lib/domain/labels";
 import type { Idea } from "@/lib/data";
 import { loadIdeaWeights } from "@/lib/learning-data";
+import { asMethodVersion, METHODS } from "@/lib/domain/method";
+import { loadIdeaCaps } from "@/lib/method-data";
 
 // Collects everything about one idea in a single pass. Used by the Reality Check and as the
 // immutable snapshot behind every report version.
@@ -44,8 +46,12 @@ export async function loadDossier(idea: Idea) {
   const assumptions = rankAssumptions(await loadAssumptions(id));
   // Which evidence factors those probabilities used (default or learned), for the report.
   const weights = (await loadIdeaWeights(id)).inUse;
+  // The method version of this dossier, with its rules and (2026-11-b) the caps per evidence level.
+  const version = asMethodVersion(idea.method_version);
+  const caps = await loadIdeaCaps(id);
+  const method = { version, label: METHODS[version].label, rules: METHODS[version].rules, caps: METHODS[version].usesCaps ? caps.caps : null, capsCustom: caps.custom };
   const expList = experiments.data ?? [];
-  const metrics = await Promise.all(expList.map((e) => (e.hypotheses ? experimentMetrics(e, e.hypotheses) : null)));
+  const metrics = await Promise.all(expList.map((e) => (e.hypotheses ? experimentMetrics(e, e.hypotheses, version) : null)));
 
   const sizing = (scenarios.data ?? [])
     .map((s) => {
@@ -107,6 +113,8 @@ export async function loadDossier(idea: Idea) {
     prior: a.probability.prior,
     probability: a.probability.probability,
     band: a.probability.band,
+    capReason: a.probability.cap?.active ? a.probability.cap.reason : null,
+    merged: (a.probability.merged ?? []).map((m) => ({ label: m.label, signals: m.signals })),
     top: a.probability.top.map((c) => ({ label: c.label, direction: c.direction, count: c.count, lr: c.lr, weight: c.weight, explanation: explainContribution(c) })),
   }));
 
@@ -185,6 +193,7 @@ export async function loadDossier(idea: Idea) {
     label,
     probabilities,
     weights,
+    method,
     simulation: simulations.find((s) => s.kind === "realistic") ?? simulations[0] ?? null,
     simulations,
     prediction,

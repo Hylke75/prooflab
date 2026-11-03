@@ -5,6 +5,8 @@ import { PageFrame } from "@/components/shell/PageFrame";
 import { CalibrationChart } from "@/components/forecast/CalibrationChart";
 import { CoachEffect, LearnedWeights, SurveyAgreement } from "@/components/forecast/Learning";
 import { loadLearningView } from "@/lib/learning-data";
+import { EvidenceCapsCard } from "@/components/forecast/EvidenceCapsCard";
+import { loadOrgCaps } from "@/lib/method-data";
 import { calendarDate } from "@/components/sprint/SprintCard";
 import { getWorkspace } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
@@ -32,7 +34,8 @@ export default async function ForecastsPage() {
   if (!ws.org) redirect("/app");
   const org = ws.org.id;
   const supabase = await supabaseServer();
-  const [learning, scores, calibration, allOutcomes, upcoming, ...baseRates] = await Promise.all([
+  const [caps, learning, scores, calibration, allOutcomes, upcoming, ...baseRates] = await Promise.all([
+    loadOrgCaps(org),
     loadLearningView(org),
     supabase.rpc("forecast_scores", { p_org: org }),
     supabase.rpc("forecast_calibration", { p_org: org }),
@@ -261,6 +264,8 @@ export default async function ForecastsPage() {
           </div>
         </>
       )}
+
+      <EvidenceCapsCard caps={caps.caps} custom={caps.custom} canEdit={ws.org.role === "owner"} />
     </PageFrame>
   );
 }

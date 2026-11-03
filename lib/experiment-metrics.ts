@@ -1,6 +1,8 @@
 import "server-only";
 import { supabaseServer } from "@/lib/supabase/server";
-import { betaBinomial, empiricalPrior, FLAT_PRIOR, verdict, type BayesEstimate, type BetaPrior, type Verdict } from "@/lib/domain/stats";
+import { betaBinomial, empiricalPrior, FLAT_PRIOR, type BayesEstimate, type BetaPrior, type RuledVerdict } from "@/lib/domain/stats";
+import { methodOf, type MethodVersion } from "@/lib/domain/method";
+import { ideaMethodVersion } from "@/lib/method-data";
 import { QUALITY_VALUES, SurveyConfigSchema, type Answers, type Quality, type SurveyConfig, type SurveyCountRow } from "@/lib/domain/survey";
 import { surveySplitFromCounts, type ExportRow, type SurveySplit } from "@/lib/domain/survey-results";
 
@@ -38,7 +40,8 @@ export type ExperimentMetrics = {
   byVariant: VariantRow[];
   byContent: ContentRow[];
   endConditionReached: boolean;
-  verdict: Verdict;
+  // Oordeel volgens de vooraf vastgelegde beslisregel, met kans, interval en label.
+  verdict: RuledVerdict;
   // Bayesian estimate with a prior from earlier tests (research 3.6). Null until the end condition
   // is reached: no peeking, same as the verdict.
   bayes: BayesEstimate | null;
@@ -154,10 +157,21 @@ export async function priorFor(exp: Exp): Promise<BetaPrior> {
     return FLAT_PRIOR;
   }
 }
-type Hyp = { success_threshold_pct: number; fail_threshold_pct: number | null; min_sample: number; metric_label: string };
+type Hyp = {
+  success_threshold_pct: number;
+  fail_threshold_pct: number | null;
+  min_sample: number;
+  metric_label: string;
+  decision_rule?: string | null;
+  success_count?: number | null;
+};
+
+// Sterke handelingen die bij de aantalregel in een gesprek meetellen.
+export const STRONG_ACTION_KINDS = ["deposit", "repeat_purchase"] as const;
 
 // Computes the pre-registered metric from raw, deduplicated events (or coded interviews).
-export async function experimentMetrics(exp: Exp, h: Hyp): Promise<ExperimentMetrics> {
+// method: de methodeversie van het dossier (zonder: opgezocht). Het oordeel volgt de rekenmodule van die versie.
+export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion): Promise<ExperimentMetrics> {
   const supabase = await supabaseServer();
   const warnings: string[] = [];
   let n = 0;
@@ -186,16 +200,21 @@ export async function experimentMetrics(exp: Exp, h: Hyp): Promise<ExperimentMet
   } else if (exp.type === "interview") {
     const [{ data: interviews }, { data: obs }] = await Promise.all([
       supabase.from("interviews").select("id, consent_recorded, is_acquaintance, dmu_role, recruited_via").eq("experiment_id", exp.id),
-      supabase.from("observations").select("interview_id, kind").eq("experiment_id", exp.id).eq("is_synthetic", false),
+      supabase.from("observations").select("interview_id, kind, review_status").eq("experiment_id", exp.id).eq("is_synthetic", false),
     ]);
     const valid = (interviews ?? []).filter((i) => i.consent_recorded);
     n = valid.length;
-    successes = valid.filter((i) => (obs ?? []).some((o) => o.interview_id === i.id && o.kind === "problem_confirmed")).length;
+    // Aantalregel: een gesprek telt alleen met een vastgelegde aanbetaling of herhaalaankoop (afgekeurde
+    // AI-codering telt niet). Anders: het probleem herkend in eigen recent gedrag.
+    const absolute = h.decision_rule === "absolute";
+    const counts = (o: { kind: string; review_status?: string | null }) =>
+      absolute ? (STRONG_ACTION_KINDS as readonly string[]).includes(o.kind) && o.review_status !== "rejected" : o.kind === "problem_confirmed";
+    successes = valid.filter((i) => (obs ?? []).some((o) => o.interview_id === i.id && counts(o))).length;
     const channels = new Map<string, ChannelRow>();
     for (const i of valid) {
       const row = channels.get(i.recruited_via) ?? { channel: i.recruited_via, visitors: 0, actions: 0 };
       row.visitors++;
-      if ((obs ?? []).some((o) => o.interview_id === i.id && o.kind === "problem_confirmed")) row.actions++;
+      if ((obs ?? []).some((o) => o.interview_id === i.id && counts(o))) row.actions++;
       channels.set(i.recruited_via, row);
     }
     byChannel = [...channels.values()];
@@ -244,7 +263,8 @@ export async function experimentMetrics(exp: Exp, h: Hyp): Promise<ExperimentMet
   // experiment has been ended or its pre-registered duration is over.
   const endConditionReached = ["ended", "analyzed", "decided"].includes(exp.state) || timeUp;
   if (n > 0 && n < h.min_sample) warnings.push(`Nog ${h.min_sample - n} deelnemers nodig voor de afgesproken steekproef.`);
-  const v = verdict({
+  const version = method ?? (exp.idea_id ? await ideaMethodVersion(exp.idea_id) : undefined);
+  const v = methodOf(version).verdict(h, {
     successes,
     n,
     successThresholdPct: Number(h.success_threshold_pct),

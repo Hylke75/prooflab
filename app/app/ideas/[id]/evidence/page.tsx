@@ -4,6 +4,9 @@ import { PageFrame } from "@/components/shell/PageFrame";
 import { Stepper } from "@/components/ui/Stepper";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { DecisionSelector } from "@/components/evidence/DecisionSelector";
+import { LABEL_PILL, RuleSummary, outcomeFromCard, ruleLine } from "@/components/experiments/RuleSummary";
+import { asMethodVersion, METHODS } from "@/lib/domain/method";
+import { verdictInput } from "@/lib/method-preview";
 import { DecisionForecast } from "@/components/forecast/DecisionForecast";
 import { decisionBlocker } from "@/lib/domain/forecast";
 import { getIdea } from "@/lib/data";
@@ -43,6 +46,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
   const drafts = d.learningCards.filter((c) => c.status === "draft");
   const approved = d.learningCards.filter((c) => c.status === "approved");
   const premortem = d.assumptions.filter((a) => a.origin === "premortem");
+  const method = asMethodVersion(idea.method_version);
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Bewijs & besluit"]} coach="evidence" ideaId={id}>
@@ -131,7 +135,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                   <li key={a.id}>
                     {a.statement}{" "}
                     <span className="tiny">
-                      · belang {a.importance}/5 · geschatte kans dat dit klopt {Math.round(a.probability.probability * 100)}%{a.probability.counted === 0 ? " (nog geen bewijs)" : ""}
+                      · belang {a.importance}/5 · geschatte kans dat dit klopt {Math.round(a.probability.probability * 100)}%{a.probability.counted === 0 ? " (nog geen bewijs)" : ""}{a.probability.cap?.active ? ` (${a.probability.cap.reason})` : ""}
                     </span>
                   </li>
                 ))}
@@ -194,6 +198,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
               <div className="section-title"><h3>{exp?.title ?? "Experiment"}</h3><span className="pill orange">Concept · {c.verdict === "pass" ? "geslaagd" : c.verdict === "fail" ? "niet geslaagd" : "onbeslist"}</span></div>
               <div className="data-row"><span>We dachten</span><strong style={{ textAlign: "right" }}>{c.we_believed}</strong></div>
               <div className="data-row"><span>We zagen</span><strong style={{ textAlign: "right" }}>{c.we_observed}</strong></div>
+              <RuleSummary o={outcomeFromCard(c.metrics, c.verdict, exp?.hypotheses ?? null)} />
               {canWrite ? (
                 <>
                   <ActionForm action={updateLearningCard.bind(null, id, c.id)} submitLabel="Opslaan" submitClass="btn white sm">
@@ -221,6 +226,24 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
               <div className="section-title"><h3>{exp?.title ?? "Experiment"}</h3><span className={`pill ${c.verdict === "pass" ? "green" : c.verdict === "fail" ? "coral" : "orange"}`}>{c.verdict === "pass" ? "Geslaagd" : c.verdict === "fail" ? "Niet geslaagd" : "Onbeslist"}</span></div>
               <div className="data-row"><span>We dachten</span><strong style={{ textAlign: "right" }}>{c.we_believed}</strong></div>
               <div className="data-row"><span>We zagen</span><strong style={{ textAlign: "right" }}>{c.we_observed}</strong></div>
+              <RuleSummary o={outcomeFromCard(c.metrics, c.verdict, exp?.hypotheses ?? null)} />
+              {(() => {
+                // Een goedgekeurde kaart verandert nooit. Rekende hij met een andere methode dan het dossier nu,
+                // dan staat de uitkomst onder de huidige methode ernaast.
+                const cardMethod = asMethodVersion((c.metrics as { method_version?: unknown } | null)?.method_version);
+                if (cardMethod === method || !exp?.hypotheses) return null;
+                const o = outcomeFromCard(c.metrics, c.verdict, exp.hypotheses);
+                const now = METHODS[method].verdict(exp.hypotheses, verdictInput(exp.hypotheses, o.n, o.successes, true));
+                return (
+                  <div className="data-row">
+                    <span>Onder {METHODS[method].label.toLowerCase()}</span>
+                    <strong style={{ textAlign: "right" }}>
+                      <span className={`pill ${LABEL_PILL[now.label] ?? "gray"}`}>{now.label}</span>{" "}
+                      <span className="tiny">{ruleLine({ ...o, rule: now.rule, label: now.label, probability: now.probability, probabilityFail: now.probabilityFail, successCount: now.successCount })} Ter informatie; deze kaart blijft ongewijzigd.</span>
+                    </strong>
+                  </div>
+                );
+              })()}
               <div className="data-row"><span>Daaruit leren we</span><strong style={{ textAlign: "right" }}>{c.we_learned}</strong></div>
               <div className="data-row"><span>Daarom gaan we</span><strong style={{ textAlign: "right" }}>{c.therefore}</strong></div>
               <div className="data-row"><span>Betrouwbaarheid</span><strong>{{ low: "Laag", medium: "Middel", high: "Hoog" }[c.data_reliability]}</strong></div>

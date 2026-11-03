@@ -16,6 +16,9 @@ import { loadIdeaWeights } from "@/lib/learning-data";
 import { describeWeights, type WeightsInUse } from "@/lib/domain/calibration";
 import { aiConfigured } from "@/lib/env";
 import { ASSUMPTION_CATEGORIES, type AssumptionCategory, type AssumptionStatus } from "@/lib/domain/labels";
+import { asMethodVersion, CURRENT_METHOD, METHODS, type MethodVersion } from "@/lib/domain/method";
+import { EVIDENCE_LEVELS, type EvidenceCaps } from "@/lib/domain/evidence";
+import { loadIdeaCaps } from "@/lib/method-data";
 import { addAssumption, deleteAssumption, linkClaim, seedAssumptions, setImportance, setPrior, unlinkClaim } from "./actions";
 
 export const metadata: Metadata = { title: "Aannames" };
@@ -23,7 +26,7 @@ export const metadata: Metadata = { title: "Aannames" };
 const lrText = (e: LrEntry) => (e.lr === 1 ? "telt niet mee" : e.against ? `÷ ${fmtLr(e.lr)} (tegenbewijs)` : `× ${fmtLr(e.lr)} (tegen: ÷ ${fmtLr(e.lr)})`);
 
 // The factors behind the probabilities and the ranking, visible as they are used in code.
-function HowWeCalculate({ weights }: { weights: WeightsInUse }) {
+function HowWeCalculate({ weights, method, caps }: { weights: WeightsInUse; method: MethodVersion; caps: EvidenceCaps }) {
   const rows = [...Object.values(OBSERVATION_LR), ...Object.values(CLAIM_LR)];
   return (
     <details className="card mt-18">
@@ -34,6 +37,15 @@ function HowWeCalculate({ weights }: { weights: WeightsInUse }) {
         AI-gecodeerde observaties tellen voor {AI_UNREVIEWED_WEIGHT * 100}% zolang niemand ze heeft beoordeeld, volledig na akkoord en niet na afkeuren. Synthetische data telt nooit mee.
         De kans blijft altijd tussen 1% en 99%.
       </p>
+      {method === "2026-11-b" ? (
+        <p className="sub mt-12">
+          {METHODS[method].label}: ondersteunend bewijs uit dezelfde bron (dezelfde enquête of test, hetzelfde interview, dezelfde bron of outreach-campagne) telt
+          één keer, met de sterkste factor; tegenbewijs telt per signaal. De kans is begrensd door het hoogste bewijsniveau:{" "}
+          {EVIDENCE_LEVELS.map((l) => `${l.label.toLowerCase()} ${l.level === "repeat" ? "geen plafond" : `${Math.round(caps[l.level as keyof EvidenceCaps] * 100)}%`}`).join("; ")}.
+        </p>
+      ) : (
+        <p className="sub mt-12">{METHODS[method].label}: geen samenvoegen per bron en geen plafond per bewijsniveau.</p>
+      )}
       <div style={{ overflowX: "auto" }}>
         <table className="table mt-12">
           <caption className="sr-only">Factor per soort bewijs</caption>
@@ -62,12 +74,14 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
   const { id } = await params;
   const { idea, canWrite } = await getIdea(id);
   const supabase = await supabaseServer();
-  const [ranked, progress, { data: claims }, { data: links }, weights] = await Promise.all([
+  const method = asMethodVersion(idea.method_version);
+  const [ranked, progress, { data: claims }, { data: links }, weights, caps] = await Promise.all([
     loadInformationValue(id),
     loadProgress(id),
     supabase.from("claims").select("id, statement, status").eq("idea_id", id).order("created_at"),
     supabase.from("assumption_claims").select("assumption_id, claim_id, relation, claims(statement, status)").eq("idea_id", id),
     loadIdeaWeights(id),
+    loadIdeaCaps(id),
   ]);
   const board: BoardAssumption[] = ranked.map((a) => ({
     ...a,
@@ -91,6 +105,11 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
         </Link>
       </div>
       <Stepper current="assumptions" ideaId={id} done={stepsDone(progress)} />
+      {method !== CURRENT_METHOD && (
+        <div className="note">
+          Dit dossier rekent met methode {method}. <Link className="text-link" href={`/app/ideas/${id}/method`}>Bekijk wat overstappen naar methode {CURRENT_METHOD} verandert →</Link>
+        </div>
+      )}
 
       {board.length === 0 ? (
         <div className="empty-state">
@@ -128,7 +147,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
       )}
 
       <RedTeamButton ideaId={id} assumptions={board} canWrite={canWrite} />
-      {board.length > 0 && <HowWeCalculate weights={weights.inUse} />}
+      {board.length > 0 && <HowWeCalculate weights={weights.inUse} method={method} caps={caps.caps} />}
 
       {canWrite && (
         <div className="card mt-18">

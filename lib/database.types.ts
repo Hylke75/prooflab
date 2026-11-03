@@ -1308,8 +1308,11 @@ export type Database = {
       hypotheses: {
         Row: {
           assumption_id: string
+          available_per_week: number | null
           change_reason: string | null
           created_at: string
+          decision_rule: string | null
+          expected_pct: number | null
           expected_biases: string | null
           fail_threshold_pct: number | null
           id: string
@@ -1320,6 +1323,8 @@ export type Database = {
           metric_label: string
           metric_numerator: string
           min_sample: number
+          required_n: number | null
+          success_count: number | null
           success_threshold_pct: number
           superseded_by: string | null
           target_group: string
@@ -1329,8 +1334,11 @@ export type Database = {
         }
         Insert: {
           assumption_id: string
+          available_per_week?: number | null
           change_reason?: string | null
           created_at?: string
+          decision_rule?: string | null
+          expected_pct?: number | null
           expected_biases?: string | null
           fail_threshold_pct?: number | null
           id?: string
@@ -1341,6 +1349,8 @@ export type Database = {
           metric_label: string
           metric_numerator: string
           min_sample: number
+          required_n?: number | null
+          success_count?: number | null
           success_threshold_pct: number
           superseded_by?: string | null
           target_group: string
@@ -1350,8 +1360,11 @@ export type Database = {
         }
         Update: {
           assumption_id?: string
+          available_per_week?: number | null
           change_reason?: string | null
           created_at?: string
+          decision_rule?: string | null
+          expected_pct?: number | null
           expected_biases?: string | null
           fail_threshold_pct?: number | null
           id?: string
@@ -1362,6 +1375,8 @@ export type Database = {
           metric_label?: string
           metric_numerator?: string
           min_sample?: number
+          required_n?: number | null
+          success_count?: number | null
           success_threshold_pct?: number
           superseded_by?: string | null
           target_group?: string
@@ -1459,6 +1474,7 @@ export type Database = {
           id: string
           is_demo: boolean
           key_uncertainty: string | null
+          method_version: string
           org_id: string
           project_type: string
           region: string
@@ -1499,6 +1515,7 @@ export type Database = {
           id?: string
           is_demo?: boolean
           key_uncertainty?: string | null
+          method_version?: string
           org_id: string
           project_type: string
           region: string
@@ -1539,6 +1556,7 @@ export type Database = {
           id?: string
           is_demo?: boolean
           key_uncertainty?: string | null
+          method_version?: string
           org_id?: string
           project_type?: string
           region?: string
@@ -1861,6 +1879,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      org_evidence_caps: {
+        Row: {
+          deposit: number
+          opinion: number
+          org_id: string
+          problem: number
+          quote: number
+          small_action: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          deposit?: number
+          opinion?: number
+          org_id: string
+          problem?: number
+          quote?: number
+          small_action?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          deposit?: number
+          opinion?: number
+          org_id?: string
+          problem?: number
+          quote?: number
+          small_action?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
       }
       organizations: {
         Row: {
@@ -2758,6 +2809,27 @@ export type Database = {
         Returns: { dimension: string; kind: string; achieved: string; direction: string; dossiers: number }[]
       }
       idea_uses_learned_weights: { Args: { p_idea: string }; Returns: boolean }
+      evidence_caps_for_idea: {
+        Args: { p_idea: string }
+        Returns: { opinion: number; problem: number; small_action: number; quote: number; deposit: number }[]
+      }
+      switch_method_version: { Args: { p_idea: string; p_to: string; p_preview: Json }; Returns: string }
+      evidence_source_refs: {
+        Args: { p_idea: string }
+        Returns: {
+          item_type: string
+          item_id: string
+          source_id: string | null
+          source_type: string | null
+          source_title: string | null
+          campaign: string | null
+          survey_experiment_id: string | null
+          experiment_id: string | null
+          experiment_title: string | null
+          interview_id: string | null
+          interview_label: string | null
+        }[]
+      }
       idea_learning_counts: {
         Args: { p_idea: string }
         Returns: { dimension: string; kind: string; achieved: string; direction: string; dossiers: number }[]

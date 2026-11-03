@@ -6,6 +6,7 @@
 import type { ReportSnapshot } from "@/lib/report";
 import { pct } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
+import { describeMethodology, ruleLabelText } from "@/lib/domain/method/describe";
 
 export type Tone = "blue" | "green" | "coral" | "lime" | "gray";
 export type Block =
@@ -67,6 +68,8 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
   const realistic = r.sizing.find((s) => s.label === "Realistisch") ?? r.sizing[1] ?? null;
   const signals = r.signals ?? [];
   const chapters: Chapter[] = [];
+  // Methodeversie, beslisregels en plafonds (rapporten van vóór de methodeversie: 2026-11-a).
+  const methodology = describeMethodology("methodology" in r ? r.methodology : null);
 
   // 01 Management summary
   chapters.push({
@@ -206,7 +209,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
     exps.push({
       t: "p",
       text:
-        `Resultaat: ${e.successes} van ${e.n}${e.interval ? ` (${pct(e.interval.point)}; 95%-interval ${pct(e.interval.low)}–${pct(e.interval.high)})` : ""}. Oordeel: ${e.verdict ? (VERDICT[e.verdict] ?? "onbeslist") : "onbeslist"}. ${e.verdictReason}` +
+        `Resultaat: ${e.successes} van ${e.n}${e.interval ? ` (${pct(e.interval.point)}; 95%-interval ${pct(e.interval.low)}–${pct(e.interval.high)})` : ""}. Oordeel: ${"label" in e && e.label ? e.label : e.verdict ? (VERDICT[e.verdict] ?? "onbeslist") : "onbeslist"}${"rule" in e ? ` (${ruleLabelText(e.rule)})` : ""}. ${e.verdictReason}` +
         (e.endedEarly ? " De test is vroegtijdig beëindigd." : ""),
     });
     for (const w of e.warnings) exps.push({ t: "p", small: true, muted: true, text: `Let op: ${w}` });
@@ -349,6 +352,8 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
           "Methode: elke bevinding steunt op een letterlijk citaat dat automatisch is teruggevonden in de bewaarde bronpassage; de status wordt berekend, niet gekozen. Experimentdrempels zijn vóór de start vergrendeld. " +
           (r.method.aiCalls ? `AI is ${r.method.aiCalls}× gebruikt (${r.method.models.join(", ")}; kosten $${r.method.aiCostUsd}). AI-uitvoer telt nooit als bewijs.` : "Er is geen AI gebruikt."),
       },
+      { t: "p", small: true, text: `Rekenwijze: ${methodology.title}.` },
+      { t: "list", small: true, items: methodology.lines },
     ],
   });
 

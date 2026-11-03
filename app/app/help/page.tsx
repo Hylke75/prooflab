@@ -18,9 +18,12 @@ const GLOSSARY: [string, string][] = [
   ["Beslisvraag", "De beslissing die het onderzoek moet ondersteunen, bijvoorbeeld \"investeren we €25.000 in een eerste versie?\". Alles in het dossier is daaraan gekoppeld."],
   ["Bevinding met bron", "Een uitspraak over de markt met een letterlijk citaat uit een bron. ProofLab zoekt het citaat zelf terug; een AI-tekst is nooit een bron."],
   ["Aanname", "Iets wat waar moet zijn voordat het idee kan slagen. De risicokaart zet de belangrijkheid af tegen het bewijs dat er al is."],
-  ["Test Card", "Het testplan dat vóór de start wordt vastgelegd: wat we denken, hoe we het toetsen, wat we meten en wanneer het klopt of niet. Na goedkeuring zijn de drempels vergrendeld."],
-  ["95%-interval", "De bandbreedte waarbinnen de werkelijke waarde vrijwel zeker ligt. Bij weinig deelnemers is die breed; een test is pas geslaagd als het hele interval boven de drempel ligt."],
-  ["Learning Card", "De samenvatting na een test: wat we verwachtten, wat we zagen, wat we daaruit leren en wat we daarom doen, met de betrouwbaarheid van de data."],
+  ["Test Card", "Het testplan dat vóór de start wordt vastgelegd: wat we denken, hoe we het toetsen, wat we meten, de beslisregel en wanneer het klopt of niet. ProofLab rekent vooraf uit hoeveel deelnemers nodig zijn bij de verwachte uitkomst en waarschuwt als dat niet haalbaar is in de looptijd. Na goedkeuring zijn drempels, beslisregel en dat aantal vergrendeld."],
+  ["95%-interval", "De bandbreedte waarbinnen de werkelijke waarde vrijwel zeker ligt. Bij weinig deelnemers is die breed. In methode 2026-11-b staat het ter informatie naast het oordeel; ligt bij een geslaagde test ook de ondergrens boven de drempel, dan heet de uitkomst \"sterk bewezen\". In methode 2026-11-a is een test alleen geslaagd als het hele interval boven de drempel ligt."],
+  ["Kansregel", "De beslisregel voor tests die een percentage meten (landingpagina, prijstest op klikniveau, enquête, interviews). Geslaagd als de kans dat het echte percentage boven de succesdrempel ligt minstens 80% is; niet geslaagd als de kans dat het boven de faaldrempel ligt 20% of minder is; daartussen onbeslist. Voor sterke handelingen zoals aanbetalingen geldt in plaats daarvan een vast aantal, bijvoorbeeld \"minstens 3 aanbetalingen uit 15 gesprekken\"."],
+  ["Learning Card", "De samenvatting na een test: wat we verwachtten, wat we zagen, wat we daaruit leren en wat we daarom doen, met de beslisregel, de kans of het aantal, het 95%-interval, het label en de betrouwbaarheid van de data. Een goedgekeurde kaart verandert nooit meer."],
+  ["Plafond", "De hoogste kans die een aanname kan krijgen bij het bewijs dat er is: met alleen meningen, enquêtes en bureauonderzoek 40%, met een probleem in eigen gedrag 50%, met een kleine handeling 60%, met een gekozen prijsaanbod 75%, met een aanbetaling 90%; een herhaalaankoop heeft geen plafond. ProofLab toont dan bijvoorbeeld \"begrensd: nog geen aanbetaling\". De eigenaar van de werkruimte kan de plafonds aanpassen."],
+  ["Methodeversie", "De vaste rekenwijze van een dossier, zodat elke kans en elk oordeel te reproduceren is. 2026-11-a is de oude rekenwijze (intervalregel, geen samenvoegen per bron, geen plafonds); 2026-11-b voegt de beslisregels, één factor per bron en de plafonds toe. Bestaande dossiers kunnen overstappen na een overzicht van wat er verandert; elk rapport vermeldt de versie."],
   ["Reality Check", "Een verplichte controle vóór elk besluit en rapport. Hij zoekt naar tegenbewijs, zwakke data, valkuilen en conclusies die het bewijs niet draagt, en geeft een advies."],
   ["Besluit", "Doorgaan, bijsturen, verder testen, pauzeren of stoppen. De consultant legt het vast, de opdrachtgever bevestigt het in ProofLab."],
   ["Rapportversie", "Een vaste momentopname van het dossier. Een gedeelde versie verandert nooit meer; de opdrachtgever ziet alleen gedeelde versies."],
@@ -45,6 +48,7 @@ export default function HelpPage() {
         ))}
       </div>
       <div className="card mt-18" id="begrippen">
+        <span id="methode" />
         <div className="section-title">
           <h2 className="as-h3">Begrippen</h2>
           <span className="pill gray">Kort uitgelegd</span>

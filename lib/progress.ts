@@ -1,7 +1,9 @@
 import "server-only";
 import { cache } from "react";
 import { supabaseServer } from "@/lib/supabase/server";
-import { assumptionEvidence, assumptionProbability, type AssumptionProbability, type ObservationDims } from "@/lib/domain/evidence";
+import { assumptionEvidence, type AssumptionProbability, type ObservationDims } from "@/lib/domain/evidence";
+import { METHODS, type MethodVersion } from "@/lib/domain/method";
+import { ideaMethodVersion, loadIdeaCaps, loadSourceRefs } from "@/lib/method-data";
 import type { AssumptionCategory, ClaimStatus } from "@/lib/domain/labels";
 import { rankByInformationValue, type VoiResult } from "@/lib/domain/recommend";
 import type { IdeaProgress } from "@/lib/domain/coach";
@@ -26,6 +28,7 @@ export type AssumptionWithEvidence = {
 
 type ObsLink = {
   assumption_id: string;
+  observation_id?: string;
   relation: string;
   observations: {
     is_fact: boolean;
@@ -54,6 +57,7 @@ async function loadObservationLinks(ideaId: string): Promise<ObsLink[]> {
       const o = byId.get(l.observation_id);
       return {
         assumption_id: l.assumption_id,
+        observation_id: l.observation_id,
         relation: l.relation,
         observations: o
           ? { is_fact: o.is_fact, is_behaviour: o.is_behaviour, is_real_context: o.is_real_context, is_costly: o.is_costly, is_synthetic: o.is_synthetic, kind: o.kind, origin: o.origin, review_status: o.review_status ?? null }
@@ -63,31 +67,47 @@ async function loadObservationLinks(ideaId: string): Promise<ObsLink[]> {
   }
   const full = await supabase
     .from("assumption_observations")
-    .select("assumption_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin, review_status)")
+    .select("assumption_id, observation_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin, review_status)")
     .eq("idea_id", ideaId);
   if (!full.error) return full.data ?? [];
   const plain = await supabase
     .from("assumption_observations")
-    .select("assumption_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin)")
+    .select("assumption_id, observation_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin)")
     .eq("idea_id", ideaId);
   return plain.data ?? [];
 }
 
-// Computes the evidence axis and the probability of every assumption from linked claims and observations.
-export const loadAssumptions = cache(async (ideaId: string): Promise<AssumptionWithEvidence[]> => {
+// Everything the probabilities of one idea are computed from, loaded once: assumptions, linked claims and
+// observations, evidence factors (default or learned), the source of every signal and the caps (method 2026-11-b).
+export const loadAssumptionInputs = cache(async (ideaId: string) => {
   const supabase = await supabaseServer();
-  const [{ data: assumptions }, { data: links }, obsLinks, weights] = await Promise.all([
+  const [{ data: assumptions }, { data: links }, obsLinks, weights, refs, caps, method] = await Promise.all([
     supabase.from("assumptions").select("*").eq("idea_id", ideaId).order("created_at"),
-    supabase.from("assumption_claims").select("assumption_id, relation, claims(status)").eq("idea_id", ideaId),
+    supabase.from("assumption_claims").select("assumption_id, claim_id, relation, claims(status)").eq("idea_id", ideaId),
     loadObservationLinks(ideaId),
     // Default factors unless the organisation switched learned weights on (lib/domain/calibration.ts).
     loadIdeaWeights(ideaId),
+    loadSourceRefs(ideaId),
+    loadIdeaCaps(ideaId),
+    ideaMethodVersion(ideaId),
   ]);
-  return (assumptions ?? []).map((a) => {
-    const claims = (links ?? [])
+  return { assumptions: assumptions ?? [], links: links ?? [], obsLinks: obsLinks ?? [], weights, refs, caps, method };
+});
+export type AssumptionInputs = Awaited<ReturnType<typeof loadAssumptionInputs>>;
+
+// Computes the evidence axis and the probability of every assumption with the calculation module of a method
+// version (lib/domain/method): the dossier's own version, or another one for the comparison before a switch.
+export function computeAssumptions(inputs: AssumptionInputs, version: MethodVersion): AssumptionWithEvidence[] {
+  const method = METHODS[version];
+  const { links, obsLinks, weights, refs, caps } = inputs;
+  return inputs.assumptions.map((a) => {
+    const claims = links
       .filter((l) => l.assumption_id === a.id && l.claims)
-      .map((l) => ({ status: l.claims!.status as ClaimStatus, relation: l.relation as "supports" | "contradicts" }));
-    const observations = (obsLinks ?? [])
+      .map((l) => {
+        const ref = refs.get(`claim:${l.claim_id}`);
+        return { status: l.claims!.status as ClaimStatus, relation: l.relation as "supports" | "contradicts", sourceKey: ref?.key ?? null, sourceLabel: ref?.label ?? null };
+      });
+    const observations = obsLinks
       .filter((l) => l.assumption_id === a.id && l.observations)
       .map((l) => {
         const o = l.observations!;
@@ -101,19 +121,25 @@ export const loadAssumptions = cache(async (ideaId: string): Promise<AssumptionW
         return { ...dims, relation: l.relation as "supports" | "contradicts" };
       });
     const e = assumptionEvidence(claims, observations);
-    const probability = assumptionProbability(
+    const probability = method.probability(
       claims,
-      (obsLinks ?? [])
+      obsLinks
         .filter((l) => l.assumption_id === a.id && l.observations)
-        .map((l) => ({
-          kind: l.observations!.kind,
-          relation: l.relation as "supports" | "contradicts",
-          isSynthetic: l.observations!.is_synthetic,
-          origin: l.observations!.origin,
-          reviewStatus: l.observations!.review_status ?? null,
-        })),
+        .map((l) => {
+          const ref = l.observation_id ? refs.get(`observation:${l.observation_id}`) : undefined;
+          return {
+            kind: l.observations!.kind,
+            relation: l.relation as "supports" | "contradicts",
+            isSynthetic: l.observations!.is_synthetic,
+            origin: l.observations!.origin,
+            reviewStatus: l.observations!.review_status ?? null,
+            sourceKey: ref?.key ?? null,
+            sourceLabel: ref?.label ?? null,
+          };
+        }),
       a.prior == null ? 0.5 : Number(a.prior),
       weights.overrides,
+      caps.caps,
     );
     return {
       probability,
@@ -128,6 +154,13 @@ export const loadAssumptions = cache(async (ideaId: string): Promise<AssumptionW
       contradicting: e.contradicting,
     };
   });
+}
+
+// Computes the evidence axis and the probability of every assumption from linked claims and observations,
+// with the method version of the dossier.
+export const loadAssumptions = cache(async (ideaId: string): Promise<AssumptionWithEvidence[]> => {
+  const inputs = await loadAssumptionInputs(ideaId);
+  return computeAssumptions(inputs, inputs.method);
 });
 
 // Risk priority: most important first, then least evidence.

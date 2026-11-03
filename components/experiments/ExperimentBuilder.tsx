@@ -6,8 +6,9 @@ import { Icon } from "@/components/Icon";
 import { EXPERIMENT_TYPES, HONEST_REVEAL, NEUTRAL_INTERVIEW_GUIDE, type ExperimentType } from "@/lib/domain/labels";
 import { checkHypothesis } from "@/lib/domain/hypothesis";
 import { testCardDefaults, type Option } from "@/lib/domain/recommend";
-import { wilson } from "@/lib/domain/stats";
+import { DECISION_RULES, PASS_PROBABILITY, FAIL_PROBABILITY, requiredSample, sampleFeasibility, wilson, type DecisionRule } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
+import type { MethodVersion } from "@/lib/domain/method";
 import { auditGuide, guideSummary } from "@/lib/domain/interview-audit";
 import { honestyWarnings, type PreparedVariant } from "@/lib/domain/copy-honesty";
 import { GuideAuditList } from "@/components/experiments/InterviewAudit";
@@ -40,7 +41,9 @@ export function ExperimentBuilder({
   initialType,
   researcher = "",
   surveyDraftAction,
+  method = "2026-11-b",
 }: {
+  method?: MethodVersion;
   initialType?: ExperimentType;
   researcher?: string;
   surveyDraftAction?: SurveyDraftAction;
@@ -66,10 +69,12 @@ export function ExperimentBuilder({
   const defaults = useMemo(() => testCardDefaults(type, assumption.statement, audience), [type, assumption.statement, audience]);
   const withSurveyMetric = (d: typeof defaults, s: SurveyConfig) => (type === "survey" ? { ...d, ...metricFromKey(s) } : d);
   const [card, setCard] = useState(() => withSurveyMetric(defaults, survey));
+  const [rule, setRule] = useState<DecisionRule>("probability");
   const [lastKey, setLastKey] = useState(`${type}|${assumption.id}`);
   if (lastKey !== `${type}|${assumption.id}`) {
     setLastKey(`${type}|${assumption.id}`);
     setCard(withSurveyMetric(defaults, survey));
+    setRule("probability");
   }
   const updateSurvey = (next: SurveyConfig) => {
     setSurvey(next);
@@ -91,6 +96,18 @@ export function ExperimentBuilder({
     { label: "Plus", amount: "", period: "per maand" },
     { label: "", amount: "", period: "per maand" },
   ]);
+  const [successCount, setSuccessCount] = useState("3");
+  const [expectedPct, setExpectedPct] = useState("");
+  const [perWeek, setPerWeek] = useState("");
+  const chooseRule = (r: DecisionRule) => {
+    setRule(r);
+    // Bij de aantalregel telt een gesprek alleen met een sterke handeling (aanbetaling of herhaalaankoop).
+    setCard((c) =>
+      r === "absolute"
+        ? { ...c, metric_label: "Aanbetaling of herhaalaankoop", metric_numerator: "geïnterviewden die een aanbetaling deden of opnieuw kochten", metric_denominator: "geïnterviewden uit de doelgroep" }
+        : { ...c, metric_label: defaults.metric_label, metric_numerator: defaults.metric_numerator, metric_denominator: defaults.metric_denominator },
+    );
+  };
   const [channels, setChannels] = useState<string[]>(["linkedin", "network"]);
   const [reach, setReach] = useState("");
   const [guide, setGuide] = useState(NEUTRAL_INTERVIEW_GUIDE.join("\n"));
@@ -108,13 +125,24 @@ export function ExperimentBuilder({
 
   const coach = checkHypothesis({
     ...card,
-    success_threshold_pct: Number(card.success_threshold_pct),
-    fail_threshold_pct: card.fail_threshold_pct === null ? null : Number(card.fail_threshold_pct),
+    success_threshold_pct: rule === "absolute" && type === "interview" ? Math.max(0.1, Math.min(100, ((Number(successCount) || 0) / (Number(card.min_sample) || 1)) * 100)) : Number(card.success_threshold_pct),
+    fail_threshold_pct: rule === "absolute" && type === "interview" ? null : card.fail_threshold_pct === null ? null : Number(card.fail_threshold_pct),
     min_sample: Number(card.min_sample),
     max_duration_days: Number(card.max_duration_days),
   });
   const n = Number(card.min_sample) || 0;
   const needed = n > 0 ? minSuccesses(n, Number(card.success_threshold_pct)) : null;
+  // Beslisregel (methode 2026-11-b): vooraf rekenen hoeveel deelnemers nodig zijn bij de verwachte uitkomst.
+  // Dossiers met methode 2026-11-a houden de intervalregel: geen beslisregel en geen vooraf berekend aantal.
+  const v2 = method === "2026-11-b";
+  const absoluteAllowed = v2 && type === "interview";
+  const activeRule: DecisionRule = absoluteAllowed ? rule : "probability";
+  const countN = Number(successCount) || 0;
+  const thresholdPct = activeRule === "absolute" ? (n > 0 && countN > 0 ? Math.min(100, Math.round((countN / n) * 1000) / 10) : 0) : Number(card.success_threshold_pct);
+  const expected = Number(expectedPct);
+  const requiredN = expected > 0 && expected <= 100 ? requiredSample({ rule: activeRule, expectedPct: expected, thresholdPct, successCount: countN }) : undefined;
+  const feasibility =
+    requiredN === undefined ? null : sampleFeasibility({ requiredN, availablePerWeek: Number(perWeek) > 0 ? Number(perWeek) : null, maxDurationDays: Number(card.max_duration_days) || 0, minSample: n });
   const reachN = Number(reach) || 0;
   const set = (k: keyof typeof card, v: string) => setCard((c) => ({ ...c, [k]: v }));
 
@@ -170,21 +198,94 @@ export function ExperimentBuilder({
             <div className="form-line"><label htmlFor="tc-den">Noemer</label><input className="field" id="tc-den" name="metric_denominator" value={card.metric_denominator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_denominator", e.target.value)} /></div>
           </div>
           {type === "survey" && <p className="field-hint" id="tc-metric-hint" style={{ marginTop: -8, marginBottom: 12 }}>Teller en noemer volgen uit de kernvraag en de succesopties in de enquête hiernaast.</p>}
-          <div className="double-field">
-            <div className="form-line"><label htmlFor="tc-succ">Het klopt als ≥ (%)</label><input className="field num" id="tc-succ" name="success_threshold_pct" type="number" min={1} max={100} value={card.success_threshold_pct} onChange={(e) => set("success_threshold_pct", e.target.value)} /></div>
-            <div className="form-line"><label htmlFor="tc-fail">Het klopt niet als &lt; (%)</label><input className="field num" id="tc-fail" name="fail_threshold_pct" type="number" min={0} max={100} value={card.fail_threshold_pct ?? ""} onChange={(e) => set("fail_threshold_pct", e.target.value)} /></div>
-          </div>
-          <div className="double-field">
-            <div className="form-line"><label htmlFor="tc-n">Minimale steekproef</label><input className="field num" id="tc-n" name="min_sample" type="number" min={5} value={card.min_sample} onChange={(e) => set("min_sample", e.target.value)} /></div>
-            <div className="form-line"><label htmlFor="tc-days">Maximale looptijd (dagen)</label><input className="field num" id="tc-days" name="max_duration_days" type="number" min={1} max={180} value={card.max_duration_days} onChange={(e) => set("max_duration_days", e.target.value)} /></div>
-          </div>
-          {needed !== null ? (
-            <div className="note" style={{ marginTop: 0 }}>
-              Met {n} deelnemers is &quot;geslaagd&quot; pas vast te stellen bij minimaal <strong>{needed}</strong> keer {card.metric_label.toLowerCase()} ({Math.round((needed / n) * 100)}%).
-              Daaronder blijft het onbeslist.
-            </div>
+          {v2 && <input type="hidden" name="decision_rule" value={activeRule} />}
+          {v2 && (
+          <fieldset className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }}>
+            <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Beslisregel</legend>
+            {absoluteAllowed ? (
+              <div className="row" role="radiogroup" aria-label="Beslisregel">
+                {(["probability", "absolute"] as DecisionRule[]).map((r) => (
+                  <label key={r} className="check-row" style={{ margin: "2px 12px 2px 0" }}>
+                    <input type="radio" name="decision_rule_choice" value={r} checked={rule === r} onChange={() => chooseRule(r)} /> {DECISION_RULES[r].label}
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p className="field-hint" style={{ margin: 0 }}>{DECISION_RULES.probability.label}: dit testtype meet een percentage.</p>
+            )}
+            <p className="field-hint" style={{ marginTop: 6 }}>
+              {activeRule === "absolute"
+                ? "Voor sterke handelingen (aanbetaling, herhaalaankoop): geslaagd als het afgesproken aantal na de eindconditie is gehaald. Een gesprek telt alleen mee met een vastgelegde aanbetaling of herhaalaankoop."
+                : `Geslaagd als de kans dat het echte percentage boven de succesdrempel ligt minstens ${PASS_PROBABILITY * 100}% is; niet geslaagd als de kans dat het boven de faaldrempel ligt ${FAIL_PROBABILITY * 100}% of minder is. Daartussen onbeslist.`}
+            </p>
+          </fieldset>
+          )}
+          {activeRule === "absolute" ? (
+            <>
+              <input type="hidden" name="success_threshold_pct" value={thresholdPct || ""} />
+              <div className="double-field">
+                <div className="form-line"><label htmlFor="tc-count">Geslaagd bij minimaal (aantal)</label><input className="field num" id="tc-count" name="success_count" type="number" min={1} value={successCount} onChange={(e) => setSuccessCount(e.target.value)} /></div>
+                <div className="form-line"><label htmlFor="tc-n">Uit (minimale steekproef)</label><input className="field num" id="tc-n" name="min_sample" type="number" min={5} value={card.min_sample} onChange={(e) => set("min_sample", e.target.value)} /></div>
+              </div>
+              <div className="form-line"><label htmlFor="tc-days">Maximale looptijd (dagen)</label><input className="field num" id="tc-days" name="max_duration_days" type="number" min={1} max={180} value={card.max_duration_days} onChange={(e) => set("max_duration_days", e.target.value)} /></div>
+            </>
           ) : (
-            <div className="note" style={{ marginTop: 0 }}>Met deze steekproef is de succesdrempel niet aantoonbaar te halen. Verhoog de steekproef.</div>
+            <>
+              <div className="double-field">
+                <div className="form-line"><label htmlFor="tc-succ">Het klopt als ≥ (%)</label><input className="field num" id="tc-succ" name="success_threshold_pct" type="number" min={1} max={100} value={card.success_threshold_pct} onChange={(e) => set("success_threshold_pct", e.target.value)} /></div>
+                <div className="form-line"><label htmlFor="tc-fail">Het klopt niet als &lt; (%)</label><input className="field num" id="tc-fail" name="fail_threshold_pct" type="number" min={0} max={100} value={card.fail_threshold_pct ?? ""} onChange={(e) => set("fail_threshold_pct", e.target.value)} /></div>
+              </div>
+              <div className="double-field">
+                <div className="form-line"><label htmlFor="tc-n">Minimale steekproef</label><input className="field num" id="tc-n" name="min_sample" type="number" min={5} value={card.min_sample} onChange={(e) => set("min_sample", e.target.value)} /></div>
+                <div className="form-line"><label htmlFor="tc-days">Maximale looptijd (dagen)</label><input className="field num" id="tc-days" name="max_duration_days" type="number" min={1} max={180} value={card.max_duration_days} onChange={(e) => set("max_duration_days", e.target.value)} /></div>
+              </div>
+            </>
+          )}
+          {!v2 && (
+            needed !== null ? (
+              <div className="note" style={{ marginTop: 0 }}>
+                Met {n} deelnemers is &quot;geslaagd&quot; pas vast te stellen bij minimaal <strong>{needed}</strong> keer {card.metric_label.toLowerCase()} ({Math.round((needed / n) * 100)}%).
+                Daaronder blijft het onbeslist. Dit dossier rekent met methode 2026-11-a (intervalregel).
+              </div>
+            ) : (
+              <div className="note" style={{ marginTop: 0 }}>Met deze steekproef is de succesdrempel niet aantoonbaar te halen. Verhoog de steekproef.</div>
+            )
+          )}
+          {v2 && (
+          <>
+          <div className="double-field">
+            <div className="form-line">
+              <label htmlFor="tc-exp">Verwachte uitkomst (%)</label>
+              <input className="field num" id="tc-exp" name="expected_pct" type="number" min={1} max={100} step="any" value={expectedPct} onChange={(e) => setExpectedPct(e.target.value)} aria-describedby="tc-plan" required />
+            </div>
+            <div className="form-line">
+              <label htmlFor="tc-week">Beschikbare deelnemers per week</label>
+              <input className="field num" id="tc-week" name="available_per_week" type="number" min={0} value={perWeek} onChange={(e) => setPerWeek(e.target.value)} aria-describedby="tc-plan" />
+            </div>
+          </div>
+          <div id="tc-plan" aria-live="polite">
+            {requiredN === undefined ? (
+              <div className="note" style={{ marginTop: 0 }}>Vul de verwachte uitkomst in: dan rekent ProofLab vóór goedkeuring uit hoeveel deelnemers je nodig hebt om de drempel te kunnen halen.</div>
+            ) : (
+              <div className={feasibility && feasibility.warnings.length ? "form-error" : "note"} style={{ marginTop: 0 }}>
+                {requiredN !== null && (
+                  <p style={{ margin: 0 }}>
+                    Benodigd: <strong className="num">{requiredN}</strong> deelnemers om bij een uitkomst van {expected}%{" "}
+                    {activeRule === "absolute" ? `het aantal van ${countN} te halen` : `de kansregel te halen (≥ ${PASS_PROBABILITY * 100}% kans boven ${thresholdPct}%)`}.
+                    {feasibility?.capacity != null ? ` Bereik in de looptijd: ongeveer ${feasibility.capacity}.` : ""}
+                  </p>
+                )}
+                {feasibility?.warnings.map((w) => <p key={w} style={{ margin: "4px 0 0" }}>{w}</p>)}
+                {requiredN !== null && requiredN > n && (
+                  <button type="button" className="btn white sm mt-8" onClick={() => set("min_sample", String(requiredN))}>Neem {requiredN} over als minimale steekproef</button>
+                )}
+              </div>
+            )}
+            {activeRule === "probability" && needed !== null && (
+              <p className="field-hint">Ter informatie: met {n} deelnemers is het resultaat &quot;sterk bewezen&quot; (ook de ondergrens van het 95%-interval boven de drempel) vanaf {needed} keer {card.metric_label.toLowerCase()}.</p>
+            )}
+          </div>
+          </>
           )}
           {type === "survey" && (
             <SamplePlanner

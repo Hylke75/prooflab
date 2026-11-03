@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { layoutRiskPoints } from "@/lib/domain/risk-layout";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { ASSUMPTION_CATEGORIES, ASSUMPTION_STATUS, type AssumptionCategory, type AssumptionStatus } from "@/lib/domain/labels";
-import { bandFromShift, explainContribution, probabilityFromShift, type AssumptionProbability } from "@/lib/domain/evidence";
+import { applyCap, bandFromShift, capReason, explainContribution, explainMerged, probabilityFromShift, type AssumptionProbability } from "@/lib/domain/evidence";
 import type { VoiResult } from "@/lib/domain/recommend";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
@@ -184,8 +184,8 @@ export function RiskBoard({
           <button key={a.id} type="button" className={`assumption-item${a.id === current.id ? " active" : ""}`} onClick={() => select(a.id)} aria-pressed={a.id === current.id}>
             <span className="count">{i + 1}</span>
             <span>{a.statement}</span>
-            <small aria-label={`Informatiewaarde ${a.voi.index} van 100, geschatte kans ${pctR(a.probability.probability)}`}>
-              {pctR(a.probability.probability)} · IW {a.voi.index}
+            <small aria-label={`Informatiewaarde ${a.voi.index} van 100, geschatte kans ${pctR(a.probability.probability)}${a.probability.cap?.active ? ", begrensd" : ""}`}>
+              {pctR(a.probability.probability)}{a.probability.cap?.active ? " (begrensd)" : ""} · IW {a.voi.index}
             </small>
           </button>
         ))}
@@ -253,8 +253,14 @@ export function RiskBoard({
 
 // Probability with its band, the three largest contributions and a what-if starting value.
 function ProbabilityDetail({ a, prior, setPrior, save }: { a: BoardAssumption; prior: number; setPrior: (p: number) => void; save?: (f: FormData) => Promise<void> }) {
-  const p = probabilityFromShift(prior, a.probability.shift);
-  const band = bandFromShift(prior, a.probability.shift);
+  // Methode 2026-11-b: het plafond van het hoogste bewijsniveau geldt ook voor een andere beginwaarde.
+  const cap = a.probability.cap ?? null;
+  const capMax = cap ? cap.max : null;
+  const rawP = probabilityFromShift(prior, a.probability.shift);
+  const p = applyCap(rawP, capMax);
+  const rawBand = bandFromShift(prior, a.probability.shift);
+  const band = { low: applyCap(rawBand.low, capMax), high: applyCap(rawBand.high, capMax) };
+  const capped = !!cap && p < rawP;
   const ignored = a.probability.ignored.synthetic + a.probability.ignored.rejected;
   return (
     <div className="mt-12" style={{ background: "var(--color-surface-muted)", borderRadius: "var(--radius-inner)", padding: "12px 14px" }}>
@@ -265,6 +271,11 @@ function ProbabilityDetail({ a, prior, setPrior, save }: { a: BoardAssumption; p
       <p className="explain" style={{ marginTop: 2 }}>
         Geschatte kans dat deze aanname klopt. De bandbreedte laat zien wat er gebeurt als de factoren per bewijssoort 50% zwakker of sterker zijn.
       </p>
+      {capped && cap && (
+        <p className="tiny mt-8">
+          <span className="pill orange">{capReason(cap.level, cap.max)}</span> Zonder plafond {pctR(rawP)}. Hoogste bewijsniveau tot nu toe: {cap.levelLabel.toLowerCase()}.
+        </p>
+      )}
       {a.probability.top.length > 0 ? (
         <ul style={{ margin: "8px 0 0 18px", fontSize: 14, lineHeight: 1.7 }} aria-label="Grootste bijdragen aan de kans">
           {a.probability.top.map((c) => (
@@ -275,6 +286,11 @@ function ProbabilityDetail({ a, prior, setPrior, save }: { a: BoardAssumption; p
         </ul>
       ) : (
         <p className="tiny mt-8">Nog geen bewijs dat meetelt: de kans staat op de beginwaarde.</p>
+      )}
+      {(a.probability.merged ?? []).length > 0 && (
+        <ul className="tiny" style={{ margin: "8px 0 0 18px", lineHeight: 1.6 }} aria-label="Samengevoegde signalen">
+          {a.probability.merged!.map((m) => <li key={m.key}>{explainMerged(m)}</li>)}
+        </ul>
       )}
       {ignored > 0 && (
         <p className="tiny mt-8">

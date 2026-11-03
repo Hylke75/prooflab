@@ -1,7 +1,8 @@
 # ProofLab: hoe voorspellen we de uitkomst zo goed mogelijk?
 
 Onderzoek naar methodes die de voorspelkracht van ProofLab kunnen verbeteren, en hoe we ze toepassen.
-Versie 1.2, 4 november 2026 (hoofdstuk 7: onderzoeksmethodes en AI; hoofdstuk 8: leren van uitkomsten).
+Versie 1.3, 6 november 2026 (hoofdstuk 7: onderzoeksmethodes en AI; hoofdstuk 8: leren van uitkomsten; hoofdstuk 9:
+methode 2026-11-b).
 
 ## 1. Waar we nu staan
 
@@ -412,3 +413,103 @@ tientallen afgeronde dossiers betrouwbaar.
   gekalibreerde groepen, maar zonder eigen uitkomstdata zou het de bekende overmoed versterken. We krimpen daarom
   alleen richting het basispercentage. De gewichten zijn startaannames; zodra er genoeg eigen dossiers zijn, ijken we
   ze op de Brier-scores per voorspeller (fase D).
+
+## 9. Methode 2026-11-b: beslisregels en bewijsfactoren (6 november 2026)
+
+Methode 2026-11-a is de rekenwijze tot en met hoofdstuk 8. Methode 2026-11-b verandert drie dingen: de beslisregel
+per testtype (9.1), één factor per bron (9.2) en een plafond per bewijsniveau (9.3). De code staat in
+`lib/domain/stats.ts` (beslisregels) en `lib/domain/evidence.ts` (`assumptionProbabilityV2`).
+
+### 9.1 Beslisregels per testtype
+
+De intervalregel van 2026-11-a ("geslaagd als ook de ondergrens van het 95%-Wilson-interval boven de drempel ligt")
+is bij kleine steekproeven zo streng dat bijna elke test onbeslist eindigt. Voorbeeld: 6 van 20 bij een drempel van
+20% geeft een ondergrens van 14,6%: onbeslist, terwijl de kans dat het echte percentage boven 20% ligt 89% is.
+
+- **Kansregel** (landingpagina, prijstest op klikniveau, enquête, interviews): met een vlakke prior Beta(1,1) is de
+  posterior Beta(1 + s, 1 + n − s). **Geslaagd** als P(echte waarde > succesdrempel) ≥ 0,80. **Niet geslaagd** als
+  P(echte waarde > faaldrempel) ≤ 0,20; zonder faaldrempel geldt de succesdrempel. Daartussen **onbeslist**. Met een
+  aparte, lagere faaldrempel is "niet geslaagd" dus strenger: het moet vrijwel zeker zijn dat de waarde zelfs onder
+  de faaldrempel ligt.
+- **Aantalregel** (sterke handelingen): vooraf ligt een aantal vast, bijvoorbeeld "minstens 3 aanbetalingen uit 15
+  gesprekken". Geslaagd als dat aantal na de eindconditie is gehaald; niet gehaald na een volledige steekproef is
+  niet geslaagd; minder deelnemers dan afgesproken en het aantal niet gehaald is onbeslist. In de huidige code is
+  dit beschikbaar voor interviews: een gesprek telt mee met een vastgelegde aanbetaling of herhaalaankoop
+  (`deposit`, `repeat_purchase`; afgekeurde AI-codering telt niet). De prijstest meet een klik op een prijs, geen
+  betaling, en valt daarom onder de kansregel. Een getekende offerte heeft nog geen eigen soort waarneming.
+- **Sterk bewezen**: de intervalregel blijft bestaan als extra label. Ligt bij een geslaagde test ook de
+  Wilson-ondergrens boven de drempel, dan heet de uitkomst "sterk bewezen".
+- **Eindconditie en minimale steekproef** blijven: geen oordeel zolang de test loopt; onder de minimale steekproef
+  is het resultaat onbeslist.
+- **Vooraf rekenen**: de Test Card vraagt de verwachte uitkomst (`expected_pct`) en het aantal beschikbare
+  deelnemers per week. Voor de kansregel is het benodigde aantal de kleinste n vanaf waar, met een waargenomen
+  aandeel gelijk aan de verwachting, P(p > drempel) ≥ 0,80 blijvend wordt gehaald, met een ondergrens van 5. Voor
+  de aantalregel: aantal ÷ verwacht aandeel, naar boven afgerond. ProofLab waarschuwt als dat aantal niet past in
+  beschikbaar per week × looptijd, of groter is dan de minimale steekproef. `required_n` wordt met de drempels
+  vastgelegd en na goedkeuring vergrendeld, net als de regel, het afgesproken aantal en de aannames erachter.
+- **Beperking:** bij een lage drempel geeft de vlakke prior zonder enige data al P(p > drempel) = 1 − drempel (bij
+  20% precies 0,80). Bij lage drempels draagt daarom vooral de minimale steekproef het oordeel; de ondergrens van 5
+  deelnemers in het benodigde aantal voorkomt een schijnbaar haalbare test van 1 deelnemer. Overweeg bij drempels
+  onder 20% een strengere slaaggrens of een prior rond de drempel; dat is een keuze voor een volgende methodeversie.
+- De Bayesiaanse schatting met voorkennis (3.6) blijft ter informatie naast het oordeel en telt niet mee in de regel.
+
+### 9.2 Eén factor per bron per aanname
+
+Twaalf antwoorden uit dezelfde enquête of vijf gecodeerde citaten uit hetzelfde interview zijn geen twaalf of vijf
+onafhankelijke signalen. In 2026-11-b telt **ondersteunend** bewijs per bron als één signaal: alleen de sterkste
+factor (grootste ln(factor) × gewicht) blijft over. "Dezelfde bron" is (`evidenceSourceKey`):
+
+| Signaal | Dezelfde bron = |
+|---|---|
+| Bevinding (claim) uit bronfragmenten en klantsignalen | de bron (`source_id`) van de bevinding; bij meerdere bronnen de eerste met een letterlijk gecontroleerd citaat |
+| Klantsignalen uit outreach (bronnen van het type outreach) | de campagne, ook over meerdere importen heen |
+| Enquête- en testwaarnemingen | het experiment (`experiment_id`); open enquêteantwoorden die als bron zijn opgenomen horen bij hun enquête |
+| Interviewcodering | het interview (`interview_id`) |
+| Overig (losse observatie, bevinding zonder bron) | het signaal zelf |
+
+**Tegenbewijs** (een tegensprekende koppeling, en bezwaren, "probleem niet herkend" en tegenvoorbeelden) wordt niet
+samengevoegd en telt per signaal mee, zoals in 2026-11-a. Daarna werkt alles als in 3.5: per soort en richting
+afnemend meetellen (log₂(1 + n)), half gewicht voor niet beoordeelde AI-codering, synthetische data telt niet.
+
+**De factoren werken op de kansverhouding (odds):** logit(p) = logit(beginwaarde) + Σ ln(factor) × log₂(1 + n) ×
+gewicht. Eén aanbetaling (factor 6) bij een beginwaarde van 50% geeft odds 1 × 6 = 6, dus 6/7 ≈ 86%; een huidige
+werkwijze (factor 2) bij 20% geeft odds 0,25 × 2 = 0,5, dus 33%. Dit is in de unittests vastgelegd.
+
+De aannamepagina toont welke signalen zijn samengevoegd, bijvoorbeeld "12 signalen uit Enquête X samengevoegd".
+Wie alleen meekijkt (opdrachtgever) ziet geen campagnenamen of interviewlabels, maar rekent met dezelfde groepering.
+
+### 9.3 Plafond per bewijsniveau
+
+De berekende kans wordt begrensd door het hoogste bewijsniveau onder het ondersteunende bewijs dat volledig meetelt
+(niet beoordeelde AI-codering tilt het niveau niet op). Standaardwaarden, instelbaar per werkruimte door de
+eigenaar (pagina Voorspelkwaliteit; tabel `org_evidence_caps`, elke wijziging in het auditspoor):
+
+| Niveau | Soorten bewijs | Plafond |
+|---|---|---|
+| Meningen, enquêtes en bureauonderzoek | mening, enquête-uitkomst, overige observatie, alle bevindingen uit bronnen | 40% |
+| Probleem in eigen gedrag of huidige uitgaven | probleem herkend in eigen recent gedrag, huidige werkwijze, huidige uitgaven | 50% |
+| Kleine handeling | aanmelding wachtlijst, demo aangevraagd | 60% |
+| Offerte of prijsaanbod gekozen | offerte of prijsaanbod gekozen | 75% |
+| Aanbetaling | aanbetaling | 90% |
+| Herhaalaankoop | herhaalaankoop | geen plafond (wel de algemene grens van 99%) |
+
+Tegenbewijs (bezwaar, probleem niet herkend, tegenvoorbeeld) tilt nooit een niveau op. Zonder ondersteunend bewijs
+geldt het laagste niveau: een aanname zonder bewijs staat dus op hoogstens 40%, ook bij een hogere beginwaarde.
+Zo kan meer ondersteunend bewijs de kans nooit verlagen. Is het plafond actief, dan toont ProofLab wat er
+ontbreekt, bijvoorbeeld "begrensd op 75%: nog geen aanbetaling", met de kans zonder plafond ernaast. De
+bandbreedte wordt op dezelfde manier begrensd.
+
+### 9.4 Methodeversie en reproduceerbaarheid
+
+- Elk dossier rekent met één vaste methodeversie (`ideas.method_version`): **2026-11-a** (de rekenwijze tot en met
+  hoofdstuk 8, ongewijzigd) of **2026-11-b** (9.1–9.3). Per versie is er een rekenmodule (`lib/domain/method/`) die
+  zowel de kans per aanname als het oordeel per test berekent; dezelfde gegevens geven onder dezelfde versie altijd
+  dezelfde uitkomst.
+- Bestaande dossiers houden 2026-11-a; nieuwe dossiers starten op 2026-11-b. Een consultant kan een dossier laten
+  overstappen. Vooraf toont ProofLab per aanname de kans oud/nieuw en per test de uitkomst oud/nieuw; na bevestiging
+  wordt de versie bijgewerkt en komt de overstap met dat overzicht in het auditspoor. Terug kan niet.
+- Goedgekeurde Learning Cards veranderen nooit. Elke nieuwe kaart bewaart de methodeversie en de beslisregel; rekende
+  een goedgekeurde kaart met een andere versie dan het dossier nu, dan staat de uitkomst onder de huidige versie er
+  ter informatie naast.
+- Elk rapport (scherm en PDF) vermeldt de methodeversie, de beslisregels en de gebruikte plafonds (standaard of
+  ingesteld door de werkruimte). Rapporten van vóór de methodeversie zijn met 2026-11-a gemaakt.
