@@ -4,7 +4,7 @@
 import type { AssumptionCategory, ExperimentType } from "./labels";
 
 export type Option = {
-  tier: "Snel" | "Sterker bewijs" | "Meest overtuigend";
+  tier: "Snel" | "Sterker bewijs" | "Meest overtuigend" | "Breder beeld";
   type: ExperimentType;
   why: string;
   learn: string;
@@ -68,6 +68,26 @@ const pricing: Omit<Option, "tier" | "why"> = {
   days: 28,
 };
 
+// A survey quantifies what interviews uncovered: how often it happens and what people do now, among many
+// people. Self-reported, so it never replaces a behaviour test; known, invited respondents preferred (7.5).
+const survey = (hasDiscoveryEvidence: boolean): Option => ({
+  tier: "Breder beeld",
+  type: "survey",
+  why: hasDiscoveryEvidence
+    ? "Meet hoe vaak wat je in de interviews hoorde voorkomt, bij veel meer mensen."
+    : "Werkt het best na een paar interviews: dan weet je welke vragen en antwoordopties kloppen.",
+  learn: "Hoe vaak het probleem voorkomt, wat mensen nu doen en uitgeven, volgens henzelf, bij veel meer mensen dan je spreekt.",
+  cannotConclude: "Wat mensen werkelijk gaan doen of betalen: het blijft zelfrapportage, geen waargenomen gedrag.",
+  effort: "8–12 vragen, persoonlijk uitnodigen via eigen kanalen",
+  duration: "1–2 weken",
+  cost: "€ 0, alleen tijd",
+  strength: "Zwak",
+  canChangeDecision: "Ja, als het probleem bij uitgenodigde respondenten veel minder voorkomt dan gedacht.",
+  followUp: "Positief: bevestig met een gedragstest (landingspagina of prijs-/aanbodtest). Negatief: doelgroep of probleem herzien.",
+  costEur: 0,
+  days: 14,
+});
+
 export function recommend(input: RecommendInput): { options: Option[]; warning: string | null } {
   let options: Option[];
   switch (input.category) {
@@ -99,6 +119,8 @@ export function recommend(input: RecommendInput): { options: Option[]; warning: 
         { tier: "Meest overtuigend", ...pricing, why: "Belangstelling bij een concrete prijs is het sterkste signaal dat zonder betaling te meten is." },
       ];
   }
+  // The survey comes as a fourth choice; the information-value ranking below does not consider it.
+  options = [...options, survey(input.hasDiscoveryEvidence)];
   const warning =
     !input.hasDiscoveryEvidence && input.evidence < 0.2
       ? "Er is nog geen ontdekkend onderzoek gedaan. Begin met de snelle optie: eerst begrijpen, dan bewijzen."
@@ -162,7 +184,7 @@ const update = (p: number, lnLr: number) => {
 
 export function valueOfInformation(a: VoiInput): Omit<VoiResult, "index"> {
   const { options, warning } = recommend({ category: a.category, evidence: a.evidence, hasDiscoveryEvidence: a.hasDiscoveryEvidence });
-  const candidates = (warning ? options.slice(0, 1) : options).map((o) => {
+  const candidates = (warning ? options.slice(0, 1) : options.filter((o) => o.type !== "survey")).map((o) => {
     const ln = Math.log(TEST_LR[o.type]);
     const positive = update(a.probability, ln);
     const negative = update(a.probability, -ln);
@@ -208,6 +230,21 @@ export function testCardDefaults(type: ExperimentType, statement: string, audien
       we_believe: statement,
       target_group: audience,
       expected_biases: "Bekenden zijn positiever; mensen overschatten wat ze in de toekomst zouden doen.",
+    };
+  }
+  if (type === "survey") {
+    return {
+      test_method: "Enquête over recent gedrag met één vooraf vastgelegde kernvraag",
+      metric_label: "Kernvraag: gekozen succesantwoord",
+      metric_numerator: "respondenten die een succesantwoord kozen",
+      metric_denominator: "respondenten die de kernvraag beantwoordden",
+      success_threshold_pct: 40,
+      fail_threshold_pct: 15,
+      min_sample: 50,
+      max_duration_days: 21,
+      we_believe: statement,
+      target_group: audience,
+      expected_biases: "Zelfrapportage: mensen overschatten hun eigen gedrag. Wie reageert is vaak betrokkener (zelfselectie); via een open link kunnen bots en mensen buiten de doelgroep meedoen.",
     };
   }
   if (type === "pricing") {

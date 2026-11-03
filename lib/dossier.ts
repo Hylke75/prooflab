@@ -145,7 +145,8 @@ export async function loadDossier(idea: Idea) {
     behaviourCards: approvedCards
       .map((c) => {
         const e = expList.find((x) => x.id === c.experiment_id);
-        if (!e || e.type === "interview") return null;
+        // Interviews and surveys are what people say, not observed behaviour.
+        if (!e || e.type === "interview" || e.type === "survey") return null;
         return { verdict: c.verdict, channels: ((e.channels as { channel: string }[]) ?? []).map((x) => x.channel), endedOn: e.ended_at };
       })
       .filter((x): x is { verdict: string; channels: string[]; endedOn: string | null } => !!x),
@@ -206,7 +207,7 @@ export function factsFrom(d: Dossier): DossierFacts {
     assumptions: d.assumptions.map((a) => ({ statement: a.statement, importance: a.importance, category: a.category, status: a.status, evidence: a.evidence, contradicting: a.contradicting, origin: a.origin })),
     premortemDone: d.assumptions.some((a) => a.origin === "premortem"),
     experiments: d.experiments.map((e) => ({
-      type: e.type as "landing" | "interview" | "pricing",
+      type: e.type as "landing" | "interview" | "pricing" | "survey",
       state: e.state,
       assumptionCategory: e.hypotheses?.assumptions?.category ?? "desirability",
       verdict: e.metrics ? e.metrics.verdict.kind : null,
@@ -231,7 +232,7 @@ export function dossierSummaryForAi(d: Dossier): string {
     "Aannames (belangrijkheid, bewijs 0-1, status):",
     ...d.assumptions.map((a) => `- (${a.importance}, ${a.evidence.toFixed(2)}, ${a.status}) ${a.statement}`),
     "Experimenten:",
-    ...d.experiments.map((e) => `- ${e.title} [${e.state}] ${e.metrics ? `${e.metrics.successes}/${e.metrics.n}, oordeel: ${e.metrics.verdict.kind}` : ""}`),
+    ...d.experiments.map((e) => `- ${e.title} [${e.state}]${e.type === "survey" ? " (enquête: zelfrapportage, geen waargenomen gedrag)" : ""} ${e.metrics ? `${e.metrics.successes}/${e.metrics.n}, oordeel: ${e.metrics.verdict.kind}` : ""}`),
     "Learning Cards:",
     ...d.learningCards.map((c) => `- [${c.status}, ${c.verdict}] ${c.we_learned}`),
   ].join("\n");

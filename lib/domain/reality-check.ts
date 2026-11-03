@@ -24,7 +24,7 @@ export type DossierFacts = {
   // Research 3.10: whether the pre-mortem was done. Left out by callers that do not know (no finding).
   premortemDone?: boolean;
   experiments: {
-    type: "landing" | "interview" | "pricing";
+    type: "landing" | "interview" | "pricing" | "survey";
     state: string;
     assumptionCategory: string;
     verdict: "pass" | "fail" | "inconclusive" | "running" | null;
@@ -154,6 +154,15 @@ export function runRealityCheck(f: DossierFacts): RealityCheckResult {
       add("warm_traffic_only", "info", "Alleen warm verkeer",
         "Alle bezoekers kwamen uit het eigen netwerk. Bekenden reageren positiever dan onbekende klanten.");
     }
+  }
+  // Surveys measure what people say about themselves (research 7.5): never counted as behaviour.
+  const surveys = started.filter((e) => e.type === "survey");
+  if (surveys.some((e) => e.verdict === "pass") && behaviour.length === 0) {
+    add("survey_not_behaviour", "warning", "Enquête positief, gedrag nog niet gezien",
+      "Een geslaagde enquête is zelfrapportage, geen waargenomen gedrag. Bevestig de uitkomst met een gedragstest (landingspagina of prijs-/aanbodtest) voordat je erop besluit.");
+  } else if (surveys.length) {
+    add("survey_self_reported", "info", "Enquête = zelfrapportage",
+      "Enquêteantwoorden tellen als uitgesproken antwoord, niet als gedrag. Antwoorden via een open link hebben geen controleerbare herkomst.");
   }
   if (f.interviews.length > 0) {
     const acquainted = f.interviews.filter((i) => i.isAcquaintance).length;

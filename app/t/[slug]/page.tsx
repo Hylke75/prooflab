@@ -15,8 +15,8 @@ export default async function TestPage({ params }: PageProps<"/t/[slug]">) {
   if (!/^[a-f0-9]{14}$/.test(slug)) notFound();
   const { data } = await supabaseAnon().rpc("get_public_test", { p_slug: slug });
   if (!data) notFound();
-  const test = data as { type: "landing" | "pricing" | "interview"; state: string; config: PricingConfig; ends_at: string | null };
-  if (test.type === "interview") notFound();
+  const test = data as { type: "landing" | "pricing" | "interview" | "survey"; state: string; config: PricingConfig; ends_at: string | null };
+  if (test.type === "interview" || test.type === "survey") notFound(); // surveys have their own public page
   const c = test.config;
   const visitor = await visitorFromRequest(slug);
   const price = test.type === "pricing" ? c.price_points[variantFor(visitor.hash, c.price_points.length)] ?? null : null;

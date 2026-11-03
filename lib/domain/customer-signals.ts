@@ -14,10 +14,10 @@ export const SIGNAL_KINDS: Record<SignalKind, { label: string; pill: string }> =
   objection: { label: "Bezwaar", pill: "orange" },
 };
 
-// Review sites, forums and outreach replies are always signal sources. Blogs, news and "other" only when
+// Review sites, forums, outreach replies and open survey answers are always signal sources. Blogs, news and "other" only when
 // a consultant added them on purpose: automatically found research pages are not customer voices.
-export const SIGNAL_SOURCE_TYPES: SourceType[] = ["review_site", "forum", "outreach", "blog", "news", "other"];
-const ALWAYS: SourceType[] = ["review_site", "forum", "outreach"];
+export const SIGNAL_SOURCE_TYPES: SourceType[] = ["review_site", "forum", "outreach", "survey", "blog", "news", "other"];
+const ALWAYS: SourceType[] = ["review_site", "forum", "outreach", "survey"];
 
 export function isSignalSource(s: { source_type: string; origin: string }): boolean {
   if (ALWAYS.includes(s.source_type as SourceType)) return true;

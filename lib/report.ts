@@ -131,6 +131,11 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         byVariant: e.metrics?.byVariant ?? [],
         warnings: e.metrics?.warnings ?? [],
         endedEarly: e.ended_early,
+        // Surveys are self-reported: what people say about themselves, never observed behaviour.
+        selfReported: e.type === "survey",
+        bySource: e.metrics?.survey
+          ? { invitation: { n: e.metrics.survey.invitation.n, successes: e.metrics.survey.invitation.successes }, openLink: { n: e.metrics.survey.openLink.n, successes: e.metrics.survey.openLink.successes } }
+          : null,
       })),
     learningCards: d.learningCards.filter((c) => c.status === "approved").map((c) => ({ believed: c.we_believed, observed: c.we_observed, learned: c.we_learned, therefore: c.therefore, verdict: c.verdict, reliability: c.data_reliability })),
     realityCheck: check ? { at: check.created_at, advice: DECISIONS[check.advice as DecisionAction].label, reason: check.advice_reason, findings: checkFindings, aiUsed: check.ai_used } : null,
