@@ -2369,6 +2369,8 @@ export type Database = {
           label: string
           note: string | null
           position: number
+          year: number | null
+          region: string | null
           scenario_id: string
           unit: string
           value: number
@@ -2383,6 +2385,8 @@ export type Database = {
           label: string
           note?: string | null
           position: number
+          year?: number | null
+          region?: string | null
           scenario_id: string
           unit: string
           value: number
@@ -2397,6 +2401,8 @@ export type Database = {
           label?: string
           note?: string | null
           position?: number
+          year?: number | null
+          region?: string | null
           scenario_id?: string
           unit?: string
           value?: number

@@ -2,6 +2,7 @@
 // scenario never needs an LLM call, and every factor keeps its provenance.
 
 import type { ClaimStatus } from "./labels";
+import { regionMatches } from "./claim-scope";
 
 export type SizingModel = "b2b_accounts" | "b2c_people" | "transactions";
 export type ScenarioKind = "conservative" | "realistic" | "optimistic";
@@ -187,6 +188,7 @@ export type SimulationResult = {
   draws: number;
   seed: number;
   rangedFactors: number;
+  widen: number; // 1 = bandbreedtes zoals ingevoerd; > 1 = verbreed omdat de factoren niet bij elkaar passen
   somCount: Percentiles;
   somRevenue: Percentiles;
   threshold: number | null;
@@ -253,13 +255,15 @@ function sampler(f: RangedFactor & { low: number; high: number }, unit: FactorUn
 export function simulateSizing(
   model: SizingModel,
   factors: RangedFactor[],
-  opts: { draws?: number; seed?: number; threshold?: number | null } = {},
+  opts: { draws?: number; seed?: number; threshold?: number | null; widen?: number } = {},
 ): SimulationResult | null {
-  const ranged = factors.filter(hasRange);
+  const widen = opts.widen != null && Number.isFinite(opts.widen) && opts.widen > 1 ? opts.widen : 1;
+  const unitOf = Object.fromEntries(MODEL_FACTORS[model].map((d) => [d.key, d.unit]));
+  const ranged = factors.filter(hasRange).map((f) => widenRange(f, unitOf[f.key], widen));
   if (ranged.length === 0) return null;
   const draws = opts.draws ?? SIMULATION_DRAWS;
   const seed = opts.seed ?? SIMULATION_SEED;
-  const units = Object.fromEntries(MODEL_FACTORS[model].map((d) => [d.key, d.unit]));
+  const units = unitOf;
   const point: Record<string, number> = Object.fromEntries(factors.map((f) => [f.key, f.value]));
   const rnd = mulberry32(seed);
   // Fixed key order keeps the stream of random numbers per factor stable.
@@ -291,11 +295,98 @@ export function simulateSizing(
     draws,
     seed,
     rangedFactors: ranged.length,
+    widen,
     somCount: q(sc),
     somRevenue: q(sr),
     threshold,
     pAboveThreshold: threshold != null ? above / draws : null,
     drivers,
-    method: `${draws.toLocaleString("nl-NL")} trekkingen; log-normaal bij een bandbreedte boven 0, driehoek bij een ondergrens van 0`,
+    method: `${draws.toLocaleString("nl-NL")} trekkingen; log-normaal bij een bandbreedte boven 0, driehoek bij een ondergrens van 0${widen > 1 ? `; bandbreedtes ${widen.toLocaleString("nl-NL")}× verbreed omdat de factoren in jaar of regio verschillen` : ""}`,
+  };
+}
+
+// Verbreedt een 90%-bandbreedte met factor w (golf C, punt 8). Log-normaal (ondergrens > 0): de afstand tot het
+// geometrisch midden wordt in log-schaal w keer zo groot, dus de spreiding (sigma) ook. Driehoek (ondergrens 0): de
+// ondergrens blijft 0 en de afstand van de waarde tot de bovengrens wordt w keer zo groot. Percentages blijven <= 100.
+export function widenRange<T extends RangedFactor & { low: number; high: number }>(f: T, unit: FactorUnit | undefined, w: number): T {
+  if (w <= 1) return f;
+  const cap = (x: number) => (unit === "percent" ? Math.min(100, x) : x);
+  if (f.low > 0) {
+    const mid = Math.sqrt(f.low * f.high);
+    return { ...f, low: mid * Math.pow(f.low / mid, w), high: cap(mid * Math.pow(f.high / mid, w)) };
+  }
+  const c = Math.min(f.high, Math.max(f.low, f.value));
+  return { ...f, high: cap(c + (f.high - c) * w) };
+}
+
+// ---------------------------------------------------------------------------
+// Jaar en regio per factor (golf C, punt 8). Factoren die uit verschillende jaren (meer dan 2 jaar uit elkaar) of
+// verschillende regio's komen, passen niet zonder meer in één vermenigvuldiging. Dat levert een waarschuwing en een
+// bredere onzekerheidsband in de simulatie op: ×1,5 per soort verschil (jaar, regio), dus ×2 bij beide.
+// Een onbekend jaar of een onbekende regio is geen verschil, maar wordt wel gemeld.
+// ---------------------------------------------------------------------------
+
+export const MAX_YEAR_GAP = 2;
+export const WIDEN_PER_MISMATCH = 0.5;
+
+export type FactorOrigin = { key: string; label?: string; year?: number | null; region?: string | null };
+
+export type FactorConsistency = {
+  yearGap: number | null; // verschil tussen het oudste en nieuwste bekende jaar
+  regions: string[]; // de verschillende regio's (eerste schrijfwijze per gebied)
+  yearMismatch: boolean;
+  regionMismatch: boolean;
+  unknownYear: string[]; // keys zonder jaar
+  unknownRegion: string[]; // keys zonder regio
+  widen: number; // 1, 1,5 of 2
+  warnings: string[];
+};
+
+const knownRegion = (r: string | null | undefined): r is string => r != null && r.trim() !== "" && r.trim().toLowerCase() !== "onbekend";
+const knownYear = (y: number | null | undefined): y is number => y != null && Number.isFinite(y);
+
+// Twee regio's zijn hetzelfde gebied als ze elkaar over en weer dekken ("Nederland" en "NL").
+export function sameRegion(a: string, b: string): boolean {
+  return regionMatches(a, b) && regionMatches(b, a);
+}
+
+export function factorConsistency(factors: FactorOrigin[]): FactorConsistency {
+  const name = (f: FactorOrigin) => f.label ?? f.key;
+  const years = factors.filter((f) => knownYear(f.year)) as (FactorOrigin & { year: number })[];
+  const yearGap = years.length ? Math.max(...years.map((f) => f.year)) - Math.min(...years.map((f) => f.year)) : null;
+  const yearMismatch = yearGap != null && yearGap > MAX_YEAR_GAP;
+  const groups: { region: string; factors: FactorOrigin[] }[] = [];
+  for (const f of factors) {
+    if (!knownRegion(f.region)) continue;
+    const region = f.region;
+    const g = groups.find((x) => sameRegion(x.region, region));
+    if (g) g.factors.push(f);
+    else groups.push({ region: region.trim(), factors: [f] });
+  }
+  const regionMismatch = groups.length > 1;
+  const warnings: string[] = [];
+  if (yearMismatch) {
+    const oldest = years.reduce((a, b) => (b.year < a.year ? b : a));
+    const newest = years.reduce((a, b) => (b.year > a.year ? b : a));
+    warnings.push(
+      `De factoren komen uit jaren die ${yearGap} jaar uit elkaar liggen (${name(oldest)}: ${oldest.year}, ${name(newest)}: ${newest.year}); meer dan ${MAX_YEAR_GAP} jaar verschil maakt de uitkomst onzekerder.`,
+    );
+  }
+  if (regionMismatch) {
+    warnings.push(
+      `De factoren gaan over verschillende regio's (${groups.map((g) => `${g.region}: ${g.factors.map(name).join(", ")}`).join("; ")}); ze passen niet zonder meer in één berekening.`,
+    );
+  }
+  const widen = 1 + WIDEN_PER_MISMATCH * (Number(yearMismatch) + Number(regionMismatch));
+  if (widen > 1) warnings.push(`De simulatie verbreedt daarom elke bandbreedte ${widen.toLocaleString("nl-NL")}×.`);
+  return {
+    yearGap,
+    regions: groups.map((g) => g.region),
+    yearMismatch,
+    regionMismatch,
+    unknownYear: factors.filter((f) => !knownYear(f.year)).map((f) => f.key),
+    unknownRegion: factors.filter((f) => !knownRegion(f.region)).map((f) => f.key),
+    widen,
+    warnings,
   };
 }

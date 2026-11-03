@@ -143,7 +143,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   const ue = ueRes.data;
   const sizingClaims = claims
     .filter((c) => c.status !== "insufficient")
-    .map((c) => ({ id: c.id, statement: c.statement, status: c.status, numeric_value: c.numeric_value }));
+    .map((c) => ({ id: c.id, statement: c.statement, status: c.status, numeric_value: c.numeric_value, region: c.region, reference_date: c.scope?.referenceDate ?? null }));
 
   const tab = typeof sp.tab === "string" ? sp.tab : "overview";
   const evidenceActions = (claim: (typeof claims)[number]) =>
@@ -467,7 +467,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               id: s.id,
               kind: s.kind as ScenarioKind,
               model: s.model as SizingModel,
-              factors: (s.sizing_factors ?? []).sort((a, b) => a.position - b.position).map((f) => ({ key: f.key, label: f.label, unit: f.unit, value: Number(f.value), claim_id: f.claim_id, note: f.note, low: f.low_value, high: f.high_value })),
+              factors: (s.sizing_factors ?? []).sort((a, b) => a.position - b.position).map((f) => ({ key: f.key, label: f.label, unit: f.unit, value: Number(f.value), claim_id: f.claim_id, note: f.note, low: f.low_value, high: f.high_value, year: f.year, region: f.region })),
             }))}
             breakEvenRevenue={breakEvenRevenue({ grossMarginPct: ue?.gross_margin_pct ?? null, fixedCostsYear: ue?.fixed_costs_year ?? null })}
             actions={Object.fromEntries((scenRes.data ?? []).map((s) => [s.id, saveScenario.bind(null, id, s.id)]))}

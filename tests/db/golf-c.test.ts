@@ -77,3 +77,22 @@ d("punt 7: populatie, regio en peildatum per bevinding", () => {
     await expect(insert("reference_date, relevance", ["2025-06", "indirect"])).resolves.toBeTruthy();
   });
 });
+
+d("punt 8: jaar en regio per sizing-factor", () => {
+  it("bewaart jaar en regio (leeg = onbekend) en weigert een onmogelijk jaar of een lege regio", async () => {
+    const scenario = await as(alice, async (c) =>
+      (await c.query("insert into public.sizing_scenarios (idea_id, kind) values ($1, 'realistic') returning id", [idea])).rows[0].id as string,
+    );
+    const add = (key: string, year: number | null, region: string | null) =>
+      as(alice, (c) =>
+        c.query(
+          "insert into public.sizing_factors (scenario_id, idea_id, key, label, value, unit, position, year, region) values ($1, $2, $3, $3, 1, 'count', 1, $4, $5) returning year, region",
+          [scenario, idea, key, year, region],
+        ),
+      );
+    expect((await add("base_count", 2025, "Nederland")).rows[0]).toEqual({ year: 2025, region: "Nederland" });
+    expect((await add("fit_pct", null, null)).rows[0]).toEqual({ year: null, region: null });
+    await expect(add("reach_pct", 1825, null)).rejects.toThrow();
+    await expect(add("reach_pct", 2025, "  ")).rejects.toThrow();
+  });
+});

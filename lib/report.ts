@@ -81,6 +81,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       provenance: s.result.provenance,
       status: s.result.label,
       factors: s.factors,
+      // Golf C, punt 8: waarschuwing als jaar of regio van de factoren verschillen.
+      originWarnings: s.consistency.warnings,
     })),
     unit: d.unit,
     assumptions: d.assumptions.map((a) => {
@@ -108,7 +110,7 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       capsCustom: d.method.capsCustom,
     },
     simulation: d.simulation
-      ? { label: d.simulation.label, draws: d.simulation.draws, somCount: d.simulation.somCount, somRevenue: d.simulation.somRevenue, threshold: d.simulation.threshold, pAboveThreshold: d.simulation.pAboveThreshold, thresholdIsBreakEven: d.simulation.thresholdIsBreakEven, mainDriver: d.simulation.drivers[0]?.key ?? null }
+      ? { label: d.simulation.label, draws: d.simulation.draws, somCount: d.simulation.somCount, somRevenue: d.simulation.somRevenue, threshold: d.simulation.threshold, pAboveThreshold: d.simulation.pAboveThreshold, thresholdIsBreakEven: d.simulation.thresholdIsBreakEven, mainDriver: d.simulation.drivers[0]?.key ?? null, widen: d.simulation.widen }
       : null,
     signals: d.signals.map((s) => ({ kind: s.kind, label: s.label, mentions: s.mentions })),
     prediction: {

@@ -260,6 +260,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             </table>
             {r.sizing[1] && <p className="tiny mt-8 mono">Formule (realistisch): {r.sizing[1].formula}</p>}
             <p>{r.sizing[1]?.status}. Dit is omzetpotentieel onder de getoonde aannames, geen winst en geen voorspelling.</p>
+            {/* Golf C, punt 8 (oudere rapporten hebben dit veld niet). */}
+            {(r.sizing[1]?.originWarnings ?? []).length > 0 && <p className="tiny mt-8">Let op: {r.sizing[1]!.originWarnings.join(" ")}</p>}
             {r.simulation && (
               <p className="mt-8">
                 Met bandbreedtes per factor ({int(r.simulation.draws)} trekkingen, scenario {r.simulation.label.toLowerCase()}): SOM-omzet tussen {eur(r.simulation.somRevenue.p10)} en {eur(r.simulation.somRevenue.p90)} (80% van de uitkomsten), mediaan {eur(r.simulation.somRevenue.p50)}.

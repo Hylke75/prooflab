@@ -539,3 +539,19 @@ Een letterlijk citaat zegt nog niet dat een cijfer over de juiste groep, het jui
 - **Weging.** In de bewijsberekening telt een indirecte bevinding met halve sterkte (`relevanceWeight()`, factor
   0,5). Dat geldt pas in een nieuwe methodeversie: bij het samenvoegen van golf A en C komt de weging in die versie
   (2026-11-c). 2026-11-a en 2026-11-b lezen het veld niet en rekenen ongewijzigd.
+
+### 10.2 Jaar en regio per sizing-factor (punt 8)
+
+Een marktomvang vermenigvuldigt getallen die vaak uit verschillende bronnen komen. Een bedrijventelling uit 2019
+keer een aandeel uit een Europees onderzoek van 2025 levert een precies ogend, maar onzeker getal op.
+
+- Elke sizing-factor heeft een **jaar** en een **regio** (`sizing_factors.year`, `.region`; leeg is onbekend). Wie
+  een bevinding als bron koppelt, krijgt het jaar uit de peildatum en de regio van die bevinding voorgesteld.
+- `factorConsistency()` (`lib/domain/sizing.ts`) vergelijkt de factoren van één scenario. Liggen de bekende jaren
+  **meer dan 2 jaar** uit elkaar, of gaan factoren over **verschillende regio's** (hetzelfde gebied in een andere
+  schrijfwijze telt niet als verschil), dan volgt een waarschuwing op het scherm en in het rapport.
+- De Monte Carlo-simulatie verbreedt dan elke 90%-bandbreedte: ×1,5 per soort verschil, ×2 bij jaar én regio.
+  Log-normaal: de afstand tot het geometrisch midden wordt in log-schaal zoveel keer groter. Driehoek (ondergrens 0):
+  de afstand van de waarde tot de bovengrens. Percentages blijven hoogstens 100.
+- Zonder verschil is de simulatie exact gelijk aan die van vóór golf C. Een onbekend jaar of een onbekende regio is
+  geen verschil, maar ProofLab vraagt erom.

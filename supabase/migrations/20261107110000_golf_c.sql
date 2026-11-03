@@ -26,3 +26,13 @@ set reference_date = coalesce(
   (select max(m[1]) from regexp_matches(period, '(?<!\d)((?:19[5-9]|20\d)\d)(?!\d)', 'g') as m),
   'onbekend')
 where period is not null;
+
+-- ---------------------------------------------------------------------------
+-- Punt 8. Jaar en regio per sizing-factor
+-- ---------------------------------------------------------------------------
+-- Null betekent onbekend. Wijken de factoren van één scenario meer dan 2 jaar of in regio af, dan toont de app een
+-- waarschuwing en verbreedt de Monte Carlo-simulatie de bandbreedtes (lib/domain/sizing.ts, factorConsistency).
+
+alter table public.sizing_factors
+  add column year int check (year between 1950 and 2100),
+  add column region text check (region is null or char_length(btrim(region)) between 1 and 120);

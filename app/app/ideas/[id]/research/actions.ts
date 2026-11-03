@@ -400,7 +400,7 @@ export async function saveScenario(ideaId: string, scenarioId: string, _: Action
   await requireWritableIdea(ideaId);
   const supabase = await supabaseServer();
   const { data: factors } = await supabase.from("sizing_factors").select("id, key, unit, label").eq("scenario_id", scenarioId).eq("idea_id", ideaId);
-  const rows: { id: string; value: number; claim_id: string | null; note: string | null; low_value: number | null; high_value: number | null }[] = [];
+  const rows: { id: string; value: number; claim_id: string | null; note: string | null; low_value: number | null; high_value: number | null; year: number | null; region: string | null }[] = [];
   // Validate every factor first, so an error never leaves a half-saved scenario.
   for (const f of factors ?? []) {
     // Same reading as quotes: "41.230" is forty-one thousand, "2,5" is two and a half.
@@ -421,8 +421,14 @@ export async function saveScenario(ideaId: string, scenarioId: string, _: Action
       if (low > high) return { error: `${f.label}: de ondergrens is hoger dan de bovengrens.` };
       if (value < low || value > high) return { error: `${f.label}: de waarde ligt buiten de eigen bandbreedte.` };
     }
+    // Golf C, punt 8: jaar en regio van het getal (leeg of "onbekend" = onbekend).
+    const rawYear = String(form.get(`year_${f.key}`) ?? "").trim();
+    const year = rawYear === "" ? null : /^\d{4}$/.test(rawYear) && Number(rawYear) >= 1950 && Number(rawYear) <= 2100 ? Number(rawYear) : NaN;
+    if (Number.isNaN(year)) return { error: `${f.label}: schrijf het jaar als vier cijfers, bijvoorbeeld 2025, of laat het leeg.` };
+    const rawRegion = blank(form.get(`region_${f.key}`));
+    const region = rawRegion == null || isUnknown(rawRegion) ? null : rawRegion.slice(0, 120);
     const claim = String(form.get(`claim_${f.key}`) ?? "");
-    rows.push({ id: f.id, value, claim_id: /^[0-9a-f-]{36}$/.test(claim) ? claim : null, note: blank(form.get(`note_${f.key}`)), low_value: low, high_value: high });
+    rows.push({ id: f.id, value, claim_id: /^[0-9a-f-]{36}$/.test(claim) ? claim : null, note: blank(form.get(`note_${f.key}`)), low_value: low, high_value: high, year, region });
   }
   for (const { id, ...row } of rows) {
     const { error } = await supabase.from("sizing_factors").update(row).eq("id", id).eq("idea_id", ideaId);
