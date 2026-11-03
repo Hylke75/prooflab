@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coachFor, nextAction, sprintStage, type ExperimentSummary, type IdeaProgress } from "@/lib/domain/coach";
+import { coachFor, nextAction, predictionTip, sprintStage, type ExperimentSummary, type IdeaProgress } from "@/lib/domain/coach";
 import type { ForecastState } from "@/lib/domain/forecast";
 import { addDays, phaseOfWeek, sprintMilestones, sprintStatus, testDay, todayInNL } from "@/lib/domain/sprint";
 
@@ -180,18 +180,26 @@ describe("prediction loop in the coach", () => {
     expect(nextAction(progress({ forecast: f() })).title).toBe("Toets de grootste onzekerheid");
   });
 
-  it("asks to define success first", () => {
-    const a = nextAction(progress({ questions: 0, forecast: f({ outcomeDefined: false, ownMoments: [] }) }));
-    expect(a).toMatchObject({ title: "Leg vast wanneer dit geslaagd is", href: `${base}/outcome#definitie` });
+  it("keeps the sprint order in week 1: research first, defining success is a side tip", () => {
+    const week1 = progress({ questions: 0, forecast: f({ outcomeDefined: false, ownMoments: [] }) });
+    expect(nextAction(week1)).toMatchObject({ title: "Maak de onderzoekskaart", href: `${base}/research` });
+    expect(predictionTip(week1)).toMatchObject({ title: "Leg vast wanneer dit geslaagd is", href: `${base}/outcome#definitie` });
+    expect(coachFor("dashboard", week1).suggestions.map((s) => s.label)).toEqual(["Maak de onderzoekskaart", "Nieuw idee onderzoeken", "Leg vast wanneer dit geslaagd is"]);
   });
 
-  it("asks for a forecast at the open moment, once per person", () => {
-    expect(nextAction(progress({ forecast: f({ ownMoments: ["intake"] }) }))).toMatchObject({ title: "Geef je voorspelling", href: `${base}/outcome#voorspelling` });
-    expect(nextAction(progress({ claims: 0, forecast: f({ ownMoments: [] }) })).detail).toContain("Na de intake");
-    // The decision moment forecast lives next to the decision.
+  it("asks for a forecast only as a side tip, and only once a base rate is chosen", () => {
+    expect(nextAction(progress({ forecast: f({ ownMoments: ["intake"] }) })).title).toBe("Toets de grootste onzekerheid");
+    expect(predictionTip(progress({ forecast: f({ ownMoments: ["intake"] }) }))).toMatchObject({ title: "Geef je voorspelling", href: `${base}/outcome#voorspelling` });
+    expect(predictionTip(progress({ claims: 0, forecast: f({ ownMoments: [] }) }))!.detail).toContain("Na de intake");
+    expect(predictionTip(progress({ forecast: f({ baseRateChosen: false, ownMoments: [] }) }))).toMatchObject({ title: "Kies een basispercentage", href: `${base}/outcome#basispercentage` });
+  });
+
+  it("makes the prediction loop the main action at the decision moment", () => {
     const atDecision = learned({ latestRealityCheckAt: "2026-10-21T10:00:00Z", forecast: f() });
     expect(nextAction(atDecision)).toMatchObject({ title: "Geef je voorspelling", href: `${base}/evidence#voorspelling` });
     expect(coachFor("evidence", atDecision).suggestions.map((s) => s.label)).toEqual(expect.arrayContaining(["Geef je voorspelling", "Neem het besluit"]));
+    expect(nextAction(learned({ latestRealityCheckAt: "2026-10-21T10:00:00Z", forecast: f({ baseRateChosen: false }) })).title).toBe("Kies een basispercentage");
+    expect(nextAction(learned({ latestRealityCheckAt: "2026-10-21T10:00:00Z", forecast: f({ outcomeDefined: false }) })).title).toBe("Leg vast wanneer dit geslaagd is");
     expect(nextAction(learned({ latestRealityCheckAt: "2026-10-21T10:00:00Z", forecast: f({ ownMoments: ["decision"] }) })).title).toBe("Neem het besluit");
   });
 
