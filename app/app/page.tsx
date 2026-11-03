@@ -10,7 +10,7 @@ import { OpenNotesBadge } from "@/components/coach/OpenNotesBadge";
 import { nextAction, sprintStage, type IdeaProgress } from "@/lib/domain/coach";
 import { SPRINT_PHASES, sprintStatus, testDay, todayInNL } from "@/lib/domain/sprint";
 import { DECISIONS, type DecisionAction } from "@/lib/domain/labels";
-import { currentStepLabel, stepsDone } from "@/lib/steps";
+import { currentStepLabel, dossierStatus } from "@/lib/steps";
 import { loadOutcomeReminders } from "@/lib/forecast-data";
 import { CreateWorkspace } from "./CreateWorkspace";
 
@@ -173,7 +173,8 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
         <div className="ideas">
           {list.map((idea, idx) => {
             const p = progresses[idx];
-            const done = Object.values(stepsDone(p)).filter(Boolean).length;
+            // B1c: alleen stappen met echte waarnemingen of geverifieerde bronnen tellen.
+            const done = dossierStatus(p).stepsWithEvidence;
             const next = nextAction(p);
             const s = sprintStatus({ start: idea.sprint_start, weeks: idea.sprint_weeks, today, stage: sprintStage(p), testsStarted: p.experimentsLive + p.experimentsEnded > 0 });
             return (
@@ -191,13 +192,13 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
                 </div>
                 <h3>{idea.title}</h3>
                 <p>{idea.description.length > 140 ? `${idea.description.slice(0, 137)}…` : idea.description}</p>
-                <div className="progress" role="img" aria-label={`${done} van 5 stappen met bewijs afgerond`}>
-                  <div style={{ width: `${(done / 5) * 100}%`, background: idx % 2 ? "var(--color-risk)" : undefined }} />
+                <div className="progress" role="img" aria-label={`${done} van 4 stappen met bewijs`}>
+                  <div style={{ width: `${(done / 4) * 100}%`, background: idx % 2 ? "var(--color-risk)" : undefined }} />
                 </div>
                 <div className="idea-foot">
                   <span>
                     {idea.clients?.name ? `${idea.clients.name} · ` : ""}
-                    {done} van 5 stappen met bewijs
+                    {done} van 4 stappen met bewijs
                   </span>
                   <span>
                     Verder <Icon name="arrow" size="sm" className="va-middle" />

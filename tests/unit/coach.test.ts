@@ -8,7 +8,7 @@ const base = `/app/ideas/${ID}`;
 
 // A dossier with research and assumptions done, no tests yet.
 function progress(over: Partial<IdeaProgress> = {}): IdeaProgress {
-  return {
+  const base: IdeaProgress = {
     ideaId: ID,
     questions: 4,
     claims: 6,
@@ -38,6 +38,25 @@ function progress(over: Partial<IdeaProgress> = {}): IdeaProgress {
     latestReportShared: false,
     behaviourObservations: 0,
     ...over,
+  };
+  // Fase B1c: de dossierstatus volgt uit dezelfde tellers. Markt is klaar met een beantwoorde beslissende vraag
+  // met geverifieerde bron; aannames zijn klaar zodra er een hoofdtest is (hier: zodra er een test bestaat).
+  return {
+    ...base,
+    dossier: over.dossier ?? {
+      questions: base.questions,
+      claims: base.claims,
+      verifiedClaims: base.verifiedClaims,
+      decisiveQuestion: base.claims > 0 && base.verifiedClaims > 0 ? { status: "answered", verifiedClaims: 1 } : base.questions > 0 ? { status: "open", verifiedClaims: 0 } : null,
+      assumptions: base.assumptions,
+      criticalWithPrimaryTest: base.experiments.length > 0 ? 1 : 0,
+      assumptionsWithEvidence: base.assumptions - base.assumptionsWithoutEvidence,
+      experiments: base.experiments.length,
+      experimentsLive: base.experimentsLive,
+      experimentsEnded: base.experimentsEnded,
+      realTestObservations: base.behaviourObservations,
+      decisions: base.decisions,
+    },
   };
 }
 
@@ -278,13 +297,13 @@ describe("sprint", () => {
 });
 
 describe("dossieroverzicht", () => {
-  it("toont vijf stappen met aantallen en markeert de eerste open stap", async () => {
+  it("toont vier stappen met aantallen en markeert één huidige stap", async () => {
     const { stepOverview } = await import("@/lib/steps");
     const steps = stepOverview(progress());
-    expect(steps.map((s) => s.key)).toEqual(["idea", "market", "assumptions", "test", "decide"]);
-    expect(steps.filter((s) => s.current).map((s) => s.key)).toEqual(["test"]);
-    expect(steps[1].counts).toBe("6 bevindingen (3 onderbouwd) · 3 concurrenten en alternatieven");
-    expect(steps[3]).toMatchObject({ done: false, counts: "0 tests · 0 lopend · 0 afgerond", href: `${base}/experiments` });
+    expect(steps.map((s) => s.key)).toEqual(["market", "assumptions", "test", "decide"]);
+    expect(steps.filter((s) => s.current).map((s) => s.key)).toEqual(["assumptions"]);
+    expect(steps[0].counts).toBe("4 onderzoeksvragen · 6 bevindingen (3 geverifieerd)");
+    expect(steps[2]).toMatchObject({ done: false, counts: "0 tests · 0 lopend · 0 afgerond", href: `${base}/experiments` });
     expect(stepOverview(progress({ claims: 0 })).find((s) => s.current)?.key).toBe("market");
   });
 });
