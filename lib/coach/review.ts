@@ -12,6 +12,7 @@ import { ideaContext } from "@/lib/idea-context";
 import { compareFingerprints, describeChanges, makeFingerprint, type FingerprintData } from "./fingerprint";
 import { evaluateRules, planNoteChanges, type CoachFacts, type CoachNoteDraft } from "./rules";
 import { validateAiNotes } from "./ai-notes";
+import { countsAsEvidence } from "@/lib/domain/practice";
 
 // The trajectory coach looks at a dossier again only after a real change (fingerprint), at most once per
 // two minutes per dossier, and asks the AI at most three times per dossier per day.
@@ -32,7 +33,7 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
   const id = ideaId;
   const exact = { count: "exact" as const };
   const head = { count: "exact" as const, head: true };
-  const [claims, sources, competitors, assumptions, experiments, testEvents, interviews, observations, cards, checks, decisions, forecasts, outcome, checkins, replies, ideaRow, stopReview] =
+  const [claims, sources, competitors, assumptions, experiments, testEvents, interviews, observations, cards, checks, decisions, forecasts, outcome, checkins, replies, ideaRow, stopReview, realInterviews] =
     await Promise.all([
       db.from("claims").select("updated_at", exact).eq("idea_id", id).order("updated_at", { ascending: false }).limit(1),
       db.from("sources").select("created_at", exact).eq("idea_id", id).order("created_at", { ascending: false }).limit(1),
@@ -53,6 +54,8 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
       db.from("ideas").select("outcome_statement, reference_class").eq("id", id).maybeSingle(),
       // Het antwoord op de stopvraag (golf B) telt als vastgelegde uitkomst; zonder tabel is het er niet.
       db.from("stop_reviews").select("idea_id", head).eq("idea_id", id),
+      // B0: een gesprek alsnog als echt aangeven verandert het bewijs, dus ook de vingerafdruk.
+      db.from("interviews").select("id", head).eq("idea_id", id).eq("is_practice", false),
     ]);
   const tally = (rows: { [k: string]: unknown }[] | null, key: string) => {
     const m = new Map<string, number>();
@@ -76,6 +79,8 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
     experiment_states: tally(experiments.data, "state"),
     test_events: testEvents.count ?? 0,
     interviews: interviews.count ?? 0,
+    // Alleen als er echte gesprekken zijn, zodat bestaande vingerafdrukken (en de AI-beoordeling) niet verschuiven.
+    ...(!realInterviews.error && (realInterviews.count ?? 0) > 0 ? { interviews_real: realInterviews.count ?? 0 } : {}),
     observations: observations.count ?? 0,
     observations_at: observations.data?.[0]?.created_at ?? null,
     learning_cards: cardRows.length,
@@ -147,7 +152,8 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
         assumptionId: h?.assumption_id ?? null,
       };
     }),
-    interviews: d.interviews.map((i) => ({ isAcquaintance: i.is_acquaintance })),
+    // B0: alleen echte gesprekken; waarnemingen uit oefendata zijn in loadDossier al als synthetisch gemarkeerd.
+    interviews: d.interviews.filter((i) => countsAsEvidence(i.is_practice)).map((i) => ({ isAcquaintance: i.is_acquaintance })),
     observations: d.observations.map((o) => ({ kind: o.kind, isBehaviour: o.is_behaviour, isSynthetic: o.is_synthetic, createdAt: o.created_at })),
     learningCards: d.learningCards.map((c) => ({ id: c.id, status: c.status, approvedAt: c.approved_at })),
     realityCheck: d.realityCheck ? { id: d.realityCheck.id, createdAt: d.realityCheck.created_at } : null,

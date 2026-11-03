@@ -73,6 +73,8 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
   }
   const [d, ruleCheck, calibration] = await Promise.all([loadDossier(idea), loadRuleCheck(id), loadCalibration(id)]);
   const obs = d.observations.filter((o) => !o.is_synthetic).sort((a, b) => strength({ isFact: b.is_fact, isBehaviour: b.is_behaviour, isRealContext: b.is_real_context, isCostly: b.is_costly, isSynthetic: false }) - strength({ isFact: a.is_fact, isBehaviour: a.is_behaviour, isRealContext: a.is_real_context, isCostly: a.is_costly, isSynthetic: false }));
+  // B0: waarnemingen uit oefengesprekken of nog niet aangegeven gesprekken (in loadDossier als synthetisch gemarkeerd).
+  const practiceObs = d.observations.filter((o) => o.is_practice).length;
   const reached = LADDER.map((r) => ({ ...r, count: obs.filter((o) => r.kinds.includes(o.kind as ObservationKind)).length }));
   const highest = [...reached].reverse().find((r) => r.count > 0);
   const missingPayment = !reached.slice(4).some((r) => r.count > 0);
@@ -151,7 +153,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
               </div>
             );
           })}
-          <div className="note">Een goed bewijsdossier laat ook helder zien wat een test níét aantoont. Synthetische of AI-gegenereerde data telt nooit mee.</div>
+          <div className="note">Een goed bewijsdossier laat ook helder zien wat een test níét aantoont. Synthetische of AI-gegenereerde data telt nooit mee.{practiceObs > 0 && ` ${practiceObs === 1 ? "1 observatie komt" : `${practiceObs} observaties komen`} uit een oefengesprek of een gesprek dat nog niet als echt is aangegeven en ${practiceObs === 1 ? "telt" : "tellen"} daarom niet als bewijs.`}</div>
         </div>
 
         <div className="stack">
