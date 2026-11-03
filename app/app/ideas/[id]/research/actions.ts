@@ -16,6 +16,7 @@ import { isSignalSource, painAsAssumption, verifySignalGroups, type SignalExcerp
 import { ideaContext } from "@/lib/idea-context";
 import { aiErrorMessage, runAi } from "@/lib/ai/guard";
 import { EXPECTED_SOURCE_KEYS } from "@/lib/domain/research-plan";
+import { isUnknown, normalizeReferenceDate, scopeValue, UNKNOWN } from "@/lib/domain/claim-scope";
 
 export type ActionState = { error: string | null; ok?: string | null };
 
@@ -201,7 +202,15 @@ const ClaimSchema = z.object({
   section: z.enum(["market", "customers", "competition", "pricing", "sizing", "regulation", "other"]),
   freshness_kind: z.enum(["statistic", "price", "regulation", "product", "general"]),
   question_id: z.string().optional(),
-  region: z.string().trim().max(120).optional(),
+  // Golf C, punt 7: verplicht, of expliciet "onbekend".
+  population: z.string().trim().min(1, "Vul de populatie in, of schrijf \"onbekend\".").max(200),
+  region: z.string().trim().min(1, "Vul de regio in, of schrijf \"onbekend\".").max(120),
+  reference_date: z
+    .string()
+    .trim()
+    .min(1, "Vul de peildatum in, of schrijf \"onbekend\".")
+    .max(40)
+    .refine((v) => isUnknown(v) || normalizeReferenceDate(v) !== UNKNOWN, "Schrijf de peildatum als jaartal (2025), maand (2025-06) of datum, of \"onbekend\"."),
   period: z.string().trim().max(60).optional(),
   numeric_value: z.string().trim().optional(),
   unit: z.string().trim().max(40).optional(),
@@ -233,7 +242,9 @@ export async function addClaim(ideaId: string, _: ActionState, form: FormData): 
       section: v.section,
       statement: v.statement,
       evidence_type: v.evidence_type,
-      region: blank(v.region),
+      population: scopeValue(v.population, 200),
+      region: scopeValue(v.region),
+      reference_date: normalizeReferenceDate(v.reference_date),
       period: blank(v.period),
       numeric_value: numeric,
       unit: blank(v.unit),

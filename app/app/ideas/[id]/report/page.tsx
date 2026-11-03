@@ -218,6 +218,12 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                     {list.map((c, i) => (
                       <li key={i}>
                         {c.statement} <Notes n={c.notes} /> <em className="tiny">({c.status}{c.contradicted ? ", tegengesproken" : ""})</em>
+                        {c.scope && (
+                          <div className="tiny">
+                            Populatie: {c.scope.population} · regio: {c.scope.region} · peildatum: {c.scope.referenceDate}
+                            {c.scope.relevance === "indirect" ? " · indirect (wijkt af van de intake)" : ""}
+                          </div>
+                        )}
                         {c.doesNotProve && <div className="tiny">Bewijst niet: {c.doesNotProve}</div>}
                       </li>
                     ))}

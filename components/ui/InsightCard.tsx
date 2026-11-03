@@ -14,6 +14,8 @@ export type ClaimView = {
   definition: string | null;
   limitations: string | null;
   origin: string;
+  // Golf C, punt 7: populatie, regio en peildatum, en de vergelijking met de intake (lib/domain/claim-scope.ts).
+  scope?: { population: string; region: string; referenceDate: string; relevance: "direct" | "indirect"; warnings: string[] };
   evidence: {
     id?: string;
     source_id?: string;
@@ -51,7 +53,7 @@ export function InsightCard({
   const meta = [
     first?.publisher ?? first?.domain ?? first?.title,
     first?.published_on ? new Date(first.published_on).toLocaleDateString("nl-NL", { year: "numeric", month: "short" }) : "datum onbekend",
-    claim.region,
+    claim.scope ? null : claim.region,
     claim.period,
   ].filter(Boolean);
   return (
@@ -64,6 +66,23 @@ export function InsightCard({
         {meta.join(" · ")} · {EVIDENCE_TYPES[claim.evidence_type]}
         {claim.origin === "ai" ? " · gevonden door AI, citaat gecontroleerd" : ""}
       </div>
+      {claim.scope && (
+        <div className="insight-meta" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <span>Populatie: {claim.scope.population}</span>
+          <span aria-hidden="true">·</span>
+          <span>Regio: {claim.scope.region}</span>
+          <span aria-hidden="true">·</span>
+          <span>Peildatum: {claim.scope.referenceDate}</span>
+          {claim.scope.relevance === "indirect" && (
+            <span className="pill orange" title="Wijkt af van de intake; telt in een nieuwe methodeversie met halve sterkte">Indirect</span>
+          )}
+        </div>
+      )}
+      {claim.scope && claim.scope.warnings.length > 0 && (
+        <div className="note" role="note">
+          <strong>Past niet helemaal bij de intake.</strong> {claim.scope.warnings.join(" ")}
+        </div>
+      )}
       <div className="insight-grid">
         <div>
           <strong>Wat ondersteunt dit?</strong>

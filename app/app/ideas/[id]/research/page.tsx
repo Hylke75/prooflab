@@ -27,6 +27,8 @@ import { ensembleProviders } from "@/lib/ai/providers/select";
 import { aiSettingsForOrg } from "@/lib/ai/settings";
 import { CLAIM_STATUS, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type EvidenceType, type SourceType } from "@/lib/domain/labels";
 import { breakEvenRevenue, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
+import { compareWithIntake, intakeScope } from "@/lib/domain/claim-scope";
+import type { FreshnessKind } from "@/lib/domain/verify";
 import {
   addClaim, addSource, aiPlan, fetchCbsFigures, checkClaimSupport, deleteClaim, deleteCompetitor, deleteQuestion, deleteSegment, deleteSource,
   overrideSupport, recheckCompetitors, saveCompetitor, saveQuestion, saveScenario, saveSegment, saveUnitEconomics,
@@ -74,6 +76,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     ((tasks ?? []).find((t) => t.kind === "reality_check" && t.status === "done")?.output as { challenges?: { title: string; detail: string }[] } | null)?.challenges ?? [];
 
   const questions = qs.data ?? [];
+  const intake = intakeScope(idea);
   const claims: (ClaimView & { question_id: string | null; section: string; numeric_value: number | null })[] = (claimsRes.data ?? []).map((c) => ({
     id: c.id,
     statement: c.statement,
@@ -84,6 +87,11 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     does_not_prove: c.does_not_prove,
     region: c.region,
     period: c.period,
+    scope: (() => {
+      // Golf C, punt 7: dezelfde vergelijking als bij het opslaan, zodat de waarschuwing altijd zichtbaar is.
+      const check = compareWithIntake({ population: c.population, region: c.region, referenceDate: c.reference_date, freshness: c.freshness_kind as FreshnessKind }, intake);
+      return { population: c.population, region: c.region, referenceDate: c.reference_date, relevance: check.relevance, warnings: check.warnings };
+    })(),
     definition: c.definition,
     limitations: c.limitations,
     origin: c.origin,

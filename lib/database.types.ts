@@ -972,7 +972,10 @@ export type Database = {
           origin: string
           period: string | null
           question_id: string | null
-          region: string | null
+          region: string
+          population: string
+          reference_date: string
+          relevance: string
           section: string
           statement: string
           status: string
@@ -995,7 +998,10 @@ export type Database = {
           origin?: string
           period?: string | null
           question_id?: string | null
-          region?: string | null
+          region?: string
+          population?: string
+          reference_date?: string
+          relevance?: string
           section?: string
           statement: string
           status?: string
@@ -1018,7 +1024,10 @@ export type Database = {
           origin?: string
           period?: string | null
           question_id?: string | null
-          region?: string | null
+          region?: string
+          population?: string
+          reference_date?: string
+          relevance?: string
           section?: string
           statement?: string
           status?: string

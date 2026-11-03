@@ -270,7 +270,10 @@ const ExtractSchema = z.object({
       excerpt_ref: z.string(),
       quote: z.string().describe("Letterlijke tekst uit het fragment, minimaal 8 tekens"),
       stance: z.enum(["supports", "contradicts"]).describe("Ondersteunt of weerspreekt de aanname in de onderzoeksvraag"),
-      region: z.string().nullable(),
+      // Populatie, regio en peildatum (golf C, punt 7): alleen wat uit het citaat of fragment blijkt, anders "onbekend".
+      population: z.string().describe('Over welke populatie het cijfer of de uitspraak gaat (bijv. "mkb-bedrijven met 10-50 werknemers"), alleen als dat in het citaat of fragment staat; anders "onbekend"'),
+      region: z.string().describe('Het gebied waarover de bevinding gaat, alleen als dat in het citaat of fragment staat; anders "onbekend"'),
+      reference_date: z.string().describe('Peildatum van het cijfer als JJJJ, JJJJ-MM of JJJJ-MM-DD, alleen als die in het citaat of fragment staat; anders "onbekend"'),
       period: z.string().nullable(),
       numeric_value: z.number().nullable(),
       unit: z.string().nullable(),
@@ -324,7 +327,8 @@ ${docs}
 
 Haal uit deze fragmenten alleen beweringen die relevant zijn voor de onderzoeksvraag. Elke bewering verwijst naar
 precies één fragment (excerpt_ref) en bevat een letterlijk citaat daaruit. Neem getallen in de bewering alleen op als
-ze letterlijk in het citaat staan. Classificeer elke bron (source_ref). Noem concurrenten of alternatieven alleen als
+ze letterlijk in het citaat staan. Geef per bewering de populatie, de regio en de peildatum waar het cijfer over gaat,
+alleen als die uit het citaat of het fragment blijken; schrijf anders "onbekend". Vul ze nooit aan vanuit het idee. Classificeer elke bron (source_ref). Noem concurrenten of alternatieven alleen als
 ze in een fragment voorkomen; een prijs alleen als die letterlijk in het citaat staat. Als de fragmenten de vraag niet
 beantwoorden, geef dan lege lijsten.`,
     "medium",

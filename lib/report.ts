@@ -36,6 +36,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
     limitations: c.limitations,
     notes: (c.claim_sources ?? []).filter((s) => s.quote_check === "exact").map((s) => footnote(s.sources)).filter((n): n is number => n !== null),
     contradicted: (c.claim_sources ?? []).some((s) => s.stance === "contradicts" && s.quote_check === "exact"),
+    // Golf C, punt 7: waarover het cijfer gaat, en of het direct of indirect bij de intake past.
+    scope: { population: c.population, region: c.region, referenceDate: c.reference_date, relevance: c.relevance },
   }));
 
   const check = d.realityCheck;

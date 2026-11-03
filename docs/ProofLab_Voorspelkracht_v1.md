@@ -513,3 +513,29 @@ bandbreedte wordt op dezelfde manier begrensd.
   ter informatie naast.
 - Elk rapport (scherm en PDF) vermeldt de methodeversie, de beslisregels en de gebruikte plafonds (standaard of
   ingesteld door de werkruimte). Rapporten van vóór de methodeversie zijn met 2026-11-a gemaakt.
+
+## 10. Onderzoek en herleidbaarheid (golf C, 7 november 2026)
+
+Golf C van het verbeterplan (`docs/VERBETERPLAN_WERKWIJZE.md`) maakt bureauonderzoek beter toetsbaar en houdt
+rapporten herleidbaar na de bewaartermijn. Geen van deze punten verandert de rekenwijze van 2026-11-a of 2026-11-b.
+
+### 10.1 Populatie, regio en peildatum per bevinding (punt 7)
+
+Een letterlijk citaat zegt nog niet dat een cijfer over de juiste groep, het juiste gebied of een recent moment gaat.
+
+- Elke bevinding heeft drie verplichte velden: **populatie**, **regio** en **peildatum** (jaar, maand of datum). Wat
+  niet uit de bron blijkt, staat er expliciet als "onbekend".
+- Bij AI-extractie vraagt het schema om deze drie velden. ProofLab houdt een veld alleen als het uit het citaat of het
+  bewaarde fragment blijkt: een betekenisvol woord van de populatie of regio moet er letterlijk in staan, het jaartal
+  van de peildatum ook. Anders wordt het "onbekend".
+- ProofLab vergelijkt de velden met de intake (`lib/domain/claim-scope.ts`):
+  - populatie: een vastgesteld ander soort doelgroep (bijvoorbeeld huishoudens bij een B2B-idee);
+  - regio: een ander, breder of kleiner gebied dan de intake (een Europees cijfer of een stad bij een Nederlandse
+    markt);
+  - peildatum: ouder dan de verouderingstermijn van dat soort gegeven (statistiek 3 jaar, prijs 1 jaar, regelgeving
+    1,5 jaar), gemeten op de beslisdatum, of op vandaag als die ontbreekt.
+- Wijkt een veld af, dan staat er een waarschuwing bij de bevinding en telt ze als **indirect** (`claims.relevance`).
+  "Onbekend" is geen afwijking, maar ook geen bevestiging: het blijft zichtbaar als onbekend.
+- **Weging.** In de bewijsberekening telt een indirecte bevinding met halve sterkte (`relevanceWeight()`, factor
+  0,5). Dat geldt pas in een nieuwe methodeversie: bij het samenvoegen van golf A en C komt de weging in die versie
+  (2026-11-c). 2026-11-a en 2026-11-b lezen het veld niet en rekenen ongewijzigd.

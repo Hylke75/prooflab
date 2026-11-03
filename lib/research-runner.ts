@@ -17,6 +17,7 @@ import { CBS_STATLINE_URL, CBS_TABLE, cbsKeywords, cbsLine, fetchCbsCompanyCount
 import type { Idea } from "@/lib/data";
 import type { Json } from "@/lib/database.types";
 import { keepAfterSupportCheck, type SupportCheck } from "@/lib/domain/support";
+import { groundedScope } from "@/lib/domain/claim-scope";
 
 type RunState = { status: string; done: number; total: number; current: string | null; cost: number; budget: number; error: string | null };
 
@@ -632,7 +633,10 @@ export async function storeExtractedClaims(
         section: c.section,
         statement: c.statement,
         evidence_type: c.evidence_type,
-        region: c.region,
+        // Alleen wat uit het citaat of fragment blijkt; anders expliciet "onbekend" (golf C, punt 7).
+        population: groundedScope("population", c.population, `${c.quote}\n${ex.text}`),
+        region: groundedScope("region", c.region, `${c.quote}\n${ex.text}`),
+        reference_date: groundedScope("referenceDate", c.reference_date, `${c.quote}\n${ex.text}`),
         period: c.period,
         numeric_value: c.numeric_value,
         unit: c.unit,

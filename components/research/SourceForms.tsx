@@ -179,15 +179,26 @@ export function AddClaimForm({ action, excerpts, questions }: { action: Action; 
           </select>
         </div>
       </div>
+      <p className="explain">
+        Populatie, regio en peildatum zijn verplicht. Staat iets niet in de bron, schrijf dan &quot;onbekend&quot;. Wijkt een veld af van de intake, dan telt de bevinding als indirect.
+      </p>
+      <div className="form-line">
+        <label htmlFor="cl-pop">Populatie</label>
+        <input className="field" id="cl-pop" name="population" required maxLength={200} placeholder="Bijv. mkb-bedrijven met 10-50 werknemers, of onbekend" />
+      </div>
       <div className="double-field">
         <div className="form-line">
           <label htmlFor="cl-reg">Regio</label>
-          <input className="field" id="cl-reg" name="region" placeholder="Bijv. Nederland" />
+          <input className="field" id="cl-reg" name="region" required maxLength={120} placeholder="Bijv. Nederland, of onbekend" />
         </div>
         <div className="form-line">
-          <label htmlFor="cl-per">Peilperiode</label>
-          <input className="field" id="cl-per" name="period" placeholder="Bijv. 2026 (voorlopig)" />
+          <label htmlFor="cl-ref">Peildatum</label>
+          <input className="field" id="cl-ref" name="reference_date" required maxLength={40} placeholder="Bijv. 2025, 2025-06 of onbekend" />
         </div>
+      </div>
+      <div className="form-line">
+        <label htmlFor="cl-per">Peilperiode (optioneel)</label>
+        <input className="field" id="cl-per" name="period" placeholder="Bijv. 2026 (voorlopig)" />
       </div>
       <div className="double-field">
         <div className="form-line">
