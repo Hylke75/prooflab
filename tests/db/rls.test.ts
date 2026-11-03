@@ -400,4 +400,49 @@ d("row level security and integrity rules", () => {
     const ok = (await db.query("select public.hook_before_user_created($1) as r", [{ user: { email: invited } }])).rows[0].r;
     expect(ok).toEqual({});
   });
+  it("keeps forecasts blind, locks the outcome definition and scores against the real outcome", async () => {
+    const P = await newIdea(alice);
+    await as(alice, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_decider')", [P.idea, client.email]));
+    await as(client, (c) => c.query("select public.claim_invitations()"));
+    // No outcome definition yet: resolving is refused.
+    await expect(
+      as(alice, (c) => c.query("insert into public.idea_outcomes (idea_id, achieved, evidence) values ($1, 'yes', 'Tien klanten betalen')", [P.idea])),
+    ).rejects.toThrow(/OUTCOME_UNDEFINED/);
+    await as(alice, (c) =>
+      c.query("update public.ideas set outcome_statement = '15 betalende klanten', outcome_metric = 'betalende klanten', outcome_target = 15, outcome_due = current_date + 182 where id = $1", [P.idea]),
+    );
+    await as(alice, (c) => c.query("insert into public.forecasts (idea_id, moment, forecaster_kind, forecaster_id, probability, rationale) values ($1, 'intake', 'consultant', $2, 0.3, 'Weinig bewijs')", [P.idea, alice.id]));
+    // The client cannot see the consultant's forecast before giving their own.
+    expect(await as(client, async (c) => (await c.query("select * from public.forecasts where idea_id = $1", [P.idea])).rowCount)).toBe(0);
+    // Nobody can forecast in someone else's name or role.
+    await expect(
+      as(client, (c) => c.query("insert into public.forecasts (idea_id, moment, forecaster_kind, forecaster_id, probability, rationale) values ($1, 'intake', 'consultant', $2, 0.9, 'x x x')", [P.idea, client.id])),
+    ).rejects.toThrow(/row-level security/);
+    await as(client, (c) => c.query("insert into public.forecasts (idea_id, moment, forecaster_kind, forecaster_id, probability, rationale) values ($1, 'intake', 'client', $2, 0.8, 'Ik geloof erin')", [P.idea, client.id]));
+    expect(await as(client, async (c) => (await c.query("select * from public.forecasts where idea_id = $1", [P.idea])).rowCount)).toBe(2);
+    // Forecasts are never rewritten, and the outcome definition is fixed once forecasts exist.
+    await expect(as(alice, (c) => c.query("update public.forecasts set probability = 0.9 where idea_id = $1", [P.idea]))).rejects.toThrow(/permission denied/);
+    await expect(as(alice, (c) => c.query("update public.ideas set outcome_target = 5 where id = $1", [P.idea]))).rejects.toThrow(/OUTCOME_LOCKED/);
+    await as(alice, (c) => c.query("insert into public.idea_outcomes (idea_id, achieved, actual_value, evidence) values ($1, 'no', 4, 'Vier betalende klanten na zes maanden')", [P.idea]));
+    await expect(
+      as(alice, (c) => c.query("insert into public.forecasts (idea_id, moment, forecaster_kind, forecaster_id, probability, rationale) values ($1, 'decision', 'consultant', $2, 0.5, 'Te laat')", [P.idea, alice.id])),
+    ).rejects.toThrow(/FORECAST_CLOSED/);
+    const scores = await as(alice, async (c) => (await c.query("select forecaster_kind, round(brier, 2)::float as brier from public.forecast_scores($1) order by 1", [P.org])).rows);
+    expect(scores).toEqual([
+      { forecaster_kind: "client", brier: 0.64 },
+      { forecaster_kind: "consultant", brier: 0.09 },
+    ]);
+    // Other organisations see no scores.
+    expect(await as(bob, async (c) => (await c.query("select * from public.forecast_scores($1)", [P.org])).rowCount)).toBe(0);
+  });
+
+  it("lets a consultant review AI-coded observations without rewriting them", async () => {
+    const obs = await as(alice, async (c) =>
+      (await c.query("insert into public.observations (idea_id, kind, summary, quote, origin) values ($1, 'objection', 'Te duur', 'Dat is te duur voor ons', 'ai') returning id", [A.idea])).rows[0].id,
+    );
+    await as(alice, (c) => c.query("update public.observations set review_status = 'rejected' where id = $1", [obs]));
+    const row = await as(alice, async (c) => (await c.query("select review_status, reviewed_by from public.observations where id = $1", [obs])).rows[0]);
+    expect(row).toEqual({ review_status: "rejected", reviewed_by: alice.id });
+    await expect(as(alice, (c) => c.query("update public.observations set summary = 'Anders' where id = $1", [obs]))).rejects.toThrow(/OBSERVATION_LOCKED/);
+  });
 });

@@ -15,6 +15,165 @@ export type Database = {
   }
   public: {
     Tables: {
+      customer_signals: {
+        Row: {
+          id: string
+          idea_id: string
+          kind: string
+          label: string
+          mentions: number
+          quotes: Json
+          origin: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          idea_id: string
+          kind: string
+          label: string
+          mentions: number
+          quotes?: Json
+          origin?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          idea_id?: string
+          kind?: string
+          label?: string
+          mentions?: number
+          quotes?: Json
+          origin?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      forecasts: {
+        Row: {
+          id: string
+          idea_id: string
+          moment: string
+          forecaster_kind: string
+          forecaster_id: string | null
+          probability: number
+          rationale: string
+          model: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          idea_id: string
+          moment: string
+          forecaster_kind: string
+          forecaster_id?: string | null
+          probability: number
+          rationale: string
+          model?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          idea_id?: string
+          moment?: string
+          forecaster_kind?: string
+          forecaster_id?: string | null
+          probability?: number
+          rationale?: string
+          model?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      idea_outcomes: {
+        Row: {
+          idea_id: string
+          achieved: string
+          actual_value: number | null
+          evidence: string
+          resolved_by: string
+          resolved_at: string
+        }
+        Insert: {
+          idea_id: string
+          achieved: string
+          actual_value?: number | null
+          evidence: string
+          resolved_by?: string
+          resolved_at?: string
+        }
+        Update: {
+          idea_id?: string
+          achieved?: string
+          actual_value?: number | null
+          evidence?: string
+          resolved_by?: string
+          resolved_at?: string
+        }
+        Relationships: []
+      }
+      outcome_checkins: {
+        Row: {
+          id: string
+          idea_id: string
+          on_track: string
+          current_value: number | null
+          note: string
+          created_by: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          idea_id: string
+          on_track: string
+          current_value?: number | null
+          note: string
+          created_by?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          idea_id?: string
+          on_track?: string
+          current_value?: number | null
+          note?: string
+          created_by?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      reference_classes: {
+        Row: {
+          id: string
+          label: string
+          low: number
+          high: number
+          source_title: string
+          source_url: string
+          caveat: string
+          position: number
+        }
+        Insert: {
+          id: string
+          label: string
+          low: number
+          high: number
+          source_title: string
+          source_url: string
+          caveat: string
+          position?: number
+        }
+        Update: {
+          id?: string
+          label?: string
+          low?: number
+          high?: number
+          source_title?: string
+          source_url?: string
+          caveat?: string
+          position?: number
+        }
+        Relationships: []
+      }
       ai_runs: {
         Row: {
           cost_usd: number
@@ -244,6 +403,9 @@ export type Database = {
       }
       claim_sources: {
         Row: {
+          support_check: string
+          support_checked_by: string | null
+          support_note: string | null
           claim_id: string
           created_at: string
           excerpt_id: string | null
@@ -255,6 +417,9 @@ export type Database = {
           stance: string
         }
         Insert: {
+          support_check?: string
+          support_checked_by?: string | null
+          support_note?: string | null
           claim_id: string
           created_at?: string
           excerpt_id?: string | null
@@ -266,6 +431,9 @@ export type Database = {
           stance?: string
         }
         Update: {
+          support_check?: string
+          support_checked_by?: string | null
+          support_note?: string | null
           claim_id?: string
           created_at?: string
           excerpt_id?: string | null
@@ -780,6 +948,14 @@ export type Database = {
       }
       ideas: {
         Row: {
+          outcome_statement: string | null
+          outcome_metric: string | null
+          outcome_target: number | null
+          outcome_due: string | null
+          reference_class: string | null
+          base_rate_low: number | null
+          base_rate_high: number | null
+          base_rate_note: string | null
           sprint_start: string | null
           sprint_weeks: number
           audience_detail: string | null
@@ -806,6 +982,14 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          outcome_statement?: string | null
+          outcome_metric?: string | null
+          outcome_target?: number | null
+          outcome_due?: string | null
+          reference_class?: string | null
+          base_rate_low?: number | null
+          base_rate_high?: number | null
+          base_rate_note?: string | null
           sprint_start?: string | null
           sprint_weeks?: number
           audience_detail?: string | null
@@ -832,6 +1016,14 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          outcome_statement?: string | null
+          outcome_metric?: string | null
+          outcome_target?: number | null
+          outcome_due?: string | null
+          reference_class?: string | null
+          base_rate_low?: number | null
+          base_rate_high?: number | null
+          base_rate_note?: string | null
           sprint_start?: string | null
           sprint_weeks?: number
           audience_detail?: string | null
@@ -1011,6 +1203,9 @@ export type Database = {
       }
       observations: {
         Row: {
+          review_status: string | null
+          reviewed_by: string | null
+          reviewed_at: string | null
           created_at: string
           experiment_id: string | null
           id: string
@@ -1028,6 +1223,9 @@ export type Database = {
           summary: string
         }
         Insert: {
+          review_status?: string | null
+          reviewed_by?: string | null
+          reviewed_at?: string | null
           created_at?: string
           experiment_id?: string | null
           id?: string
@@ -1045,6 +1243,9 @@ export type Database = {
           summary: string
         }
         Update: {
+          review_status?: string | null
+          reviewed_by?: string | null
+          reviewed_at?: string | null
           created_at?: string
           experiment_id?: string | null
           id?: string
@@ -1463,6 +1664,8 @@ export type Database = {
       }
       sizing_factors: {
         Row: {
+          low_value: number | null
+          high_value: number | null
           claim_id: string | null
           id: string
           idea_id: string
@@ -1475,6 +1678,8 @@ export type Database = {
           value: number
         }
         Insert: {
+          low_value?: number | null
+          high_value?: number | null
           claim_id?: string | null
           id?: string
           idea_id: string
@@ -1487,6 +1692,8 @@ export type Database = {
           value: number
         }
         Update: {
+          low_value?: number | null
+          high_value?: number | null
           claim_id?: string | null
           id?: string
           idea_id?: string
@@ -1860,6 +2067,18 @@ export type Database = {
       }
       mark_report_viewed: { Args: { p_report: string }; Returns: boolean }
       may_create_account: { Args: { p_email: string; p_key: string }; Returns: boolean }
+      forecast_scores: {
+        Args: { p_org: string }
+        Returns: { forecaster_kind: string; forecaster_id: string | null; forecasts: number; brier: number; mean_probability: number; hit_rate: number }[]
+      }
+      forecast_calibration: {
+        Args: { p_org: string }
+        Returns: { bucket: number; forecasts: number; mean_probability: number; observed: number }[]
+      }
+      own_base_rate: {
+        Args: { p_org: string; p_project_type: string | null; p_min?: number }
+        Returns: { resolved: number; achieved: number }[]
+      }
       observations_for_idea: {
         Args: { p_idea: string }
         Returns: {
