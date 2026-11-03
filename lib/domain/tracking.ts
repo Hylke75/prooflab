@@ -39,6 +39,7 @@ export const CHANNELS = {
   x: "X (organisch)",
   google_ads: "Google-advertentie",
   outreach: "Outreach (e-mail/DM)",
+  email: "Persoonlijke e-mailuitnodiging",
   newsletter: "Nieuwsbrief",
   other: "Overig",
   direct: "Direct / onbekend",

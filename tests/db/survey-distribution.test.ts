@@ -58,7 +58,7 @@ async function liveSurvey(owner: { id: string; email: string }) {
         [idea, a],
       )
     ).rows[0].id;
-    const e = (await c.query("insert into public.experiments (idea_id, hypothesis_id, type, title, config) values ($1, $2, 'survey', 'Enquête', '{}') returning id", [idea, h])).rows[0].id;
+    const e = (await c.query("insert into public.experiments (idea_id, hypothesis_id, type, title, config) values ($1, $2, 'survey', 'Enquête', $3) returning id", [idea, h, JSON.stringify({ key_question: "gezocht", success_options: ["ja"], questions: [] })])).rows[0].id;
     for (const s of ["ready_for_review", "approved", "live"]) await c.query("update public.experiments set state = $2 where id = $1", [e, s]);
     const slug = (await c.query("select public_slug from public.experiments where id = $1", [e])).rows[0].public_slug as string;
     return { org, idea, e, slug };
@@ -154,14 +154,40 @@ d("survey distribution: invitations, suppressions and promo posts", () => {
     await expect(as("anon", (c) => c.query("select public.unsubscribe_invitation('fout', $1, $2)", [inv.hash, eHash]))).rejects.toThrow(/FORBIDDEN/);
   });
 
-  it("allows a reminder to move sent_at once the first mail is sent", async () => {
+  it("allows exactly one reminder, claimed on reminded_at", async () => {
     const inv = invite("kees@voorbeeld.nl");
     await as(alice, (c) => c.query("insert into public.survey_invitations (id, experiment_id, idea_id, email, token_hash) values ($1, $2, $3, $4, $5)", [inv.id, S.e, S.idea, inv.email, inv.hash]));
-    const first = await as(alice, async (c) => (await c.query("update public.survey_invitations set status = 'sent', sent_at = now() - interval '4 days' where id = $1 returning sent_at::text", [inv.id])).rows[0].sent_at);
-    // Optimistic claim on the old sent_at, as sendReminderBatch does.
-    const claim = () => as(alice, async (c) => (await c.query("update public.survey_invitations set sent_at = now() where id = $1 and status = 'sent' and sent_at = $2::timestamptz", [inv.id, first])).rowCount);
+    await as(alice, (c) => c.query("update public.survey_invitations set status = 'sent', sent_at = now() - interval '4 days' where id = $1", [inv.id]));
+    // Conditional claim, as sendReminderBatch does.
+    const claim = () => as(alice, async (c) => (await c.query("update public.survey_invitations set reminded_at = now() where id = $1 and status = 'sent' and reminded_at is null", [inv.id])).rowCount);
     expect(await claim()).toBe(1);
     expect(await claim()).toBe(0);
+  });
+
+  it("suppresses the stored address hash, not the one in the link", async () => {
+    const inv = invite("lisa@voorbeeld.nl");
+    const stored = emailHash(SALT, inv.email);
+    await as(alice, (c) =>
+      c.query("insert into public.survey_invitations (id, experiment_id, idea_id, email, email_hash, token_hash) values ($1, $2, $3, $4, $5, $6)", [inv.id, S.e, S.idea, inv.email, stored, inv.hash]),
+    );
+    const forged = emailHash(SALT, "iemand-anders@voorbeeld.nl");
+    await as("anon", (c) => c.query("select public.unsubscribe_invitation($1, $2, $3)", [ingestKey, inv.hash, forged]));
+    const rows = await as(alice, async (c) => (await c.query("select email_hash from public.email_suppressions where org_id = $1 and email_hash = any($2)", [S.org, [stored, forged]])).rows);
+    expect(rows.map((r) => r.email_hash)).toEqual([stored]);
+  });
+
+  it("keeps the key question out of the public survey and shows clients only key answers", async () => {
+    const pub = await as("anon", async (c) => (await c.query("select public.get_public_survey($1, null) as s", [S.slug])).rows[0].s);
+    expect(pub.config.key_question).toBeUndefined();
+    expect(pub.config.success_options).toBeUndefined();
+    await as("anon", (c) =>
+      c.query("select public.submit_survey($1, $2, 'v-open', 'linkedin', '{\"gezocht\":\"ja\",\"toelichting\":\"Ik ben Jan van Bakkerij X\"}', true, 30000, null, 'net2')", [ingestKey, S.slug]),
+    );
+    const seen = await as(klant, async (c) => (await c.query("select source, channel, key_answer from public.survey_key_answers($1)", [S.e])).rows);
+    expect(seen).toContainEqual({ source: "open_link", channel: "linkedin", key_answer: "ja" });
+    expect(JSON.stringify(seen)).not.toContain("Bakkerij");
+    expect(await as(klant, async (c) => (await c.query("select * from public.survey_responses where experiment_id = $1", [S.e])).rowCount)).toBe(0);
+    expect(await as(bob, async (c) => (await c.query("select * from public.survey_key_answers($1)", [S.e])).rowCount)).toBe(0);
   });
 
   it("keeps promo posts per experiment, editable by consultants only, within the platform rules", async () => {

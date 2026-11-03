@@ -76,6 +76,8 @@ export type Database = {
           status: string
           error: string | null
           sent_at: string | null
+          reminded_at: string | null
+          email_hash: string | null
           responded_at: string | null
           created_by: string
           created_at: string
@@ -90,6 +92,8 @@ export type Database = {
           status?: string
           error?: string | null
           sent_at?: string | null
+          reminded_at?: string | null
+          email_hash?: string | null
           responded_at?: string | null
           created_by?: string
           created_at?: string
@@ -104,6 +108,8 @@ export type Database = {
           status?: string
           error?: string | null
           sent_at?: string | null
+          reminded_at?: string | null
+          email_hash?: string | null
           responded_at?: string | null
           created_by?: string
           created_at?: string

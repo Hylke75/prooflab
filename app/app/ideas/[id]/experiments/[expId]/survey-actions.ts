@@ -118,7 +118,7 @@ export async function createInvitations(ideaId: string, expId: string, input: { 
     for (const chunk of sliceBatches(fresh, 500)) {
       const rows = chunk.map((email) => {
         const id = randomUUID();
-        return { id, email, experiment_id: expId, idea_id: ideaId, token_hash: tokenHash(invitationToken(salt, id)) };
+        return { id, email, email_hash: hashOf.get(email)!, experiment_id: expId, idea_id: ideaId, token_hash: tokenHash(invitationToken(salt, id)) };
       });
       const { error } = await supabase.from("survey_invitations").insert(rows);
       if (error) return fail("De uitnodigingen konden niet worden opgeslagen. Probeer het opnieuw.");
@@ -271,10 +271,11 @@ export async function sendReminderBatch(ideaId: string, expId: string, input: { 
     const supabase = await supabaseServer();
     const { data, error } = await supabase
       .from("survey_invitations")
-      .select("id, email, status, sent_at, created_at, error")
+      .select("id, email, status, sent_at, reminded_at, error")
       .eq("experiment_id", expId)
       .eq("status", "sent")
       .is("error", null)
+      .is("reminded_at", null)
       .order("sent_at")
       .limit(MAX_INVITES * 5);
     if (error) return fail("De uitnodigingen konden niet worden geladen.");
@@ -296,10 +297,10 @@ export async function sendReminderBatch(ideaId: string, expId: string, input: { 
       const claimedAt = new Date().toISOString();
       const { data: claimed } = await supabase
         .from("survey_invitations")
-        .update({ sent_at: claimedAt })
+        .update({ reminded_at: claimedAt })
         .eq("id", r.id)
         .eq("status", "sent")
-        .eq("sent_at", r.sent_at!)
+        .is("reminded_at", null)
         .select("id");
       if (!claimed?.length) {
         skipped++;
@@ -314,7 +315,7 @@ export async function sendReminderBatch(ideaId: string, expId: string, input: { 
         if (errors.length < 3) errors.push(res.error);
         await supabase
           .from("survey_invitations")
-          .update({ sent_at: r.sent_at, error: `Herinnering niet verstuurd: ${res.error}`.slice(0, 300) })
+          .update({ reminded_at: null, error: `Herinnering niet verstuurd: ${res.error}`.slice(0, 300) })
           .eq("id", r.id)
           .eq("status", "sent");
       }

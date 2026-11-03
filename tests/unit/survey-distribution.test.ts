@@ -152,23 +152,24 @@ describe("invitation e-mail", () => {
 
 describe("invitation status", () => {
   const now = new Date("2026-11-10T12:00:00Z");
-  const row = (p: Partial<{ status: string; sent_at: string | null; created_at: string; error: string | null }>) => ({
+  const row = (p: Partial<{ status: string; sent_at: string | null; reminded_at: string | null; error: string | null }>) => ({
     status: "sent",
     sent_at: "2026-11-05T12:00:00Z",
-    created_at: "2026-11-05T11:59:00Z",
+    reminded_at: null,
     error: null,
     ...p,
   });
 
   it("allows one reminder, at least three days after the first mail, only to non-responders", () => {
     expect(canRemind(row({}), now)).toBe(true);
-    expect(canRemind(row({ sent_at: "2026-11-08T12:00:00Z", created_at: "2026-11-08T11:00:00Z" }), now)).toBe(false); // too early
+    expect(canRemind(row({ sent_at: "2026-11-08T12:00:00Z" }), now)).toBe(false); // too early
     expect(canRemind(row({ status: "responded" }), now)).toBe(false);
     expect(canRemind(row({ status: "unsubscribed" }), now)).toBe(false);
     expect(canRemind(row({ status: "pending", sent_at: null }), now)).toBe(false);
     expect(canRemind(row({ error: "Herinnering niet verstuurd" }), now)).toBe(false);
-    // After a reminder sent_at lies three or more days after created_at: no second reminder, ever.
-    expect(canRemind(row({ sent_at: "2026-11-01T12:00:00Z", created_at: "2026-10-25T12:00:00Z" }), now)).toBe(false);
+    // A first mail sent long after the invitation was created can still get its reminder; a second never.
+    expect(canRemind(row({ sent_at: "2026-11-01T12:00:00Z" }), now)).toBe(true);
+    expect(canRemind(row({ reminded_at: "2026-11-09T12:00:00Z" }), now)).toBe(false);
   });
 
   it("counts invited, sent, failed, responded and unsubscribed", () => {

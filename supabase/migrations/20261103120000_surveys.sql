@@ -101,9 +101,12 @@ create table public.survey_invitations (
   idea_id uuid not null references public.ideas(id) on delete cascade,
   email text not null check (char_length(email) <= 254 and email = lower(email)),
   token_hash text not null unique,
+  -- HMAC of the address (app salt): unsubscribing suppresses this stored hash, not one supplied by the caller.
+  email_hash text check (char_length(email_hash) <= 64),
   status text not null default 'pending' check (status in ('pending', 'sent', 'failed', 'responded', 'unsubscribed')),
   error text check (char_length(error) <= 300),
   sent_at timestamptz,
+  reminded_at timestamptz,
   responded_at timestamptz,
   created_by uuid not null default auth.uid() references auth.users(id),
   created_at timestamptz not null default now(),
@@ -186,7 +189,8 @@ create trigger promo_posts_refs before insert or update on public.promo_posts
 create or replace function public.get_public_survey(p_slug text, p_token_hash text)
 returns jsonb language sql stable security definer set search_path = '' as $$
   select jsonb_build_object(
-    'id', e.id, 'state', e.state, 'config', e.config, 'ends_at', e.ends_at,
+    -- The pre-registered key question and success options stay out of the respondent's view.
+    'id', e.id, 'state', e.state, 'config', e.config - 'key_question' - 'success_options', 'ends_at', e.ends_at,
     'invitation', case when p_token_hash is null then null else (
       select jsonb_build_object('status', i.status) from public.survey_invitations i
       where i.token_hash = p_token_hash and i.experiment_id = e.id) end)
@@ -259,7 +263,7 @@ begin
   end if;
   select org_id into v_org from public.ideas where id = inv.idea_id;
   update public.survey_invitations set status = 'unsubscribed' where id = inv.id and status <> 'responded';
-  insert into public.email_suppressions (org_id, email_hash) values (v_org, left(p_email_hash, 64)) on conflict do nothing;
+  insert into public.email_suppressions (org_id, email_hash) values (v_org, left(coalesce(inv.email_hash, p_email_hash), 64)) on conflict do nothing;
   return true;
 end $$;
 

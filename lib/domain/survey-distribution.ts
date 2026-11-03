@@ -272,18 +272,14 @@ export function renderInvitationEmail(input: {
 // 4. Invitation status
 // ---------------------------------------------------------------------------
 
-export type InvitationRow = { status: string; sent_at: string | null; created_at: string; error: string | null };
+export type InvitationRow = { status: string; sent_at: string | null; reminded_at: string | null; error: string | null };
 
 const DAY = 24 * 60 * 60 * 1000;
 
-// One reminder, at least three days after the first mail, only to people who did not respond. Without a
-// separate column the reminder is recognised by sent_at moving three or more days past created_at (a reminder
-// always does that; a first mail sent within three days of creating the invitation never does).
+// One reminder (reminded_at), at least three days after the first mail, only to people who did not respond.
 export function canRemind(r: InvitationRow, now = new Date()): boolean {
-  if (r.status !== "sent" || !r.sent_at || r.error) return false;
-  const sent = new Date(r.sent_at).getTime();
-  const created = new Date(r.created_at).getTime();
-  return now.getTime() - sent >= REMINDER_AFTER_DAYS * DAY && sent - created < REMINDER_AFTER_DAYS * DAY;
+  if (r.status !== "sent" || !r.sent_at || r.error || r.reminded_at) return false;
+  return now.getTime() - new Date(r.sent_at).getTime() >= REMINDER_AFTER_DAYS * DAY;
 }
 
 export type InvitationCounts = { invited: number; sent: number; pending: number; failed: number; responded: number; unsubscribed: number; remindable: number };

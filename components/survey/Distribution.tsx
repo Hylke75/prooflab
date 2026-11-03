@@ -26,7 +26,7 @@ export async function Distribution({ ideaId, exp, canWrite }: { ideaId: string; 
 
   const [{ data: posts }, { data: invitations }] = await Promise.all([
     open ? supabase.from("promo_posts").select("id, platform, body, origin").eq("experiment_id", exp.id).order("created_at") : Promise.resolve({ data: [] }),
-    survey ? supabase.from("survey_invitations").select("status, sent_at, created_at, error").eq("experiment_id", exp.id).limit(20000) : Promise.resolve({ data: [] }),
+    survey ? supabase.from("survey_invitations").select("status, sent_at, reminded_at, error").eq("experiment_id", exp.id).limit(20000) : Promise.resolve({ data: [] }),
   ]);
   const counts = invitationCounts(invitations ?? []);
   const config = survey ? SurveyConfigSchema.safeParse(exp.config) : null;
