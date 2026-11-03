@@ -5,6 +5,7 @@ import { CHANNELS } from "@/lib/domain/tracking";
 import { channelLink, defaultInvitation, defaultReminder, invitationCounts, publicPath } from "@/lib/domain/survey-distribution";
 import { PROMO_PLATFORMS, PROMO_PLATFORM_KEYS, type PromoPlatform } from "@/lib/domain/promo";
 import { maskCampaignUrl } from "@/lib/integrations/expandi-push";
+import { latestSurveyJob } from "@/lib/survey-jobs";
 import { CopyButton } from "./CopyButton";
 import { Invitations } from "./Invitations";
 import { PromoPosts } from "./PromoPosts";
@@ -28,10 +29,11 @@ export async function Distribution({ ideaId, exp, canWrite, plan }: { ideaId: st
   const supabase = await supabaseServer();
   const slug = exp.public_slug;
 
-  const [{ data: posts }, { data: invitations }, { data: hook }] = await Promise.all([
+  const [{ data: posts }, { data: invitations }, { data: hook }, job] = await Promise.all([
     open ? supabase.from("promo_posts").select("id, platform, body, origin, code").eq("experiment_id", exp.id).order("created_at") : Promise.resolve({ data: [] }),
     survey ? supabase.from("survey_invitations").select("status, sent_at, reminded_at, error, delivery_issue").eq("experiment_id", exp.id).limit(20000) : Promise.resolve({ data: [] }),
     open ? supabase.from("expandi_campaign_hooks").select("url, pushed_count, last_push_at").eq("experiment_id", exp.id).maybeSingle() : Promise.resolve({ data: null }),
+    survey ? latestSurveyJob(exp.id) : Promise.resolve(null),
   ]);
   const counts = invitationCounts(invitations ?? []);
   const config = survey ? SurveyConfigSchema.safeParse(exp.config) : null;
@@ -90,6 +92,7 @@ export async function Distribution({ ideaId, exp, canWrite, plan }: { ideaId: st
           invite={defaultInvitation({ researcher: c.researcher, title: c.title, intro: c.intro, minutes: c.estimated_minutes })}
           reminder={defaultReminder({ researcher: c.researcher, title: c.title, minutes: c.estimated_minutes })}
           counts={counts}
+          job={job}
         />
       )}
 

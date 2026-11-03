@@ -10,6 +10,7 @@ import { describeWeights } from "@/lib/domain/calibration";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { createReportVersion, shareReportVersion } from "./actions";
 import { PrintButton } from "./PrintButton";
+import { Icon } from "@/components/Icon";
 
 export const metadata: Metadata = { title: "Rapportage" };
 
@@ -66,7 +67,14 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           </p>
         </div>
         <div className="stack" style={{ justifyItems: "end" }}>
-          {r && <PrintButton />}
+          {r && current && (
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <a className="btn white" href={`/app/ideas/${id}/report/pdf?v=${current.version}`} download>
+                <Icon name="file" /> Download PDF
+              </a>
+              <PrintButton />
+            </div>
+          )}
           {canWrite && (
             <ActionForm action={createReportVersion.bind(null, id)} submitLabel={newest ? "Nieuwe versie maken" : "Maak het eerste rapport"} submitClass={newest ? "btn white sm" : "btn primary"} pendingLabel="Rapport samenstellen…"><span /></ActionForm>
           )}

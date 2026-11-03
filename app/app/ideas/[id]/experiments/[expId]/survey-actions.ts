@@ -8,24 +8,14 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { requireWritableIdea } from "@/lib/data";
-import { aiConfigured, emailConfigured, env, trackingConfigured, trackingSaltFor, trackingSalts } from "@/lib/env";
+import { aiConfigured, emailConfigured, env, trackingConfigured, trackingSalts } from "@/lib/env";
 import { SurveyConfigSchema, type SurveyConfig } from "@/lib/domain/survey";
-import {
-  MAX_INVITES,
-  SEND_BATCH_SIZE,
-  canRemind,
-  checkTemplate,
-  invitationLink,
-  isEmail,
-  linksCsv,
-  normalizeEmail,
-  oneClickUnsubscribeLink,
-  renderInvitationEmail,
-  sliceBatches,
-  unsubscribeLink,
-  channelLink,
-} from "@/lib/domain/survey-distribution";
+import { MAX_INVITES, canRemind, checkTemplate, isEmail, linksCsv, normalizeEmail, sliceBatches, channelLink } from "@/lib/domain/survey-distribution";
 import { emailHash, emailHashes, invitationToken, tokenHash } from "@/lib/domain/survey-tokens";
+import { personalLinks } from "@/lib/survey-links";
+import { MAX_JOB_IDS, SurveyJobPayloadSchema } from "@/lib/jobs/survey-email";
+import { kickWorker, workerConfigured } from "@/lib/jobs/worker";
+import { jobNeedsWorker, latestSurveyJob, type StartJobResult, type SurveyJob } from "@/lib/survey-jobs";
 import {
   PROMO_MIN,
   PROMO_PLATFORMS,
@@ -39,7 +29,6 @@ import {
   type PromoPlatform,
 } from "@/lib/domain/promo";
 import { cleanShare } from "@/lib/domain/survey-results";
-import { SEND_GAP_MS, sendEmail, sleep } from "@/lib/email";
 import { aiErrorMessage, runAi } from "@/lib/ai/guard";
 import { draftPromoPosts } from "@/lib/ai/promo";
 import type { LandingConfig } from "@/lib/experiment-metrics";
@@ -84,13 +73,6 @@ async function liveSurvey(ideaId: string, expId: string) {
   const config = surveyConfig(exp);
   if (!config) throw new Error("De enquête is ongeldig.");
   return { exp, config, slug: exp.public_slug };
-}
-
-// The addresses (of rows) whose hash under any known salt version is on the organisation's suppression list.
-async function suppressedEmails(orgId: string, emails: string[]): Promise<Set<string>> {
-  const hashes = new Map(emails.map((e) => [e, emailHashes(trackingSalts, e)]));
-  const found = await suppressedHashes(orgId, [...hashes.values()].flat());
-  return new Set(emails.filter((e) => hashes.get(e)!.some((h) => found.has(h))));
 }
 
 async function suppressedHashes(orgId: string, hashes: string[]): Promise<Set<string>> {
@@ -159,108 +141,136 @@ export async function createInvitations(ideaId: string, expId: string, input: { 
   }
 }
 
-export type BatchResult = { error?: string; sent?: number; failed?: number; skipped?: number; errors?: string[]; remaining?: number };
+// Step 2: sending runs as a durable background job (lib/jobs): one job per send request, holding the invitation
+// ids (and names for the greeting, dropped when the job ends). The worker claims each invitation before mailing
+// it (pending/failed → sent), so a retry, a second worker or a double click never mails twice. Without a mail
+// connection nothing is enqueued.
 
-// The links are derived with the salt version the invitation was created under (salt rotation).
-function personalLinks(slug: string, invitationId: string, email: string, saltVersion: string) {
-  const salt = trackingSaltFor(saltVersion);
-  if (!salt) throw new Error(`Sleutelversie ${saltVersion} staat niet meer in TRACKING_SALTS; de persoonlijke links van deze uitnodigingen kunnen niet worden gemaakt.`);
-  const token = invitationToken(salt, invitationId);
-  const eHash = emailHash(salt, email);
-  return {
-    token,
-    link: invitationLink(env.appUrl, slug, token),
-    unsubscribe: unsubscribeLink(env.appUrl, token, eHash),
-    oneClick: oneClickUnsubscribeLink(env.appUrl, token, eHash),
-  };
-}
-
-// Step 2: send up to SEND_BATCH_SIZE invitations. The client calls this repeatedly with the next slice and shows
-// progress. Each invitation is claimed first (pending/failed → sent) so a double click never mails twice.
-export async function sendInvitationBatch(
+async function enqueueSurveyJob(
   ideaId: string,
   expId: string,
-  input: { recipients: unknown; template: unknown; basis: boolean },
-): Promise<BatchResult> {
+  kind: "survey_invite" | "survey_reminder",
+  payload: { template: { subject: string; body: string }; ids: string[]; names?: Record<string, string> },
+): Promise<StartJobResult> {
+  if (payload.ids.length === 0) return fail(kind === "survey_invite" ? "Er staan geen uitnodigingen klaar om te versturen." : "Er is niemand aan wie nu een herinnering kan.");
+  const body = { experiment_id: expId, ...payload, ids: payload.ids.slice(0, MAX_JOB_IDS) };
+  if (!SurveyJobPayloadSchema.safeParse(body).success) return fail("Ongeldige invoer.");
+  const supabase = await supabaseServer();
+  // One e-mail job per survey at a time: invitations and reminders share the key.
+  const { data, error } = await supabase.rpc("enqueue_job", { p_idea: ideaId, p_kind: kind, p_payload: body, p_dedupe: `survey-email:${expId}` });
+  if (error || !data) return fail("De verzending kon niet worden ingepland. Probeer het opnieuw.");
+  const res = data as { id: string; created: boolean };
+  kickWorker();
+  refresh(ideaId, expId);
+  const job = await latestSurveyJob(expId);
+  return { job: job ?? undefined, existing: !res.created };
+}
+
+async function sendPreflight(template: unknown): Promise<{ error: string } | { template: { subject: string; body: string } }> {
+  if (!emailConfigured()) return fail("E-mail is niet gekoppeld. Download de persoonlijke links en mail ze vanuit je eigen programma.");
+  if (!workerConfigured()) return fail("Versturen op de achtergrond is niet geconfigureerd (INGEST_SECRET en TRACKING_SALT ontbreken).");
+  const t = TemplateSchema.safeParse(template);
+  if (!t.success) return fail("Ongeldige invoer.");
+  const problem = checkTemplate(t.data);
+  if (problem) return fail(problem);
+  return { template: t.data };
+}
+
+// Send the first mail to the given addresses (scope "new": the ones just added, with names for the greeting) or
+// to everyone not mailed yet (scope "open": pending or failed earlier).
+export async function startInvitationSend(
+  ideaId: string,
+  expId: string,
+  input: { scope: "new" | "open"; recipients?: unknown; template: unknown; basis: boolean },
+): Promise<StartJobResult> {
   try {
     if (input.basis !== true) return fail("Bevestig dat je een grondslag hebt om deze mensen te mailen.");
-    if (!emailConfigured()) return fail("E-mail is niet gekoppeld. Download de persoonlijke links en mail ze vanuit je eigen programma.");
-    const recipients = z.array(RecipientSchema).max(SEND_BATCH_SIZE).safeParse(input.recipients);
-    const template = TemplateSchema.safeParse(input.template);
-    if (!recipients.success || !template.success) return fail("Ongeldige invoer.");
-    const problem = checkTemplate(template.data);
-    if (problem) return fail(problem);
-    const { exp, config, slug } = await liveSurvey(ideaId, expId);
-    const names = new Map(recipients.data.map((r) => [normalizeEmail(r.email), r.name]));
+    const pre = await sendPreflight(input.template);
+    if ("error" in pre) return pre;
+    await liveSurvey(ideaId, expId);
     const supabase = await supabaseServer();
-    const { data: rows, error } = await supabase
-      .from("survey_invitations")
-      .select("id, email, salt_version")
-      .eq("experiment_id", expId)
-      .in("status", ["pending", "failed"])
-      .is("delivery_issue", null)
-      .in("email", [...names.keys()]);
-    if (error) return fail("De uitnodigingen konden niet worden geladen.");
-    // Someone may have unsubscribed (or bounced) via another survey since the list was uploaded.
-    const suppressed = await suppressedEmails(exp.org_id, (rows ?? []).map((r) => r.email));
-    let sent = 0;
-    let failed = 0;
-    let skipped = 0;
-    const errors: string[] = [];
-    for (const r of rows ?? []) {
-      if (suppressed.has(r.email)) {
-        await supabase.from("survey_invitations").delete().eq("id", r.id).in("status", ["pending", "failed"]).is("delivery_issue", null);
-        skipped++;
-        continue;
+    const ids: string[] = [];
+    const names: Record<string, string> = {};
+    if (input.scope === "new") {
+      const recipients = z.array(RecipientSchema).max(MAX_INVITES).safeParse(input.recipients);
+      if (!recipients.success) return fail("Ongeldige invoer.");
+      const byEmail = new Map(recipients.data.map((r) => [normalizeEmail(r.email), r.name]));
+      for (const chunk of sliceBatches([...byEmail.keys()], 200)) {
+        const { data, error } = await supabase.from("survey_invitations").select("id, email").eq("experiment_id", expId).in("status", ["pending", "failed"]).is("delivery_issue", null).in("email", chunk);
+        if (error) return fail("De uitnodigingen konden niet worden geladen.");
+        for (const r of data ?? []) {
+          ids.push(r.id);
+          const name = byEmail.get(r.email)?.trim();
+          if (name) names[r.id] = name.slice(0, 80);
+        }
       }
-      const links = personalLinks(slug, r.id, r.email, r.salt_version);
-      const claimedAt = new Date().toISOString();
-      const { data: claimed } = await supabase
+    } else {
+      const { data, error } = await supabase
         .from("survey_invitations")
-        .update({ status: "sent", sent_at: claimedAt, error: null })
-        .eq("id", r.id)
+        .select("id")
+        .eq("experiment_id", expId)
         .in("status", ["pending", "failed"])
         .is("delivery_issue", null)
-        .select("id");
-      if (!claimed?.length) {
-        skipped++;
-        continue;
-      }
-      const mail = renderInvitationEmail({ template: template.data, name: names.get(r.email) ?? null, link: links.link, unsubscribeUrl: links.unsubscribe, researcher: config.researcher });
-      const res = await sendEmail({ to: r.email, ...mail, listUnsubscribe: links.oneClick, idempotencyKey: `invite-${r.id}-${claimedAt}` });
-      if (res.ok) {
-        sent++;
-        // Bounces and complaints from Resend refer to this id (see /api/email/resend).
-        if (res.id) await supabase.from("survey_invitations").update({ provider_message_id: res.id.slice(0, 100) }).eq("id", r.id);
-      } else {
-        failed++;
-        if (errors.length < 3) errors.push(res.error);
-        await supabase.from("survey_invitations").update({ status: "failed", sent_at: null, error: res.error.slice(0, 300) }).eq("id", r.id).eq("status", "sent");
-      }
-      await sleep(SEND_GAP_MS);
+        .order("created_at")
+        .limit(MAX_JOB_IDS);
+      if (error) return fail("De uitnodigingen konden niet worden geladen.");
+      for (const r of data ?? []) ids.push(r.id);
     }
-    refresh(ideaId, expId);
-    return { sent, failed, skipped, errors };
+    return await enqueueSurveyJob(ideaId, expId, "survey_invite", { template: pre.template, ids, names: Object.keys(names).length ? names : undefined });
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Er ging iets mis.");
   }
 }
 
-// Addresses that still need a first mail (pending, or failed earlier), for "verstuur openstaande".
-export async function listUnsent(ideaId: string, expId: string): Promise<{ error?: string; emails?: string[] }> {
+// One reminder for people who did not respond, at least three days after the first mail. The reminder reuses the
+// personal link; the worker checks the three days and "no reminder yet" again when it claims each invitation.
+export async function startReminderSend(ideaId: string, expId: string, input: { template: unknown }): Promise<StartJobResult> {
   try {
+    const pre = await sendPreflight(input.template);
+    if ("error" in pre) return pre;
     await liveSurvey(ideaId, expId);
     const supabase = await supabaseServer();
     const { data, error } = await supabase
       .from("survey_invitations")
-      .select("email")
+      .select("id, status, sent_at, reminded_at, error")
       .eq("experiment_id", expId)
-      .in("status", ["pending", "failed"])
+      .eq("status", "sent")
+      .is("error", null)
+      .is("reminded_at", null)
       .is("delivery_issue", null)
-      .order("created_at")
-      .limit(MAX_INVITES * 5);
+      .order("sent_at")
+      .limit(MAX_JOB_IDS);
     if (error) return fail("De uitnodigingen konden niet worden geladen.");
-    return { emails: (data ?? []).map((r) => r.email) };
+    const now = new Date();
+    const ids = (data ?? []).filter((r) => canRemind(r, now)).map((r) => r.id);
+    return await enqueueSurveyJob(ideaId, expId, "survey_reminder", { template: pre.template, ids });
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Er ging iets mis.");
+  }
+}
+
+// Polled by the Distribution panel while a job is active. When no cron has picked the job up yet (Vercel Hobby
+// has no per-minute cron), the poll kicks the worker after its response.
+export async function surveyJobStatus(ideaId: string, expId: string): Promise<{ error?: string; job?: SurveyJob | null }> {
+  try {
+    await loadExp(ideaId, expId);
+    const job = await latestSurveyJob(expId);
+    if (job && jobNeedsWorker(job)) kickWorker(20_000);
+    return { job };
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Er ging iets mis.");
+  }
+}
+
+// Stop button: cancels the job; mails already handed to the mail service are not recalled.
+export async function cancelSurveyJob(ideaId: string, expId: string, jobId: string): Promise<{ error?: string; job?: SurveyJob | null }> {
+  try {
+    await loadExp(ideaId, expId);
+    const supabase = await supabaseServer();
+    const { error } = await supabase.rpc("cancel_job", { p_job: jobId });
+    if (error) return fail("Stoppen is mislukt.");
+    refresh(ideaId, expId);
+    return { job: await latestSurveyJob(expId) };
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Er ging iets mis.");
   }
@@ -286,77 +296,6 @@ export async function exportInvitationLinks(ideaId: string, expId: string): Prom
       return { email: r.email, link: l.link, unsubscribe: l.unsubscribe };
     });
     return { csv: linksCsv(rows), count: rows.length };
-  } catch (e) {
-    return fail(e instanceof Error ? e.message : "Er ging iets mis.");
-  }
-}
-
-// One reminder for people who did not respond, at least three days after the first mail. The reminder reuses the
-// personal link. Called repeatedly by the client until nothing is left; failures are recorded and not retried.
-export async function sendReminderBatch(ideaId: string, expId: string, input: { template: unknown }): Promise<BatchResult> {
-  try {
-    if (!emailConfigured()) return fail("E-mail is niet gekoppeld.");
-    const template = TemplateSchema.safeParse(input.template);
-    if (!template.success) return fail("Ongeldige invoer.");
-    const problem = checkTemplate(template.data);
-    if (problem) return fail(problem);
-    const { exp, config, slug } = await liveSurvey(ideaId, expId);
-    const supabase = await supabaseServer();
-    const { data, error } = await supabase
-      .from("survey_invitations")
-      .select("id, email, status, sent_at, reminded_at, error, salt_version")
-      .eq("experiment_id", expId)
-      .eq("status", "sent")
-      .is("error", null)
-      .is("reminded_at", null)
-      .order("sent_at")
-      .limit(MAX_INVITES * 5);
-    if (error) return fail("De uitnodigingen konden niet worden geladen.");
-    const now = new Date();
-    const due = (data ?? []).filter((r) => canRemind(r, now));
-    const batch = due.slice(0, SEND_BATCH_SIZE);
-    const suppressed = await suppressedEmails(exp.org_id, batch.map((r) => r.email));
-    let sent = 0;
-    let failed = 0;
-    let skipped = 0;
-    const errors: string[] = [];
-    for (const r of batch) {
-      if (suppressed.has(r.email)) {
-        await supabase.from("survey_invitations").update({ error: "Geen herinnering: adres staat op de afmeldlijst." }).eq("id", r.id).eq("status", "sent");
-        skipped++;
-        continue;
-      }
-      const links = personalLinks(slug, r.id, r.email, r.salt_version);
-      const claimedAt = new Date().toISOString();
-      const { data: claimed } = await supabase
-        .from("survey_invitations")
-        .update({ reminded_at: claimedAt })
-        .eq("id", r.id)
-        .eq("status", "sent")
-        .is("reminded_at", null)
-        .select("id");
-      if (!claimed?.length) {
-        skipped++;
-        continue;
-      }
-      const mail = renderInvitationEmail({ template: template.data, name: null, link: links.link, unsubscribeUrl: links.unsubscribe, researcher: config.researcher });
-      const res = await sendEmail({ to: r.email, ...mail, listUnsubscribe: links.oneClick, idempotencyKey: `reminder-${r.id}` });
-      if (res.ok) {
-        sent++;
-        if (res.id) await supabase.from("survey_invitations").update({ reminder_message_id: res.id.slice(0, 100) }).eq("id", r.id);
-      } else {
-        failed++;
-        if (errors.length < 3) errors.push(res.error);
-        await supabase
-          .from("survey_invitations")
-          .update({ reminded_at: null, error: `Herinnering niet verstuurd: ${res.error}`.slice(0, 300) })
-          .eq("id", r.id)
-          .eq("status", "sent");
-      }
-      await sleep(SEND_GAP_MS);
-    }
-    refresh(ideaId, expId);
-    return { sent, failed, skipped, errors, remaining: Math.max(0, due.length - batch.length) };
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Er ging iets mis.");
   }

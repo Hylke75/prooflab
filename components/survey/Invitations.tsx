@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   MAX_INVITES,
   REMINDER_AFTER_DAYS,
-  SEND_BATCH_SIZE,
   checkTemplate,
   guessEmailColumn,
   guessNameColumn,
@@ -12,13 +12,19 @@ import {
   parseCsv,
   recipientsFromCsv,
   renderInvitationEmail,
-  sliceBatches,
   type InvitationCounts,
   type InvitationTemplate,
   type ParsedList,
-  type Recipient,
 } from "@/lib/domain/survey-distribution";
-import { createInvitations, exportInvitationLinks, listUnsent, sendInvitationBatch, sendReminderBatch } from "@/app/app/ideas/[id]/experiments/[expId]/survey-actions";
+import type { StartJobResult, SurveyJob } from "@/lib/survey-jobs";
+import {
+  cancelSurveyJob,
+  createInvitations,
+  exportInvitationLinks,
+  startInvitationSend,
+  startReminderSend,
+  surveyJobStatus,
+} from "@/app/app/ideas/[id]/experiments/[expId]/survey-actions";
 
 type Props = {
   ideaId: string;
@@ -32,9 +38,27 @@ type Props = {
   invite: InvitationTemplate;
   reminder: InvitationTemplate;
   counts: InvitationCounts;
+  job: SurveyJob | null;
 };
 
-type Progress = { label: string; done: number; total: number; sent: number; failed: number; errors: string[]; finished: boolean };
+const ACTIVE = new Set(["queued", "running"]);
+const POLL_MS = 3000;
+
+function jobLabel(job: SurveyJob): string {
+  const what = job.kind === "survey_reminder" ? "Herinneringen versturen" : "Uitnodigingen versturen";
+  switch (job.status) {
+    case "queued":
+      return job.attempts > 0 ? `${what}: wacht op een nieuwe poging` : `${what}: in de wachtrij`;
+    case "running":
+      return `${what}: bezig`;
+    case "done":
+      return `${what}: klaar`;
+    case "cancelled":
+      return `${what}: gestopt`;
+    default:
+      return `${what}: mislukt`;
+  }
+}
 
 function download(name: string, csv: string) {
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -61,9 +85,28 @@ export function Invitations(p: Props) {
   const [reminder, setReminder] = useState<InvitationTemplate>(p.reminder);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [progress, setProgress] = useState<Progress | null>(null);
+  const [job, setJob] = useState<SurveyJob | null>(p.job);
   const [busy, setBusy] = useState(false);
-  const stop = useRef(false);
+  const [stopping, setStopping] = useState(false);
+  const router = useRouter();
+  const active = !!job && ACTIVE.has(job.status);
+
+  // While a send job is queued or running: poll its progress (the poll also wakes the worker when no cron
+  // picked it up yet) and refresh the counts once it ends. Sending continues when this tab is closed.
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      const res = await surveyJobStatus(p.ideaId, p.expId);
+      if (cancelled || res.error || !res.job) return;
+      setJob(res.job);
+      if (!ACTIVE.has(res.job.status)) router.refresh();
+    }, POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [active, p.ideaId, p.expId, router]);
 
   const list: ParsedList = useMemo(() => {
     if (mode === "paste") return parseAddressList(pasted);
@@ -80,28 +123,29 @@ export function Invitations(p: Props) {
     unsubscribeUrl: `${p.surveyUrl.replace(/\/s\/[^/]+$/, "")}/s/afmelden?u=persoonlijke-code`,
     researcher: p.researcher,
   });
-  const disabled = !p.live || !p.trackingReady;
+  const disabled = !p.live || !p.trackingReady || active;
 
-  async function sendAll(recipients: Recipient[], label: string) {
-    stop.current = false;
-    const batches = sliceBatches(recipients, SEND_BATCH_SIZE);
-    const state: Progress = { label, done: 0, total: recipients.length, sent: 0, failed: 0, errors: [], finished: false };
-    setProgress({ ...state });
-    for (const batch of batches) {
-      if (stop.current) break;
-      const res = await sendInvitationBatch(p.ideaId, p.expId, { recipients: batch, template, basis });
-      if (res.error) {
-        state.errors.push(res.error);
-        break;
-      }
-      state.done += batch.length;
-      state.sent += res.sent ?? 0;
-      state.failed += res.failed ?? 0;
-      for (const e of res.errors ?? []) if (state.errors.length < 5 && !state.errors.includes(e)) state.errors.push(e);
-      setProgress({ ...state });
+  function started(res: StartJobResult): boolean {
+    if (res.error) {
+      setError(res.error);
+      return false;
     }
-    state.finished = true;
-    setProgress({ ...state });
+    if (res.job) setJob(res.job);
+    if (res.existing) setNotice("Er loopt al een verzending voor deze enquête; die wordt eerst afgemaakt.");
+    return true;
+  }
+
+  async function stopJob() {
+    if (!job) return;
+    setStopping(true);
+    try {
+      const res = await cancelSurveyJob(p.ideaId, p.expId, job.id);
+      if (res.error) setError(res.error);
+      else if (res.job) setJob(res.job);
+      router.refresh();
+    } finally {
+      setStopping(false);
+    }
   }
 
   async function submit() {
@@ -124,7 +168,8 @@ export function Invitations(p: Props) {
       const created = new Set(res.created ?? []);
       if (created.size === 0) return;
       if (p.emailReady) {
-        await sendAll(list.recipients.filter((r) => created.has(r.email)), "Uitnodigingen versturen");
+        const recipients = list.recipients.filter((r) => created.has(r.email));
+        if (!started(await startInvitationSend(p.ideaId, p.expId, { scope: "new", recipients, template, basis }))) return;
       } else {
         const out = await exportInvitationLinks(p.ideaId, p.expId);
         if (out.error || !out.csv) return setError(out.error ?? "De links konden niet worden gemaakt.");
@@ -144,9 +189,7 @@ export function Invitations(p: Props) {
     if (templateProblem) return setError(templateProblem);
     setBusy(true);
     try {
-      const res = await listUnsent(p.ideaId, p.expId);
-      if (res.error) return setError(res.error);
-      await sendAll((res.emails ?? []).map((email) => ({ email, name: null })), "Openstaande uitnodigingen versturen");
+      started(await startInvitationSend(p.ideaId, p.expId, { scope: "open", template, basis }));
     } finally {
       setBusy(false);
     }
@@ -171,28 +214,9 @@ export function Invitations(p: Props) {
     const problem = checkTemplate(reminder);
     if (problem) return setError(problem);
     setBusy(true);
-    stop.current = false;
-    const state: Progress = { label: "Herinneringen versturen", done: 0, total: p.counts.remindable, sent: 0, failed: 0, errors: [], finished: false };
-    setProgress({ ...state });
     try {
-      // Each call handles one batch and reports what is left; failed reminders are recorded and not retried.
-      for (let i = 0; i < Math.ceil(MAX_INVITES * 5 / SEND_BATCH_SIZE) && !stop.current; i++) {
-        const res = await sendReminderBatch(p.ideaId, p.expId, { template: reminder });
-        if (res.error) {
-          state.errors.push(res.error);
-          break;
-        }
-        const handled = (res.sent ?? 0) + (res.failed ?? 0) + (res.skipped ?? 0);
-        state.done += handled;
-        state.sent += res.sent ?? 0;
-        state.failed += res.failed ?? 0;
-        for (const e of res.errors ?? []) if (state.errors.length < 5 && !state.errors.includes(e)) state.errors.push(e);
-        setProgress({ ...state });
-        if (!res.remaining || handled === 0) break;
-      }
+      started(await startReminderSend(p.ideaId, p.expId, { template: reminder }));
     } finally {
-      state.finished = true;
-      setProgress({ ...state });
       setBusy(false);
     }
   }
@@ -362,15 +386,25 @@ export function Invitations(p: Props) {
       {error && <div className="form-error mt-12" role="alert">{error}</div>}
       {notice && <div className="form-ok mt-12" role="status">{notice}</div>}
 
-      {progress && (
+      {job && (
         <div className="mt-12" role="status" aria-live="polite">
           <label htmlFor="inv-progress" className="field-label" style={{ marginTop: 0 }}>
-            {progress.label}: {progress.done} van {progress.total} verwerkt · {progress.sent} verstuurd{progress.failed ? ` · ${progress.failed} mislukt` : ""}
-            {progress.finished ? " · klaar" : ""}
+            {jobLabel(job)} · {job.progress.done} van {job.progress.total} verwerkt · {job.progress.sent} verstuurd
+            {job.progress.failed ? ` · ${job.progress.failed} mislukt` : ""}
+            {job.progress.skipped ? ` · ${job.progress.skipped} overgeslagen` : ""}
           </label>
-          <progress id="inv-progress" max={Math.max(1, progress.total)} value={progress.done} style={{ width: "100%", accentColor: "var(--blue)" }} />
-          {!progress.finished && <button type="button" className="text-link" onClick={() => (stop.current = true)}>Stoppen na deze batch</button>}
-          {progress.errors.length > 0 && <ul className="field-error" style={{ margin: "6px 0 0 18px" }}>{progress.errors.map((e) => <li key={e}>{e}</li>)}</ul>}
+          <progress id="inv-progress" max={Math.max(1, job.progress.total)} value={job.progress.done} style={{ width: "100%", accentColor: "var(--blue)" }} />
+          {active && (
+            <p className="tiny mt-8">
+              ProofLab verstuurt op de achtergrond; je kunt dit tabblad sluiten.{" "}
+              <button type="button" className="text-link" onClick={stopJob} disabled={stopping}>
+                {stopping ? "Stoppen…" : "Stop verzending"}
+              </button>
+            </p>
+          )}
+          {job.status === "cancelled" && <p className="tiny mt-8">Gestopt. Wie nog niet gemaild is, staat bij &quot;Verstuur openstaande&quot;.</p>}
+          {job.lastError && job.status !== "done" && <p className="field-error">{job.lastError}</p>}
+          {job.progress.errors.length > 0 && <ul className="field-error" style={{ margin: "6px 0 0 18px" }}>{job.progress.errors.map((e) => <li key={e}>{e}</li>)}</ul>}
         </div>
       )}
 
