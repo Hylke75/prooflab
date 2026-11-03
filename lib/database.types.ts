@@ -1386,6 +1386,8 @@ export type Database = {
       ideas: {
         Row: {
           outcome_clock_start: string | null
+          stake_kind: string | null
+          stake_value: number | null
           outcome_statement: string | null
           outcome_metric: string | null
           outcome_target: number | null
@@ -1421,6 +1423,8 @@ export type Database = {
         }
         Insert: {
           outcome_clock_start?: string | null
+          stake_kind?: string | null
+          stake_value?: number | null
           outcome_statement?: string | null
           outcome_metric?: string | null
           outcome_target?: number | null
@@ -1456,6 +1460,8 @@ export type Database = {
         }
         Update: {
           outcome_clock_start?: string | null
+          stake_kind?: string | null
+          stake_value?: number | null
           outcome_statement?: string | null
           outcome_metric?: string | null
           outcome_target?: number | null

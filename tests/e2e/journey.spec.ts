@@ -45,6 +45,9 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   // 1. Decision-first intake
   await page.goto("/app/ideas/new");
   await page.getByRole("button", { name: "Is er voldoende markt voor dit aanbod?" }).click();
+  // Inzet en beslisdatum zijn verplicht in de intake.
+  await page.getByLabel("Hoeveel (euro)", { exact: true }).fill("25000");
+  await page.getByLabel("Uiterlijke beslisdatum", { exact: true }).fill(new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10));
   await page.getByRole("button", { name: "Volgende stap" }).click();
   await page.getByLabel("Geslaagd als…", { exact: true }).fill("Zes maanden na het besluit hebben minstens 10 eventbureaus een betaald abonnement.");
   await page.getByLabel("Wat meet je?", { exact: true }).fill("betalende eventbureaus");
