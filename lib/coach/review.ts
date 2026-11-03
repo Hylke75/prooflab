@@ -165,6 +165,26 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
   };
 }
 
+async function sprintFacts(idea: Dossier["idea"], today: string): Promise<CoachFacts["sprint"]> {
+  const progress = await loadProgress(idea.id);
+  const s = sprintStatus({
+    start: idea.sprint_start,
+    weeks: idea.sprint_weeks,
+    today,
+    stage: sprintStage(progress),
+    testsStarted: progress.experimentsLive + progress.experimentsEnded > 0,
+  });
+  return s.planned ? { week: s.week, weeks: s.weeks, state: s.state, behindReason: s.behindReason } : null;
+}
+
+// De actuele feiten van één dossier, voor de controle "is dit echt gedaan?" bij een coachnotitie.
+export async function loadCoachFacts(ideaId: string): Promise<CoachFacts> {
+  const { idea } = await getIdea(ideaId);
+  const db = await supabaseServer();
+  const today = todayInNL();
+  return loadFacts(db, await loadDossier(idea), await sprintFacts(idea, today), today);
+}
+
 async function insertNotes(db: Db, ideaId: string, drafts: CoachNoteDraft[], source: "rules" | "ai"): Promise<number> {
   let created = 0;
   // One insert per note: a note that is already open (a parallel review) fails alone on the unique index.
@@ -197,15 +217,7 @@ export async function runCoachReview(ideaId: string, opts: { force?: boolean } =
     if (since < REVIEW_INTERVAL_MS) return { status: "throttled", waitSeconds: Math.ceil((REVIEW_INTERVAL_MS - since) / 1000) };
   }
 
-  const progress = await loadProgress(ideaId);
-  const s = sprintStatus({
-    start: idea.sprint_start,
-    weeks: idea.sprint_weeks,
-    today,
-    stage: sprintStage(progress),
-    testsStarted: progress.experimentsLive + progress.experimentsEnded > 0,
-  });
-  const sprint = s.planned ? { week: s.week, weeks: s.weeks, state: s.state, behindReason: s.behindReason } : null;
+  const sprint = await sprintFacts(idea, today);
   const fingerprint = makeFingerprint({ day: today, data: await dossierFingerprint(db, ideaId, sprint?.week ?? null) });
   const changed = compareFingerprints(row?.fingerprint, fingerprint);
   if (!changed.any && !opts.force) return { status: "unchanged" };

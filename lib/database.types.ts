@@ -303,6 +303,7 @@ export type Database = {
           resolved_at: string | null
           resolved_by: string | null
           helpful: boolean | null
+          confirmed_without_data: boolean
         }
         Insert: {
           id?: string
@@ -319,6 +320,7 @@ export type Database = {
           resolved_at?: string | null
           resolved_by?: string | null
           helpful?: boolean | null
+          confirmed_without_data?: boolean
         }
         Update: {
           id?: string
@@ -335,6 +337,7 @@ export type Database = {
           resolved_at?: string | null
           resolved_by?: string | null
           helpful?: boolean | null
+          confirmed_without_data?: boolean
         }
         Relationships: []
       }

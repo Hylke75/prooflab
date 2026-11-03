@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  checkNoteDone,
   DONE_COOLDOWN_DAYS,
+  NOT_DONE,
+  RULE_LABELS,
   evaluateRules,
   hypotheticalQuestions,
   openForecastMoment,
@@ -312,5 +315,41 @@ describe("starting calibration: forecast_overconfident", () => {
     }
     expect(ruleLabel("ai")).toBe("AI-coach");
     expect(ruleLabel("onbekend")).toBe("onbekend");
+  });
+});
+
+describe('"Gedaan": is het werk echt gedaan?', () => {
+  const rule = (code: string) => ({ code, source: "rules", kind: "warning" });
+
+  it("alternatives_missing is pas gedaan als er een alternatief of status quo is", () => {
+    expect(checkNoteDone(rule("alternatives_missing"), facts({ competitorKinds: ["direct"] }))).toEqual({
+      done: false,
+      message: "We zien nog geen huidig alternatief of 'niets doen' bij de concurrenten.",
+    });
+    expect(checkNoteDone(rule("alternatives_missing"), facts({ competitorKinds: ["direct", "status_quo"] }))).toEqual({ done: true });
+    expect(checkNoteDone(rule("alternatives_missing"), facts({ competitorKinds: ["alternative"] }))).toEqual({ done: true });
+  });
+
+  it("outcome_undefined is pas gedaan als de definitie bestaat", () => {
+    const open = { outcome: { defined: false, due: null, resolved: false, checkins: [] } };
+    expect(checkNoteDone(rule("outcome_undefined"), facts(open))).toMatchObject({ done: false, message: "We zien nog geen uitkomstdefinitie." });
+    expect(checkNoteDone(rule("outcome_undefined"), facts())).toEqual({ done: true });
+  });
+
+  it("controleert regels met een eigen code per situatie (forecast:moment, decision_deadline:datum)", () => {
+    const ended = { experiments: [exp({ state: "ended" })] };
+    expect(checkNoteDone(rule("forecast:experiment"), facts(ended))).toMatchObject({ done: false, message: expect.stringMatching(/^We zien nog geen voorspelling/) });
+    expect(checkNoteDone(rule("forecast:experiment"), facts({ ...ended, forecasts: [{ moment: "experiment", kind: "consultant" }] }))).toEqual({ done: true });
+    expect(checkNoteDone(rule("base_rate_missing"), facts({ ...ended, baseRateChosen: false }))).toMatchObject({ done: false, message: "We zien nog geen gekozen basispercentage." });
+  });
+
+  it("laat AI-notities en complimenten zonder controle afronden", () => {
+    expect(checkNoteDone({ code: "ai:123", source: "ai", kind: "tip" }, facts({ competitorKinds: [] }))).toEqual({ done: true });
+    expect(checkNoteDone({ code: "praise_first_behaviour", source: "rules", kind: "praise" }, facts())).toEqual({ done: true });
+  });
+
+  it("heeft voor elke regel een concrete melding", () => {
+    const rules = Object.keys(RULE_LABELS).filter((r) => r !== "ai" && !r.startsWith("praise"));
+    for (const r of rules) expect(NOT_DONE[r], r).toMatch(/^We zien nog/);
   });
 });

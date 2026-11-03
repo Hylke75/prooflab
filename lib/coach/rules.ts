@@ -530,6 +530,47 @@ export function evaluateRules(f: CoachFacts): CoachNoteDraft[] {
 }
 
 // ---------------------------------------------------------------------------
+// "Gedaan": is het werk echt gedaan?
+// ---------------------------------------------------------------------------
+
+// Wat we per regel missen zolang de voorwaarde nog geldt ("We zien nog geen …").
+export const NOT_DONE: Record<string, string> = {
+  alternatives_missing: "We zien nog geen huidig alternatief of 'niets doen' bij de concurrenten.",
+  single_secondary_source: "We zien nog geen tweede onafhankelijke of primaire bron bij deze bevinding(en).",
+  opinions_no_behaviour: "We zien nog geen waargenomen klantgedrag (een aanvraag, aanmelding of aanbetaling).",
+  critical_untested: "We zien nog geen test of nieuwe status voor deze kritieke aanname.",
+  test_pace: "We zien nog geen extra deelnemers: in dit tempo haalt de test de steekproef nog niet.",
+  interview_hypothetical: "We zien nog geen aangepaste gespreksleidraad: er staan nog hypothetische vragen in.",
+  survey_suggest: "We zien nog geen enquête of extra datapunten bij deze aanname.",
+  acquaintances_majority: "We zien nog geen extra gesprekken buiten je eigen netwerk.",
+  learning_card_waiting: "We zien nog geen goedgekeurde Learning Card.",
+  reality_check_stale: "We zien nog geen nieuwe Reality Check na het laatste bewijs.",
+  decision_deadline: "We zien nog geen vastgelegd besluit.",
+  decision_confirm: "We zien nog geen bevestiging van het besluit door de opdrachtgever.",
+  outcome_undefined: "We zien nog geen uitkomstdefinitie.",
+  base_rate_missing: "We zien nog geen gekozen basispercentage.",
+  forecast: "We zien nog geen voorspelling van het team bij dit moment.",
+  forecast_overconfident: "We zien nog geen afgeronde landingpage- of prijstest die de afwijking onderbouwt.",
+  outcome_due: "We zien nog geen vastgelegde uitkomst.",
+  outcome_checkin: "We zien nog geen tussenstand na drie maanden.",
+  sprint_behind: "We zien nog niet dat het dossier de sprintweek heeft ingehaald.",
+  no_customer_voice: "We zien nog geen bron met de stem van de klant (review, forum, interview of enquête).",
+  outreach_unimported: "We zien nog geen opgenomen LinkedIn-antwoorden bij de bronnen.",
+};
+
+export type DoneCheck = { done: true } | { done: false; message: string };
+
+// Puur: een regelnotitie is gedaan als de regel met dezelfde code niet meer afgaat op de actuele feiten.
+// Complimenten en notities van de AI-coach hebben geen controleerbare voorwaarde en gelden als gedaan.
+export function checkNoteDone(note: { code: string; source: string; kind?: string }, f: CoachFacts): DoneCheck {
+  if (note.source !== "rules" || note.kind === "praise") return { done: true };
+  const still = evaluateRules(f).some((d) => d.code === note.code);
+  if (!still) return { done: true };
+  const rule = note.code.split(":")[0];
+  return { done: false, message: NOT_DONE[rule] ?? "We zien in het dossier nog geen verandering die dit punt oplost." };
+}
+
+// ---------------------------------------------------------------------------
 // Reconciling drafts with stored notes
 // ---------------------------------------------------------------------------
 

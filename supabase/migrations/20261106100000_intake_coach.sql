@@ -105,3 +105,33 @@ grant select on public.reference_proposals to authenticated;
 
 create trigger reference_proposals_audit after insert or update or delete on public.reference_proposals
   for each row execute function public.audit_row();
+
+-- ---------------------------------------------------------------------------
+-- 4. Coachnotities: "Gedaan" zonder zichtbare data
+-- ---------------------------------------------------------------------------
+-- Ziet ProofLab nog niet dat het werk gedaan is, dan vraagt de app om bevestiging. Sluit de consultant de notitie
+-- toch, dan staat confirmed_without_data op true; de audit (audit_row) legt de wijziging vast.
+
+alter table public.coach_notes add column if not exists confirmed_without_data boolean not null default false;
+
+create or replace function public.guard_coach_note()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  if (to_jsonb(new) - 'status' - 'resolved_at' - 'resolved_by' - 'helpful' - 'confirmed_without_data')
+     is distinct from (to_jsonb(old) - 'status' - 'resolved_at' - 'resolved_by' - 'helpful' - 'confirmed_without_data') then
+    raise exception 'COACH_NOTE_LOCKED: alleen de status van een coachnotitie verandert' using errcode = 'P0001';
+  end if;
+  if new.status <> 'open' and old.status = 'open' then
+    new.resolved_at := now();
+    new.resolved_by := auth.uid();
+    -- Alleen bij het afronden als "gedaan" kan de bevestiging zonder data worden gezet.
+    new.confirmed_without_data := new.status = 'done' and coalesce(new.confirmed_without_data, false);
+  else
+    new.confirmed_without_data := old.confirmed_without_data;
+    if new.status is not distinct from old.status then
+      new.resolved_at := old.resolved_at;
+      new.resolved_by := old.resolved_by;
+    end if;
+  end if;
+  return new;
+end $$;

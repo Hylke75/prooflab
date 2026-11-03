@@ -91,6 +91,29 @@ d("intake en succescriterium", () => {
     await expect(as(alice, (c) => c.query("update public.ideas set outcome_revenue_target = -5 where id = $1", [idea]))).rejects.toThrow();
   });
 
+  it("legt vast dat een coachnotitie zonder data als gedaan is bevestigd, en alleen bij het afronden", async () => {
+    const idea = await newIdea(alice, org);
+    const note = (code: string) =>
+      as(alice, async (c) =>
+        (
+          await c.query(
+            "insert into public.coach_notes (idea_id, code, kind, title, body, href, source) values ($1, $2, 'warning', 'Een titel', 'Een uitleg met waarom.', $3, 'rules') returning id",
+            [idea, code, `/app/ideas/${idea}/research`],
+          )
+        ).rows[0].id as string,
+      );
+    const a = await note("alternatives_missing");
+    await as(alice, (c) => c.query("update public.coach_notes set status = 'done', confirmed_without_data = true where id = $1", [a]));
+    const audit = await db.query("select detail from public.audit_events where table_name = 'coach_notes' and row_id = $1::text and action = 'update'", [a]);
+    expect(JSON.stringify(audit.rows)).toContain("confirmed_without_data");
+    // "Niet relevant" kan niet als bevestigd-zonder-data worden gemarkeerd, en een afgeronde notitie verandert niet meer.
+    const b = await note("outcome_undefined");
+    await as(alice, (c) => c.query("update public.coach_notes set status = 'dismissed', confirmed_without_data = true where id = $1", [b]));
+    await as(alice, (c) => c.query("update public.coach_notes set confirmed_without_data = false where id = $1", [a]));
+    const rows = (await db.query("select id, confirmed_without_data from public.coach_notes where id in ($1, $2)", [a, b])).rows;
+    expect(Object.fromEntries(rows.map((r) => [r.id, r.confirmed_without_data]))).toEqual({ [a]: true, [b]: false });
+  });
+
   it("legt referentievoorstellen alleen via de app-server vast (ingest-sleutel), nooit direct", async () => {
     const idea = await newIdea(alice, org);
     const args = [idea, "Nieuwe B2B-diensten", 0.38, "https://example.org/rapport", "Rapport", "had 38% binnen zes maanden een klant", "Er had 38% binnen zes maanden een klant.", "gpt-x"];
