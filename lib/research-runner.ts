@@ -4,6 +4,7 @@ import { searchQuestion, extractClaims, challengeDossier, checkSupport, type Exc
 import { mergeFoundSources } from "@/lib/ai/web-evidence";
 import { providersFor } from "@/lib/ai/settings";
 import { isProvider, modelFor, PROVIDER_LABELS, PROVIDERS, type ProviderId } from "@/lib/ai/providers/config";
+import { runDoneNote } from "@/lib/research-worker-plan";
 import { fitsBudget, notStartedText, providersForRun, searchesFor, stepEstimateUsd, type ModelMap, type RunMode } from "@/lib/research-steps";
 import { assertAiBudget, runAi } from "@/lib/ai/guard";
 import { log } from "@/lib/log";
@@ -109,8 +110,17 @@ export async function advanceRun(runId: string): Promise<RunState> {
     break;
   }
   if (!next) {
-    await supabase.from("research_runs").update({ status: "done", finished_at: new Date().toISOString() }).eq("id", runId);
-    await alertOnZeroSources(run);
+    const { data: finished } = await supabase
+      .from("research_runs")
+      .update({ status: "done", finished_at: new Date().toISOString() })
+      .eq("id", runId)
+      .in("status", ["queued", "running"])
+      .select("id");
+    if (finished?.length) {
+      await alertOnZeroSources(run);
+      // Fase B2, punt 4: een melding in de app, ook als niemand de pagina open heeft.
+      await notifyRunDone(runId, run.idea_id);
+    }
     return state();
   }
   const task = next;
@@ -195,6 +205,41 @@ export async function runProviders(ideaId: string, mode: RunMode, budget: number
 
 // Two consecutive finished runs of the same idea without a single kept passage: an incident for operations
 // (log.error goes to Sentry when SENTRY_DSN is set). Also counted on the system status page.
+// Fase B2, punt 4: een coachnotitie "onderzoeksrun klaar" (het bestaande meldingensysteem: coachpaneel en
+// dashboard). Eerdere open meldingen van een run gaan dicht. Een mislukte melding breekt de run nooit.
+async function notifyRunDone(runId: string, ideaId: string) {
+  const supabase = await supabaseServer();
+  try {
+    const [{ data: r }, { data: tasks }] = await Promise.all([
+      supabase.from("research_runs").select("mode, cost_usd, budget_usd").eq("id", runId).single(),
+      supabase.from("research_tasks").select("kind, status, output").eq("run_id", runId),
+    ]);
+    const list = tasks ?? [];
+    const claimsOf = (kind: string) => list.filter((t) => t.kind === kind && t.status === "done").reduce((s, t) => s + Number((t.output as { claims?: number } | null)?.claims ?? 0), 0);
+    const counterClaims = claimsOf("counter");
+    const note = runDoneNote({
+      runId,
+      ideaId,
+      mode: r?.mode ?? "quick",
+      costUsd: Number(r?.cost_usd ?? 0),
+      budgetUsd: Number(r?.budget_usd ?? 0),
+      claims: claimsOf("extract") + counterClaims,
+      counterClaims,
+      skipped: list.filter((t) => t.status === "skipped").length,
+      failed: list.filter((t) => t.status === "failed").length,
+    });
+    const { data: open } = await supabase.from("coach_notes").select("id, code").eq("idea_id", ideaId).eq("status", "open");
+    const older = (open ?? []).filter((n) => n.code.startsWith("research_run_done:") && n.code !== note.code).map((n) => n.id);
+    if (older.length) await supabase.from("coach_notes").update({ status: "done" }).in("id", older);
+    const row = { idea_id: ideaId, ...note, audience: "consultant" };
+    // Bron 'system' bestaat vanaf de B2-migratie; daarvoor als 'rules' (dan sluit de volgende coachcontrole hem).
+    const { error } = await supabase.from("coach_notes").insert({ ...row, source: "system" });
+    if (error && error.code !== "23505") await supabase.from("coach_notes").insert({ ...row, source: "rules" });
+  } catch (e) {
+    await log.warn("research_done_note_failed", { runId }, e);
+  }
+}
+
 async function alertOnZeroSources(run: { id: string; idea_id: string; created_at: string }) {
   const supabase = await supabaseServer();
   const { data: previous } = await supabase

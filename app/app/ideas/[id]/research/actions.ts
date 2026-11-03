@@ -20,6 +20,7 @@ import { EXPECTED_SOURCE_KEYS } from "@/lib/domain/research-plan";
 import { ensureDecisiveQuestion, loadRunQuestions, markDecisive } from "@/lib/research-questions-data";
 import { decisiveFirst } from "@/lib/research-questions";
 import { planSteps, runBudgetUsd } from "@/lib/research-steps";
+import { kickResearchRun } from "@/lib/research-worker";
 import { isUnknown, normalizeReferenceDate, scopeValue, UNKNOWN } from "@/lib/domain/claim-scope";
 
 export type ActionState = { error: string | null; ok?: string | null };
@@ -504,7 +505,11 @@ export async function startResearchRun(ideaId: string, mode: "quick" | "deep"): 
   if (!aiConfigured()) return { error: "Live webonderzoek is niet verbonden. Voeg bronnen handmatig toe." };
   const supabase = await supabaseServer();
   const { data: running } = await supabase.from("research_runs").select("id").eq("idea_id", ideaId).in("status", ["queued", "running"]).limit(1);
-  if (running?.length) return { runId: running[0].id };
+  if (running?.length) {
+    // Een lopende run hervatten op de server (stond de keten stil, dan pakt hij hem weer op).
+    await kickResearchRun(running[0].id, { refresh: true });
+    return { runId: running[0].id };
+  }
   await ensureDecisiveQuestion(ideaId, idea);
   const qs = decisiveFirst(await loadRunQuestions(supabase, ideaId));
   if (qs.length === 0) return { error: "Maak eerst een onderzoekskaart." };
@@ -513,6 +518,8 @@ export async function startResearchRun(ideaId: string, mode: "quick" | "deep"): 
   if (error || !run) return { error: "De onderzoeksrun kon niet worden gestart." };
   const tasks = planSteps(qs, mode).map((t, i) => ({ run_id: run.id, idea_id: ideaId, position: i + 1, kind: t.kind, question_id: t.questionId, label: t.label }));
   await supabase.from("research_tasks").insert(tasks);
+  // Fase B2, punt 4: de server werkt de stappen af, ook als het tabblad dicht gaat (lib/research-worker.ts).
+  await kickResearchRun(run.id, { refresh: true });
   revalidatePath(`/app/ideas/${ideaId}/research`);
   return { runId: run.id };
 }

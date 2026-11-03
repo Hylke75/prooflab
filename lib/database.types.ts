@@ -2243,6 +2243,12 @@ export type Database = {
           },
         ]
       }
+      research_run_leases: {
+        Row: { run_id: string; idea_id: string; lease_id: string; lease_until: string }
+        Insert: { run_id: string; idea_id: string; lease_id: string; lease_until: string }
+        Update: { run_id?: string; idea_id?: string; lease_id?: string; lease_until?: string }
+        Relationships: []
+      }
       research_runs: {
         Row: {
           budget_usd: number
@@ -2916,6 +2922,8 @@ export type Database = {
         Returns: boolean
       }
       add_research_cost: { Args: { p_cost: number; p_task: string }; Returns: number }
+      research_run_lease: { Args: { p_run: string; p_lease: string; p_seconds: number }; Returns: boolean }
+      research_run_release: { Args: { p_run: string; p_lease: string }; Returns: undefined }
       org_ai_spend: { Args: { p_idea: string }; Returns: { spent: number; cap: number }[] }
       system_status: {
         Args: { p_org?: string | null }

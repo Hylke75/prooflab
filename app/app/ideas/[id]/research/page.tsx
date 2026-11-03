@@ -76,6 +76,12 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     run && canWrite
       ? await supabase.from("research_search_log").select("id, question_id, question, provider, query, urls, passages, reused, kind").eq("run_id", run.id).order("created_at")
       : { data: [] };
+  // Fase B2, punt 4: werkt er nu een serverportie aan de run (lease)? Zonder de B2-migratie: onbekend.
+  const lease =
+    run && canWrite && (run.status === "queued" || run.status === "running")
+      ? await supabase.from("research_run_leases").select("lease_until").eq("run_id", run.id).maybeSingle()
+      : null;
+  const worker = workerState(lease);
   const counterTasks = (tasks ?? []).filter((t) => t.kind === "counter");
   const challenges =
     ((tasks ?? []).find((t) => t.kind === "reality_check" && t.status === "done")?.output as { challenges?: { title: string; detail: string }[] } | null)?.challenges ?? [];
@@ -364,6 +370,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               providers={PROVIDERS.map((p) => ({ id: p, name: providerLabel(p), keyEnv: PROVIDER_KEY_ENV[p], connected: configuredProviders().includes(p) }))}
               searchWith={searchProviders.map((p) => PROVIDER_LABELS[p].name)}
               estimates={runEstimates}
+              worker={worker}
               run={run ? { id: run.id, status: run.status, mode: run.mode, cost: Number(run.cost_usd), budget: Number(run.budget_usd), tasks: (tasks ?? []).map((t) => ({ label: t.label, status: t.status, detail: t.detail })) } : null}
               searchLog={groupSearchLog((logRows ?? []).filter((r) => r.kind !== "counter"), questions)}
               cbsAction={fetchCbsFigures.bind(null, id)}
@@ -694,6 +701,11 @@ function groupSearchLog(rows: LogRow[], questions: { id: string; position: numbe
 }
 
 // Providers that would run the web search for this organisation (its choice first, ensemble on or off).
+function workerState(lease: { error: unknown; data: { lease_until: string } | null } | null): "busy" | "idle" | "unknown" {
+  if (!lease || lease.error) return "unknown";
+  return lease.data && new Date(lease.data.lease_until).getTime() > Date.now() ? "busy" : "idle";
+}
+
 async function researchProviders(orgId: string) {
   return ensembleProviders(await aiSettingsForOrg(orgId), "research", configuredProviders());
 }

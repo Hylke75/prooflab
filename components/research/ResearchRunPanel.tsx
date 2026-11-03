@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { cancelResearchRun, startResearchRun } from "@/app/app/ideas/[id]/research/actions";
@@ -121,8 +121,9 @@ export function SearchLogList({ questions, canWrite, title = "Zoeklogboek" }: { 
   );
 }
 
-// Real progress from persisted tasks, no fake percentage. The run keeps going step by step
-// while this page is open; when the browser closes it resumes on the next visit.
+// Real progress from persisted tasks, no fake percentage. Fase B2: de run draait op de server
+// (lib/research-worker.ts) en gaat door als dit tabblad dicht is. Dit paneel ververst alleen de weergave en vraagt
+// de server af en toe om een stilgevallen run te hervatten; het voert zelf geen stappen uit.
 export function ResearchRunPanel({
   ideaId,
   run,
@@ -132,7 +133,10 @@ export function ResearchRunPanel({
   searchLog = [],
   cbsAction,
   estimates,
+  worker = "unknown",
 }: {
+  // Of er nu een serverportie aan de run werkt (lease), voor de statusregel.
+  worker?: "busy" | "idle" | "unknown";
   // Fase B2: schatting vóór de start per modus ("geschat: $x–$y van max $z") en wie er zoekt.
   estimates?: Record<"quick" | "deep", { text: string; providers: string[] }>;
   ideaId: string;
@@ -150,30 +154,24 @@ export function ResearchRunPanel({
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const busy = useRef(false);
   const active = run && (run.status === "queued" || run.status === "running");
+  const runId = run?.id ?? null;
 
   useEffect(() => {
-    if (!active || !canWrite) return;
-    let stop = false;
-    const tick = async () => {
-      if (busy.current || stop) return;
-      busy.current = true;
-      try {
-        const res = await fetch(`/api/research/${run!.id}/advance`, { method: "POST" });
-        if (!res.ok) setError("Een onderzoeksstap mislukte; ProofLab probeert het automatisch opnieuw.");
-        router.refresh();
-      } finally {
-        busy.current = false;
-      }
-    };
-    tick();
-    const t = setInterval(tick, 2500);
+    if (!active || !canWrite || !runId) return;
+    // Hervatten is idempotent: werkt er al een portie aan de run, dan doet de server niets.
+    const resume = () =>
+      fetch(`/api/research/${runId}/advance`, { method: "POST" })
+        .then((res) => setError(res.ok ? null : "De server kon de run nu niet oppakken; ProofLab probeert het zo opnieuw."))
+        .catch(() => setError("Geen verbinding; de run loopt op de server door."));
+    resume();
+    const refresh = setInterval(() => router.refresh(), 5000);
+    const again = setInterval(resume, 60_000);
     return () => {
-      stop = true;
-      clearInterval(t);
+      clearInterval(refresh);
+      clearInterval(again);
     };
-  }, [active, canWrite, run, router]);
+  }, [active, canWrite, runId, router]);
 
   const begin = (mode: "quick" | "deep") =>
     start(async () => {
@@ -274,6 +272,13 @@ export function ResearchRunPanel({
               </div>
             </div>
           ))}
+          {active && (
+            <div className="note" role="status">
+              <strong>{worker === "busy" ? "Draait op de server." : "Wacht op de server."}</strong> Je kunt dit tabblad sluiten: de run gaat door en je
+              krijgt een melding in de coach als hij klaar is.
+              {worker === "idle" && " Staat de run langer stil, dan hervat ProofLab hem zodra iemand van het team deze pagina opent."}
+            </div>
+          )}
           {searchLog.length > 0 && <SearchLogList questions={searchLog} canWrite={canWrite} />}
           <div className="row between mt-12">
             <span className="tiny num">
