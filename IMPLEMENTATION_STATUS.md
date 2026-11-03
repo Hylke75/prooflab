@@ -1,6 +1,6 @@
 # Implementation status
 
-Stand: 29 oktober 2026. Bouwvolgorde volgens het besluit "eerst één complete route" (analyse §12.4–12.5).
+Stand: 3 november 2026. Bouwvolgorde volgens het besluit "eerst één complete route" (analyse §12.4–12.5).
 Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van een externe stap · ⬜ nog niet gebouwd.
 
 ## Externe stappen die nog openstaan
@@ -8,7 +8,7 @@ Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van e
 | Stap | Waarom | Wie |
 |---|---|---|
 | ~~Migraties toepassen~~ | Gedaan 28-10: `core_schema`, `security`, `hardening` staan op project `prooflab`; ingest-sleutel geregistreerd | ✅ |
-| Migratie `integrity` (29-10) toepassen en migratiegeschiedenis rechtzetten | Zonder deze migratie werken testpagina's, inloglinks, sprints en rapport delen niet tegen de live database | Claude, na bevestiging in Supabase |
+| Migraties `integrity` (29-10), `prediction` en `coach_and_signals` (3-11) toepassen en migratiegeschiedenis rechtzetten | Zonder deze migraties werken testpagina's, inloglinks, sprints, rapport delen, voorspellingen, coach en koppelingen niet tegen de live database | Claude, na bevestiging in Supabase |
 | Auth-hook "Before user created" → `public.hook_before_user_created` (Authentication → Hooks) | Registratie alleen op uitnodiging, ook bij directe aanroepen van Supabase Auth | Hylke |
 | E-mailsjabloon "Magic Link": link naar `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next={{ .RedirectTo }}` | Uitnodigingen werken dan op elk apparaat | Hylke |
 | Eigen adres of domein op de toegangslijst (`insert into public.signup_allowlist (entry) values ('naam@bureau.nl')`) | Registratie staat dicht; consultants hebben een plek op de lijst nodig | Claude of Hylke |
@@ -102,13 +102,31 @@ opgelost in code; de databasekant wordt live zodra migratie `integrity` is toege
 - [x] Visuele controle 1440/768/390/320 van alle ingelogde schermen; overloop opgelost (DESIGN_DIFF_LOG #17)
 - [x] Dogfood-dossier "ProofLab op ProofLab" in de app, ingevoerd via de echte UI (`npm run dogfood`): beslisvraag, 3 bronnen met letterlijk fragment dat live is teruggevonden (Strategyzer, ValidatorAI, IdeaProof), 6 aanbieders/alternatieven (Rapidly: website blokkeert broncontrole → positionering en prijs onbekend), aannamekaart, interview-Test Card als concept (niet gepubliceerd). Staat nu in de E2E-werkruimte; na je eerste login draai je het script met `DOGFOOD_EMAIL`/`DOGFOOD_PASSWORD` voor je eigen werkruimte
 
-## Testresultaten (laatste run, 29-10)
+## Testresultaten (laatste run, 3-11)
 
 - `npm run lint` en `npm run typecheck` — schoon
-- `npm test` — 114 geslaagd, 3 overgeslagen (live eval zonder API-sleutel)
-- `npm run test:db` — 14 geslaagd
+- `npm test` — 224 geslaagd, 3 overgeslagen (live eval zonder API-sleutel)
+- `npm run test:db` — 36 geslaagd (RLS, integriteit, voorspellingen, coach, outreach, onderzoeksmethodes)
 - `npm run build` — geslaagd
-- E2E tegen het live project: opnieuw te draaien na migratie `integrity` (laatste geslaagde run: 28-10, 5/5)
+- Niet gedaan: E2E en visuele controle van de nieuwe schermen; die vragen het live project met de nieuwe migraties
+  (laatste geslaagde E2E: 28-10, 5/5). De E2E-specs zijn bijgewerkt voor de nieuwe intakestap en de besluitvoorspelling.
+
+## Voorspellus (3 november, ontwerp `ProofLab_Voorspelkracht_v1` 3.1–3.4, termijn zes maanden)
+
+- ✅ Uitkomstdefinitie in de intake ("Wanneer is dit geslaagd?"), vast zodra er voorspellingen zijn
+- ✅ Basispercentage per dossier uit een referentieklasse met bron, of eigen percentage vanaf 10 afgeronde dossiers; vast zodra er voorspellingen zijn
+- ✅ Blinde voorspellingen op vier momenten (intake, onderzoek, experiment, besluit) door consultant, opdrachtgever en optioneel AI (apart, telt niet mee)
+- ✅ Besluit vraagt eerst de eigen besluitvoorspelling; de klok van zes maanden start bij het besluit (datum opgeslagen)
+- ✅ Tussenstand na drie maanden en uitkomst na zes maanden, met herinneringen op het dashboard en Brier-score per voorspelling
+- ✅ Pagina "Voorspelkwaliteit": Brier per voorspeller en per moment, kalibratiegrafiek, eigen basispercentages
+- ✅ Rapport toont uitkomstdefinitie, basispercentage, voorspellingen, tussenstanden, uitkomst, kans per aanname, simulatie en klantsignalen
+
+## Coach die meekijkt en klantsignalen uit meer bronnen (3 november)
+
+- ✅ 20 vaste coachregels (tips, waarschuwingen, vragen, complimenten) die zichzelf sluiten als het punt is opgelost; AI-coach (max. 3 rondes per dossier per dag, binnen het maandbudget) bij echte wijzigingen; feed in het coachpaneel, teller op de ideekaarten
+- ✅ Expandi-webhook per dossier (token alleen als hash, contacten gepseudonimiseerd, berichten 180 dagen), cijfers per campagne, antwoorden omzetten in klantsignalen
+- ✅ Bulkimport (plakken of CSV, max. 2.000 regels) en losse pagina's ophalen als klantsignalen
+- ⬜ AI-gemodereerde interviews: besloten voor na de eerste sprints
 
 ## Voorspelkracht: bewijs kwantificeren (3 november, ontwerp `ProofLab_Voorspelkracht_v1` 3.5–3.10)
 
@@ -119,7 +137,7 @@ Alles deterministisch (geen LLM), met unit-tests in `tests/unit/quantify.test.ts
 - ✅ 3.6 Bayesiaanse schatting naast het Wilson-interval, prior uit eerdere afgeronde tests van hetzelfde type in de organisatie (max. 20 pseudo-waarnemingen), pas na de eindconditie. Het vooraf vastgelegde oordeel is ongewijzigd.
 - ✅ 3.10 Pre-mortem in de Reality Check: redenen worden aannames (`origin = 'premortem'`); waarschuwing zonder pre-mortem.
 - ✅ 3.8 Monte Carlo marktomvang: 90%-bandbreedte per factor, 5.000 trekkingen met vaste startwaarde, P10/P50/P90, kans op break-evenomzet, grootste onzekerheidsbron.
-- ⬜ Beginwaarde per aanname opslaan (nu alleen verkennen op het scherm): vraagt een kolom `assumptions.prior`.
+- ✅ Beginwaarde per aanname opslaan (`assumptions.prior`), te zetten op de risicokaart.
 - ⬜ Factoren ijken op afgeronde dossiers (fase D).
 
 ## Gevonden en opgelost tijdens de live E2E
@@ -131,12 +149,12 @@ Alles deterministisch (geen LLM), met unit-tests in `tests/unit/quantify.test.ts
 
 ## Nog niet gebouwd (na de route)
 
-- ⬜ AI-gemodereerde chatinterviews (spraak later)
+- ⬜ AI-gemodereerde chatinterviews (spraak later) — besloten: na de eerste sprints
 - ⬜ Weekritmes: leersessie en besluitsessie met de klant, Fathom-import
 - ⬜ Koppelingen met de Meta- en LinkedIn-advertentie-API's (nu: kanaallinks + handmatig live zetten)
 - ⬜ Experimentencatalogus (±40 methodes met metadata) en begeleide handmatige sjablonen
 - ⬜ Propositie- en businessmodelcanvas
-- ⬜ Concurrentiemonitor (periodiek herchecken), verschillenrapport tussen onderzoeksversies
+- ⬜ Automatische maandelijkse concurrentiecheck (handmatig starten kan al), verschillenrapport tussen onderzoeksversies
 - ⬜ Betalingen/aanbetalingen (na juridische check), Stripe
 - ⬜ Server-side PDF-rendering (nu printstylesheet)
 - ⬜ Gebruiksniveaus (begeleid / verdiepend / expert)
@@ -154,4 +172,4 @@ AI-uitkomsten zijn gelabeld als AI-voorstel tot een consultant ze accepteert.
 - [x] 7.2 Concurrentiecheck per aanbieder en "alles opnieuw controleren" (handmatig te starten; nog geen automatische maandplanning). Verdwenen citaten maken de bevinding "verouderd"; niets wordt verwijderd
 - [x] 7.6 AI-varianten voor landing- en prijstests plus deterministische eerlijkheidscontrole
 - [x] 7.8 Rode team per kritieke aanname (zoekt alleen tegenbewijs, zelfde citaat- en steuncontrole, koppeling "spreekt tegen")
-- ⚠️ Tijdelijke opslag zonder schemawijziging: het AI-oordeel bij een consultantoverride staat als `[ai:…]`-voorvoegsel in `claim_sources.support_note`; de hercontrole staat als regel `Hercontrole JJJJ-MM-DD: …` in `sources.access_note`. Gewenst: eigen kolommen (`ai_support_check`, `live_check`, `live_checked_at`)
+- [x] AI-oordeel en hercontrole in eigen kolommen (`claim_sources.ai_support_check`, `live_found`, `live_checked_at`; `sources.live_checked_at`, `live_error`); notities blijven wat mensen schreven

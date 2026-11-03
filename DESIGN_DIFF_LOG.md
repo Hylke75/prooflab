@@ -39,3 +39,8 @@ blok in dezelfde visuele taal.
 | 31 | Klanten | Geen | Per meekijker de status "Uitgenodigd, nog niet ingelogd" of "Actief", "Stuur inloglink opnieuw" en een vaste notitie over de e-mailserver | Uitnodigingen komen anders stil niet aan bij externe adressen (Supabase-standaard-SMTP) |
 | 32 | Begrippen | Geen uitleg | Korte uitleg bij eerste gebruik van Test Card, 95%-interval, Learning Card en Reality Check, en een begrippenlijst op de helppagina | Consultancyklanten kennen de methodebegrippen niet |
 | 33 | Ideekaart | "Verder →" kon afbreken | "Verder →" breekt niet meer af | Leesbaarheid op smalle kaarten |
+| 34 | Intake | 5 vragen | 6 vragen: na de beslissing "Wanneer is dit geslaagd?" (uitkomst zes maanden na het besluit) | Zonder meetbare uitkomst kan niemand achteraf toetsen of het besluit goed was (Voorspelkracht 3.1) |
+| 35 | Nieuwe schermen | — | "Voorspelling & uitkomst" per dossier, "Voorspelkwaliteit" voor de werkruimte, "Bronnen & koppelingen" per dossier | Voorspellus, uitkomstregistratie en klantsignalen; opgebouwd uit bestaande kaarten, tabellen en pills |
+| 36 | Risicokaart | x-as "weinig/veel bewijs" | x-as "geschatte kans dat dit klopt", met bandbreedte en grootste bijdragen bij de geselecteerde aanname | Bewijs uitgedrukt als kans (Voorspelkracht 3.5); de 2×2-indeling blijft |
+| 37 | Coachpaneel | Vaste tips | Feed "Coach kijkt mee" met open notities (gedaan / niet relevant), boven de bestaande suggesties | Coach die het hele traject meekijkt (besluit 3 november) |
+| 38 | Marktomvang | Eén waarde per factor | Optionele bandbreedte per factor en een simulatiekaart met P10/P50/P90 | Onzekerheid zichtbaar in plaats van drie vaste scenario's (Voorspelkracht 3.8) |
