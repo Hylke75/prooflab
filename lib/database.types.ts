@@ -15,6 +15,147 @@ export type Database = {
   }
   public: {
     Tables: {
+      email_suppressions: {
+        Row: {
+          org_id: string
+          email_hash: string
+          created_at: string
+        }
+        Insert: {
+          org_id: string
+          email_hash: string
+          created_at?: string
+        }
+        Update: {
+          org_id?: string
+          email_hash?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      promo_posts: {
+        Row: {
+          id: string
+          experiment_id: string
+          idea_id: string
+          platform: string
+          body: string
+          origin: string
+          created_by: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          experiment_id: string
+          idea_id: string
+          platform: string
+          body: string
+          origin?: string
+          created_by?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          experiment_id?: string
+          idea_id?: string
+          platform?: string
+          body?: string
+          origin?: string
+          created_by?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      survey_invitations: {
+        Row: {
+          id: string
+          experiment_id: string
+          idea_id: string
+          email: string
+          token_hash: string
+          status: string
+          error: string | null
+          sent_at: string | null
+          responded_at: string | null
+          created_by: string
+          created_at: string
+          retention_until: string
+        }
+        Insert: {
+          id?: string
+          experiment_id: string
+          idea_id: string
+          email: string
+          token_hash: string
+          status?: string
+          error?: string | null
+          sent_at?: string | null
+          responded_at?: string | null
+          created_by?: string
+          created_at?: string
+          retention_until?: string
+        }
+        Update: {
+          id?: string
+          experiment_id?: string
+          idea_id?: string
+          email?: string
+          token_hash?: string
+          status?: string
+          error?: string | null
+          sent_at?: string | null
+          responded_at?: string | null
+          created_by?: string
+          created_at?: string
+          retention_until?: string
+        }
+        Relationships: []
+      }
+      survey_responses: {
+        Row: {
+          id: string
+          experiment_id: string
+          idea_id: string
+          visitor_hash: string
+          invitation_id: string | null
+          source: string
+          channel: string
+          answers: Json
+          consent_given: boolean
+          duration_ms: number | null
+          created_at: string
+          retention_until: string
+        }
+        Insert: {
+          id?: string
+          experiment_id: string
+          idea_id: string
+          visitor_hash: string
+          invitation_id?: string | null
+          source: string
+          channel?: string
+          answers: Json
+          consent_given: boolean
+          duration_ms?: number | null
+          created_at?: string
+          retention_until?: string
+        }
+        Update: {
+          id?: string
+          experiment_id?: string
+          idea_id?: string
+          visitor_hash?: string
+          invitation_id?: string | null
+          source?: string
+          channel?: string
+          answers?: Json
+          consent_given?: boolean
+          duration_ms?: number | null
+          created_at?: string
+          retention_until?: string
+        }
+        Relationships: []
+      }
       coach_notes: {
         Row: {
           id: string
@@ -2235,6 +2376,22 @@ export type Database = {
       }
       mark_report_viewed: { Args: { p_report: string }; Returns: boolean }
       may_create_account: { Args: { p_email: string; p_key: string }; Returns: boolean }
+      get_public_survey: { Args: { p_slug: string; p_token_hash: string | null }; Returns: Json }
+      submit_survey: {
+        Args: {
+          p_answers: Json
+          p_channel: string
+          p_consent: boolean
+          p_duration_ms: number
+          p_key: string
+          p_rate_bucket: string
+          p_slug: string
+          p_token_hash: string | null
+          p_visitor: string
+        }
+        Returns: string
+      }
+      unsubscribe_invitation: { Args: { p_email_hash: string; p_key: string; p_token_hash: string }; Returns: boolean }
       record_outreach_event: {
         Args: { p_campaign: string | null; p_contact_hash: string; p_dedupe: string; p_event: string; p_key: string; p_message: string | null; p_token_hash: string }
         Returns: boolean

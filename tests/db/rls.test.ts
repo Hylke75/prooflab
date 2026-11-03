@@ -475,4 +475,45 @@ d("row level security and integrity rules", () => {
     expect(await as(alice, async (c) => (await c.query("select * from public.outreach_events where idea_id = $1", [A.idea])).rowCount)).toBe(1);
     expect(await as(client, async (c) => (await c.query("select * from public.outreach_events where idea_id = $1", [A.idea])).rowCount)).toBe(0);
   });
+  it("accepts survey answers once per visitor and per invitation, and honours unsubscribes", async () => {
+    const S = await newIdea(alice);
+    const ids = await as(alice, async (c) => {
+      const a = (await c.query("insert into public.assumptions (idea_id, statement, category, importance) values ($1, 'Ze zoeken hulp', 'desirability', 5) returning id", [S.idea])).rows[0].id;
+      const h = (await c.query(
+        `insert into public.hypotheses (idea_id, assumption_id, we_believe, target_group, test_method, metric_label, metric_numerator, metric_denominator, success_threshold_pct, min_sample, max_duration_days)
+         values ($1, $2, 'Ze zoeken actief', 'MKB', 'enquête', 'zocht actief', 'zocht', 'respondenten', 30, 20, 14) returning id`, [S.idea, a])).rows[0].id;
+      const e = (await c.query("insert into public.experiments (idea_id, hypothesis_id, type, title, config) values ($1, $2, 'survey', 'Enquête', '{}') returning id", [S.idea, h])).rows[0].id;
+      await c.query("update public.experiments set state = 'ready_for_review' where id = $1", [e]);
+      await c.query("update public.experiments set state = 'approved' where id = $1", [e]);
+      await c.query("update public.experiments set state = 'live' where id = $1", [e]);
+      const tokenHash = createHash("sha256").update("uitnodiging-1").digest("hex");
+      await c.query("insert into public.survey_invitations (experiment_id, idea_id, email, token_hash) values ($1, $2, 'klant@example.com', $3)", [e, S.idea, tokenHash]);
+      const slug = (await c.query("select public_slug from public.experiments where id = $1", [e])).rows[0].public_slug;
+      return { e, slug, tokenHash };
+    });
+    expect(ids.slug).toMatch(/^[a-f0-9]{14}$/);
+    const submit = (visitor: string, token: string | null, consent = true) =>
+      as("anon", async (c) =>
+        (await c.query("select public.submit_survey($1, $2, $3, 'linkedin', '{\"gezocht\":\"nee\"}', $4, 30000, $5, 'net9') as r", [ingestKey, ids.slug, visitor, consent, token])).rows[0].r,
+      );
+    expect(await submit("v1", null, false)).toBe("consent");
+    expect(await submit("v1", null)).toBe("ok");
+    expect(await submit("v1", null)).toBe("duplicate");
+    expect(await submit("v2", ids.tokenHash)).toBe("ok");
+    expect(await submit("v3", ids.tokenHash)).toBe("duplicate");
+    expect(await submit("v4", "onbekend")).toBe("invalid");
+    const rows = await as(alice, async (c) => (await c.query("select source, channel from public.survey_responses where experiment_id = $1 order by source", [ids.e])).rows);
+    expect(rows).toEqual([{ source: "invitation", channel: "linkedin" }, { source: "open_link", channel: "linkedin" }]);
+    expect((await as(alice, async (c) => (await c.query("select status from public.survey_invitations where experiment_id = $1", [ids.e])).rows[0])).status).toBe("responded");
+    // Clients never see raw survey responses or invitation addresses.
+    expect(await as(client, async (c) => (await c.query("select * from public.survey_responses where experiment_id = $1", [ids.e])).rowCount)).toBe(0);
+    // Unsubscribing suppresses the address for the whole organisation.
+    const t2 = createHash("sha256").update("uitnodiging-2").digest("hex");
+    await as(alice, (c) => c.query("insert into public.survey_invitations (experiment_id, idea_id, email, token_hash) values ($1, $2, 'ander@example.com', $3)", [ids.e, S.idea, t2]));
+    expect(await as("anon", async (c) => (await c.query("select public.unsubscribe_invitation($1, $2, 'hash-ander') as ok", [ingestKey, t2])).rows[0].ok)).toBe(true);
+    expect(await as(alice, async (c) => (await c.query("select * from public.email_suppressions where org_id = $1", [S.org])).rowCount)).toBe(1);
+    expect(await submit("v5", t2)).toBe("invalid");
+    // Responses cannot be written directly.
+    await expect(as(alice, (c) => c.query("insert into public.survey_responses (experiment_id, idea_id, visitor_hash, source, answers, consent_given) values ($1, $2, 'x', 'open_link', '{}', true)", [ids.e, S.idea]))).rejects.toThrow(/permission denied/);
+  });
 });

@@ -76,7 +76,7 @@ export function ExperimentBuilder({
   const [variantsPending, startVariants] = useTransition();
   const draftWarnings = honestyWarnings(page.headline, page.subline, page.offer);
   const askVariants = () => {
-    if (!variantsAction || type === "interview") return;
+    if (!variantsAction || type === "interview" || type === "survey") return;
     startVariants(async () => {
       setVariants(await variantsAction({ assumption_id: assumption.id, type, headline: page.headline, subline: page.subline, offer: page.offer }));
     });

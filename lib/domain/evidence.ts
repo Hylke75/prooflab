@@ -25,6 +25,7 @@ export const KIND_DEFAULTS: Record<ObservationKind, Omit<ObservationDims, "isSyn
   quote_request: { isFact: true, isBehaviour: true, isRealContext: true, isCostly: false },
   deposit: { isFact: true, isBehaviour: true, isRealContext: true, isCostly: true },
   repeat_purchase: { isFact: true, isBehaviour: true, isRealContext: true, isCostly: true },
+  survey_answer: { isFact: true, isBehaviour: false, isRealContext: false, isCostly: false },
   other: { isFact: false, isBehaviour: false, isRealContext: false, isCostly: false },
 };
 
@@ -124,6 +125,7 @@ export type LrEntry = { lr: number; label: string; against?: boolean; why: strin
 
 export const OBSERVATION_LR: Record<ObservationKind, LrEntry> = {
   opinion: { lr: 1.1, label: "Mening of uitgesproken koopintentie", why: "Intentiecorrectie: zeggen is niet doen." },
+  survey_answer: { lr: 1.3, label: "Enquête-uitkomst", why: "Veel mensen over hun eigen recente gedrag, maar zelf gerapporteerd." },
   other: { lr: 1, label: "Overige observatie", why: "Niet in te delen; telt niet mee." },
   problem_confirmed: { lr: 1.5, label: "Probleem herkend in eigen recent gedrag", why: "Echt probleem, maar nog geen koopgedrag." },
   current_behaviour: { lr: 2, label: "Huidige werkwijze", why: "Wat mensen nu al doen om het op te lossen." },

@@ -124,7 +124,7 @@ export const DECISION_BOUNDARY = 0.5;
 // LR of one clear result per test type, consistent with OBSERVATION_LR: a landing page yields a
 // demo request (3), a pricing test a choice at a price (3), an interview series several problem
 // confirmations in recent behaviour (≈ 2,5 after diminishing returns).
-export const TEST_LR: Record<ExperimentType, number> = { interview: 2.5, landing: 3, pricing: 3 };
+export const TEST_LR: Record<ExperimentType, number> = { interview: 2.5, landing: 3, pricing: 3, survey: 1.3 };
 export const EUR_PER_COST_UNIT = 500;
 
 export function costIndex(o: Pick<Option, "days" | "costEur">): number {
@@ -176,7 +176,7 @@ export function valueOfInformation(a: VoiInput): Omit<VoiResult, "index"> {
   const move = best.positive - best.negative;
   const score = ((Math.min(5, Math.max(1, a.importance)) / 5) * uncertainty * move * (best.canFlip ? 1 : 0.5)) / best.cost;
   const level = a.importance >= 4 ? "Kritiek" : a.importance >= 3 ? "Belangrijk" : "Minder belangrijk";
-  const testName = { interview: "klantinterviews", landing: "een landingpage-test", pricing: "een prijs-/aanbodtest" }[best.o.type];
+  const testName = { interview: "klantinterviews", landing: "een landingpage-test", pricing: "een prijs-/aanbodtest", survey: "een enquête" }[best.o.type];
   const why =
     `${level} (${a.importance}/5), geschatte kans ${pctNl(p)}. ` +
     `Met ${testName} (${best.o.duration}, ${best.o.cost}) komt de kans op ${pctNl(best.negative)} of ${pctNl(best.positive)}` +
