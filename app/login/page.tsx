@@ -8,6 +8,8 @@ export const metadata: Metadata = { title: "Inloggen" };
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const sp = await searchParams;
   const next = typeof sp.next === "string" ? sp.next : "/app";
+  // Vanuit een uitnodigingsmail: het adres staat al klaar en de pagina opent op "Inloggen zonder wachtwoord".
+  const email = typeof sp.email === "string" && sp.email.length <= 254 && /^[^\s@]+@[^\s@]+$/.test(sp.email) ? sp.email : "";
   if (await getUser()) redirect("/app");
   return (
     <div className="login-shell">
@@ -28,7 +30,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         </p>
       </section>
       <section className="login-panel">
-        <LoginForm next={next} />
+        <LoginForm next={next} email={email} />
       </section>
     </div>
   );

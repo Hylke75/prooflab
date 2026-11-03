@@ -5,8 +5,8 @@ import { sendMagicLink, signIn, type LoginState } from "./actions";
 
 const empty: LoginState = { error: null, info: null };
 
-export function LoginForm({ next }: { next: string }) {
-  const [mode, setMode] = useState<"password" | "magic">("password");
+export function LoginForm({ next, email = "" }: { next: string; email?: string }) {
+  const [mode, setMode] = useState<"password" | "magic">(email ? "magic" : "password");
   const [pwState, pwAction, pwPending] = useActionState(signIn, empty);
   const [mlState, mlAction, mlPending] = useActionState(sendMagicLink, empty);
   const state = mode === "password" ? pwState : mlState;
@@ -27,7 +27,7 @@ export function LoginForm({ next }: { next: string }) {
       <form action={action}>
         <input type="hidden" name="next" value={next} />
         <label className="field-label" htmlFor="email" style={{ marginTop: 0 }}>E-mailadres</label>
-        <input className="field" id="email" name="email" type="email" autoComplete="email" required />
+        <input className="field" id="email" name="email" type="email" autoComplete="email" defaultValue={email} required />
         {mode !== "magic" && (
           <>
             <label className="field-label" htmlFor="password">Wachtwoord</label>
