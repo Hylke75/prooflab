@@ -5,6 +5,7 @@ import { getWorkspace } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { configuredProviders, emailConfigured, trackingConfigured } from "@/lib/env";
 import { AiProviderSettings } from "@/components/settings/AiProviderSettings";
+import { AiConnectionTest } from "@/components/settings/AiConnectionTest";
 import { aiSettingsForOrg } from "@/lib/ai/settings";
 import { modelFor, PROVIDERS, PROVIDER_LABELS } from "@/lib/ai/providers/config";
 import { monitoringConfigured } from "@/lib/monitoring";
@@ -163,6 +164,7 @@ export default async function StatusPage() {
       )}
       <div style={{ marginTop: 22 }}>
         <AiProviderSettings settings={aiSettings} connected={connected} models={models} />
+        <AiConnectionTest />
       </div>
     </PageFrame>
   );

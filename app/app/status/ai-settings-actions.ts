@@ -5,7 +5,8 @@ import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { getWorkspace } from "@/lib/data";
 import { log } from "@/lib/log";
-import { PROVIDERS } from "@/lib/ai/providers/config";
+import { PROVIDERS, PROVIDER_LABELS, modelFor } from "@/lib/ai/providers/config";
+import { adapterFor, configuredProviders } from "@/lib/ai/providers";
 
 export type AiSettingsState = { error: string | null; ok?: string | null };
 
@@ -46,4 +47,38 @@ export async function saveAiSettings(_: AiSettingsState, form: FormData): Promis
   }
   revalidatePath("/app", "layout");
   return { error: null, ok: "AI-aanbieders opgeslagen." };
+}
+
+// ---------------------------------------------------------------------------
+// Connection test: one tiny question per connected provider
+// ---------------------------------------------------------------------------
+
+export type ConnectionResult = { provider: string; name: string; model: string; ok: boolean; ms: number; message: string };
+export type ConnectionTestState = { error: string | null; results?: ConnectionResult[] };
+
+// Sends each provider with a key a minimal prompt (a few tokens, no web search) and reports whether the key and
+// the model work. Costs a fraction of a cent per provider; not booked against a dossier.
+export async function testAiConnections(): Promise<ConnectionTestState> {
+  const ws = await getWorkspace();
+  if (!ws.org || ws.org.role !== "owner") return { error: "Alleen eigenaren van de werkruimte kunnen de verbindingen testen." };
+  const connected = configuredProviders();
+  const results = await Promise.all(
+    PROVIDERS.map(async (p): Promise<ConnectionResult> => {
+      const name = PROVIDER_LABELS[p].name;
+      const model = modelFor(p);
+      if (!connected.includes(p)) return { provider: p, name, model, ok: false, ms: 0, message: "Geen sleutel ingesteld." };
+      const t0 = Date.now();
+      try {
+        const r = await adapterFor(p).generate({ system: "Dit is een verbindingstest.", user: "Antwoord alleen met het woord OK.", maxTokens: 64, timeoutMs: 30000 });
+        const ms = Date.now() - t0;
+        const answer = r.text.trim().slice(0, 40);
+        return { provider: p, name, model: r.model, ok: true, ms, message: answer ? `Antwoord: "${answer}"` : "Verbonden (leeg antwoord)." };
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Onbekende fout";
+        log.warn("ai_connection_test_failed", { provider: p, model, message });
+        return { provider: p, name, model, ok: false, ms: Date.now() - t0, message };
+      }
+    }),
+  );
+  return { error: null, results };
 }
