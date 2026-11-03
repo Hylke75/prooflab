@@ -26,7 +26,7 @@ export function SupportControls({
       <div className="stack" style={{ gap: 8, marginTop: 8 }}>
         {checkedBy !== "consultant" &&
           (aiConnected ? (
-            <ActionForm action={checkAction} submitLabel={checkedBy === "ai" ? "Laat AI opnieuw beoordelen" : "Laat AI beoordelen (voorstel)"} submitClass="btn soft sm" pendingLabel="Beoordelen…">
+            <ActionForm action={checkAction} submitLabel={checkedBy === "ai" ? "Laat AI opnieuw beoordelen" : "Laat AI beoordelen (voorstel)"} submitClass="btn ai sm" pendingLabel="Beoordelen…">
               <span />
             </ActionForm>
           ) : (

@@ -426,7 +426,7 @@ export function ExperimentBuilder({
                 )}
                 {variantsAction && (
                   aiConnected ? (
-                    <button type="button" className="btn soft sm mt-8" onClick={askVariants} disabled={variantsPending}>
+                    <button type="button" className="btn ai sm mt-8" onClick={askVariants} disabled={variantsPending}>
                       {variantsPending ? "Varianten bedenken…" : "Stel varianten voor (AI)"}
                     </button>
                   ) : (

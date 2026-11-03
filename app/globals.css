@@ -392,3 +392,10 @@ details.quickline[open]>summary::after{transform:rotate(180deg)}
 .table .pill{white-space:normal}
 /* Coach als slide-over/bottom-sheet boven de overlay (die ligt op z-index 28). */
 @media(max-width:1160px){.coach.open{z-index:29}}
+/* AI-knoppen: alles wat een AI-aanbieder aanroept krijgt het limegroen van de voorkant, met donkere petroltekst
+   (contrast ruim boven WCAG AA). Zo zie je in één oogopslag welke actie AI gebruikt en dus geld kost. */
+:root{--color-ai:#d4f46b;--color-ai-hover:#c3e64f;--color-ai-text:#0b2a3a}
+.btn.ai{background:var(--color-ai);color:var(--color-ai-text);border-color:transparent}
+.btn.ai:hover{background:var(--color-ai-hover)}
+.btn.ai:disabled:hover{background:var(--color-ai)}
+.btn.ai:focus-visible{outline:2px solid var(--color-ai-text);outline-offset:2px}

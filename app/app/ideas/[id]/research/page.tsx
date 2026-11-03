@@ -284,7 +284,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               <div className="section-title">
                 <h3>Onderzoekskaart</h3>
                 {canWrite && aiConfigured() && (
-                  <ActionForm action={aiPlan.bind(null, id)} submitLabel="Laat AI opnieuw voorstellen" submitClass="text-link" pendingLabel="Bezig…">
+                  <ActionForm action={aiPlan.bind(null, id)} submitLabel="Laat AI opnieuw voorstellen" submitClass="btn ai sm" pendingLabel="Bezig…">
                     <span />
                   </ActionForm>
                 )}

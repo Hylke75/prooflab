@@ -65,7 +65,7 @@ export function Coach({ data, aiConnected, notes }: { data: CoachData; aiConnect
                     Vraag maar raak
                   </label>
                   <textarea id="coachAsk" name="question" className="coach-input" placeholder="Bijv. welke stap is nu het slimst?" required maxLength={600} />
-                  <button className="btn coach-send" disabled={pending}>
+                  <button className="btn ai coach-send" disabled={pending}>
                     <Icon name="spark" size="sm" /> {pending ? "Even denken…" : "Vraag de coach"}
                   </button>
                   <div className="tiny" style={{ marginTop: 10, textAlign: "center" }}>Antwoorden zijn advies, geen bewijs. Ze verwijzen alleen naar je eigen dossier.</div>

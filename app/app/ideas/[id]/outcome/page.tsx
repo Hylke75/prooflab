@@ -67,7 +67,7 @@ export default async function OutcomePage({ params }: PageProps<"/app/ideas/[id]
                     en neemt een voorstel alleen op als het citaat met het percentage daar letterlijk staat.
                     {view.aiAvailable ? (
                       view.outcome.statement ? (
-                        <ActionForm action={proposeReferenceWithSource.bind(null, id)} submitLabel="Laat AI een referentie met bron voorstellen" submitClass="btn white sm" pendingLabel="Zoeken en controleren…">
+                        <ActionForm action={proposeReferenceWithSource.bind(null, id)} submitLabel="Laat AI een referentie met bron voorstellen" submitClass="btn ai sm" pendingLabel="Zoeken en controleren…">
                           <span />
                         </ActionForm>
                       ) : (
