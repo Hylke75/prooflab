@@ -1,6 +1,7 @@
 import "server-only";
 import { parseTrackingSalts, saltFor } from "@/lib/domain/survey-tokens";
 import { PROVIDERS, type ProviderId } from "@/lib/ai/providers/config";
+import { resolveAppUrl } from "@/lib/domain/app-url";
 
 // TRACKING_SALTS (versioned, first = current) with TRACKING_SALT as the "v1" fallback. See survey-tokens.ts.
 export const trackingSalts = parseTrackingSalts(process.env.TRACKING_SALTS, process.env.TRACKING_SALT);
@@ -10,7 +11,13 @@ if (trackingSalts.problems.length) console.warn(`TRACKING_SALTS: ${trackingSalts
 export const env = {
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
   supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "",
-  appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+  // Publiek basisadres voor links (zie lib/domain/app-url.ts): volgt het eigen productiedomein van Vercel.
+  appUrl: resolveAppUrl({
+    APP_URL: process.env.APP_URL,
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+    VERCEL_ENV: process.env.VERCEL_ENV,
+    VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  }),
   ingestSecret: process.env.INGEST_SECRET ?? "",
   // Optioneel en alleen op de server: de service-rol-sleutel, uitsluitend gebruikt voor Supabase admin generateLink
   // bij uitnodigingen (lib/invite.ts). Zonder deze sleutel bevat de uitnodiging een link naar de inlogpagina.
