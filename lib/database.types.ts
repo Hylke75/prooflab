@@ -177,6 +177,7 @@ export type Database = {
           created_at: string
           resolved_at: string | null
           resolved_by: string | null
+          helpful: boolean | null
         }
         Insert: {
           id?: string
@@ -192,6 +193,7 @@ export type Database = {
           created_at?: string
           resolved_at?: string | null
           resolved_by?: string | null
+          helpful?: boolean | null
         }
         Update: {
           id?: string
@@ -207,6 +209,7 @@ export type Database = {
           created_at?: string
           resolved_at?: string | null
           resolved_by?: string | null
+          helpful?: boolean | null
         }
         Relationships: []
       }
@@ -1630,6 +1633,9 @@ export type Database = {
           created_at: string
           created_by: string
           id: string
+          use_learned_weights: boolean
+          learned_weights_changed_at: string | null
+          learned_weights_changed_by: string | null
           name: string
         }
         Insert: {
@@ -1637,6 +1643,9 @@ export type Database = {
           created_at?: string
           created_by?: string
           id?: string
+          use_learned_weights?: boolean
+          learned_weights_changed_at?: string | null
+          learned_weights_changed_by?: string | null
           name: string
         }
         Update: {
@@ -1644,6 +1653,9 @@ export type Database = {
           created_at?: string
           created_by?: string
           id?: string
+          use_learned_weights?: boolean
+          learned_weights_changed_at?: string | null
+          learned_weights_changed_by?: string | null
           name?: string
         }
         Relationships: []
@@ -2423,6 +2435,24 @@ export type Database = {
       own_base_rate: {
         Args: { p_org: string; p_project_type: string | null; p_min?: number }
         Returns: { resolved: number; achieved: number }[]
+      }
+      set_learned_weights: { Args: { p_org: string; p_on: boolean }; Returns: boolean }
+      learning_evidence_counts: {
+        Args: { p_org: string }
+        Returns: { dimension: string; kind: string; achieved: string; direction: string; dossiers: number }[]
+      }
+      idea_uses_learned_weights: { Args: { p_idea: string }; Returns: boolean }
+      idea_learning_counts: {
+        Args: { p_idea: string }
+        Returns: { dimension: string; kind: string; achieved: string; direction: string; dossiers: number }[]
+      }
+      survey_behaviour_agreement: {
+        Args: { p_org: string }
+        Returns: { survey_verdict: string; behaviour_verdict: string; assumptions: number }[]
+      }
+      coach_note_stats: {
+        Args: { p_org: string }
+        Returns: { idea_id: string; rule: string; status: string; days_to_resolve: number | null; helpful: boolean | null; decision_brier: number | null }[]
       }
       observations_for_idea: {
         Args: { p_idea: string }

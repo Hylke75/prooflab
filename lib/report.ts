@@ -84,6 +84,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         probability: p ? { point: p.probability, low: p.band.low, high: p.band.high, prior: p.prior } : null,
       };
     }),
+    // Default or learned evidence factors (lib/domain/calibration.ts), so every probability can be reproduced.
+    weights: d.weights,
     simulation: d.simulation
       ? { label: d.simulation.label, draws: d.simulation.draws, somCount: d.simulation.somCount, somRevenue: d.simulation.somRevenue, threshold: d.simulation.threshold, pAboveThreshold: d.simulation.pAboveThreshold, thresholdIsBreakEven: d.simulation.thresholdIsBreakEven, mainDriver: d.simulation.drivers[0]?.key ?? null }
       : null,

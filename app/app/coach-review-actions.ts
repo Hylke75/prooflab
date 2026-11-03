@@ -60,3 +60,15 @@ export async function resolveCoachNote(ideaId: string, noteId: string, status: "
   revalidatePath(`/app/ideas/${ideaId}`, "layout");
   return { error: null };
 }
+
+// "Was deze tip nuttig?": a consultant's vote on a note, kept next to its status for the learning page. The
+// database only lets the status and this vote change on a note.
+export async function rateCoachNote(ideaId: string, noteId: string, helpful: boolean): Promise<{ error: string | null }> {
+  if (!UUID.test(ideaId) || !UUID.test(noteId) || typeof helpful !== "boolean") return { error: "Ongeldige notitie." };
+  const { canWrite } = await getIdea(ideaId);
+  if (!canWrite) return { error: "Alleen het onderzoeksteam kan tips beoordelen." };
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase.from("coach_notes").update({ helpful }).eq("id", noteId).eq("idea_id", ideaId).select("id");
+  if (error || !data?.length) return { error: "Je beoordeling kon niet worden bewaard." };
+  return { error: null };
+}
