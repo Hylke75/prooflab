@@ -187,4 +187,42 @@ d("golf A", () => {
     expect([...(await refs(client)).entries()].sort()).toEqual([...mine.entries()].sort());
     expect((await refs(await user(`buiten2-${randomUUID()}@example.com`))).size).toBe(0);
   });
+
+  it("punt 5: startkans met onderbouwing, vergrendeld zodra er bewijs hangt, wijzigen alleen met een geaudite reden", async () => {
+    const a = await as(owner, async (c) => (await c.query("insert into public.assumptions (idea_id, statement, category, importance) values ($1, 'Bureaus betalen vooraf', 'viability', 4) returning id", [A.idea])).rows[0].id as string);
+    // Een afwijking van 50% zonder onderbouwing: geweigerd, ook bij aanmaken.
+    await expect(as(owner, (c) => c.query("update public.assumptions set prior = 0.8 where id = $1", [a]))).rejects.toThrow(/PRIOR_RATIONALE/);
+    await expect(
+      as(owner, (c) => c.query("insert into public.assumptions (idea_id, statement, category, importance, prior) values ($1, 'x x x x x x', 'viability', 3, 0.7)", [A.idea])),
+    ).rejects.toThrow(/PRIOR_RATIONALE/);
+    await as(owner, (c) => c.query("update public.assumptions set prior = 0.5 where id = $1", [a]));
+    await as(owner, (c) => c.query("select public.change_assumption_prior($1, 0.35, 'Basispercentage van vergelijkbare diensten', '')", [a]));
+    // Zelf vergrendelen of ontgrendelen kan niet.
+    await as(owner, (c) => c.query("update public.assumptions set prior_locked_at = now() where id = $1", [a]));
+    expect((await db.query("select prior_locked_at from public.assumptions where id = $1", [a])).rows[0].prior_locked_at).toBeNull();
+
+    // Bewijs koppelen vergrendelt de startkans.
+    await as(owner, async (c) => {
+      const o = (await c.query("insert into public.observations (idea_id, kind, summary) values ($1, 'opinion', 'Leuk idee') returning id", [A.idea])).rows[0].id;
+      await c.query("insert into public.assumption_observations (assumption_id, observation_id, idea_id, relation) values ($1, $2, $3, 'supports')", [a, o, A.idea]);
+    });
+    expect((await db.query("select prior_locked_at from public.assumptions where id = $1", [a])).rows[0].prior_locked_at).not.toBeNull();
+    await expect(as(owner, (c) => c.query("update public.assumptions set prior = 0.65, prior_rationale = 'Nieuwe inschatting na gesprek' where id = $1", [a]))).rejects.toThrow(/PRIOR_LOCKED/);
+    await expect(as(owner, (c) => c.query("select public.change_assumption_prior($1, 0.65, 'Nieuwe inschatting na gesprek', 'kort')", [a]))).rejects.toThrow(/PRIOR_LOCKED/);
+    // Andere velden blijven gewoon te wijzigen.
+    await as(owner, (c) => c.query("update public.assumptions set importance = 5 where id = $1", [a]));
+    await as(owner, (c) => c.query("select public.change_assumption_prior($1, 0.65, 'Basispercentage uit CBS-cijfers 2025', 'Verkeerde referentieklasse gebruikt')", [a]));
+    expect(Number((await db.query("select prior from public.assumptions where id = $1", [a])).rows[0].prior)).toBe(0.65);
+    const audit = (await db.query("select actor_id, detail from public.audit_events where row_id = $1 and action = 'prior_change' order by id", [a])).rows;
+    expect(audit.at(-1).actor_id).toBe(owner.id);
+    expect(audit.at(-1).detail).toMatchObject({ from: 0.35, to: 0.65, locked: true, reason: "Verkeerde referentieklasse gebruikt" });
+    // De reden geldt alleen voor die ene wijziging.
+    await expect(as(owner, (c) => c.query("update public.assumptions set prior = 0.5 where id = $1", [a]))).rejects.toThrow(/PRIOR_LOCKED/);
+
+    // Wie alleen meekijkt, kan de startkans niet wijzigen.
+    const client = await user(`klant5-${randomUUID()}@example.com`);
+    await as(owner, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_decider')", [A.idea, client.email]));
+    await as(client, (c) => c.query("select public.claim_invitations()"));
+    await expect(as(client, (c) => c.query("select public.change_assumption_prior($1, 0.4, 'Andere inschatting van de klant', 'Ik denk er anders over')", [a]))).rejects.toThrow(/NOT_FOUND|permission/);
+  });
 });

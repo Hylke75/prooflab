@@ -24,6 +24,9 @@ export type AssumptionWithEvidence = {
   contradicting: number;
   // Estimated probability that the assumption holds (research 3.5), from the stored starting value (default 50%).
   probability: AssumptionProbability;
+  // Golf A, punt 5: onderbouwing van de startkans en of die vergrendeld is (er hangt bewijs aan de aanname).
+  priorRationale: string | null;
+  priorLocked: boolean;
 };
 
 type ObsLink = {
@@ -159,6 +162,8 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
       evidence: e.score,
       supporting: e.supporting,
       contradicting: e.contradicting,
+      priorRationale: a.prior_rationale ?? null,
+      priorLocked: !!a.prior_locked_at,
     };
   });
 }

@@ -11,6 +11,7 @@ import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 import { Probability } from "@/components/ui/Probability";
 import { formatProbability } from "@/lib/domain/probability-display";
 import { explainRecruitment } from "@/lib/domain/recruitment";
+import { priorNeedsRationale, PRIOR_TEXT_MAX, PRIOR_TEXT_MIN } from "@/lib/domain/prior";
 
 export type BoardAssumption = {
   id: string;
@@ -23,6 +24,8 @@ export type BoardAssumption = {
   supporting: number;
   contradicting: number;
   probability: AssumptionProbability;
+  priorRationale: string | null;
+  priorLocked: boolean;
   voi: VoiResult;
   claims: { id: string; statement: string; relation: string; status: string }[];
 };
@@ -57,7 +60,7 @@ export function RiskBoard({
   linkActions: Record<string, Action>;
   unlinkActions: Record<string, Record<string, () => Promise<void>>>;
   importanceActions: Record<string, (f: FormData) => Promise<void>>;
-  priorActions: Record<string, (f: FormData) => Promise<void>>;
+  priorActions: Record<string, Action>;
   deleteActions: Record<string, () => Promise<void>>;
 }) {
   const [sel, setSel] = useState(assumptions[0]?.id ?? null);
@@ -203,7 +206,7 @@ export function RiskBoard({
           {current.origin === "premortem" && <span className="pill coral">Uit de pre-mortem</span>}
           <span className="pill gray">Bewijsscore {Math.round(current.evidence * 100)} van 100</span>
         </div>
-        <ProbabilityDetail a={current} prior={prior} setPrior={setPrior} save={canWrite ? priorActions[current.id] : undefined} calibrated={calibrated} />
+        <ProbabilityDetail key={current.id} a={current} prior={prior} setPrior={setPrior} save={canWrite ? priorActions[current.id] : undefined} calibrated={calibrated} />
         <p className="sub mt-12">
           <strong>Waarom nu testen (informatiewaarde {current.voi.index} van 100):</strong> {current.voi.why}
         </p>
@@ -267,7 +270,7 @@ function ProbabilityDetail({
   a: BoardAssumption;
   prior: number;
   setPrior: (p: number) => void;
-  save?: (f: FormData) => Promise<void>;
+  save?: Action;
   calibrated: boolean;
 }) {
   // Methode 2026-11-b: het plafond van het hoogste bewijsniveau geldt ook voor een andere beginwaarde.
@@ -329,7 +332,7 @@ function ProbabilityDetail({
         </p>
       )}
       <div className="row mt-8">
-        <label className="tiny" htmlFor={`prior-${a.id}`}>Beginwaarde</label>
+        <label className="tiny" htmlFor={`prior-${a.id}`}>Startkans (beginwaarde)</label>
         <select
           className="field"
           id={`prior-${a.id}`}
@@ -340,16 +343,40 @@ function ProbabilityDetail({
           {PRIORS.map((x) => <option key={x} value={x}>{pctR(x)}</option>)}
         </select>
       </div>
-      {save && prior !== a.probability.prior && (
-        <form action={save} className="mt-8">
+      {save && (prior !== a.probability.prior || (priorNeedsRationale(prior) && !a.priorRationale)) && (
+        <ActionForm action={save} submitLabel={`Bewaar ${pctR(prior)} als startkans`} submitClass="btn white sm" pendingLabel="Opslaan…">
           <input type="hidden" name="prior" value={prior} />
-          <button className="btn white sm">Bewaar {pctR(prior)} als beginwaarde</button>
-          <FormPendingOverlay />
-        </form>
+          {priorNeedsRationale(prior) && (
+            <div className="form-line mt-8">
+              <label htmlFor={`prior-why-${a.id}`}>Onderbouwing van {pctR(prior)} (verplicht bij een afwijking van 50%)</label>
+              <textarea
+                className="field"
+                id={`prior-why-${a.id}`}
+                name="prior_rationale"
+                rows={2}
+                minLength={PRIOR_TEXT_MIN}
+                maxLength={PRIOR_TEXT_MAX}
+                required
+                defaultValue={a.priorRationale ?? ""}
+                placeholder="Bijv. basispercentage van vergelijkbare diensten, of eerder onderzoek met bron"
+              />
+            </div>
+          )}
+          {a.priorLocked && prior !== a.probability.prior && (
+            <div className="form-line mt-8">
+              <label htmlFor={`prior-reason-${a.id}`}>Reden van wijziging (komt in het auditspoor)</label>
+              <textarea className="field" id={`prior-reason-${a.id}`} name="prior_reason" rows={2} minLength={PRIOR_TEXT_MIN} maxLength={PRIOR_TEXT_MAX} required />
+            </div>
+          )}
+        </ActionForm>
+      )}
+      {a.priorRationale && priorNeedsRationale(a.probability.prior) && (
+        <p className="tiny mt-8">Onderbouwing van de startkans: {a.priorRationale}</p>
       )}
       <p className="explain">
         Hoe waarschijnlijk vond je dit vóór enig bewijs? Kies een andere waarde om te zien hoe gevoelig de kans daarvoor is
-        {save ? "; bewaar hem als je hem kunt onderbouwen (bijvoorbeeld met het basispercentage)." : "."} Opgeslagen: {pctR(a.probability.prior)}.
+        {save ? "; een afwijking van 50% bewaar je alleen met een onderbouwing (bijvoorbeeld het basispercentage)." : "."} Opgeslagen: {pctR(a.probability.prior)}.
+        {a.priorLocked ? " Vergrendeld: er hangt bewijs aan deze aanname, dus wijzigen kan alleen met een reden." : ""}
       </p>
     </div>
   );

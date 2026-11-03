@@ -797,6 +797,8 @@ export type Database = {
           origin: string
           statement: string
           status: string
+          prior_rationale: string | null
+          prior_locked_at: string | null
         }
         Insert: {
           prior?: number | null
@@ -808,6 +810,8 @@ export type Database = {
           origin?: string
           statement: string
           status?: string
+          prior_rationale?: string | null
+          prior_locked_at?: string | null
         }
         Update: {
           prior?: number | null
@@ -819,6 +823,8 @@ export type Database = {
           origin?: string
           statement?: string
           status?: string
+          prior_rationale?: string | null
+          prior_locked_at?: string | null
         }
         Relationships: [
           {
@@ -2905,6 +2911,7 @@ export type Database = {
       switch_method_version: { Args: { p_idea: string; p_to: string; p_preview: Json }; Returns: string }
       resolved_dossiers_for_idea: { Args: { p_idea: string }; Returns: number }
       evidence_recruitment_refs: { Args: { p_idea: string }; Returns: { item_type: string; item_id: string; recruitment_group: string | null }[] }
+      change_assumption_prior: { Args: { p_assumption: string; p_prior: number; p_rationale: string; p_reason: string }; Returns: undefined }
       evidence_source_refs: {
         Args: { p_idea: string }
         Returns: {

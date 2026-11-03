@@ -5,6 +5,8 @@
 --   3. Aantal opgeloste dossiers per werkruimte, voor de weergave "niet gekalibreerd".
 --   4/13. Wervingsgroep per test, interview en observatie (vergrendeld na goedkeuring; een bekende is eigen
 --      netwerk) en evidence_recruitment_refs voor de afnemende factor van methode 2026-11-c.
+--   5. Startkans van een aanname: onderbouwing bij een afwijking van 50%, vergrendeld bij het eerste bewijs,
+--      daarna alleen wijzigen met een reden (change_assumption_prior), elke wijziging in het auditspoor.
 --
 -- Bestaande dossiers houden hun methodeversie en rekenen dus niet anders.
 
@@ -131,3 +133,95 @@ revoke execute on function public.guard_experiment_recruitment(), public.stamp_i
   public.evidence_recruitment_refs(uuid) from public, anon;
 revoke execute on function public.guard_experiment_recruitment(), public.stamp_interview_recruitment() from authenticated;
 grant execute on function public.evidence_recruitment_refs(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 5. Startkans van een aanname: onderbouwing en vergrendeling
+-- ---------------------------------------------------------------------------
+
+-- prior_rationale: korte onderbouwing van een startkans anders dan 50%. prior_locked_at: het moment waarop het
+-- eerste bewijs aan de aanname werd gekoppeld; daarna kan de startkans alleen met een reden veranderen.
+alter table public.assumptions
+  add column if not exists prior_rationale text check (char_length(prior_rationale) <= 600),
+  add column if not exists prior_locked_at timestamptz;
+
+-- Bestaande aannames met bewijs zijn vanaf nu vergrendeld (de kans zelf verandert niet).
+update public.assumptions a set prior_locked_at = now()
+where a.prior_locked_at is null
+  and (exists (select 1 from public.assumption_claims x where x.assumption_id = a.id)
+       or exists (select 1 from public.assumption_observations x where x.assumption_id = a.id));
+
+-- Zodra bewijs wordt gekoppeld, wordt de startkans vergrendeld (blijvend, ook als het bewijs later wordt ontkoppeld).
+create or replace function public.lock_assumption_prior()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  update public.assumptions set prior_locked_at = now() where id = new.assumption_id and prior_locked_at is null;
+  return null;
+end $$;
+drop trigger if exists assumption_claims_lock_prior on public.assumption_claims;
+create trigger assumption_claims_lock_prior after insert on public.assumption_claims
+  for each row execute function public.lock_assumption_prior();
+drop trigger if exists assumption_observations_lock_prior on public.assumption_observations;
+create trigger assumption_observations_lock_prior after insert on public.assumption_observations
+  for each row execute function public.lock_assumption_prior();
+
+-- Handhaving in de database (en in de app, lib/domain/prior.ts):
+-- - een startkans anders dan 50% heeft een onderbouwing van minimaal 10 tekens;
+-- - na vergrendeling kan de startkans alleen veranderen met een reden (change_assumption_prior), die samen met de
+--   oude en nieuwe waarde in het auditspoor komt; elke wijziging van de startkans wordt geaudit;
+-- - prior_locked_at zet alleen de database (lock_assumption_prior), nooit een gebruiker.
+create or replace function public.guard_assumption_prior()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  v_reason text := nullif(btrim(coalesce(current_setting('prooflab.prior_change_reason', true), '')), '');
+  v_org uuid;
+begin
+  if tg_op = 'INSERT' then
+    if pg_trigger_depth() = 1 then
+      new.prior_locked_at := null;
+    end if;
+  elsif pg_trigger_depth() = 1 then
+    new.prior_locked_at := old.prior_locked_at;
+  end if;
+
+  if (tg_op = 'INSERT' or new.prior is distinct from old.prior or new.prior_rationale is distinct from old.prior_rationale)
+     and new.prior is not null and abs(new.prior - 0.5) > 0.000001
+     and char_length(btrim(coalesce(new.prior_rationale, ''))) < 10 then
+    raise exception 'PRIOR_RATIONALE: een startkans anders dan 50%% vraagt een onderbouwing van minimaal 10 tekens'
+      using errcode = 'P0001';
+  end if;
+
+  if tg_op = 'UPDATE' and coalesce(new.prior, 0.5) is distinct from coalesce(old.prior, 0.5) then
+    if old.prior_locked_at is not null and char_length(coalesce(v_reason, '')) < 10 then
+      raise exception 'PRIOR_LOCKED: er hangt bewijs aan deze aanname; wijzig de startkans alleen met een reden'
+        using errcode = 'P0001';
+    end if;
+    select org_id into v_org from public.ideas where id = old.idea_id;
+    insert into public.audit_events (idea_id, org_id, actor_id, table_name, row_id, action, detail)
+    values (old.idea_id, v_org, auth.uid(), 'assumptions', old.id::text, 'prior_change',
+            jsonb_build_object('from', coalesce(old.prior, 0.5), 'to', coalesce(new.prior, 0.5), 'locked', old.prior_locked_at is not null,
+                               'reason', v_reason, 'rationale', new.prior_rationale));
+  end if;
+  return new;
+end $$;
+drop trigger if exists assumptions_prior_guard on public.assumptions;
+create trigger assumptions_prior_guard before insert or update on public.assumptions
+  for each row execute function public.guard_assumption_prior();
+
+-- Startkans wijzigen met onderbouwing en (na vergrendeling) een reden. Rekent met de rechten van de aanroeper
+-- (rijbeveiliging); de reden gaat alleen voor deze transactie mee naar guard_assumption_prior.
+create or replace function public.change_assumption_prior(p_assumption uuid, p_prior numeric, p_rationale text, p_reason text)
+returns void language plpgsql security invoker set search_path = '' as $$
+begin
+  perform set_config('prooflab.prior_change_reason', coalesce(p_reason, ''), true);
+  update public.assumptions set prior = p_prior, prior_rationale = nullif(btrim(coalesce(p_rationale, '')), '')
+  where id = p_assumption;
+  if not found then
+    raise exception 'NOT_FOUND' using errcode = 'P0001';
+  end if;
+  perform set_config('prooflab.prior_change_reason', '', true);
+end $$;
+
+revoke execute on function public.lock_assumption_prior(), public.guard_assumption_prior(),
+  public.change_assumption_prior(uuid, numeric, text, text) from public, anon;
+revoke execute on function public.lock_assumption_prior(), public.guard_assumption_prior() from authenticated;
+grant execute on function public.change_assumption_prior(uuid, numeric, text, text) to authenticated;
