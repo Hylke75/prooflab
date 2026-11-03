@@ -291,6 +291,53 @@ d("golf B: besluit en voorspelling", () => {
     });
   });
 
+  describe("punt 20: verlengde testfase en de uitkomstklok", () => {
+    // Zet een besluit terug in de tijd (alleen in de test: triggers uit voor deze ene update).
+    async function backdate(decision: string, weeks: number) {
+      await db.query("begin");
+      try {
+        await db.query("set local session_replication_role = replica");
+        await db.query(`update public.decisions set decided_at = now() - interval '${weeks} weeks' where id = $1`, [decision]);
+        await db.query("commit");
+      } catch (e) {
+        await db.query("rollback");
+        throw e;
+      }
+    }
+
+    it("houdt het definitieve besluit en de klok tegen tot de fase voorbij is", async () => {
+      const idea = await newIdea(alice, org);
+      await expect(decide(alice, idea, "extend")).rejects.toThrow(/decisions_extend_weeks/);
+      await expect(decide(alice, idea, "extend", { extend_weeks: 9 })).rejects.toThrow(/check constraint/);
+      const ext = await decide(alice, idea, "extend", { extend_weeks: 4 });
+      await expect(decide(alice, idea, "extend", { extend_weeks: 2 })).rejects.toThrow(/EXTEND_ONCE/);
+      await expect(decide(alice, idea, "continue")).rejects.toThrow(/EXTEND_ACTIVE/);
+      await expect(decide(alice, idea, "stop")).rejects.toThrow(/EXTEND_ACTIVE/);
+      // Bijsturen mag wel; de klok start niet.
+      await decide(alice, idea, "adjust");
+      await expect(startClock(alice, idea)).rejects.toThrow(/EXTEND_ACTIVE/);
+      const end = await as(alice, async (c) => (await c.query("select public.extended_phase_end($1)::text as d, (current_date + 28)::text as expected", [idea])).rows[0]);
+      expect(end.d).toBe(end.expected);
+      // Het besluit verandert niet meer, ook het aantal weken niet.
+      await expect(as(alice, (c) => c.query("update public.decisions set extend_weeks = 8 where id = $1", [ext]).then((r) => r.rowCount))).resolves.toBe(0);
+
+      // Vijf weken later is de fase voorbij: definitief besluit en klok.
+      await backdate(ext, 5);
+      await decide(alice, idea, "continue");
+      await startClock(alice, idea);
+      const row = await as(alice, async (c) => (await c.query("select outcome_clock_start = current_date as today, outcome_question from public.ideas where id = $1", [idea])).rows[0]);
+      expect(row).toEqual({ today: true, outcome_question: "success" });
+      expect(await as(alice, async (c) => (await c.query("select public.extended_phase_end($1) as d", [idea])).rows[0].d)).toBeNull();
+    });
+
+    it("geeft na een definitief besluit geen verlengde testfase meer", async () => {
+      const idea = await newIdea(alice, org);
+      await decide(alice, idea, "pause");
+      await startClock(alice, idea);
+      await expect(decide(alice, idea, "extend", { extend_weeks: 3 })).rejects.toThrow(/EXTEND_AFTER_FINAL/);
+    });
+  });
+
   describe("punt 6: beslisregel", () => {
     // Een aanname met een experiment in concept.
     async function assumptionWithTest(who: Who, idea: string): Promise<{ assumption: string; experiment: string }> {

@@ -209,6 +209,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
           rule: ruleSummary(lastDecision),
           // Golf B, punt 18: bevestigd na de samenvatting "Wat ging tegen".
           reviewedAgainst: lastDecision.reviewed_against_summary != null,
+          // Golf B, punt 20: de verlengde testfase (aantal weken), als dit besluit er een is of erop volgde.
+          extendWeeks: d.decisions.find((x) => x.action === "extend")?.extend_weeks ?? null,
         }
       : null,
     sources: [...sources.values()].sort((a, b) => a.n - b.n),

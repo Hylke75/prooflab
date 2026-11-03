@@ -4,6 +4,7 @@
 
 import { OWN_BASE_RATE_MIN, openMoment } from "@/lib/domain/forecast";
 import { OVERCONFIDENT_GAP, overconfidence } from "@/lib/domain/calibration";
+import { extendedPhase } from "@/lib/domain/extension";
 
 export type NoteKind = "tip" | "warning" | "question" | "praise";
 export type NoteAudience = "consultant" | "everyone";
@@ -64,7 +65,8 @@ export type CoachFacts = {
   observations: { kind: string; isBehaviour: boolean; isSynthetic: boolean; createdAt: string }[];
   learningCards: { id: string; status: string; approvedAt: string | null }[];
   realityCheck: { id: string; createdAt: string } | null;
-  decisions: { id: string; decidedAt: string; confirmed: boolean }[]; // oldest first
+  // oldest first; action en extendWeeks voor de verlengde testfase (golf B, punt 20; optioneel voor oudere aanroepers)
+  decisions: { id: string; decidedAt: string; confirmed: boolean; action?: string; extendWeeks?: number | null }[];
   decisionDeadline: string | null;
   clientDeciderInvited: boolean;
   // question: "stop_review" na een stop of pauze (golf B, punt 1); resolved geldt dan voor de stopvraag.
@@ -476,6 +478,26 @@ export const RULES: Record<string, Rule> = {
     };
   },
 
+  extension_ending: (f, base) => {
+    const phase = extendedPhase(
+      f.decisions.filter((d) => d.action).map((d) => ({ action: d.action!, decidedOn: d.decidedAt.slice(0, 10), extendWeeks: d.extendWeeks ?? null })),
+      f.today,
+    );
+    if (!phase) return null;
+    const left = daysBetween(f.today, phase.end);
+    if (phase.active && left > 7) return null;
+    return {
+      code: `extension_ending:${phase.end}`,
+      kind: phase.active ? "tip" : "warning",
+      title: phase.active ? "De verlengde testfase loopt bijna af" : "De verlengde testfase is voorbij: tijd voor het definitieve besluit",
+      body: phase.active
+        ? `De verlengde testfase eindigt op ${phase.end}. Zorg dat de Learning Cards dan klaar zijn en voer de Reality Check opnieuw uit; daarna volgt het definitieve besluit en start de uitkomstklok.`
+        : `De verlengde testfase eindigde op ${phase.end}. Neem nu het definitieve besluit (doorgaan, stoppen of pauzeren); daarmee start de uitkomstklok.`,
+      href: `${base}/evidence`,
+      audience: "consultant",
+    };
+  },
+
   sprint_behind: (f, base) => {
     if (!f.sprint?.behindReason) return null;
     return {
@@ -566,6 +588,7 @@ export const RULE_LABELS: Record<string, string> = {
   stop_review_due: "Was stoppen terecht?",
   outcome_checkin: "Check-in na drie maanden",
   decision_rule_missing: "Beslisregel ontbreekt",
+  extension_ending: "Verlengde testfase loopt af",
   sprint_behind: "Sprint loopt achter",
   no_customer_voice: "Stem van de klant ontbreekt",
   outreach_unimported: "LinkedIn-antwoorden niet opgenomen",
@@ -613,6 +636,7 @@ export const NOT_DONE: Record<string, string> = {
   stop_review_due: "We zien nog geen antwoord op de vraag of stoppen terecht was.",
   outcome_checkin: "We zien nog geen tussenstand na drie maanden.",
   decision_rule_missing: "We zien nog geen vastgelegde beslisregel.",
+  extension_ending: "We zien nog geen definitief besluit na de verlengde testfase.",
   sprint_behind: "We zien nog niet dat het dossier de sprintweek heeft ingehaald.",
   no_customer_voice: "We zien nog geen bron met de stem van de klant (review, forum, interview of enquête).",
   outreach_unimported: "We zien nog geen opgenomen LinkedIn-antwoorden bij de bronnen.",

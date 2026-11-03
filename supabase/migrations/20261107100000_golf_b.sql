@@ -9,6 +9,8 @@
 --  15. Eerst voorspellen: de vergrendeling van kansen zit in de app; hier telt de AI in de kalibratie als één stem
 --      (het gemiddelde van de modellen per dossier en moment).
 --  18. De opdrachtgever bevestigt een besluit pas na de samenvatting "Wat ging tegen" (reviewed_against_summary).
+--  20. Verlengde testfase: het tussenbesluit "extend" (2 tot 8 weken). Het definitieve besluit en de uitkomstklok
+--      starten pas daarna.
 --
 -- De kalibratiefuncties staan onderaan (laatste sectie), omdat ze naar tabellen uit meerdere punten verwijzen.
 
@@ -596,6 +598,102 @@ drop trigger if exists decisions_summary_guard on public.decisions;
 create trigger decisions_summary_guard before insert or update on public.decisions
   for each row execute function public.guard_decision_summary();
 revoke execute on function public.guard_decision_summary() from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 20. Verlengde testfase
+-- ---------------------------------------------------------------------------
+-- Gedragsbewijs past niet altijd in de sprint. Na de sprint kan het team één keer een verlengde testfase van 2 tot 8
+-- weken nemen, met het tussenbesluit "extend" (doorgaan met testen). Zolang die loopt, kan er geen definitief besluit
+-- (doorgaan, stoppen, pauzeren) worden genomen en start de uitkomstklok niet. Daarna gaat alles zoals gewoonlijk.
+
+alter table public.decisions drop constraint if exists decisions_action_check;
+alter table public.decisions add constraint decisions_action_check
+  check (action in ('continue', 'adjust', 'test_more', 'extend', 'pause', 'stop'));
+alter table public.decisions add column if not exists extend_weeks int check (extend_weeks between 2 and 8);
+alter table public.decisions drop constraint if exists decisions_extend_weeks;
+alter table public.decisions add constraint decisions_extend_weeks check ((action = 'extend') = (extend_weeks is not null));
+
+-- Einddatum van de lopende verlengde testfase: het laatste extend-besluit zonder definitief besluit erna, plus het
+-- aantal weken (kalenderdatum in Nederland). Null als er geen verlengde fase loopt of liep.
+create or replace function public.extended_phase_end(p_idea uuid)
+returns date language sql stable security definer set search_path = '' as $$
+  select (d.decided_at at time zone 'Europe/Amsterdam')::date + d.extend_weeks * 7
+  from public.decisions d
+  where d.idea_id = p_idea and d.action = 'extend' and public.can_read_idea(p_idea)
+    and not exists (select 1 from public.decisions f where f.idea_id = p_idea and f.action in ('continue', 'stop', 'pause') and f.decided_at > d.decided_at)
+  order by d.decided_at desc, d.id desc limit 1;
+$$;
+
+create or replace function public.guard_decision_extend()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  v_end date;
+  v_today date := (now() at time zone 'Europe/Amsterdam')::date;
+begin
+  if new.action = 'extend' then
+    if exists (select 1 from public.decisions d where d.idea_id = new.idea_id and d.action = 'extend') then
+      raise exception 'EXTEND_ONCE: een dossier krijgt één verlengde testfase' using errcode = 'P0001';
+    end if;
+    if exists (select 1 from public.ideas i where i.id = new.idea_id and i.outcome_clock_start is not null) then
+      raise exception 'EXTEND_AFTER_FINAL: na een definitief besluit is er geen verlengde testfase meer' using errcode = 'P0001';
+    end if;
+  elsif new.action in ('continue', 'stop', 'pause') then
+    select (d.decided_at at time zone 'Europe/Amsterdam')::date + d.extend_weeks * 7 into v_end
+    from public.decisions d
+    where d.idea_id = new.idea_id and d.action = 'extend'
+      and not exists (select 1 from public.decisions f where f.idea_id = new.idea_id and f.action in ('continue', 'stop', 'pause') and f.decided_at > d.decided_at)
+    order by d.decided_at desc limit 1;
+    if v_end is not null and v_today < v_end then
+      raise exception 'EXTEND_ACTIVE: de verlengde testfase loopt tot %; het definitieve besluit volgt daarna', v_end using errcode = 'P0001';
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists decisions_extend_guard on public.decisions;
+create trigger decisions_extend_guard before insert on public.decisions
+  for each row execute function public.guard_decision_extend();
+
+-- De uitkomstklok start niet tijdens de verlengde testfase (aanvulling op stamp_outcome_question, punt 1).
+create or replace function public.guard_clock_extension()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  v_end date;
+begin
+  if old.outcome_clock_start is null and new.outcome_clock_start is not null then
+    select (d.decided_at at time zone 'Europe/Amsterdam')::date + d.extend_weeks * 7 into v_end
+    from public.decisions d
+    where d.idea_id = new.id and d.action = 'extend'
+      and not exists (select 1 from public.decisions f where f.idea_id = new.id and f.action in ('continue', 'stop', 'pause') and f.decided_at > d.decided_at)
+    order by d.decided_at desc limit 1;
+    if v_end is not null and new.outcome_clock_start < v_end then
+      raise exception 'EXTEND_ACTIVE: de uitkomstklok start pas na de verlengde testfase (tot %)', v_end using errcode = 'P0001';
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists ideas_clock_extension on public.ideas;
+create trigger ideas_clock_extension before update of outcome_clock_start on public.ideas
+  for each row execute function public.guard_clock_extension();
+
+-- Een vastgelegd besluit verandert niet: nu ook het aantal weken van de verlengde fase.
+create or replace function public.guard_decision()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  if tg_op = 'UPDATE' then
+    if (new.action, new.rationale, new.next_step, new.decided_by, new.decided_at, new.reality_check_id, new.experiment_id,
+        new.rule_met, new.rule_evaluation, new.rule_deviation_reason, new.extend_weeks)
+       is distinct from
+       (old.action, old.rationale, old.next_step, old.decided_by, old.decided_at, old.reality_check_id, old.experiment_id,
+        old.rule_met, old.rule_evaluation, old.rule_deviation_reason, old.extend_weeks) then
+      raise exception 'DECISION_LOCKED: een vastgelegd besluit kan niet worden gewijzigd' using errcode = 'P0001';
+    end if;
+  end if;
+  return new;
+end $$;
+
+revoke execute on function public.guard_decision_extend(), public.guard_clock_extension() from public, anon, authenticated;
+revoke execute on function public.extended_phase_end(uuid) from public, anon;
+grant execute on function public.extended_phase_end(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Kalibratie: alleen dossiers met de succesvraag en zonder uitsluiting

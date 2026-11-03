@@ -17,6 +17,7 @@ import { decisionBlocker, outcomeDueForQuestion, outcomeQuestionFor } from "@/li
 import { todayInNL } from "@/lib/domain/sprint";
 import { deviates, isFinalAction } from "@/lib/domain/decision-rule";
 import { loadRuleCheck } from "@/lib/decision-rule-data";
+import { EXTEND_MAX_WEEKS, EXTEND_MIN_WEEKS, extensionBlocker } from "@/lib/domain/extension";
 import { againstFor } from "@/lib/against-data";
 
 export type ActionState = { error: string | null; ok?: string | null };
@@ -130,7 +131,8 @@ export async function addPremortem(ideaId: string, _: ActionState, form: FormDat
 }
 
 const DecisionSchema = z.object({
-  action: z.enum(["continue", "adjust", "test_more", "pause", "stop"]),
+  action: z.enum(["continue", "adjust", "test_more", "extend", "pause", "stop"]),
+  extend_weeks: z.coerce.number().int().min(EXTEND_MIN_WEEKS).max(EXTEND_MAX_WEEKS).optional(),
   rationale: z.string().trim().min(15, "Leg in minstens één zin uit waarom.").max(2000),
   next_step: z.string().trim().max(600).optional(),
   rule_deviation_reason: z.string().trim().max(2000).optional(),
@@ -152,6 +154,16 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   const progress = await loadProgress(ideaId);
   const blocker = decisionBlocker(progress);
   if (blocker) return { error: blocker };
+  // Golf B, punt 20: één verlengde testfase van 2 tot 8 weken; tijdens die fase geen definitief besluit.
+  if (p.data.action === "extend" && !p.data.extend_weeks) return { error: `Kies hoeveel weken extra testen (${EXTEND_MIN_WEEKS} tot ${EXTEND_MAX_WEEKS}).` };
+  const { data: earlier } = await supabase.from("decisions").select("action, decided_at, extend_weeks").eq("idea_id", ideaId);
+  const extBlock = extensionBlocker(
+    p.data.action,
+    (earlier ?? []).map((x) => ({ action: x.action, decidedOn: todayInNL(new Date(x.decided_at)), extendWeeks: x.extend_weeks ?? null })),
+    todayInNL(),
+    !!idea.outcome_clock_start,
+  );
+  if (extBlock) return { error: extBlock };
   // Golf B, punt 6: een definitief besluit wordt getoetst aan de beslisregel. Wie afwijkt, motiveert dat.
   const ruleCheck = isFinalAction(p.data.action) ? await loadRuleCheck(ideaId) : null;
   const deviation = ruleCheck ? deviates(p.data.action, ruleCheck.evaluation.met) : false;
@@ -168,22 +180,26 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
     rule_met: ruleCheck ? ruleCheck.evaluation.met : null,
     rule_evaluation: ruleCheck ? (ruleCheck.evaluation as unknown as Json) : null,
     rule_deviation_reason: deviation ? p.data.rule_deviation_reason : null,
+    extend_weeks: p.data.action === "extend" ? p.data.extend_weeks : null,
   });
   if (error) {
     // The database enforces the same rules; show its reason when it refuses.
     if (error.message.includes("DECISION_STALE")) return { error: "Er is nieuw bewijs sinds de laatste Reality Check. Voer de check opnieuw uit." };
     if (error.message.includes("DECISION_BLOCKED")) return { error: "Er zijn blokkerende punten in de Reality Check. 'Doorgaan' kan pas als die zijn opgelost." };
     if (error.message.includes("DECISION_CHECK")) return { error: "Voer de Reality Check opnieuw uit voordat je besluit." };
+    if (error.message.includes("EXTEND_ACTIVE")) return { error: "De verlengde testfase loopt nog. Het definitieve besluit volgt daarna." };
+    if (error.message.includes("EXTEND_ONCE")) return { error: "Dit dossier heeft al een verlengde testfase gehad." };
+    if (error.message.includes("EXTEND_AFTER_FINAL")) return { error: "Na een definitief besluit is er geen verlengde testfase meer." };
     if (error.message.includes("DECISION_RULE_DEVIATION")) return { error: "Dit besluit wijkt af van de beslisregel. Motiveer in minstens één zin waarom." };
     if (error.message.includes("DECISION_RULE_EVAL")) return { error: "De toets aan de beslisregel klopt niet meer met het dossier. Ververs de pagina en probeer het opnieuw." };
     return { error: "Het besluit kon niet worden opgeslagen." };
   }
   for (const e of exps ?? []) await supabase.from("experiments").update({ state: "decided" }).eq("id", e.id);
-  const status = { continue: "continued", stop: "stopped", pause: "parked", adjust: "active", test_more: "active" }[p.data.action];
+  const status = { continue: "continued", stop: "stopped", pause: "parked", adjust: "active", test_more: "active", extend: "active" }[p.data.action];
   await supabase.from("ideas").update({ status }).eq("id", ideaId);
   // The first decision after the outcome definition starts the six-month clock (set once, never moved).
-  // The six-month clock starts at a final decision (continue, stop or pause). "Verder testen" and
-  // "bijsturen" keep the trajectory going, so the real go/no-go decision still gets its forecast.
+  // The six-month clock starts at a final decision (continue, stop or pause). "Verder testen", "bijsturen" en de
+  // verlengde testfase (extend) houden het traject gaande: de klok start pas bij het definitieve besluit daarna.
   const finalDecision = p.data.action === "continue" || p.data.action === "stop" || p.data.action === "pause";
   if (progress.forecast && !idea.outcome_due && finalDecision) {
     const decidedOn = todayInNL();
@@ -193,6 +209,8 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
     await supabase.from("ideas").update({ outcome_due: outcomeDueForQuestion(question, decidedOn, idea.outcome_measure_date), outcome_clock_start: decidedOn }).eq("id", ideaId).is("outcome_due", null);
   }
   refresh(ideaId);
+  if (p.data.action === "extend")
+    return { error: null, ok: `Verlengde testfase van ${p.data.extend_weeks} weken vastgelegd. Het definitieve besluit en de uitkomstklok volgen daarna.` };
   return { error: null, ok: "Besluit vastgelegd. De opdrachtgever kan het nu bevestigen; werk daarna het rapport bij." };
 }
 

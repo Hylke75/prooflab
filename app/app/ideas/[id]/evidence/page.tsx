@@ -23,6 +23,8 @@ import { loadRuleCheck } from "@/lib/decision-rule-data";
 import { deviationLabel } from "@/lib/domain/decision-rule";
 import { ConfirmDecision } from "@/components/evidence/ConfirmDecision";
 import { againstFor } from "@/lib/against-data";
+import { extendedPhase, extensionBlocker } from "@/lib/domain/extension";
+import { todayInNL } from "@/lib/domain/sprint";
 
 export const metadata: Metadata = { title: "Bewijs & besluit" };
 
@@ -75,6 +77,16 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
   const approved = d.learningCards.filter((c) => c.status === "approved");
   const premortem = d.assumptions.filter((a) => a.origin === "premortem");
   const method = asMethodVersion(idea.method_version);
+  // Golf B, punt 20: de verlengde testfase en welke besluiten nu niet kunnen.
+  const today = todayInNL();
+  const decisionLites = d.decisions.map((x) => ({ action: x.action, decidedOn: todayInNL(new Date(x.decided_at)), extendWeeks: x.extend_weeks ?? null }));
+  const phase = extendedPhase(decisionLites, today);
+  const blocked = Object.fromEntries(
+    (Object.keys(DECISIONS) as DecisionAction[]).flatMap((a) => {
+      const why = extensionBlocker(a, decisionLites, today, !!idea.outcome_clock_start);
+      return why ? [[a, why]] : [];
+    }),
+  ) as Partial<Record<DecisionAction, string>>;
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Bewijs & besluit"]} coach="evidence" ideaId={id}>
@@ -87,6 +99,15 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
         <Link className="btn white" href={`/app/ideas/${id}/report`}>Bekijk rapport →</Link>
       </div>
       <Stepper current="decide" ideaId={id} done={stepsDone(progress)} />
+
+      {phase && (
+        <div className="note" role="status">
+          <strong>Verlengde testfase{phase.active ? "" : " afgelopen"}:</strong> {phase.weeks} weken, van {phase.start} tot {phase.end}.{" "}
+          {phase.active
+            ? "Verzamel nu het extra gedragsbewijs. Het definitieve besluit en de uitkomstklok volgen na deze fase."
+            : "Neem nu het definitieve besluit: doorgaan, stoppen of pauzeren. Daarmee start de uitkomstklok."}
+        </div>
+      )}
 
       <div className="insight-banner" style={{ background: "var(--color-success-soft)" }}>
         <div>
@@ -219,6 +240,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                 action={saveDecision.bind(null, id)}
                 disabledReason={!check ? "Voer eerst de Reality Check uit." : stale ? "Voer de Reality Check opnieuw uit; er is nieuw bewijs." : decisionBlocker(progress)}
                 ruleMet={ruleCheck ? ruleCheck.evaluation.met : null}
+                blocked={blocked}
               />
             </div>
           )}
@@ -299,6 +321,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                   <strong>{DECISIONS[dec.action as DecisionAction].label} · {new Date(dec.decided_at).toLocaleDateString("nl-NL")}</strong>
                   <p>{dec.rationale}</p>
                   {dec.next_step && <p>Volgende stap: {dec.next_step}</p>}
+                  {dec.action === "extend" && dec.extend_weeks != null && <p>Verlengde testfase van {dec.extend_weeks} weken; het definitieve besluit volgt daarna.</p>}
                   {dec.rule_met != null && (
                     <p>
                       Beslisregel: {dec.rule_met ? "gehaald" : "niet gehaald"}.

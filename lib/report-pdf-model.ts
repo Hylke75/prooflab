@@ -256,6 +256,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
       rows: [
         ["Besluit", r.decision.action],
         ["Vastgelegd op", nlDate(r.decision.at)],
+        ...(r.decision.extendWeeks ? [["Verlengde testfase", `${r.decision.extendWeeks} weken na de sprint`]] : []),
         ["Bevestiging opdrachtgever", r.decision.confirmedAt ? `Bevestigd op ${nlDate(r.decision.confirmedAt)}${r.decision.reviewedAgainst ? ", na de samenvatting “Wat ging tegen”" : ""}` : "Nog niet bevestigd"],
         ...(r.decision.comment ? [["Opmerking opdrachtgever", `“${r.decision.comment}”`]] : []),
         ["Rapportversie", `Versie ${meta.version}, momentopname van ${nlDate(r.generatedAt)}`],

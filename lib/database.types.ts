@@ -1217,6 +1217,7 @@ export type Database = {
           rule_evaluation: Json | null
           rule_deviation_reason: string | null
           reviewed_against_summary: Json | null
+          extend_weeks: number | null
         }
         Insert: {
           action: string
@@ -1235,6 +1236,7 @@ export type Database = {
           rule_evaluation?: Json | null
           rule_deviation_reason?: string | null
           reviewed_against_summary?: Json | null
+          extend_weeks?: number | null
         }
         Update: {
           action?: string
@@ -1253,6 +1255,7 @@ export type Database = {
           rule_evaluation?: Json | null
           rule_deviation_reason?: string | null
           reviewed_against_summary?: Json | null
+          extend_weeks?: number | null
         }
         Relationships: [
           {
@@ -2937,6 +2940,7 @@ export type Database = {
         Args: { p_org: string; p_project_type: string | null; p_min?: number }
         Returns: { resolved: number; achieved: number }[]
       }
+      extended_phase_end: { Args: { p_idea: string }; Returns: string | null }
       save_decision_rule: { Args: { p_idea: string; p_primary: string | null; p_note: string; p_conditions: Json }; Returns: string }
       stop_review_counts: {
         Args: { p_org: string }
