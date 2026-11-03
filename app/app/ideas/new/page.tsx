@@ -31,7 +31,7 @@ export default async function NewIdeaPage() {
       <div className="intake-layout">
         <IntakeWizard clients={clients ?? []} today={todayInNL()} />
         <aside className="card tip-card">
-          <div className="tip-label">PROOFLAB DENKT MEE</div>
+          <div className="tip-label">ProofLab denkt mee</div>
           <h3>Je hoeft het nog niet zeker te weten.</h3>
           <p>
             Dat is juist het hele idee. We maken je aannames zichtbaar, onderzoeken de markt en zoeken de goedkoopste manier
