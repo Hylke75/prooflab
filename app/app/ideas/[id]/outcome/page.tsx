@@ -52,7 +52,8 @@ export default async function OutcomePage({ params }: PageProps<"/app/ideas/[id]
                 <p className="sub">
                   Hoe vaak slagen vergelijkbare ideeën? Dat buitenperspectief is het vertrekpunt van elke voorspelling. Een basispercentage staat nooit zonder bron.
                 </p>
-                {view.baseRate && <BaseRateSummary baseRate={view.baseRate} />}
+                {/* The picker folds shut after saving; this live region confirms the choice instead. */}
+                <div role="status" aria-live="polite">{view.baseRate && <BaseRateSummary baseRate={view.baseRate} />}</div>
                 {canWrite && !view.definitionLocked && !view.resolved && (
                   <details open={!view.baseRate} className="mt-12">
                     <summary className="text-link">{view.baseRate ? "Andere referentie kiezen" : "Kies een referentieklasse"}</summary>
