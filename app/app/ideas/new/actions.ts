@@ -8,7 +8,10 @@ import { getWorkspace } from "@/lib/data";
 import { templatePlan } from "@/lib/domain/research-plan";
 import { defaultFactors, MODEL_FACTORS, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import type { ProjectType, SectorTemplate } from "@/lib/domain/labels";
-import { OutcomeDefinitionSchema } from "@/lib/forecast-schemas";
+import { OutcomeDefinitionSchema, optionalAmount, outcomeValueProblem } from "@/lib/forecast-schemas";
+import { measureWindowProblem } from "@/lib/domain/forecast";
+import { STAKE_KINDS, formatStake } from "@/lib/domain/decision-quality";
+import { todayInNL } from "@/lib/domain/sprint";
 
 export type IntakeState = { error: string | null; field?: string };
 
@@ -23,20 +26,14 @@ const optionalText = z
 const IntakeSchema = z.object({
   decision_question: z.string().trim().min(10, "Beschrijf de beslissing in minimaal één korte zin.").max(400),
   ...OutcomeDefinitionSchema.shape,
-  decision_stakes: optionalText,
+  // Inzet en beslisdatum zijn verplicht voor nieuwe intakes (bestaande ideeën blijven geldig zonder).
+  stake_kind: z.enum(STAKE_KINDS, { message: "Kies wat er op het spel staat: bedrag, tijd of capaciteit." }),
+  stake_value: optionalAmount("De inzet moet een getal van 0 of hoger zijn.").refine((n) => n !== null && n > 0, "Vul in hoeveel er op het spel staat (een getal groter dan 0)."),
   decision_deadline: z
     .string()
     .trim()
-    .transform((s) => (s === "" ? null : s))
-    .nullable()
-    .optional(),
-  budget_eur: z
-    .string()
-    .trim()
-    .transform((s) => (s === "" ? null : Number(s.replace(/[^\d.]/g, ""))))
-    .refine((n) => n === null || (Number.isFinite(n) && n >= 0), "Budget moet een bedrag zijn.")
-    .nullable()
-    .optional(),
+    .refine((s) => /^\d{4}-\d{2}-\d{2}$/.test(s), "Kies de uiterlijke beslisdatum.")
+    .refine((s) => s >= todayInNL(), "De beslisdatum ligt in het verleden. Kies vandaag of later."),
   title: z.string().trim().min(2, "Geef het idee een korte naam.").max(140),
   description: z.string().trim().min(15, "Beschrijf het idee in minimaal één zin.").max(2000),
   target_audience: z.string().trim().min(2, "Kies of beschrijf de doelgroep.").max(200),
@@ -67,6 +64,10 @@ export async function createIdea(_: IntakeState, form: FormData): Promise<Intake
     return { error: issue.message, field: String(issue.path[0] ?? "") };
   }
   const v = parsed.data;
+  const valueProblem = outcomeValueProblem(v);
+  if (valueProblem) return { error: valueProblem, field: "outcome_min_value_per_customer" };
+  const windowProblem = v.outcome_measure_date ? measureWindowProblem(v.outcome_measure_date, v.decision_deadline) : null;
+  if (windowProblem) return { error: windowProblem, field: "outcome_measure_date" };
   const supabase = await supabaseServer();
 
   let clientId: string | null = v.client_id && /^[0-9a-f-]{36}$/i.test(v.client_id) ? v.client_id : null;
@@ -90,9 +91,14 @@ export async function createIdea(_: IntakeState, form: FormData): Promise<Intake
       outcome_statement: v.outcome_statement,
       outcome_metric: v.outcome_metric,
       outcome_target: v.outcome_target,
-      decision_stakes: v.decision_stakes ?? null,
-      decision_deadline: v.decision_deadline ?? null,
-      budget_eur: v.budget_eur ?? null,
+      outcome_min_value_per_customer: v.outcome_min_value_per_customer ?? null,
+      outcome_revenue_target: v.outcome_revenue_target ?? null,
+      outcome_measure_date: v.outcome_measure_date ?? null,
+      stake_kind: v.stake_kind,
+      stake_value: v.stake_value,
+      decision_stakes: formatStake(v.stake_kind, v.stake_value!),
+      decision_deadline: v.decision_deadline,
+      budget_eur: v.stake_kind === "amount" ? v.stake_value : null,
       description: v.description,
       target_audience: v.target_audience,
       audience_detail: v.audience_detail ?? null,

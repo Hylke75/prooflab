@@ -303,6 +303,7 @@ export type Database = {
           resolved_at: string | null
           resolved_by: string | null
           helpful: boolean | null
+          confirmed_without_data: boolean
         }
         Insert: {
           id?: string
@@ -319,6 +320,7 @@ export type Database = {
           resolved_at?: string | null
           resolved_by?: string | null
           helpful?: boolean | null
+          confirmed_without_data?: boolean
         }
         Update: {
           id?: string
@@ -335,6 +337,7 @@ export type Database = {
           resolved_at?: string | null
           resolved_by?: string | null
           helpful?: boolean | null
+          confirmed_without_data?: boolean
         }
         Relationships: []
       }
@@ -559,6 +562,48 @@ export type Database = {
           current_value?: number | null
           note?: string
           created_by?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      reference_proposals: {
+        Row: {
+          id: string
+          idea_id: string
+          label: string
+          rate: number
+          source_url: string
+          source_title: string
+          quote: string
+          passage: string
+          model: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          idea_id: string
+          label: string
+          rate: number
+          source_url: string
+          source_title: string
+          quote: string
+          passage: string
+          model?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          idea_id?: string
+          label?: string
+          rate?: number
+          source_url?: string
+          source_title?: string
+          quote?: string
+          passage?: string
+          model?: string | null
+          created_by?: string | null
           created_at?: string
         }
         Relationships: []
@@ -1386,6 +1431,11 @@ export type Database = {
       ideas: {
         Row: {
           outcome_clock_start: string | null
+          outcome_min_value_per_customer: number | null
+          outcome_revenue_target: number | null
+          outcome_measure_date: string | null
+          stake_kind: string | null
+          stake_value: number | null
           outcome_statement: string | null
           outcome_metric: string | null
           outcome_target: number | null
@@ -1421,6 +1471,11 @@ export type Database = {
         }
         Insert: {
           outcome_clock_start?: string | null
+          outcome_min_value_per_customer?: number | null
+          outcome_revenue_target?: number | null
+          outcome_measure_date?: string | null
+          stake_kind?: string | null
+          stake_value?: number | null
           outcome_statement?: string | null
           outcome_metric?: string | null
           outcome_target?: number | null
@@ -1456,6 +1511,11 @@ export type Database = {
         }
         Update: {
           outcome_clock_start?: string | null
+          outcome_min_value_per_customer?: number | null
+          outcome_revenue_target?: number | null
+          outcome_measure_date?: string | null
+          stake_kind?: string | null
+          stake_value?: number | null
           outcome_statement?: string | null
           outcome_metric?: string | null
           outcome_target?: number | null
@@ -2668,6 +2728,10 @@ export type Database = {
       unsubscribe_invitation: { Args: { p_email_hash: string; p_key: string; p_token_hash: string }; Returns: boolean }
       record_outreach_event: {
         Args: { p_campaign: string | null; p_contact_hash: string; p_dedupe: string; p_event: string; p_key: string; p_message: string | null; p_token_hash: string }
+        Returns: string
+      }
+      record_reference_proposal: {
+        Args: { p_key: string; p_idea: string; p_label: string; p_rate: number; p_url: string; p_title: string; p_quote: string; p_passage: string; p_model: string }
         Returns: string
       }
       record_ai_forecast: {

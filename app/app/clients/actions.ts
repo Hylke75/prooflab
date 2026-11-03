@@ -2,11 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { supabaseAnon, supabaseServer } from "@/lib/supabase/server";
+import { supabaseServer } from "@/lib/supabase/server";
 import { getWorkspace, requireWritableIdea } from "@/lib/data";
-import { env } from "@/lib/env";
+import { sendInvitation, type InviteResult } from "@/lib/invite";
 
-export type ActionState = { error: string | null; ok?: string | null };
+// copy: een link die de consultant zelf kan delen als e-mail niet gekoppeld is of het versturen mislukte.
+export type ActionState = { error: string | null; ok?: string | null; copy?: { label: string; value: string } | null };
 
 const ClientSchema = z.object({
   name: z.string().trim().min(1, "Vul een naam in.").max(160),
@@ -40,40 +41,32 @@ const InviteSchema = z.object({
   role: z.enum(["client_decider", "client_viewer"]),
 });
 
-// Invites a client stakeholder to one idea. They sign in with this e-mail address; the
-// invitation is linked to their account on first login (claim_invitations).
+// Nodigt een opdrachtgever uit voor één dossier. Die logt in met dit e-mailadres; de uitnodiging wordt bij de
+// eerste login aan het account gekoppeld (claim_invitations). De e-mail gaat via Resend (lib/invite.ts).
 export async function inviteStakeholder(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
-  await requireWritableIdea(ideaId);
   const p = InviteSchema.safeParse(Object.fromEntries(form));
   if (!p.success) return { error: p.error.issues[0].message };
+  const { idea } = await requireWritableIdea(ideaId);
   const supabase = await supabaseServer();
   const { error } = await supabase.from("idea_members").upsert({ idea_id: ideaId, email: p.data.email, role: p.data.role });
   if (error) return { error: "Uitnodigen mislukt." };
-  let mail = "";
-  if (form.get("send_link") === "on") {
-    const { error: otp } = await sendInvitationLink(p.data.email);
-    mail = otp ? " De inloglink kon niet worden verstuurd; deel de app-link zelf." : " Er is een inloglink verstuurd.";
-  }
   revalidatePath("/app/clients");
-  return { error: null, ok: `${p.data.email} kan meekijken${p.data.role === "client_decider" ? " en besluiten bevestigen" : ""}.${mail}` };
+  const who = `${p.data.email} kan meekijken${p.data.role === "client_decider" ? " en besluiten bevestigen" : ""}.`;
+  if (form.get("send_link") !== "on") return { error: null, ok: who };
+  const r = await sendInvitation({ email: p.data.email, ideaId, ideaTitle: idea.title, workspaceName: (await getWorkspace()).org?.name ?? "Je adviseur", role: p.data.role });
+  return { error: null, ...inviteMessage(r, who) };
 }
 
-// Sends a new magic sign-in link to an invited stakeholder (for a first login, or when the previous link expired).
+// Stuurt de uitnodiging met inloglink opnieuw (voor een eerste login, of als de vorige link verliep).
 export async function resendLoginLink(ideaId: string, email: string, _: ActionState): Promise<ActionState> {
-  await requireWritableIdea(ideaId);
+  const { idea } = await requireWritableIdea(ideaId);
   const supabase = await supabaseServer();
-  const { data: member } = await supabase.from("idea_members").select("email").eq("idea_id", ideaId).eq("email", email).maybeSingle();
+  const { data: member } = await supabase.from("idea_members").select("email, role").eq("idea_id", ideaId).eq("email", email).maybeSingle();
   if (!member) return { error: "Deze persoon is niet (meer) uitgenodigd voor dit dossier." };
-  const { error } = await sendInvitationLink(member.email);
-  if (error) {
-    const limited = /rate|limit|too many|security purposes/i.test(error.message);
-    return {
-      error: limited
-        ? "Er zijn te veel inloglinks kort na elkaar verstuurd. Probeer het over een uur opnieuw of deel de app-link zelf."
-        : "De inloglink kon niet worden verstuurd. Controleer het e-mailadres of de e-mailinstellingen van Supabase.",
-    };
-  }
-  return { error: null, ok: `Nieuwe inloglink verstuurd naar ${member.email}.` };
+  const role = member.role === "client_decider" ? "client_decider" : "client_viewer";
+  const r = await sendInvitation({ email: member.email, ideaId, ideaTitle: idea.title, workspaceName: (await getWorkspace()).org?.name ?? "Je adviseur", role });
+  if (r.sent) return { error: null, ok: `Nieuwe uitnodiging met inloglink verstuurd naar ${member.email}.` };
+  return { error: null, ...inviteMessage(r, "") };
 }
 
 export async function removeStakeholder(ideaId: string, email: string) {
@@ -83,12 +76,12 @@ export async function removeStakeholder(ideaId: string, email: string) {
   revalidatePath("/app/clients");
 }
 
-// Sent without the consultant's session (no cookies), so nothing about the link is tied to the
-// consultant's browser. The e-mail template points at /auth/confirm with a token hash, which the client
-// can open on any device; the account is only created because the address is invited (auth hook).
-function sendInvitationLink(email: string) {
-  return supabaseAnon().auth.signInWithOtp({
-    email,
-    options: { shouldCreateUser: true, emailRedirectTo: `${env.appUrl}/app` },
-  });
+// Eerlijke melding per uitkomst. Zonder RESEND_API_KEY: "e-mail niet gekoppeld" met een kopieerbare link.
+function inviteMessage(r: InviteResult, who: string): Pick<ActionState, "ok" | "copy"> {
+  const prefix = who ? `${who} ` : "";
+  if (r.sent) return { ok: `${prefix}De uitnodiging met inloglink is per e-mail verstuurd.` };
+  const how = r.kind === "direct" ? "Deze link logt eenmalig in." : "Via deze link logt de opdrachtgever in met een magic link.";
+  const copy = { label: "Link voor de opdrachtgever", value: r.link };
+  if (r.reason === "email_not_configured") return { ok: `${prefix}E-mail niet gekoppeld: deel de link hieronder zelf. ${how}`, copy };
+  return { ok: `${prefix}De e-mail kon niet worden verstuurd (${r.detail ?? "onbekende fout"}). Deel de link hieronder zelf. ${how}`, copy };
 }

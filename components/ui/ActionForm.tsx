@@ -2,8 +2,10 @@
 
 import { startTransition, useActionState, useEffect, useRef } from "react";
 import { FormPendingOverlay, SavingOverlay } from "@/components/ui/SavingOverlay";
+import { CopyButton } from "@/components/survey/CopyButton";
 
-export type FormState = { error: string | null; ok?: string | null };
+// copy: een waarde (bijv. een link) die de gebruiker zelf kan kopiëren, naast de bevestiging.
+export type FormState = { error: string | null; ok?: string | null; copy?: { label: string; value: string } | null };
 
 // Thin wrapper around a server action: shows validation errors and confirmations inline,
 // keeps the typed values on error, and resets the form after success when asked to.
@@ -35,6 +37,12 @@ export function ActionForm({
     <form ref={ref} action={formAction} className={className} onSubmit={(e) => keepValuesOnSubmit(e, formAction)}>
       {state.error && <div className="form-error" role="alert">{state.error}</div>}
       {state.ok && !state.error && <div className="form-ok" role="status">{state.ok}</div>}
+      {state.copy && !state.error && (
+        <div className="row mt-8" style={{ gap: 8, flexWrap: "wrap" }}>
+          <input className="field" readOnly value={state.copy.value} aria-label={state.copy.label} onFocus={(e) => e.currentTarget.select()} style={{ flex: "1 1 240px", marginTop: 0 }} />
+          <CopyButton text={state.copy.value} label="Kopieer link" />
+        </div>
+      )}
       {children}
       <div className="row mt-12">
         <button className={submitClass} disabled={pending}>{pending ? pendingLabel : submitLabel}</button>

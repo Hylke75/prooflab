@@ -4,7 +4,8 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
-import { runCoachReview } from "@/lib/coach/review";
+import { loadCoachFacts, runCoachReview } from "@/lib/coach/review";
+import { checkNoteDone, type DoneCheck } from "@/lib/coach/rules";
 import { log } from "@/lib/log";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -51,12 +52,35 @@ export async function reviewNow(ideaId: string, _: ReviewNowState): Promise<Revi
   }
 }
 
-export async function resolveCoachNote(ideaId: string, noteId: string, status: "done" | "dismissed"): Promise<{ error: string | null }> {
+export type ResolveResult = { error: string | null; needsConfirm?: boolean; message?: string };
+
+// "Gedaan" controleert eerst of het werk echt gedaan is (checkNoteDone, per regelcode). Zo niet, dan vraagt de
+// coach om bevestiging; na bevestiging sluit de notitie alsnog, en de audit legt vast dat dat zonder data was
+// (confirmed_without_data). "Niet relevant" sluit altijd direct.
+export async function resolveCoachNote(ideaId: string, noteId: string, status: "done" | "dismissed", confirmed = false): Promise<ResolveResult> {
   if (!UUID.test(ideaId) || !UUID.test(noteId) || !["done", "dismissed"].includes(status)) return { error: "Ongeldige notitie." };
   const { canWrite } = await getIdea(ideaId);
   if (!canWrite) return { error: "Alleen het onderzoeksteam kan notities afronden." };
   const supabase = await supabaseServer();
-  const { data, error } = await supabase.from("coach_notes").update({ status }).eq("id", noteId).eq("idea_id", ideaId).eq("status", "open").select("id");
+  let withoutData = false;
+  if (status === "done") {
+    const { data: note } = await supabase.from("coach_notes").select("code, source, kind").eq("id", noteId).eq("idea_id", ideaId).eq("status", "open").maybeSingle();
+    if (!note) return { error: "De notitie kon niet worden bijgewerkt." };
+    let check: DoneCheck = { done: true };
+    try {
+      check = checkNoteDone(note, await loadCoachFacts(ideaId));
+    } catch (e) {
+      // Kan het dossier niet worden gelezen, dan vragen we de consultant om bevestiging in plaats van te raden.
+      await log.warn("coach_done_check_failed", { ideaId }, e);
+      check = { done: false, message: "We konden niet controleren of dit al gedaan is." };
+    }
+    if (!check.done) {
+      if (!confirmed) return { error: null, needsConfirm: true, message: check.message };
+      withoutData = true;
+    }
+  }
+  const update = withoutData ? { status, confirmed_without_data: true } : { status };
+  const { data, error } = await supabase.from("coach_notes").update(update).eq("id", noteId).eq("idea_id", ideaId).eq("status", "open").select("id");
   if (error || !data?.length) return { error: "De notitie kon niet worden bijgewerkt." };
   revalidatePath(`/app/ideas/${ideaId}`, "layout");
   return { error: null };

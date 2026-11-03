@@ -5,6 +5,8 @@ import { Icon } from "@/components/Icon";
 import { keepValuesOnSubmit } from "@/components/ui/ActionForm";
 import { PROJECT_TYPES, SECTOR_TEMPLATES } from "@/lib/domain/labels";
 import { SPRINT_LENGTHS } from "@/lib/domain/sprint";
+import { STAKE_KINDS, STAKE_LABELS, assessDecisionQuestion, type StakeKind } from "@/lib/domain/decision-quality";
+import { parseDutchNumber } from "@/lib/forecast-schemas";
 import { createIdea, type IntakeState } from "./actions";
 import { SavingOverlay } from "@/components/ui/SavingOverlay";
 
@@ -21,7 +23,7 @@ const REGIONS = ["🇳🇱 Nederland", "Benelux", "🇪🇺 Europa", "◎ Wereld
 
 const STEPS = ["Beslissing", "Succes", "Idee", "Doelgroep", "Regio", "Project"] as const;
 const FIELD_STEP: Record<string, number> = {
-  decision_question: 0, budget_eur: 0, decision_deadline: 0, outcome_statement: 1, outcome_metric: 1, outcome_target: 1,
+  decision_question: 0, stake_kind: 0, stake_value: 0, decision_deadline: 0, outcome_statement: 1, outcome_metric: 1, outcome_target: 1, outcome_min_value_per_customer: 1, outcome_revenue_target: 1, outcome_measure_date: 1,
   title: 2, description: 2, target_audience: 3, region: 4, project_type: 5, sprint_start: 5, sprint_weeks: 5,
 };
 
@@ -33,6 +35,15 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
   const [region, setRegion] = useState("");
   const [projectType, setProjectType] = useState("");
   const [clientChoice, setClientChoice] = useState(clients[0]?.id ?? "new");
+  const [stakeKind, setStakeKind] = useState<StakeKind>("amount");
+  const [stakeValue, setStakeValue] = useState("");
+  const [deadline, setDeadline] = useState("");
+  // Vaagheidscontrole: een waarschuwing met herschrijfvoorbeeld, nooit een blokkade.
+  const stakeNumber = stakeValue.trim() ? parseDutchNumber(stakeValue) : NaN;
+  const quality = assessDecisionQuestion(decision, {
+    stake: Number.isFinite(stakeNumber) && stakeNumber > 0 ? { kind: stakeKind, value: stakeNumber } : null,
+    deadline: deadline || null,
+  });
 
   const shownStep = state.error && state.field && FIELD_STEP[state.field] !== undefined && !pending ? FIELD_STEP[state.field] : step;
   const vis = (i: number) => ({ display: shownStep === i ? "block" : "none" });
@@ -54,17 +65,34 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
         </div>
         <label className="field-label" htmlFor="decision_question">De beslisvraag, in je eigen woorden</label>
         <textarea className="field" id="decision_question" name="decision_question" style={{ minHeight: 90 }} value={decision} onChange={(e) => setDecision(e.target.value)} placeholder="Bijv. Investeren we €25.000 in een eerste versie voor eventmanagers?" />
+        {!quality.ok && (
+          <div className="note" role="status" aria-live="polite" style={{ marginTop: 10 }}>
+            <strong>Deze vraag is nog vaag.</strong> {quality.warnings[0]}
+            {quality.example && (
+              <>
+                {" "}Bijvoorbeeld: <em>{quality.example}</em>{" "}
+                <button type="button" className="text-link" onClick={() => setDecision(quality.example!)}>Gebruik dit voorbeeld</button>
+              </>
+            )}
+          </div>
+        )}
         <div className="double-field" style={{ marginTop: 4 }}>
           <div>
-            <label className="field-label" htmlFor="budget_eur">Bedrag dat op het spel staat (optioneel)</label>
-            <input className="field" id="budget_eur" name="budget_eur" inputMode="numeric" placeholder="Bijv. 25000" />
+            <label className="field-label" htmlFor="stake_kind">Wat staat er op het spel?</label>
+            <select className="field" id="stake_kind" name="stake_kind" value={stakeKind} onChange={(e) => setStakeKind(e.target.value as StakeKind)} aria-describedby="stake-hint">
+              {STAKE_KINDS.map((k) => (
+                <option key={k} value={k}>{STAKE_LABELS[k].label} ({STAKE_LABELS[k].unit})</option>
+              ))}
+            </select>
           </div>
           <div>
-            <label className="field-label" htmlFor="decision_deadline">Uiterlijke beslisdatum (optioneel)</label>
-            <input className="field" id="decision_deadline" name="decision_deadline" type="date" />
+            <label className="field-label" htmlFor="stake_value">Hoeveel ({STAKE_LABELS[stakeKind].unit})</label>
+            <input className="field" id="stake_value" name="stake_value" inputMode="decimal" required value={stakeValue} onChange={(e) => setStakeValue(e.target.value)} placeholder={STAKE_LABELS[stakeKind].placeholder} aria-describedby="stake-hint" />
           </div>
         </div>
-        <input type="hidden" name="decision_stakes" value="" />
+        <label className="field-label" htmlFor="decision_deadline">Uiterlijke beslisdatum</label>
+        <input className="field" id="decision_deadline" name="decision_deadline" type="date" required value={deadline} onChange={(e) => setDeadline(e.target.value)} aria-describedby="stake-hint" />
+        <p className="field-hint" id="stake-hint">Een besluit zonder inzet en datum wordt makkelijk uitgesteld. Inzet is geld, tijd of mensen.</p>
       </div>
 
       <div style={vis(1)}>
@@ -85,6 +113,20 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
             <input className="field" id="outcome_target" name="outcome_target" inputMode="decimal" placeholder="Bijv. 15" />
           </div>
         </div>
+        <div className="double-field">
+          <div>
+            <label className="field-label" htmlFor="outcome_min_value_per_customer">Minimumbedrag per klant (€)</label>
+            <input className="field" id="outcome_min_value_per_customer" name="outcome_min_value_per_customer" inputMode="decimal" placeholder="Bijv. 1500" aria-describedby="value-hint" />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="outcome_revenue_target">Omzetdoel (€)</label>
+            <input className="field" id="outcome_revenue_target" name="outcome_revenue_target" inputMode="decimal" placeholder="Bijv. 22500" aria-describedby="value-hint" />
+          </div>
+        </div>
+        <p className="field-hint" id="value-hint">Vul minstens één van beide in: 15 klanten van € 10 is iets anders dan 15 klanten van € 2.000.</p>
+        <label className="field-label" htmlFor="outcome_measure_date">Meetdatum (optioneel)</label>
+        <input className="field" id="outcome_measure_date" name="outcome_measure_date" type="date" min={deadline || undefined} aria-describedby="measure-hint" />
+        <p className="field-hint" id="measure-hint">Na de beslisdatum en uiterlijk zes maanden daarna. Leeg: zes maanden na het besluit.</p>
         <div className="note">Zonder vooraf vastgelegde uitkomst kan niemand achteraf zeggen of de voorspellingen klopten.</div>
       </div>
 

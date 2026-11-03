@@ -1,4 +1,5 @@
 import "server-only";
+import { PROPOSAL_REFERENCE_PREFIX } from "@/lib/domain/reference-proposal";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadAssumptions, rankAssumptions } from "@/lib/progress";
 import { experimentMetrics } from "@/lib/experiment-metrics";
@@ -115,7 +116,14 @@ export async function loadDossier(idea: Idea) {
     supabase.from("forecasts").select("moment, forecaster_kind, probability, rationale, model, created_at").eq("idea_id", id).order("created_at"),
     supabase.from("idea_outcomes").select("achieved, actual_value, evidence, resolved_at").eq("idea_id", id).maybeSingle(),
     supabase.from("outcome_checkins").select("on_track, current_value, note, created_at").eq("idea_id", id).order("created_at"),
-    idea.reference_class && !idea.reference_class.startsWith("own:") && idea.reference_class !== "none"
+    idea.reference_class?.startsWith(PROPOSAL_REFERENCE_PREFIX)
+      ? supabase
+          .from("reference_proposals")
+          .select("label, source_title, source_url, quote")
+          .eq("id", idea.reference_class.slice(PROPOSAL_REFERENCE_PREFIX.length))
+          .maybeSingle()
+          .then((r) => ({ data: r.data ? { label: r.data.label, source_title: r.data.source_title, source_url: r.data.source_url, caveat: `Door AI voorgesteld; citaat letterlijk teruggevonden: "${r.data.quote}"` } : null }))
+      : idea.reference_class && !idea.reference_class.startsWith("own:") && idea.reference_class !== "none"
       ? supabase.from("reference_classes").select("label, source_title, source_url, caveat").eq("id", idea.reference_class).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from("customer_signals").select("kind, label, mentions").eq("idea_id", id).order("mentions", { ascending: false }).limit(12),

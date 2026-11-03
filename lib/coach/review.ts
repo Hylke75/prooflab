@@ -32,7 +32,7 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
   const id = ideaId;
   const exact = { count: "exact" as const };
   const head = { count: "exact" as const, head: true };
-  const [claims, sources, competitors, assumptions, experiments, testEvents, interviews, observations, cards, checks, decisions, forecasts, outcome, checkins, replies] =
+  const [claims, sources, competitors, assumptions, experiments, testEvents, interviews, observations, cards, checks, decisions, forecasts, outcome, checkins, replies, ideaRow] =
     await Promise.all([
       db.from("claims").select("updated_at", exact).eq("idea_id", id).order("updated_at", { ascending: false }).limit(1),
       db.from("sources").select("created_at", exact).eq("idea_id", id).order("created_at", { ascending: false }).limit(1),
@@ -49,6 +49,8 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
       db.from("idea_outcomes").select("idea_id", head).eq("idea_id", id),
       db.from("outcome_checkins").select("id", head).eq("idea_id", id),
       db.from("outreach_events").select("received_at", exact).eq("idea_id", id).eq("event_type", "reply").order("received_at", { ascending: false }).limit(1),
+      // Uitkomstdefinitie en basispercentage: daarop reageren de regels outcome_undefined en forecast_missing.
+      db.from("ideas").select("outcome_statement, reference_class").eq("id", id).maybeSingle(),
     ]);
   const tally = (rows: { [k: string]: unknown }[] | null, key: string) => {
     const m = new Map<string, number>();
@@ -87,6 +89,8 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
     outreach_replies: replies.count ?? 0,
     outreach_replies_at: replies.data?.[0]?.received_at ?? null,
     sprint_week: sprintWeek,
+    outcome_defined: !!ideaRow.data?.outcome_statement,
+    base_rate_chosen: !!ideaRow.data?.reference_class,
   };
 }
 
@@ -153,11 +157,33 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
       checkins: (checkins.data ?? []).map((c) => c.created_at),
     },
     forecasts: (forecasts.data ?? []).map((f) => ({ moment: f.moment, kind: f.forecaster_kind, probability: Number(f.probability) })),
+    baseRateChosen: !!idea.reference_class,
+    idea: { decisionQuestion: idea.decision_question, keyUncertainty: idea.key_uncertainty },
     baseRate: idea.base_rate_low != null && idea.base_rate_high != null ? { low: Number(idea.base_rate_low), high: Number(idea.base_rate_high) } : null,
     // Unknown (schema missing) counts as "enough": then the starting-calibration rule stays quiet.
     orgResolved: orgResolved.error ? Number.POSITIVE_INFINITY : Number(orgResolved.data?.[0]?.resolved ?? 0),
     outreach: { replies: replies.count ?? 0, latestReplyAt: replies.data?.[0]?.received_at ?? null, latestImportAt: imports.data?.[0]?.created_at ?? null },
   };
+}
+
+async function sprintFacts(idea: Dossier["idea"], today: string): Promise<CoachFacts["sprint"]> {
+  const progress = await loadProgress(idea.id);
+  const s = sprintStatus({
+    start: idea.sprint_start,
+    weeks: idea.sprint_weeks,
+    today,
+    stage: sprintStage(progress),
+    testsStarted: progress.experimentsLive + progress.experimentsEnded > 0,
+  });
+  return s.planned ? { week: s.week, weeks: s.weeks, state: s.state, behindReason: s.behindReason } : null;
+}
+
+// De actuele feiten van één dossier, voor de controle "is dit echt gedaan?" bij een coachnotitie.
+export async function loadCoachFacts(ideaId: string): Promise<CoachFacts> {
+  const { idea } = await getIdea(ideaId);
+  const db = await supabaseServer();
+  const today = todayInNL();
+  return loadFacts(db, await loadDossier(idea), await sprintFacts(idea, today), today);
 }
 
 async function insertNotes(db: Db, ideaId: string, drafts: CoachNoteDraft[], source: "rules" | "ai"): Promise<number> {
@@ -192,15 +218,7 @@ export async function runCoachReview(ideaId: string, opts: { force?: boolean } =
     if (since < REVIEW_INTERVAL_MS) return { status: "throttled", waitSeconds: Math.ceil((REVIEW_INTERVAL_MS - since) / 1000) };
   }
 
-  const progress = await loadProgress(ideaId);
-  const s = sprintStatus({
-    start: idea.sprint_start,
-    weeks: idea.sprint_weeks,
-    today,
-    stage: sprintStage(progress),
-    testsStarted: progress.experimentsLive + progress.experimentsEnded > 0,
-  });
-  const sprint = s.planned ? { week: s.week, weeks: s.weeks, state: s.state, behindReason: s.behindReason } : null;
+  const sprint = await sprintFacts(idea, today);
   const fingerprint = makeFingerprint({ day: today, data: await dossierFingerprint(db, ideaId, sprint?.week ?? null) });
   const changed = compareFingerprints(row?.fingerprint, fingerprint);
   if (!changed.any && !opts.force) return { status: "unchanged" };

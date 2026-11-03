@@ -45,10 +45,14 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   // 1. Decision-first intake
   await page.goto("/app/ideas/new");
   await page.getByRole("button", { name: "Is er voldoende markt voor dit aanbod?" }).click();
+  // Inzet en beslisdatum zijn verplicht in de intake.
+  await page.getByLabel("Hoeveel (euro)", { exact: true }).fill("25000");
+  await page.getByLabel("Uiterlijke beslisdatum", { exact: true }).fill(new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10));
   await page.getByRole("button", { name: "Volgende stap" }).click();
   await page.getByLabel("Geslaagd als…", { exact: true }).fill("Zes maanden na het besluit hebben minstens 10 eventbureaus een betaald abonnement.");
   await page.getByLabel("Wat meet je?", { exact: true }).fill("betalende eventbureaus");
   await page.getByLabel("Doelwaarde", { exact: true }).fill("10");
+  await page.getByLabel("Omzetdoel (€)", { exact: true }).fill("15000");
   await page.getByRole("button", { name: "Volgende stap" }).click();
   const title = `E2E-idee ${Date.now()}`;
   await page.getByLabel("Korte naam", { exact: true }).fill(title);
@@ -64,6 +68,11 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.waitForURL(/\/research/);
   await expect(page.getByRole("heading", { name: "Begrijp je markt." })).toBeVisible();
   const ideaUrl = page.url().replace(/\/research.*$/, "");
+  // Het dossieroverzicht toont de volgende stap (week 1: onderzoek, niet de voorspelling).
+  await page.goto(ideaUrl);
+  await expect(page.getByRole("heading", { name: "Volgende stap" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Verzamel de eerste bronnen/ })).toBeVisible();
+  await page.goto(`${ideaUrl}/research`);
 
   // 2. Source + verified claim
   await page.getByRole("tab", { name: "Bronnen" }).click();

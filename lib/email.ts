@@ -13,7 +13,8 @@ export async function sendEmail(input: {
   subject: string;
   text: string;
   html: string;
-  listUnsubscribe: string;
+  // Alleen voor bulkmail (enquêtes); een persoonlijke uitnodiging heeft geen afmeldlink nodig.
+  listUnsubscribe?: string;
   idempotencyKey: string;
 }): Promise<SendResult> {
   if (!emailConfigured()) return { ok: false, error: "E-mail is niet gekoppeld (RESEND_API_KEY of EMAIL_FROM ontbreekt).", retryable: false };
@@ -23,7 +24,7 @@ export async function sendEmail(input: {
     subject: input.subject,
     text: input.text,
     html: input.html,
-    headers: { "List-Unsubscribe": `<${input.listUnsubscribe}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+    ...(input.listUnsubscribe ? { headers: { "List-Unsubscribe": `<${input.listUnsubscribe}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } } : {}),
   });
   for (let attempt = 0; attempt < 2; attempt++) {
     let res: Response;

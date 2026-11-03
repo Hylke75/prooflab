@@ -16,7 +16,45 @@ import {
   type MomentInput,
 } from "@/lib/domain/forecast";
 import type { IdeaProgress } from "@/lib/domain/coach";
-import { parseDutchNumber, OutcomeDefinitionSchema } from "@/lib/forecast-schemas";
+import { parseDutchNumber, OutcomeDefinitionSchema, outcomeValueProblem } from "@/lib/forecast-schemas";
+import { measureWindowProblem, outcomeDueAtDecision } from "@/lib/domain/forecast";
+
+describe("succescriterium: waarde en meetvenster", () => {
+  it("vraagt minstens een minimumbedrag per klant of een omzetdoel", () => {
+    expect(outcomeValueProblem({ outcome_min_value_per_customer: null, outcome_revenue_target: null })).toMatch(/minstens één/);
+    expect(outcomeValueProblem({ outcome_min_value_per_customer: 0, outcome_revenue_target: undefined })).toMatch(/minstens één/);
+    expect(outcomeValueProblem({ outcome_min_value_per_customer: 1500, outcome_revenue_target: null })).toBeNull();
+    expect(outcomeValueProblem({ outcome_min_value_per_customer: null, outcome_revenue_target: 22500 })).toBeNull();
+  });
+
+  it("leest bedragen en een lege meetdatum uit het formulier", () => {
+    const p = OutcomeDefinitionSchema.parse({
+      outcome_statement: "Minstens 15 klanten betalen",
+      outcome_metric: "betalende klanten",
+      outcome_target: "15",
+      outcome_min_value_per_customer: "1.500",
+      outcome_revenue_target: "",
+      outcome_measure_date: "",
+    });
+    expect(p).toMatchObject({ outcome_min_value_per_customer: 1500, outcome_revenue_target: null, outcome_measure_date: null });
+  });
+
+  it("laat de meetdatum alleen toe na de beslisdatum en binnen zes maanden", () => {
+    expect(measureWindowProblem("2027-03-01", "2027-03-01")).toMatch(/na de beslisdatum/);
+    expect(measureWindowProblem("2027-02-01", "2027-03-01")).toMatch(/na de beslisdatum/);
+    expect(measureWindowProblem("2027-09-02", "2027-03-01")).toMatch(/buiten het venster van 6 maanden.*2027-09-01/);
+    expect(measureWindowProblem("2027-09-01", "2027-03-01")).toBeNull();
+    expect(measureWindowProblem("2027-05-15", "2027-03-01")).toBeNull();
+    expect(measureWindowProblem("morgen", "2027-03-01")).toMatch(/geldige/);
+  });
+
+  it("gebruikt de geplande meetdatum bij het besluit als hij nog in het venster past", () => {
+    expect(outcomeDueAtDecision("2027-03-01", "2027-06-01")).toBe("2027-06-01");
+    expect(outcomeDueAtDecision("2027-03-01", null)).toBe("2027-09-01");
+    // Later besloten dan gepland: de meetdatum ligt dan te vroeg, dus zes maanden na het besluit.
+    expect(outcomeDueAtDecision("2027-07-01", "2027-06-01")).toBe("2028-01-01");
+  });
+});
 
 describe("Brier score", () => {
   it("is the squared distance to what happened (yes 1, partial 0.5, no 0)", () => {
