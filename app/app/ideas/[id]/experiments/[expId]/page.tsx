@@ -25,6 +25,7 @@ import { DMU_ROLES, EXPERIMENT_STATES, EXPERIMENT_TYPES, OBSERVATION_KINDS, type
 import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, reviewObservation, setInterviewPractice, setPrimaryTest, transitionExperiment } from "../actions";
 import { fictionSignals, fictionWarning, PRACTICE_LABELS, practiceStatus } from "@/lib/domain/practice";
 import { PracticeChoice } from "@/components/experiments/PracticeChoice";
+import { truncateWords } from "@/lib/domain/truncate";
 import { canDesignatePrimary, TEST_ROLES, testRole } from "@/lib/domain/primary-test";
 import { isStarted } from "@/lib/domain/test-counts";
 import { loadTestExclusions } from "@/lib/progress";
@@ -33,6 +34,8 @@ import { assumptionKind, assumptionKindLabel, metricFitsAssumption } from "@/lib
 import { belowMinSample, END_BELOW_SAMPLE_CONFIRM, END_REASON_MAX, END_REASON_MIN, thresholdBlock } from "@/lib/domain/experiment-gates";
 
 export const metadata: Metadata = { title: "Experiment" };
+
+const TITLE_MAX = 90;
 
 export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[id]/experiments/[expId]">) {
   const { id, expId } = await params;
@@ -98,12 +101,14 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
   // Fase B0, punt 4: telt deze test mee in kans en rangorde? Zelfde regel en gegevens als de risicokaart.
   const exclusion = isStarted(state) ? (await loadTestExclusions(id)).get(expId) ?? null : null;
 
+  const shortTitle = truncateWords(exp.title, TITLE_MAX);
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Experimenten", exp.title]} coach="experiments" ideaId={id}>
       <div className="section-row">
         <div>
           <div className="eyebrow">{EXPERIMENT_TYPES[type].label} · {EXPERIMENT_TYPES[type].phase}</div>
-          <h1>{exp.title}</h1>
+          {/* B1: een lange titel stopt op een woordgrens met "…"; de volledige titel staat in de tooltip. */}
+          <h1 title={shortTitle !== exp.title ? exp.title : undefined}>{shortTitle}</h1>
           <p className="sub">Toetst: {h.assumptions?.statement}</p>
         </div>
         <span className={`pill ${EXPERIMENT_STATES[state].pill}`}>{EXPERIMENT_STATES[state].label}</span>
