@@ -3069,6 +3069,10 @@ export type Database = {
         Args: { p_org: string }
         Returns: { idea_id: string; rule: string; status: string; days_to_resolve: number | null; helpful: boolean | null; decision_brier: number | null }[]
       }
+      real_interview_ids: {
+        Args: { p_idea: string }
+        Returns: string[]
+      }
       observations_for_idea: {
         Args: { p_idea: string }
         Returns: {

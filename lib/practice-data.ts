@@ -7,10 +7,13 @@ import { realInterviewIds } from "@/lib/domain/practice";
 // (of zonder interview) tellen als bewijs; zie lib/domain/practice.ts. Bij het laden van waarnemingen, niet door
 // gegevens te wijzigen.
 //
-// Let op: interviews zijn alleen leesbaar voor wie het idee mag bewerken (RLS). Een opdrachtgever krijgt hier een
-// lege set, zodat waarnemingen uit interviews voor hem niet meetellen tot de database dit voor lezers ontsluit.
+// Via de functie real_interview_ids (migratie 20261108100000): opdrachtgevers mogen de tabel interviews niet lezen,
+// maar rekenen zo met dezelfde echte gesprekken als de consultant. Bestaat de functie nog niet (oudere database),
+// dan valt dit terug op de tabel; een opdrachtgever krijgt daar een lege set (strenge kant).
 export const loadRealInterviewIds = cache(async (ideaId: string): Promise<Set<string>> => {
   const supabase = await supabaseServer();
+  const rpc = await supabase.rpc("real_interview_ids", { p_idea: ideaId });
+  if (!rpc.error) return new Set((rpc.data ?? []).map(String));
   const { data, error } = await supabase.from("interviews").select("id, is_practice").eq("idea_id", ideaId).eq("is_practice", false);
   if (error) return new Set();
   return realInterviewIds(data ?? []);
