@@ -19,6 +19,9 @@ import { stepsDone } from "@/lib/steps";
 import { asEvidenceLevel, explainStrength, outcomeWithLevel, strength, strengthLabel, testEvidenceLevel, type EvidenceLevel } from "@/lib/domain/evidence";
 import { ASSUMPTION_CATEGORIES, DECISIONS, OBSERVATION_KINDS, type DecisionAction, type ObservationKind } from "@/lib/domain/labels";
 import type { Finding } from "@/lib/domain/reality-check";
+import { evidenceLadder } from "@/lib/domain/dossier-label";
+import { perPersonLabel } from "@/lib/domain/per-person";
+import { ladderObservation } from "@/lib/dossier";
 import { addPremortem, approveLearningCard, confirmDecision, runCheck, saveDecision, updateLearningCard } from "./actions";
 import { RuleCheckCard } from "@/components/decision/DecisionRule";
 import { loadRuleCheck } from "@/lib/decision-rule-data";
@@ -36,14 +39,6 @@ function cardLevel(metrics: unknown, exp: { type: string; hypotheses: { decision
   return stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule }) : null);
 }
 
-const LADDER: { kinds: ObservationKind[]; label: string }[] = [
-  { kinds: ["opinion"], label: "Uitgesproken belangstelling" },
-  { kinds: ["problem_confirmed", "current_behaviour", "current_spend"], label: "Probleem in eigen gedrag" },
-  { kinds: ["waitlist_signup"], label: "Kleine handeling (aanmelding)" },
-  { kinds: ["demo_request", "quote_request"], label: "Concrete aanvraag of keuze bij prijs" },
-  { kinds: ["deposit"], label: "Aanbetaling" },
-  { kinds: ["repeat_purchase"], label: "Herhaalde aankoop" },
-];
 const SEV = { blocker: ["Blokkerend", "coral"], warning: ["Let op", "orange"], info: ["Ter info", "gray"] } as const;
 
 export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id]/evidence">) {
@@ -75,9 +70,11 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
   const obs = d.observations.filter((o) => !o.is_synthetic).sort((a, b) => strength({ isFact: b.is_fact, isBehaviour: b.is_behaviour, isRealContext: b.is_real_context, isCostly: b.is_costly, isSynthetic: false }) - strength({ isFact: a.is_fact, isBehaviour: a.is_behaviour, isRealContext: a.is_real_context, isCostly: a.is_costly, isSynthetic: false }));
   // B0: waarnemingen uit oefengesprekken of nog niet aangegeven gesprekken (in loadDossier als synthetisch gemarkeerd).
   const practiceObs = d.observations.filter((o) => o.is_practice).length;
-  const reached = LADDER.map((r) => ({ ...r, count: obs.filter((o) => r.kinds.includes(o.kind as ObservationKind)).length }));
-  const highest = [...reached].reverse().find((r) => r.count > 0);
-  const missingPayment = !reached.slice(4).some((r) => r.count > 0);
+  // Fase B0, punt 1: per persoon tellen. Eén interview levert per bewijsniveau maximaal één waarneming.
+  const ladder = evidenceLadder(d.observations.map(ladderObservation));
+  const reached = ladder.rungs;
+  const highest = ladder.highest;
+  const missingPayment = !ladder.paymentShown;
   const check = d.realityCheck;
   const checkFindings = ((check?.findings as { findings?: (Finding & { source?: string })[] } | null)?.findings ?? []);
   const investorQuestions = ((check?.findings as { investorQuestions?: string[] } | null)?.investorQuestions ?? []);
@@ -123,7 +120,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
         <div>
           <span className="pill green">{d.label.label}</span>
           <h2 className="as-h3" style={{ margin: "10px 0 5px" }}>
-            {highest ? `Sterkste bewijs tot nu toe: ${highest.label.toLowerCase()} (${highest.count}×).` : "Nog geen waargenomen klantgedrag."}
+            {highest ? `Sterkste bewijs tot nu toe: ${highest.label.toLowerCase()} (${highest.count}× per persoon geteld).` : "Nog geen waargenomen klantgedrag."}
             {missingPayment ? " Betaling nog niet aangetoond." : ""}
           </h2>
           <p>
@@ -134,11 +131,16 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
 
       <div className="grid-2">
         <div className="card">
-          <div className="section-title"><h3>Bewijs op een rij</h3><span className="pill gray">{obs.length} observaties</span></div>
+          <div className="section-title"><h3>Bewijs op een rij</h3><span className="pill gray">{perPersonLabel(ladder)}</span></div>
           <div className="row" style={{ gap: 6, marginBottom: 6 }}>
             {reached.map((r) => <span key={r.label} className={`pill ${r.count ? "green" : "gray"}`}>{r.label}{r.count ? ` · ${r.count}` : ""}</span>)}
           </div>
           {obs.length === 0 && <p className="sub mt-12">Nog geen observaties. Die ontstaan uit interviews en afgeronde experimenten.</p>}
+          {ladder.quotes > ladder.counted && (
+            <p className="tiny mt-8">
+              Per persoon geteld: uit {ladder.people} {ladder.people === 1 ? "interview" : "interviews"} telt per bewijsniveau één uitspraak mee (de sterkste; steun en tegenspraak apart). Alle {ladder.quotes} citaten blijven hieronder zichtbaar.
+            </p>
+          )}
           {obs.slice(0, 12).map((o) => {
             const dims = { isFact: o.is_fact, isBehaviour: o.is_behaviour, isRealContext: o.is_real_context, isCostly: o.is_costly, isSynthetic: o.is_synthetic };
             const s = strengthLabel(strength(dims));
