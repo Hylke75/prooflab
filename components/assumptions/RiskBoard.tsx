@@ -7,6 +7,7 @@ import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { ASSUMPTION_CATEGORIES, ASSUMPTION_STATUS, type AssumptionCategory, type AssumptionStatus } from "@/lib/domain/labels";
 import { bandFromShift, explainContribution, probabilityFromShift, type AssumptionProbability } from "@/lib/domain/evidence";
 import type { VoiResult } from "@/lib/domain/recommend";
+import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export type BoardAssumption = {
   id: string;
@@ -211,7 +212,7 @@ export function RiskBoard({
               <div className="row between" key={c.id} style={{ fontSize: 12, padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
                 <span>{c.relation === "contradicts" ? "✕ " : "✓ "}{c.statement}</span>
                 {canWrite && (
-                  <form action={unlinkActions[current.id]?.[c.id]}><button className="text-link">Ontkoppel</button></form>
+                  <form action={unlinkActions[current.id]?.[c.id]}><button className="text-link">Ontkoppel</button><FormPendingOverlay /></form>
                 )}
               </div>
             ))}
@@ -238,6 +239,7 @@ export function RiskBoard({
               </select>
               <button className="btn white sm">Opslaan</button>
               <button formAction={deleteActions[current.id]} className="text-link" style={{ color: "#a43c42" }}>Verwijderen</button>
+              <FormPendingOverlay />
             </form>
           </>
         )}
@@ -297,6 +299,7 @@ function ProbabilityDetail({ a, prior, setPrior, save }: { a: BoardAssumption; p
         <form action={save} className="mt-8">
           <input type="hidden" name="prior" value={prior} />
           <button className="btn white sm">Bewaar {pctR(prior)} als beginwaarde</button>
+          <FormPendingOverlay />
         </form>
       )}
       <p className="explain">

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { eraseSubject, searchSubject } from "@/app/app/privacy/actions";
 import { dsrLines, exportFilename, suppressionReason, type DsrResult } from "@/lib/domain/privacy";
+import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 const nlDate = (s: string | null | undefined) => (s ? new Date(s).toLocaleDateString("nl-NL") : "—");
 
@@ -83,6 +84,7 @@ export function DataRequest({ hashReady, saltVersions }: { hashReady: boolean; s
             ? `Er wordt ook gezocht op de versleutelde adrescode onder ${saltVersions.length === 1 ? "sleutelversie" : "sleutelversies"} ${saltVersions.join(", ")}.`
             : "TRACKING_SALT(S) ontbreekt: er wordt alleen op het letterlijke adres gezocht, niet op de afmeldlijst."}
         </p>
+        <FormPendingOverlay />
       </form>
 
       <div aria-live="polite">

@@ -6,6 +6,7 @@ import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { Drawer } from "@/components/ui/Drawer";
 import { COMPETITOR_KINDS, type CompetitorKind } from "@/lib/domain/labels";
 import { RECHECK_DAYS, recheckDue } from "@/lib/domain/recheck";
+import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export type CompetitorView = {
   id: string;
@@ -163,6 +164,7 @@ export function CompetitorPanel({
             {canWrite && current && (
               <form action={deleteActions[current.id]} className="mt-18">
                 <button className="text-link" style={{ color: "#a43c42" }}>Verwijderen</button>
+                <FormPendingOverlay />
               </form>
             )}
       </Drawer>

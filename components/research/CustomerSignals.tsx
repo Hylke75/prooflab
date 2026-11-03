@@ -2,6 +2,7 @@ import { ActionForm } from "@/components/ui/ActionForm";
 import { SIGNAL_KINDS, topPains, type SignalKind, type SignalQuote } from "@/lib/domain/customer-signals";
 import { SOURCE_TYPES, type SourceType } from "@/lib/domain/labels";
 import { addCustomerSignal, analyzeCustomerSignals, assumptionFromSignal, deleteCustomerSignal } from "@/app/app/ideas/[id]/research/actions";
+import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export type SignalView = { id: string; kind: SignalKind; label: string; mentions: number; origin: string; quotes: SignalQuote[] };
 type SignalSource = { id: string; title: string; source_type: string; excerpts: { id: string; text: string }[] };
@@ -68,6 +69,7 @@ export function CustomerSignals({
                           )}
                           <form action={deleteCustomerSignal.bind(null, ideaId, s.id)}>
                             <button className="text-link" style={{ color: "#a43c42", marginTop: 12 }}>Signaal verwijderen</button>
+                            <FormPendingOverlay />
                           </form>
                         </div>
                       )}

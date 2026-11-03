@@ -6,6 +6,7 @@ import { keepValuesOnSubmit } from "@/components/ui/ActionForm";
 import { PROJECT_TYPES, SECTOR_TEMPLATES } from "@/lib/domain/labels";
 import { SPRINT_LENGTHS } from "@/lib/domain/sprint";
 import { createIdea, type IntakeState } from "./actions";
+import { SavingOverlay } from "@/components/ui/SavingOverlay";
 
 type Client = { id: string; name: string };
 
@@ -204,6 +205,7 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
           </button>
         )}
       </div>
+      <SavingOverlay active={pending} label="Je dossier wordt aangemaakt…" />
     </form>
   );
 }

@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { keepValuesOnSubmit } from "@/components/ui/ActionForm";
 import type { EndpointState } from "@/app/app/ideas/[id]/integrations/actions";
+import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 type Action = (s: EndpointState, f: FormData) => Promise<EndpointState>;
 
@@ -33,6 +34,7 @@ export function ExpandiConnect({ action, configured }: { action: Action; configu
         <div className="row mt-12">
           <button className="btn primary" disabled={pending}>{pending ? "Koppelen…" : "Koppel Expandi"}</button>
         </div>
+        <FormPendingOverlay />
       </form>
       {state.url && (
         <div className="insight-card" role="status">

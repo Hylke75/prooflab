@@ -27,6 +27,7 @@ import {
   addClaim, addSource, aiPlan, checkClaimSupport, deleteClaim, deleteCompetitor, deleteQuestion, deleteSegment, deleteSource,
   overrideSupport, recheckCompetitors, saveCompetitor, saveQuestion, saveScenario, saveSegment, saveUnitEconomics,
 } from "./actions";
+import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export const metadata: Metadata = { title: "Marktverkenning" };
 
@@ -149,6 +150,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     canWrite ? (
       <form action={deleteClaim.bind(null, id, cid)}>
         <button className="text-link" style={{ color: "#a43c42" }}>Bevinding verwijderen</button>
+        <FormPendingOverlay />
       </form>
     ) : null;
 
@@ -382,7 +384,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                     <div className="tiny">Nog te toetsen</div>
                     <strong style={{ fontSize: 12 }}>{s.open_question ?? "—"}</strong>
                     {canWrite && (
-                      <form action={deleteSegment.bind(null, id, s.id)} className="mt-12"><button className="text-link" style={{ color: "#a43c42" }}>Verwijderen</button></form>
+                      <form action={deleteSegment.bind(null, id, s.id)} className="mt-12"><button className="text-link" style={{ color: "#a43c42" }}>Verwijderen</button><FormPendingOverlay /></form>
                     )}
                   </div>
                 );
@@ -491,7 +493,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                   <div className="stack" style={{ justifyItems: "end" }}>
                     <span className={`pill ${s.is_primary || s.source_type === "official_statistic" ? "green" : "gray"}`}>{s.is_primary ? "Primair" : s.source_type === "official_statistic" ? "Officieel" : "Secundair"}</span>
                     {canWrite && (
-                      <form action={deleteSource.bind(null, id, s.id)}><button className="text-link" style={{ color: "#a43c42" }}>Verwijderen</button></form>
+                      <form action={deleteSource.bind(null, id, s.id)}><button className="text-link" style={{ color: "#a43c42" }}>Verwijderen</button><FormPendingOverlay /></form>
                     )}
                   </div>
                 </div>

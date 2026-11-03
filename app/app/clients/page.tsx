@@ -7,6 +7,7 @@ import { getWorkspace } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { SECTOR_TEMPLATES } from "@/lib/domain/labels";
 import { addClient, inviteStakeholder, removeStakeholder, resendLoginLink } from "./actions";
+import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export const metadata: Metadata = { title: "Klanten" };
 
@@ -68,6 +69,7 @@ export default async function ClientsPage() {
                           </ActionForm>
                           <form action={removeStakeholder.bind(null, i.id, m.email)}>
                             <button className="text-link" style={{ color: "#a43c42" }} aria-label={`Verwijder ${m.email}`}>Verwijderen</button>
+                            <FormPendingOverlay />
                           </form>
                         </div>
                       </div>

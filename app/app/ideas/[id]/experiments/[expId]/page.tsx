@@ -20,6 +20,7 @@ import { pct } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { DMU_ROLES, EXPERIMENT_STATES, EXPERIMENT_TYPES, OBSERVATION_KINDS, type ExperimentState, type ExperimentType } from "@/lib/domain/labels";
 import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, reviewObservation, transitionExperiment } from "../actions";
+import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export const metadata: Metadata = { title: "Experiment" };
 
@@ -283,12 +284,12 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
                     </p>
                     {o.origin === "ai" && !o.review_status && (
                       <div className="row mt-8">
-                        <form action={reviewObservation.bind(null, id, o.id, "accepted")}><button className="btn white sm">Accepteer codering</button></form>
-                        <form action={reviewObservation.bind(null, id, o.id, "rejected")}><button className="btn white sm">Wijs af</button></form>
+                        <form action={reviewObservation.bind(null, id, o.id, "accepted")}><button className="btn white sm">Accepteer codering</button><FormPendingOverlay /></form>
+                        <form action={reviewObservation.bind(null, id, o.id, "rejected")}><button className="btn white sm">Wijs af</button><FormPendingOverlay /></form>
                       </div>
                     )}
                   </div>
-                  {state !== "decided" && o.origin === "manual" && <form action={deleteObservation.bind(null, id, o.id)}><button className="text-link">Verwijder</button></form>}
+                  {state !== "decided" && o.origin === "manual" && <form action={deleteObservation.bind(null, id, o.id)}><button className="text-link">Verwijder</button><FormPendingOverlay /></form>}
                 </div>
               ))}
               {running && (
@@ -312,7 +313,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
                     {aiConfigured() && (
                       <ActionForm action={analyzeInterviewWithAi.bind(null, id, expId, iv.id)} submitLabel="Laat AI uitspraken markeren" submitClass="btn soft sm" pendingLabel="Analyseren…"><span /></ActionForm>
                     )}
-                    <form action={deleteInterview.bind(null, id, iv.id)}><button className="text-link" style={{ color: "#a43c42", marginTop: 12 }}>Interview verwijderen</button></form>
+                    <form action={deleteInterview.bind(null, id, iv.id)}><button className="text-link" style={{ color: "#a43c42", marginTop: 12 }}>Interview verwijderen</button><FormPendingOverlay /></form>
                   </div>
                 </div>
               )}

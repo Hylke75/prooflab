@@ -8,6 +8,7 @@ import { askCoach, type CoachAnswerState } from "@/app/app/coach-actions";
 import { CoachFeed, type FeedNote } from "@/components/coach/CoachFeed";
 import type { CoachData } from "@/lib/domain/coach";
 import { useShell } from "./ShellProvider";
+import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export function Coach({ data, aiConnected, notes }: { data: CoachData; aiConnected: boolean; notes?: FeedNote[] }) {
   const { coachOpen, openCoach, close } = useShell();
@@ -68,6 +69,7 @@ export function Coach({ data, aiConnected, notes }: { data: CoachData; aiConnect
                     <Icon name="spark" size="sm" /> {pending ? "Even denken…" : "Vraag de coach"}
                   </button>
                   <div className="tiny" style={{ marginTop: 10, textAlign: "center" }}>Antwoorden zijn advies, geen bewijs. Ze verwijzen alleen naar je eigen dossier.</div>
+                  <FormPendingOverlay />
                 </form>
               ) : (
                 <p className="tiny" style={{ textAlign: "center" }}>Open een idee om vragen over het dossier te stellen.</p>

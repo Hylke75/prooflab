@@ -5,6 +5,7 @@ import { useActionState, useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
 import { NOTE_KINDS, type NoteKind } from "@/lib/coach/rules";
 import { rateCoachNote, resolveCoachNote, reviewNow, type ReviewNowState } from "@/app/app/coach-review-actions";
+import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export type FeedNote = {
   id: string;
@@ -119,6 +120,7 @@ export function CoachFeed({ ideaId, notes, canWrite, onNavigate }: { ideaId: str
           </div>
           {review.error && <p className="form-error" role="alert">{review.error}</p>}
           <p className="tiny">Notities van de AI-coach zijn advies, nooit bewijs.</p>
+          <FormPendingOverlay />
         </form>
       )}
     </section>
