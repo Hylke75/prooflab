@@ -163,17 +163,17 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               {r.labelMissing.length ? ` Voor een hoger niveau ontbreekt: ${r.labelMissing.join("; ")}.` : ""}
             </p>
             <div className="grid-3" style={{ margin: "20px 0" }}>
-              <div style={{ background: "#e7eaff", padding: 16, borderRadius: 12 }}>
+              <div style={{ background: "var(--color-surface-soft)", padding: 16, borderRadius: 12 }}>
                 <div className="tiny">Bevindingen met bron</div>
                 <div className="report-number">{r.counts.claims}</div>
                 <div className="tiny">{r.counts.verified} geverifieerd · {r.counts.insufficient} onvoldoende</div>
               </div>
-              <div style={{ background: "#e3f3e8", padding: 16, borderRadius: 12 }}>
+              <div style={{ background: "var(--color-success-soft)", padding: 16, borderRadius: 12 }}>
                 <div className="tiny">Experimenten</div>
                 <div className="report-number">{String(r.experiments.length).padStart(2, "0")}</div>
                 <div className="tiny">{r.learningCards.length} met goedgekeurde Learning Card</div>
               </div>
-              <div style={{ background: "#fff0e6", padding: 16, borderRadius: 12 }}>
+              <div style={{ background: "var(--color-warning-soft)", padding: 16, borderRadius: 12 }}>
                 <div className="tiny">Bereikbare jaaromzet (realistisch)</div>
                 <div className="report-number">{r.sizing.find((s) => s.label === "Realistisch") ? eur(r.sizing.find((s) => s.label === "Realistisch")!.somRevenue) : "?"}</div>
                 <div className="tiny">{r.sizing.find((s) => s.label === "Realistisch")?.status ?? "niet berekend"}</div>
@@ -200,7 +200,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               return (
                 <div key={key} className="mt-12">
                   <strong style={{ fontSize: 13 }}>{label}</strong>
-                  <ul style={{ margin: "6px 0 0 18px", fontSize: 13, lineHeight: 1.7, color: "#3d4657" }}>
+                  <ul style={{ margin: "6px 0 0 18px", fontSize: 13, lineHeight: 1.7, color: "var(--color-text)" }}>
                     {list.map((c, i) => (
                       <li key={i}>
                         {c.statement} <Notes n={c.notes} /> <em className="tiny">({c.status}{c.contradicted ? ", tegengesproken" : ""})</em>
@@ -333,7 +333,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             {r.realityCheck ? (
               <>
                 <p>Uitgevoerd {date(r.realityCheck.at)}{r.realityCheck.aiUsed ? ", aangevuld met kritische vragen van AI" : ""}. Advies: {r.realityCheck.advice}. {r.realityCheck.reason}</p>
-                <ul style={{ margin: "6px 0 0 18px", fontSize: 13, lineHeight: 1.7, color: "#3d4657" }}>
+                <ul style={{ margin: "6px 0 0 18px", fontSize: 13, lineHeight: 1.7, color: "var(--color-text)" }}>
                   {r.realityCheck.findings.map((f, i) => <li key={i}><strong>{f.title}</strong>{f.source === "ai" ? " (AI-vraag)" : ""}: {f.detail}</li>)}
                 </ul>
               </>
@@ -415,7 +415,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
 
           <section className="report-section" style={{ breakBefore: "page" }}>
             <span className="eyebrow">BRONNEN</span>
-            <ol style={{ margin: "6px 0 0 18px", fontSize: 11, lineHeight: 1.7, color: "#3d4657" }}>
+            <ol style={{ margin: "6px 0 0 18px", fontSize: 11, lineHeight: 1.7, color: "var(--color-text)" }}>
               {r.sources.map((s) => (
                 <li key={s.n}>
                   {s.publisher ? `${s.publisher}, ` : ""}
@@ -431,7 +431,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             </p>
           </section>
 
-          <div style={{ borderTop: "1px solid #e1e4e5", paddingTop: 16, display: "flex", justifyContent: "space-between", color: "#5f6879", fontSize: 10 }}>
+          <div style={{ borderTop: "1px solid var(--color-border)", paddingTop: 16, display: "flex", justifyContent: "space-between", color: "var(--color-text-muted)", fontSize: 10 }}>
             <span>ProofLab · {r.preparedBy}</span>
             <span>Versie {r.version} · {date(r.generatedAt)}</span>
           </div>

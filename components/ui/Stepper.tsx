@@ -17,7 +17,7 @@ export function Stepper({ current, ideaId, done }: { current: StepKey; ideaId?: 
           <span key={s.key} style={{ display: "contents" }}>
             {i > 0 && <span className="connector" />}
             {ideaId ? (
-              <Link href={`/app/ideas/${ideaId}${s.path}`} className={cls} aria-current={s.key === current ? "step" : undefined} style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8, fontSize: 11, fontWeight: 800, padding: "8px 4px", color: s.key === current ? "var(--blue)" : "#5f6879" }}>
+              <Link href={`/app/ideas/${ideaId}${s.path}`} className={cls} aria-current={s.key === current ? "step" : undefined} style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8, fontSize: 11, fontWeight: 800, padding: "8px 4px", color: s.key === current ? "var(--blue)" : "var(--color-text-muted)" }}>
                 {inner}
               </Link>
             ) : (

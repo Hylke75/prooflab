@@ -152,7 +152,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   const claimActions = (cid: string) =>
     canWrite ? (
       <form action={deleteClaim.bind(null, id, cid)}>
-        <button className="text-link" style={{ color: "#a43c42" }}>Bevinding verwijderen</button>
+        <button className="text-link" style={{ color: "var(--color-risk-text)" }}>Bevinding verwijderen</button>
         <FormPendingOverlay />
       </form>
     ) : null;
@@ -328,17 +328,17 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
           <div className="card" style={{ marginTop: 18 }}>
             <div className="section-title"><h3>Concurrentielandschap</h3></div>
             <div className="grid-3">
-              <div style={{ padding: 15, background: "#f2f5fe", borderRadius: 14 }}>
+              <div style={{ padding: 15, background: "var(--color-surface-soft)", borderRadius: 14 }}>
                 <span className="pill blue">Direct</span>
                 <h3 style={{ fontSize: 16, margin: "12px 0 7px" }}>{competitors.filter((c) => c.kind === "direct").length} aanbieders</h3>
                 <p className="tiny">{competitors.filter((c) => c.kind === "direct").map((c) => c.name).slice(0, 3).join(", ") || "Nog niet onderzocht"}</p>
               </div>
-              <div style={{ padding: 15, background: "#fff3ea", borderRadius: 14 }}>
+              <div style={{ padding: 15, background: "var(--color-warning-soft)", borderRadius: 14 }}>
                 <span className="pill coral">Indirect</span>
                 <h3 style={{ fontSize: 16, margin: "12px 0 7px" }}>{competitors.filter((c) => c.kind === "indirect").length} aanbieders</h3>
                 <p className="tiny">{competitors.filter((c) => c.kind === "indirect").map((c) => c.name).slice(0, 3).join(", ") || "Nog niet onderzocht"}</p>
               </div>
-              <div style={{ padding: 15, background: "#edf3e9", borderRadius: 14 }}>
+              <div style={{ padding: 15, background: "var(--color-success-soft)", borderRadius: 14 }}>
                 <span className="pill green">Alternatief</span>
                 <h3 style={{ fontSize: 16, margin: "12px 0 7px" }}>{competitors.filter((c) => c.kind === "alternative" || c.kind === "status_quo").length} alternatieven</h3>
                 <p className="tiny">{competitors.filter((c) => c.kind === "alternative" || c.kind === "status_quo").map((c) => c.name).slice(0, 3).join(", ")}</p>
@@ -388,7 +388,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                     <div className="tiny">Nog te toetsen</div>
                     <strong style={{ fontSize: 12 }}>{s.open_question ?? "—"}</strong>
                     {canWrite && (
-                      <form action={deleteSegment.bind(null, id, s.id)} className="mt-12"><button className="text-link" style={{ color: "#a43c42" }}>Verwijderen</button><FormPendingOverlay /></form>
+                      <form action={deleteSegment.bind(null, id, s.id)} className="mt-12"><button className="text-link" style={{ color: "var(--color-risk-text)" }}>Verwijderen</button><FormPendingOverlay /></form>
                     )}
                   </div>
                 );
@@ -503,7 +503,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                   <div className="stack" style={{ justifyItems: "end" }}>
                     <span className={`pill ${s.is_primary || s.source_type === "official_statistic" ? "green" : "gray"}`}>{s.is_primary ? "Primair" : s.source_type === "official_statistic" ? "Officieel" : "Secundair"}</span>
                     {canWrite && (
-                      <form action={deleteSource.bind(null, id, s.id)}><button className="text-link" style={{ color: "#a43c42" }}>Verwijderen</button><FormPendingOverlay /></form>
+                      <form action={deleteSource.bind(null, id, s.id)}><button className="text-link" style={{ color: "var(--color-risk-text)" }}>Verwijderen</button><FormPendingOverlay /></form>
                     )}
                   </div>
                 </div>
@@ -545,7 +545,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
 
 function DeleteQuestion({ ideaId, questionId }: { ideaId: string; questionId: string }) {
   return (
-    <button formAction={deleteQuestion.bind(null, ideaId, questionId)} className="text-link" style={{ color: "#a43c42" }}>
+    <button formAction={deleteQuestion.bind(null, ideaId, questionId)} className="text-link" style={{ color: "var(--color-risk-text)" }}>
       Vraag verwijderen
     </button>
   );

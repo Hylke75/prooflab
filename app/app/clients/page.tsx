@@ -68,7 +68,7 @@ export default async function ClientsPage() {
                             <span />
                           </ActionForm>
                           <form action={removeStakeholder.bind(null, i.id, m.email)}>
-                            <button className="text-link" style={{ color: "#a43c42" }} aria-label={`Verwijder ${m.email}`}>Verwijderen</button>
+                            <button className="text-link" style={{ color: "var(--color-risk-text)" }} aria-label={`Verwijder ${m.email}`}>Verwijderen</button>
                             <FormPendingOverlay />
                           </form>
                         </div>

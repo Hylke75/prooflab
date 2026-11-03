@@ -238,7 +238,7 @@ export function RiskBoard({
                 {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n} {n === 5 ? "(kritiek)" : ""}</option>)}
               </select>
               <button className="btn white sm">Opslaan</button>
-              <button formAction={deleteActions[current.id]} className="text-link" style={{ color: "#a43c42" }}>Verwijderen</button>
+              <button formAction={deleteActions[current.id]} className="text-link" style={{ color: "var(--color-risk-text)" }}>Verwijderen</button>
               <FormPendingOverlay />
             </form>
           </>
@@ -269,7 +269,7 @@ function ProbabilityDetail({ a, prior, setPrior, save }: { a: BoardAssumption; p
         <ul style={{ margin: "8px 0 0 18px", fontSize: 12, lineHeight: 1.7 }} aria-label="Grootste bijdragen aan de kans">
           {a.probability.top.map((c) => (
             <li key={c.key}>
-              <span style={{ color: c.direction === "supports" ? "var(--green)" : "#a43c42", fontWeight: 800 }}>{c.direction === "supports" ? "↑" : "↓"}</span> {explainContribution(c)}
+              <span style={{ color: c.direction === "supports" ? "var(--green)" : "var(--color-risk-text)", fontWeight: 800 }}>{c.direction === "supports" ? "↑" : "↓"}</span> {explainContribution(c)}
             </li>
           ))}
         </ul>

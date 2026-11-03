@@ -56,7 +56,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
       </div>
       <Stepper current="decide" ideaId={id} done={stepsDone(progress)} />
 
-      <div className="insight-banner" style={{ background: "#edf3e9", borderColor: "#deeadb" }}>
+      <div className="insight-banner" style={{ background: "var(--color-success-soft)" }}>
         <div>
           <span className="pill green">{d.label.label}</span>
           <h2 className="as-h3" style={{ margin: "10px 0 5px" }}>

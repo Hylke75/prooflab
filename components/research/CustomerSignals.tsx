@@ -68,7 +68,7 @@ export function CustomerSignals({
                             </ActionForm>
                           )}
                           <form action={deleteCustomerSignal.bind(null, ideaId, s.id)}>
-                            <button className="text-link" style={{ color: "#a43c42", marginTop: 12 }}>Signaal verwijderen</button>
+                            <button className="text-link" style={{ color: "var(--color-risk-text)", marginTop: 12 }}>Signaal verwijderen</button>
                             <FormPendingOverlay />
                           </form>
                         </div>

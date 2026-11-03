@@ -308,7 +308,7 @@ export function ExperimentBuilder({
                         <p className="sub" style={{ fontSize: 13 }}>{v.subline}</p>
                         <p className="tiny mt-8">{v.offer}</p>
                         {[...v.ai_honesty_notes, ...v.warnings].length > 0 && (
-                          <ul className="tiny" style={{ margin: "6px 0 0 16px", padding: 0, color: "#976022" }}>
+                          <ul className="tiny" style={{ margin: "6px 0 0 16px", padding: 0, color: "var(--color-warning-text)" }}>
                             {[...v.ai_honesty_notes, ...v.warnings].map((w) => <li key={w}>Let op: {w}</li>)}
                           </ul>
                         )}

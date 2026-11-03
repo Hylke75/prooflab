@@ -23,7 +23,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             drempels, en een besluit dat je opdrachtgever kan narekenen.
           </p>
         </div>
-        <p className="tiny" style={{ color: "#8d97ac", position: "relative", zIndex: 1 }}>
+        <p className="tiny" style={{ color: "var(--color-on-dark-muted)", position: "relative", zIndex: 1 }}>
           Een AI-antwoord is een hypothese, nooit bewijs dat de markt zal kopen.
         </p>
       </section>

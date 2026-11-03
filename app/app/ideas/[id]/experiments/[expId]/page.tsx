@@ -129,7 +129,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           {canWrite && state === "draft" && (
             <>
               <p className="sub">Controleer de Test Card. Daarna bied je het experiment aan voor review.</p>
-              <ActionForm action={transitionExperiment.bind(null, id, expId, "ready_for_review")} submitLabel="Ter review aanbieden" footer={<button formAction={deleteDraft.bind(null, id, expId)} className="text-link" style={{ color: "#a43c42" }}>Concept verwijderen</button>}>
+              <ActionForm action={transitionExperiment.bind(null, id, expId, "ready_for_review")} submitLabel="Ter review aanbieden" footer={<button formAction={deleteDraft.bind(null, id, expId)} className="text-link" style={{ color: "var(--color-risk-text)" }}>Concept verwijderen</button>}>
                 <span />
               </ActionForm>
             </>
@@ -313,7 +313,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
                     {aiConfigured() && (
                       <ActionForm action={analyzeInterviewWithAi.bind(null, id, expId, iv.id)} submitLabel="Laat AI uitspraken markeren" submitClass="btn soft sm" pendingLabel="Analyseren…"><span /></ActionForm>
                     )}
-                    <form action={deleteInterview.bind(null, id, iv.id)}><button className="text-link" style={{ color: "#a43c42", marginTop: 12 }}>Interview verwijderen</button><FormPendingOverlay /></form>
+                    <form action={deleteInterview.bind(null, id, iv.id)}><button className="text-link" style={{ color: "var(--color-risk-text)", marginTop: 12 }}>Interview verwijderen</button><FormPendingOverlay /></form>
                   </div>
                 </div>
               )}

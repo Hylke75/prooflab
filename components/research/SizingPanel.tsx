@@ -152,21 +152,21 @@ export function SizingPanel({
           </ActionForm>
         </div>
         <div className="card calc-dark">
-          <div className="eyebrow" style={{ color: "#c5df93" }}>{result.label.toUpperCase()}</div>
-          <p style={{ color: "#b3bfd2", margin: "13px 0 3px", fontSize: 12 }}>Bereikbare jaaromzet (SOM) in dit scenario</p>
+          <div className="eyebrow" style={{ color: "var(--color-on-dark)" }}>{result.label.toUpperCase()}</div>
+          <p style={{ color: "var(--color-on-dark-muted)", margin: "13px 0 3px", fontSize: 12 }}>Bereikbare jaaromzet (SOM) in dit scenario</p>
           <div className="num" style={{ font: "700 39px var(--font-space-grotesk),sans-serif", letterSpacing: "-.06em" }}>{eur(result.somRevenue)}</div>
           <div className="divider" />
           <div className="kpi-row" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>
-            <div><p style={{ color: "#b5bfd0", fontSize: 11 }}>TAM (aantal)</p><strong className="num">{int(result.tamCount)}</strong></div>
-            <div><p style={{ color: "#b5bfd0", fontSize: 11 }}>SAM (aantal)</p><strong className="num">{int(result.samCount)}</strong></div>
-            <div><p style={{ color: "#b5bfd0", fontSize: 11 }}>SOM (klanten)</p><strong className="num">{int(result.somCount)}</strong></div>
+            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 11 }}>TAM (aantal)</p><strong className="num">{int(result.tamCount)}</strong></div>
+            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 11 }}>SAM (aantal)</p><strong className="num">{int(result.samCount)}</strong></div>
+            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 11 }}>SOM (klanten)</p><strong className="num">{int(result.somCount)}</strong></div>
           </div>
-          <p style={{ color: "#b5bfd0", fontSize: 12, marginTop: 16 }}>Formule</p>
+          <p style={{ color: "var(--color-on-dark-muted)", fontSize: 12, marginTop: 16 }}>Formule</p>
           <div className="calc-formula">{result.formula} = {eur(result.somRevenue)}</div>
           <span className="pill dark">
             {result.provenance.sourced} van {result.provenance.total} factoren met bron · {result.provenance.assumed} aangenomen
           </span>
-          <p style={{ color: "#b5bfd0", fontSize: 11, marginTop: 14, lineHeight: 1.6 }}>
+          <p style={{ color: "var(--color-on-dark-muted)", fontSize: 11, marginTop: 14, lineHeight: 1.6 }}>
             Aantallen, omzet en winst zijn verschillende dingen: dit is omzetpotentieel, geen winst en geen voorspelling.
           </p>
         </div>
@@ -269,7 +269,7 @@ function RangeInputs({
           ? "De waarde ligt buiten de bandbreedte."
           : null;
   return (
-    <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 11, color: "#5f6879" }}>
+    <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 11, color: "var(--color-text-muted)" }}>
       <span id={`r-${def.key}`}>90%-bandbreedte (optioneel, {unitShort(def.unit)}):</span>
       <input
         className="field num"
@@ -294,7 +294,7 @@ function RangeInputs({
         aria-describedby={problem ? `rp-${def.key}` : `r-${def.key}`}
         style={{ width: 96, padding: "8px 10px" }}
       />
-      {problem && <span id={`rp-${def.key}`} role="status" style={{ color: "#a43c42", fontWeight: 700 }}>{problem}</span>}
+      {problem && <span id={`rp-${def.key}`} role="status" style={{ color: "var(--color-risk-text)", fontWeight: 700 }}>{problem}</span>}
     </div>
   );
 }

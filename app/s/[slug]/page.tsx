@@ -74,7 +74,7 @@ export default async function SurveyPage({ params, searchParams }: PageProps<"/s
             <div><dt style={{ display: "inline", fontWeight: 800 }}>Wie vraagt dit? </dt><dd style={{ display: "inline", margin: 0 }}>{c.researcher}</dd></div>
             <div><dt style={{ display: "inline", fontWeight: 800 }}>Tijd: </dt><dd style={{ display: "inline", margin: 0 }}>ongeveer {c.estimated_minutes} {c.estimated_minutes === 1 ? "minuut" : "minuten"}, {c.questions.length} {c.questions.length === 1 ? "vraag" : "vragen"} (sommige alleen als ze op je van toepassing zijn)</dd></div>
           </dl>
-          <div className="note" style={{ fontSize: 13, color: "#4c5566", marginTop: 0 }}>
+          <div className="note" style={{ fontSize: 13, color: "var(--color-text-muted)", marginTop: 0 }}>
             <strong>Privacy.</strong> Er worden geen cookies geplaatst en er draait geen tracking.{" "}
             {invited
               ? `Je antwoorden worden gekoppeld aan je persoonlijke uitnodiging, zodat ${c.researcher} weet dat je hebt gereageerd en je geen herinnering krijgt. Je e-mailadres wordt na 180 dagen verwijderd.`

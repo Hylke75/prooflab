@@ -201,7 +201,7 @@ export function SurveyForm(p: Props) {
             <fieldset key={q.id} id={`q-${q.id}`} style={box} aria-describedby={describedBy} aria-invalid={err ? true : undefined} tabIndex={-1}>
               {legend}
               {help}
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#4c5566", marginBottom: 6 }} aria-hidden="true">
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--color-text-muted)", marginBottom: 6 }} aria-hidden="true">
                 <span>{q.scale.min} = {q.scale.minLabel}</span>
                 <span>{q.scale.max} = {q.scale.maxLabel}</span>
               </div>
