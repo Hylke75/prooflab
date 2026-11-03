@@ -18,7 +18,7 @@ export default async function NewIdeaPage() {
     <PageFrame crumbs={["Werkruimte", "Nieuw idee"]} coach="intake">
       <div className="section-row">
         <div>
-          <div className="eyebrow">STAP 1 VAN 5 · BESLISSING EN IDEE</div>
+          <div className="eyebrow">Stap 1 van 5 · Beslissing en idee</div>
           <h1>
             Elk sterk idee begint
             <br />
@@ -37,7 +37,7 @@ export default async function NewIdeaPage() {
             Dat is juist het hele idee. We maken je aannames zichtbaar, onderzoeken de markt en zoeken de goedkoopste manier
             om het echte antwoord te vinden.
           </p>
-          <div style={{ position: "absolute", bottom: 26, left: 24, zIndex: 1, background: "var(--color-surface)", borderRadius: 12, padding: "11px 14px", fontSize: 12 }}>
+          <div style={{ position: "absolute", bottom: 26, left: 24, zIndex: 1, background: "var(--color-surface)", borderRadius: 12, padding: "11px 14px", fontSize: 14 }}>
             ✳ Eerst begrijpen. Dan bouwen.
           </div>
         </aside>

@@ -161,7 +161,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     <PageFrame crumbs={["Werkruimte", idea.title, "Marktverkenning"]} coach="research" ideaId={id} badge={run?.mode === "quick" && run.status === "done" ? "Snelle marktcheck · voorlopig" : undefined}>
       <div className="section-row">
         <div>
-          <div className="eyebrow">STAP 2 VAN 5 · ONDERZOEK</div>
+          <div className="eyebrow">Stap 2 van 5 · Onderzoek</div>
           <h1>Begrijp je markt.</h1>
           <p className="sub">Een marktbeeld met zicht op concurrenten, doelgroepen, kansen en onzekerheden. Elke conclusie verwijst naar een controleerbare bron.</p>
         </div>
@@ -316,7 +316,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                 if (list.length === 0) return null;
                 return (
                   <div key={q.id} className="stack">
-                    <div className="eyebrow" style={{ marginBottom: 0 }}>VRAAG {q.position} · {q.question}</div>
+                    <div className="eyebrow" style={{ marginBottom: 0 }}>Vraag {q.position} · {q.question}</div>
                     {list.map((c) => <InsightCard key={c.id} claim={c} actions={claimActions(c.id)} evidenceActions={evidenceActions(c)} />)}
                   </div>
                 );
@@ -386,7 +386,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                     {s.current_alternative && <p className="sub mt-8"><strong>Nu:</strong> {s.current_alternative}</p>}
                     <div className="divider" />
                     <div className="tiny">Nog te toetsen</div>
-                    <strong style={{ fontSize: 12 }}>{s.open_question ?? "—"}</strong>
+                    <strong style={{ fontSize: 14 }}>{s.open_question ?? "—"}</strong>
                     {canWrite && (
                       <form action={deleteSegment.bind(null, id, s.id)} className="mt-12"><button className="text-link" style={{ color: "var(--color-risk-text)" }}>Verwijderen</button><FormPendingOverlay /></form>
                     )}
@@ -419,7 +419,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
           )}
           <CustomerSignals ideaId={id} signals={signals} sources={signalSources} canWrite={canWrite} aiConnected={aiConfigured()} />
           <div className="card" style={{ marginTop: 18 }}>
-            <div className="eyebrow">GOEDE VRAAG VOOR ECHT ONDERZOEK</div>
+            <div className="eyebrow">Goede vraag voor echt onderzoek</div>
             <h3 style={{ margin: "7px 0" }}>&quot;Kun je vertellen over de laatste keer dat je dit probleem had?&quot;</h3>
             <p className="sub">Dat levert vaak concreter gedrag op dan vragen of iemand jouw nieuwe oplossing aantrekkelijk vindt.</p>
           </div>

@@ -56,7 +56,7 @@ function Hero({ client }: { client: boolean }) {
   return (
     <div className="hero">
       <div>
-        <div className="eyebrow">{client ? "MEEKIJKEN ALS OPDRACHTGEVER" : "JOUW IDEEËN. ONDERBOUWD."}</div>
+        <div className="eyebrow">{client ? "Meekijken als opdrachtgever" : "Jouw ideeën. Onderbouwd."}</div>
         <h1>
           Van goed idee naar
           <br />
@@ -245,7 +245,7 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
           ))}
         </div>
         <div className="card" style={{ background: "var(--color-surface-soft)", boxShadow: "none" }}>
-          <div className="eyebrow">ZO WERKT PROOFLAB</div>
+          <div className="eyebrow">Zo werkt ProofLab</div>
           <h3 style={{ fontSize: 25, maxWidth: 370, margin: "9px 0" }}>Eén heldere stap tegelijk. Zonder ingewikkelde modellen.</h3>
           <p className="sub" style={{ marginBottom: 22 }}>
             ProofLab denkt kritisch mee en helpt je de juiste onderbouwing te vinden. Jij houdt de regie.
@@ -386,7 +386,7 @@ async function ClientHome({ ws, list, progresses }: { ws: Workspace; list: IdeaR
       </div>
 
       <div className="card mt-24" style={{ background: "var(--color-surface-soft)", boxShadow: "none" }}>
-        <div className="eyebrow">ZO WERKT MEEKIJKEN</div>
+        <div className="eyebrow">Zo werkt meekijken</div>
         <h3 style={{ fontSize: 22, maxWidth: 520, margin: "9px 0" }}>U ziet wat bewezen is, en wat nog niet.</h3>
         <p className="sub" style={{ marginBottom: 18 }}>
           Het onderzoeksteam voert het onderzoek en de tests uit. U leest de gedeelde rapportversies en bevestigt het besluit. Ruwe interviewcitaten en

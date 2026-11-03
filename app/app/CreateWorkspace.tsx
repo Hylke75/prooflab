@@ -8,7 +8,7 @@ export function CreateWorkspace() {
   const [state, action, pending] = useActionState<SimpleState, FormData>(createWorkspace, { error: null });
   return (
     <form action={action} className="card" style={{ maxWidth: 560 }}>
-      <div className="eyebrow">EERSTE STAP</div>
+      <div className="eyebrow">Eerste stap</div>
       <h2>Maak je werkruimte aan.</h2>
       <p className="sub" style={{ margin: "8px 0 4px" }}>
         In je werkruimte beheer je klanten, ideeën en onderzoeksdossiers. Ben je uitgenodigd als opdrachtgever? Log dan

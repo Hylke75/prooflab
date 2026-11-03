@@ -24,7 +24,7 @@ export default async function ClientsPage() {
     <PageFrame crumbs={["Werkruimte", "Klanten"]} coach="clients">
       <div className="section-row">
         <div>
-          <div className="eyebrow">OPDRACHTGEVERS</div>
+          <div className="eyebrow">Opdrachtgevers</div>
           <h1>Klanten en meekijkers.</h1>
           <p className="sub">Opdrachtgevers kijken mee in hun dossier en bevestigen besluiten. Ruwe interviewdata en e-mailadressen van testdeelnemers zien zij niet.</p>
         </div>

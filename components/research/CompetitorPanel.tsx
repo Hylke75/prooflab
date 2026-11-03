@@ -79,7 +79,7 @@ export function CompetitorPanel({
         ))}
       </div>
       <div className="card">
-        <div className="competitor-row" style={{ fontSize: 10, fontWeight: 800, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: ".08em" }}>
+        <div className="competitor-row" style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-muted)" }}>
           <div>Aanbieder / type</div>
           <div>Positionering</div>
           <div className="comp-col-hidden">Prijs</div>

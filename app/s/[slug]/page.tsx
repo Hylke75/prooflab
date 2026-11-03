@@ -67,12 +67,12 @@ export default async function SurveyPage({ params, searchParams }: PageProps<"/s
       {!live && <div className="banner-preview" role="status">Voorbeeld: deze enquête is nog niet geopend. Antwoorden worden niet opgeslagen.</div>}
       <main className="tp-main" id="inhoud" style={{ placeItems: "start center" }}>
         <div className="tp-card" style={{ textAlign: "left" }}>
-          <div className="eyebrow">ENQUÊTE · ONGEVEER {c.estimated_minutes} {c.estimated_minutes === 1 ? "MINUUT" : "MINUTEN"}</div>
+          <div className="eyebrow">Enquête · Ongeveer {c.estimated_minutes} {c.estimated_minutes === 1 ? "minuut" : "minuten"}</div>
           <h1 style={{ fontSize: "clamp(30px,4.5vw,44px)" }}>{c.title}</h1>
           <p style={{ whiteSpace: "pre-line" }}>{c.intro}</p>
           <dl style={{ display: "grid", gap: 6, fontSize: 14, margin: "0 0 18px" }}>
-            <div><dt style={{ display: "inline", fontWeight: 800 }}>Wie vraagt dit? </dt><dd style={{ display: "inline", margin: 0 }}>{c.researcher}</dd></div>
-            <div><dt style={{ display: "inline", fontWeight: 800 }}>Tijd: </dt><dd style={{ display: "inline", margin: 0 }}>ongeveer {c.estimated_minutes} {c.estimated_minutes === 1 ? "minuut" : "minuten"}, {c.questions.length} {c.questions.length === 1 ? "vraag" : "vragen"} (sommige alleen als ze op je van toepassing zijn)</dd></div>
+            <div><dt style={{ display: "inline", fontWeight: 700 }}>Wie vraagt dit? </dt><dd style={{ display: "inline", margin: 0 }}>{c.researcher}</dd></div>
+            <div><dt style={{ display: "inline", fontWeight: 700 }}>Tijd: </dt><dd style={{ display: "inline", margin: 0 }}>ongeveer {c.estimated_minutes} {c.estimated_minutes === 1 ? "minuut" : "minuten"}, {c.questions.length} {c.questions.length === 1 ? "vraag" : "vragen"} (sommige alleen als ze op je van toepassing zijn)</dd></div>
           </dl>
           <div className="note" style={{ fontSize: 13, color: "var(--color-text-muted)", marginTop: 0 }}>
             <strong>Privacy.</strong> Er worden geen cookies geplaatst en er draait geen tracking.{" "}

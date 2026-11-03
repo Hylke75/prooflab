@@ -152,8 +152,8 @@ export function SurveyForm(p: Props) {
         const describedBy = [q.help ? helpId : null, err ? errId : null].filter(Boolean).join(" ") || undefined;
         const value = answers[q.id];
         const legend = (
-          <legend style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.45, padding: 0, marginBottom: 8 }}>
-            <span className="tiny" style={{ display: "block", fontSize: 12 }}>Vraag {i + 1}</span>
+          <legend style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.45, padding: 0, marginBottom: 8 }}>
+            <span className="tiny" style={{ display: "block", fontSize: 14 }}>Vraag {i + 1}</span>
             {q.text}
             {q.required && <span aria-hidden="true"> *</span>}
             {q.required && <span className="sr-only"> (verplicht)</span>}
@@ -221,8 +221,8 @@ export function SurveyForm(p: Props) {
         const inputId = `q-${q.id}-input`;
         return (
           <div key={q.id} id={`q-${q.id}`} style={box} tabIndex={-1}>
-            <label htmlFor={inputId} style={{ display: "block", fontWeight: 800, fontSize: 16, lineHeight: 1.45, marginBottom: 8 }}>
-              <span className="tiny" style={{ display: "block", fontSize: 12 }}>Vraag {i + 1}</span>
+            <label htmlFor={inputId} style={{ display: "block", fontWeight: 700, fontSize: 16, lineHeight: 1.45, marginBottom: 8 }}>
+              <span className="tiny" style={{ display: "block", fontSize: 14 }}>Vraag {i + 1}</span>
               {q.text}
               {q.required && <span aria-hidden="true"> *</span>}
               {q.required && <span className="sr-only"> (verplicht)</span>}

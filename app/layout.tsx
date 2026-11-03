@@ -1,12 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import { connection } from "next/server";
-import { DM_Sans, Space_Grotesk } from "next/font/google";
+import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import { IconSprite } from "@/components/Icon";
 import "./globals.css";
 
 // Fonts are downloaded at build time and served from our own domain (no Google request per visit).
-const dmSans = DM_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-dm-sans", display: "swap" });
-const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-space-grotesk", display: "swap" });
+// Koppen: Plus Jakarta Sans (600–700). Body en UI: Inter (400/500/600). Zie docs/REDESIGN_INSTRUCTIE.md.
+const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-inter", display: "swap" });
+const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], variable: "--font-jakarta", display: "swap" });
 
 export const metadata: Metadata = {
   title: { default: "ProofLab", template: "%s · ProofLab" },
@@ -14,14 +15,14 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export const viewport: Viewport = { themeColor: "#151b28" };
+export const viewport: Viewport = { themeColor: "#ffffff" };
 
 // Every page renders per request: the Content-Security-Policy nonce (proxy.ts) can only be applied to the
 // framework's scripts at request time, never to a page prerendered at build time.
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   await connection();
   return (
-    <html lang="nl" className={`${dmSans.variable} ${spaceGrotesk.variable}`}>
+    <html lang="nl" className={`${inter.variable} ${jakarta.variable}`}>
       <body>
         <IconSprite />
         {children}

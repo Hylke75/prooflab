@@ -93,7 +93,7 @@ export function Sidebar({
           <div>
             {workspaceName}
             <br />
-            <span style={{ fontSize: 10, color: "var(--color-text-muted)", fontWeight: 400 }}>{isConsultant ? "Consultancy-werkruimte" : "Meekijken als opdrachtgever"}</span>
+            <span style={{ fontSize: 12, color: "var(--color-text-muted)", fontWeight: 400 }}>{isConsultant ? "Consultancy-werkruimte" : "Meekijken als opdrachtgever"}</span>
           </div>
         </div>
         <div className="site-status">

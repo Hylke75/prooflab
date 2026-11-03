@@ -54,7 +54,7 @@ export default async function IntegrationsPage({ params }: PageProps<"/app/ideas
     <PageFrame crumbs={["Werkruimte", idea.title, "Bronnen & koppelingen"]} coach="research" ideaId={id}>
       <div className="section-row">
         <div>
-          <div className="eyebrow">KLANTSIGNALEN · BRONNEN & KOPPELINGEN</div>
+          <div className="eyebrow">Klantsignalen · Bronnen & koppelingen</div>
           <h1>Hoor de klant, uit zoveel mogelijk bronnen.</h1>
           <p className="sub">
             Reviews, forumdraden, enquête-antwoorden en LinkedIn-reacties laten zien welke problemen klanten zelf noemen. Ze tellen als
@@ -155,7 +155,7 @@ export default async function IntegrationsPage({ params }: PageProps<"/app/ideas
           <div className="divider" />
           <h3 style={{ fontSize: 15, marginBottom: 6 }}>Laatste antwoorden</h3>
           {replies.length === 0 ? (
-            <p className="sub" style={{ fontSize: 12 }}>Nog geen antwoorden met tekst.</p>
+            <p className="sub" style={{ fontSize: 14 }}>Nog geen antwoorden met tekst.</p>
           ) : (
             <ul className="reply-list">
               {replies.map((r) => (
@@ -208,7 +208,7 @@ export default async function IntegrationsPage({ params }: PageProps<"/app/ideas
           <div className="divider" />
           <h3 style={{ fontSize: 15, marginBottom: 6 }}>Geïmporteerde klantsignalen</h3>
           {signalSources.length === 0 ? (
-            <p className="sub" style={{ fontSize: 12 }}>Nog geen bronnen van dit soort.</p>
+            <p className="sub" style={{ fontSize: 14 }}>Nog geen bronnen van dit soort.</p>
           ) : (
             <ul className="reply-list">
               {signalSources.map((s) => {

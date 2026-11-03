@@ -31,7 +31,7 @@ export default function HelpPage() {
     <PageFrame crumbs={["Werkruimte", "Zo werkt ProofLab"]} coach="other">
       <div className="section-row">
         <div>
-          <div className="eyebrow">ZO WERKT PROOFLAB</div>
+          <div className="eyebrow">Zo werkt ProofLab</div>
           <h1>Eén heldere stap tegelijk.</h1>
           <p className="sub">Een AI-antwoord is een hypothese of een bevinding met bron, nooit automatisch bewijs dat de markt zal kopen.</p>
         </div>

@@ -16,7 +16,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           <span className="mark" aria-hidden="true">◉</span>ProofLab<span style={{ color: "var(--lime)" }}>.</span>
         </div>
         <div>
-          <div className="eyebrow" style={{ color: "var(--lime)", position: "relative", zIndex: 1 }}>VAN BESLISVRAAG NAAR BEWIJS</div>
+          <div className="eyebrow" style={{ color: "var(--lime)", position: "relative", zIndex: 1 }}>Van beslisvraag naar bewijs</div>
           <h1>Van goed idee naar sterk bewijs.</h1>
           <p>
             Marktonderzoek waarbij elke bewering een controleerbare bron heeft, echte experimenten met vooraf vastgelegde

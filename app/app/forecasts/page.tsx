@@ -89,7 +89,7 @@ export default async function ForecastsPage() {
     <PageFrame crumbs={["Werkruimte", "Voorspelkwaliteit"]} coach="forecasts">
       <div className="section-row">
         <div>
-          <div className="eyebrow">LEREN VAN UITKOMSTEN</div>
+          <div className="eyebrow">Leren van uitkomsten</div>
           <h1>Voorspelkwaliteit</h1>
           <p className="sub">
             Hoe goed voorspellen we of een idee slaagt? Elke voorspelling wordt zes maanden na het besluit vergeleken met wat er echt gebeurde.

@@ -48,7 +48,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
     <PageFrame crumbs={["Werkruimte", idea.title, "Bewijs & besluit"]} coach="evidence" ideaId={id}>
       <div className="section-row">
         <div>
-          <div className="eyebrow">STAP 5 VAN 5 · LEREN EN BESLISSEN</div>
+          <div className="eyebrow">Stap 5 van 5 · Leren en beslissen</div>
           <h1>Wat weten we nu echt?</h1>
           <p className="sub">Alle signalen op één plek. Inclusief tegenbewijs en de beperkingen van je tests.</p>
         </div>
@@ -115,7 +115,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                 {investorQuestions.length > 0 && (
                   <details className="mt-12">
                     <summary className="text-link">Wat zou een kritische investeerder vragen?</summary>
-                    <ul style={{ margin: "8px 0 0 18px", fontSize: 12, lineHeight: 1.8 }}>{investorQuestions.map((q) => <li key={q}>{q}</li>)}</ul>
+                    <ul style={{ margin: "8px 0 0 18px", fontSize: 14, lineHeight: 1.8 }}>{investorQuestions.map((q) => <li key={q}>{q}</li>)}</ul>
                   </details>
                 )}
               </>
@@ -126,7 +126,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
               Het is zes maanden na het besluit en dit is mislukt. Wat is de meest waarschijnlijke reden?
             </p>
             {premortem.length > 0 ? (
-              <ul style={{ margin: "8px 0 0 18px", fontSize: 12, lineHeight: 1.7 }}>
+              <ul style={{ margin: "8px 0 0 18px", fontSize: 14, lineHeight: 1.7 }}>
                 {premortem.map((a) => (
                   <li key={a.id}>
                     {a.statement}{" "}

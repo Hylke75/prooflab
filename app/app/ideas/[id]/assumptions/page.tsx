@@ -82,7 +82,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
     <PageFrame crumbs={["Werkruimte", idea.title, "Aannames"]} coach="assumptions" ideaId={id}>
       <div className="section-row">
         <div>
-          <div className="eyebrow">STAP 3 VAN 5 · RISICO&apos;S</div>
+          <div className="eyebrow">Stap 3 van 5 · Risico&apos;s</div>
           <h1>Wat moet waar zijn?</h1>
           <p className="sub">Een idee is een verzameling aannames. Begin bij de aannames die het belangrijkst zijn en waarover je nog het minst weet.</p>
         </div>

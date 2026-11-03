@@ -190,7 +190,7 @@ export function RiskBoard({
           </button>
         ))}
         <div className="divider" />
-        <div className="eyebrow">GESELECTEERDE AANNAME</div>
+        <div className="eyebrow">Geselecteerde aanname</div>
         <h3 style={{ margin: "6px 0 10px" }}>{current.statement}</h3>
         <div className="row">
           <span className="pill blue">{ASSUMPTION_CATEGORIES[current.category]}</span>
@@ -209,7 +209,7 @@ export function RiskBoard({
         {current.claims.length > 0 && (
           <div className="mt-12">
             {current.claims.map((c) => (
-              <div className="row between" key={c.id} style={{ fontSize: 12, padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
+              <div className="row between" key={c.id} style={{ fontSize: 14, padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
                 <span>{c.relation === "contradicts" ? "✕ " : "✓ "}{c.statement}</span>
                 {canWrite && (
                   <form action={unlinkActions[current.id]?.[c.id]}><button className="text-link">Ontkoppel</button><FormPendingOverlay /></form>
@@ -259,17 +259,17 @@ function ProbabilityDetail({ a, prior, setPrior, save }: { a: BoardAssumption; p
   return (
     <div className="mt-12" style={{ background: "var(--soft)", borderRadius: 14, padding: "12px 14px" }}>
       <div className="row between">
-        <strong style={{ font: "700 24px var(--font-space-grotesk),sans-serif", letterSpacing: "-.04em" }} className="num">{pctR(p)}</strong>
+        <strong style={{ font: "700 24px var(--font-heading),sans-serif", letterSpacing: "-.04em" }} className="num">{pctR(p)}</strong>
         <span className="pill gray">Geschat · bandbreedte {pctR(band.low)}–{pctR(band.high)}</span>
       </div>
       <p className="explain" style={{ marginTop: 2 }}>
         Geschatte kans dat deze aanname klopt. De bandbreedte laat zien wat er gebeurt als de factoren per bewijssoort 50% zwakker of sterker zijn.
       </p>
       {a.probability.top.length > 0 ? (
-        <ul style={{ margin: "8px 0 0 18px", fontSize: 12, lineHeight: 1.7 }} aria-label="Grootste bijdragen aan de kans">
+        <ul style={{ margin: "8px 0 0 18px", fontSize: 14, lineHeight: 1.7 }} aria-label="Grootste bijdragen aan de kans">
           {a.probability.top.map((c) => (
             <li key={c.key}>
-              <span style={{ color: c.direction === "supports" ? "var(--green)" : "var(--color-risk-text)", fontWeight: 800 }}>{c.direction === "supports" ? "↑" : "↓"}</span> {explainContribution(c)}
+              <span style={{ color: c.direction === "supports" ? "var(--green)" : "var(--color-risk-text)", fontWeight: 700 }}>{c.direction === "supports" ? "↑" : "↓"}</span> {explainContribution(c)}
             </li>
           ))}
         </ul>

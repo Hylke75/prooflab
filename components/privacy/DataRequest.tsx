@@ -107,7 +107,7 @@ export function DataRequest({ hashReady, saltVersions }: { hashReady: boolean; s
             <thead><tr><th>Gegevens</th><th>Gevonden</th><th>Toelichting</th></tr></thead>
             <tbody>
               {lines.map((l) => (
-                <tr key={l.key}><td>{l.label}</td><td className="num">{l.count}</td><td style={{ fontSize: 12 }}>{l.explain}</td></tr>
+                <tr key={l.key}><td>{l.label}</td><td className="num">{l.count}</td><td style={{ fontSize: 14 }}>{l.explain}</td></tr>
               ))}
             </tbody>
           </table>

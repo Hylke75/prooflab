@@ -18,7 +18,7 @@ export default async function PrivacyPage() {
     <PageFrame crumbs={["Werkruimte", "Privacyverzoeken"]} coach="other">
       <div className="section-row">
         <div>
-          <div className="eyebrow">AVG · INZAGE EN VERWIJDERING</div>
+          <div className="eyebrow">AVG · Inzage en verwijdering</div>
           <h1>Wat weten we van deze persoon?</h1>
           <p className="sub">
             Zoek één e-mailadres in alle dossiers van {ws.org.name}: uitnodigingen, enquêteantwoorden, aanmeldingen op testpagina&apos;s, de

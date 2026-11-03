@@ -20,7 +20,7 @@ export function ResultMeter({ v, success, fail, bayes }: { v: Verdict; success: 
       </p>
       {showBayes && bayes && (
         <div className="mt-12">
-          <div className="eyebrow">SCHATTING MET VOORKENNIS</div>
+          <div className="eyebrow">Schatting met voorkennis</div>
           <div
             className="meter"
             role="img"

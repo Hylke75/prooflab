@@ -25,7 +25,7 @@ export default async function OutcomePage({ params }: PageProps<"/app/ideas/[id]
     <PageFrame crumbs={["Werkruimte", idea.title, "Voorspelling & uitkomst"]} coach="outcome" ideaId={id}>
       <div className="section-row">
         <div>
-          <div className="eyebrow">VOORSPELLEN · METEN · LEREN</div>
+          <div className="eyebrow">Voorspellen · Meten · Leren</div>
           <h1>Klopte onze verwachting?</h1>
           <p className="sub">
             Leg vooraf vast wanneer het idee geslaagd is, voorspel op vaste momenten de kans daarop, en kijk zes maanden na het besluit wat er echt gebeurde.

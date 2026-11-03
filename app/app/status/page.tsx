@@ -61,7 +61,7 @@ export default async function StatusPage() {
     <PageFrame crumbs={["Werkruimte", "Systeemstatus"]} coach="other">
       <div className="section-row">
         <div>
-          <div className="eyebrow">BEHEER</div>
+          <div className="eyebrow">Beheer</div>
           <h1>Systeemstatus</h1>
           <p className="sub">Staat de database op de laatste versie, draait de opschoontaak en zijn de koppelingen ingesteld? Alleen zichtbaar voor eigenaren van de werkruimte.</p>
         </div>
