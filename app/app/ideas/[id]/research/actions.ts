@@ -17,6 +17,7 @@ import { isSignalSource, painAsAssumption, verifySignalGroups, type SignalExcerp
 import { ideaContext } from "@/lib/idea-context";
 import { aiErrorMessage, runAi } from "@/lib/ai/guard";
 import { EXPECTED_SOURCE_KEYS } from "@/lib/domain/research-plan";
+import { ensureDecisiveQuestion, markDecisive } from "@/lib/research-questions-data";
 import { isUnknown, normalizeReferenceDate, scopeValue, UNKNOWN } from "@/lib/domain/claim-scope";
 
 export type ActionState = { error: string | null; ok?: string | null };
@@ -85,6 +86,26 @@ export async function deleteQuestion(ideaId: string, questionId: string) {
   revalidatePath(`/app/ideas/${ideaId}`, "layout");
 }
 
+// Fase B2, punt 1: de consultant wijst zelf de beslissende vraag aan (hooguit één per idee).
+export async function setDecisiveQuestion(ideaId: string, questionId: string) {
+  await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  if (await runIsActive(supabase, ideaId)) return;
+  await markDecisive(supabase, ideaId, questionId);
+  revalidatePath(`/app/ideas/${ideaId}`, "layout");
+}
+
+// Fase B2, punt 1: sjabloonvragen met de brede doelgroep opnieuw afleiden uit de intake (zelfde rijen, dus
+// bevindingen blijven aan hun vraag hangen) en de beslissende vraag bepalen.
+export async function refreshQuestionsFromIntake(ideaId: string, _: ActionState): Promise<ActionState> {
+  const { idea } = await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  if (await runIsActive(supabase, ideaId)) return { error: "Er loopt nog een onderzoeksrun. Wacht tot die klaar is (of stop hem)." };
+  const id = await ensureDecisiveQuestion(ideaId, idea, { refreshTemplates: true });
+  if (!id) return { error: "Er zijn nog geen onderzoeksvragen." };
+  return done(ideaId, "De vragen volgen nu de intake; de beslissende vraag is gemarkeerd.");
+}
+
 export async function aiPlan(ideaId: string, _: ActionState): Promise<ActionState> {
   const { idea } = await requireWritableIdea(ideaId);
   if (!aiConfigured()) return { error: "AI is niet verbonden; pas de vragen handmatig aan." };
@@ -102,7 +123,9 @@ export async function aiPlan(ideaId: string, _: ActionState): Promise<ActionStat
       .slice(0, free.length)
       .map((q, i) => ({ ...q, idea_id: ideaId, position: free[i], origin: "ai", ai_original: questionDraftText(q).slice(0, 4000) }));
     if (rows.length) await supabase.from("research_questions").insert(rows);
-    return done(ideaId, "De onderzoekskaart is opnieuw opgesteld. Controleer de vragen.");
+    // Fase B2: de vraag die de grootste onzekerheid raakt, wordt (weer) de beslissende vraag.
+    await ensureDecisiveQuestion(ideaId, idea);
+    return done(ideaId, "De onderzoekskaart is opnieuw opgesteld. Controleer de vragen en de beslissende vraag.");
   } catch (e) {
     return { error: aiErrorMessage(e, "Het onderzoeksplan kon niet worden gemaakt. De huidige vragen blijven staan.") };
   }

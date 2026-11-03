@@ -88,7 +88,10 @@ en waar relevant de branche bij naam.
 Per vraag: waarom de vraag de beslissing kan veranderen, welke gegevens nodig zijn, welke soort bronnen geschikt zijn
 (officiële statistiek eerst), of het bureauonderzoek, klantonderzoek of beide vraagt, een toetsbaar klaar-criterium,
 de meeteenheid van het antwoord en het verwachte brontype.
-Neem altijd een vraag op over huidige alternatieven (inclusief niets doen) en een over betalingsbereidheid of financiering.`,
+Neem altijd een vraag op over huidige alternatieven (inclusief niets doen) en een over betalingsbereidheid of financiering.
+Gebruik de specifieke doelgroep (het deel na het streepje bij Doelgroep), niet de brede categorie. Neem één vraag op
+die de grootste onzekerheid rechtstreeks toetst: noem daarin de doelgroep, het aanbod en, als de onzekerheid een
+bedrag noemt, precies dat bedrag. Zet die vraag als eerste.`,
     "medium",
   );
   const questions: PlanQuestion[] = splitCompoundQuestions(

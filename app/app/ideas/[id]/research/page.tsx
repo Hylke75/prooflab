@@ -32,8 +32,10 @@ import { compareWithIntake, intakeScope } from "@/lib/domain/claim-scope";
 import type { FreshnessKind } from "@/lib/domain/verify";
 import {
   addClaim, addSource, aiPlan, fetchCbsFigures, checkClaimSupport, deleteClaim, deleteCompetitor, deleteQuestion, deleteSegment, deleteSource,
-  overrideSupport, recheckCompetitors, saveCompetitor, saveQuestion, saveScenario, saveSegment, saveUnitEconomics,
+  overrideSupport, recheckCompetitors, refreshQuestionsFromIntake, saveCompetitor, saveQuestion, saveScenario, saveSegment, saveUnitEconomics,
+  setDecisiveQuestion,
 } from "./actions";
+import { isGenericTemplate } from "@/lib/research-questions";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export const metadata: Metadata = { title: "Marktverkenning" };
@@ -144,7 +146,11 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   const counterClaims = claims.filter(isCounter);
   const verified = claims.filter((c) => c.status === "verified").length;
   const answered = questions.filter((q) => q.status === "answered").length;
-  const openQuestion = questions.find((q) => q.status !== "answered");
+  // Fase B2: de beslissende vraag (is_decisive) gaat voor; zonder markering de eerste open vraag.
+  const decisiveQuestion = questions.find((q) => q.is_decisive === true) ?? null;
+  const openQuestion = decisiveQuestion && decisiveQuestion.status !== "answered" ? decisiveQuestion : questions.find((q) => q.status !== "answered");
+  // Sjabloonvragen met de brede doelgroep terwijl de intake specifieker is, of nog geen beslissende vraag.
+  const questionsNeedIntake = questions.some((q) => isGenericTemplate(q, idea)) || (questions.length > 0 && !decisiveQuestion);
   const kinds = new Set(competitors.map((c) => c.kind));
   const ue = ueRes.data;
   const sizingClaims = claims
@@ -228,7 +234,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               <span className="stat-caption">{verified} geverifieerd · {claims.filter((c) => c.status === "insufficient").length} onvoldoende bewijs</span>
             </div>
             <div className="card tight">
-              <div className="tiny">Belangrijkste open vraag</div>
+              <div className="tiny">{openQuestion && openQuestion.id === decisiveQuestion?.id ? "Beslissende vraag" : "Belangrijkste open vraag"}</div>
               <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3, margin: "12px 0 7px" }}>{openQuestion?.question ?? "Alle vragen beantwoord"}</div>
               <span className={`pill ${openQuestion ? "orange" : "green"}`}>{openQuestion ? "Nog niet beantwoord" : "Klaar"}</span>
             </div>
@@ -239,6 +245,11 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
             <div className="card">
               <div className="section-title">
                 <h3>Onderzoekskaart</h3>
+                {canWrite && questionsNeedIntake && (
+                  <ActionForm action={refreshQuestionsFromIntake.bind(null, id)} submitLabel="Vragen afleiden uit de intake" submitClass="btn white sm" pendingLabel="Bezig…">
+                    <span />
+                  </ActionForm>
+                )}
                 {canWrite && aiConfigured() && (
                   <ActionForm action={aiPlan.bind(null, id)} submitLabel="Laat AI opnieuw voorstellen" submitClass="btn ai sm" pendingLabel="Bezig…">
                     <span />
@@ -255,6 +266,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                       <div className="question-text">
                         <strong>{q.question}</strong>
                         <span className="question-meta">
+                          {q.is_decisive === true && <span className="pill blue">Beslissende vraag</span>}
                           <span className={`pill ${pill}`}>{label}</span>
                           {METHOD[q.method as keyof typeof METHOD]}
                           {isExpectedSource(q.expected_source) ? ` · Brontype: ${EXPECTED_SOURCES[q.expected_source]}` : ""} · {qClaims.length} bevinding{qClaims.length === 1 ? "" : "en"}
@@ -266,6 +278,17 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                       {q.why_it_matters && <p className="tiny">Waarom: {q.why_it_matters}</p>}
                       {q.unit && <p className="tiny mt-8">Meeteenheid: {q.unit}</p>}
                       <p className="tiny mt-8">Klaar als: {q.done_criterion}</p>
+                      {q.is_decisive === true ? (
+                        <p className="tiny mt-8">Deze vraag raakt de grootste onzekerheid en gaat in elke onderzoeksrun als eerste.</p>
+                      ) : (
+                        canWrite &&
+                        decisiveQuestion && (
+                          <form action={setDecisiveQuestion.bind(null, id, q.id)} className="mt-8">
+                            <button className="text-link">Maak dit de beslissende vraag</button>
+                            <FormPendingOverlay />
+                          </form>
+                        )
+                      )}
                       {canWrite && (
                         <ActionForm action={saveQuestion.bind(null, id, q.id)} submitLabel="Vraag opslaan" submitClass="btn white sm" footer={<DeleteQuestion ideaId={id} questionId={q.id} />}>
                           <label className="field-label" htmlFor={`q-${q.id}`}>Vraag</label>

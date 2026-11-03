@@ -2195,6 +2195,7 @@ export type Database = {
           why_it_matters: string | null
           unit: string | null
           expected_source: string | null
+          is_decisive: boolean
         }
         Insert: {
           created_at?: string
@@ -2212,6 +2213,7 @@ export type Database = {
           why_it_matters?: string | null
           unit?: string | null
           expected_source?: string | null
+          is_decisive?: boolean
         }
         Update: {
           created_at?: string
@@ -2229,6 +2231,7 @@ export type Database = {
           why_it_matters?: string | null
           unit?: string | null
           expected_source?: string | null
+          is_decisive?: boolean
         }
         Relationships: [
           {

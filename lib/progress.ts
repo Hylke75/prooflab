@@ -317,6 +317,15 @@ export const loadForecastState = cache(async (ideaId: string): Promise<ForecastS
   };
 });
 
+// Onderzoeksvragen met de markering van de beslissende vraag (fase B2). Staat de migratie nog niet live, dan zonder.
+async function loadQuestionsWithDecisive(supabase: Awaited<ReturnType<typeof supabaseServer>>, ideaId: string) {
+  type Q = { id: string; status: string; position: number; is_decisive?: boolean };
+  const full = await supabase.from("research_questions").select("id, status, position, is_decisive").eq("idea_id", ideaId).order("position").order("created_at");
+  if (!full.error) return (full.data ?? []) as Q[];
+  const plain = await supabase.from("research_questions").select("id, status, position").eq("idea_id", ideaId).order("position").order("created_at");
+  return (plain.data ?? []) as Q[];
+}
+
 const maxIso = (list: (string | null | undefined)[]) => list.filter((x): x is string => !!x).sort().pop() ?? null;
 
 export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> => {
@@ -326,7 +335,7 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
   // B0: waarnemingen uit oefen- of niet-aangegeven gesprekken tellen niet mee.
   const realObs = realObservationFilter(await loadRealInterviewIds(ideaId));
   const [questions, claims, verified, weak, competitors, alternatives, segments, experiments, cards, checks, decisions, behaviour, sizing, reports] = await Promise.all([
-    supabase.from("research_questions").select("id, status, position").eq("idea_id", ideaId).order("position").order("created_at"),
+    loadQuestionsWithDecisive(supabase, ideaId),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId).eq("status", "verified"),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId).eq("status", "insufficient"),
@@ -341,9 +350,10 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     supabase.from("sizing_factors").select("key, claims(status)").eq("idea_id", ideaId).eq("key", "base_count"),
     loadReportMeta(ideaId),
   ]);
-  // B1c: de beslissende vraag (tot fase B2: de eerste vraag) en echte waarnemingen uit tests.
-  const questionList = questions.data ?? [];
-  const decisive = questionList[0] ?? null;
+  // B1c/B2: de beslissende vraag (is_decisive; zonder markering of vóór de B2-migratie de eerste vraag) en echte
+  // waarnemingen uit tests.
+  const questionList = questions;
+  const decisive = questionList.find((q) => q.is_decisive === true) ?? questionList[0] ?? null;
   const [decisiveVerified, realTestObs] = await Promise.all([
     decisive
       ? supabase.from("claims").select("id", count).eq("idea_id", ideaId).eq("question_id", decisive.id).eq("status", "verified")
