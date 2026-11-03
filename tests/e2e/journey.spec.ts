@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
+import { assumptionKind } from "../../lib/domain/assumption-kind";
 
 const email = process.env.E2E_EMAIL ?? "";
 const password = process.env.E2E_PASSWORD ?? "";
@@ -105,6 +106,12 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
 
   // 4. Landing page experiment
   await page.goto(`${ideaUrl}/experiments`);
+  // B0 punt 3: een landingpage met demo-aanvragen past niet bij een prijs- of technische aanname (dan is goedkeuren
+  // geblokkeerd). Kies daarom expliciet een markt- of gedragsaanname.
+  const statements = await page.locator("#as-select option").allTextContents();
+  const fitting = statements.find((st) => ["market", "behaviour"].includes(assumptionKind({ statement: st, category: "" })));
+  expect(fitting, "een markt- of gedragsaanname").toBeTruthy();
+  await page.getByLabel("Aanname die je toetst", { exact: true }).selectOption({ label: fitting! });
   await page.getByRole("radio", { name: /Landingpage-test/ }).click();
   await page.getByLabel("Kop", { exact: true }).fill("Vind de perfecte eventlocatie in minuten.");
   await page.getByLabel("Ondertitel", { exact: true }).fill("Een persoonlijke selectie, zonder eindeloos zoeken.");

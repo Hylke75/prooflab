@@ -18,12 +18,14 @@ import { SurveyEditor, type SurveyDraftAction } from "@/components/survey/Survey
 import { SamplePlanner } from "@/components/survey/SamplePlanner";
 import { templateSurvey, type SurveyConfig } from "@/lib/domain/survey";
 import { metricFromKey, surveyErrors } from "@/lib/domain/survey-editor";
+import { assumptionKind, assumptionKindLabel, interviewGuideFor, metricFitsAssumption, type AssumptionKind } from "@/lib/domain/assumption-kind";
 
 type VariantsResult = { error: string | null; variants: PreparedVariant[]; draftNotes: string[]; draftWarnings: string[] };
 type VariantsAction = (input: { assumption_id: string; type: "landing" | "pricing"; headline: string; subline: string; offer: string }) => Promise<VariantsResult>;
 
 // primary: de huidige hoofdtest van de aanname (locked = al goedgekeurd of gestart), of null.
-type Assumption = { id: string; statement: string; primary?: { locked: boolean } | null };
+// kind: soort aanname (B0 punt 3); ontbreekt hij, dan leidt de builder hem af uit de tekst.
+type Assumption = { id: string; statement: string; kind?: AssumptionKind; primary?: { locked: boolean } | null };
 type SaveState = FormState & { fieldErrors?: Record<string, string> };
 type Action = (s: SaveState, f: FormData) => Promise<SaveState>;
 
@@ -50,6 +52,9 @@ const FIELD_FOCUS: Record<string, string> = {
   price_points: "pp-l-0",
   survey: "tc-survey",
 };
+
+const kindOf = (a: Assumption): AssumptionKind => a.kind ?? assumptionKind({ statement: a.statement, category: "" });
+const defaultGuide = (kind: AssumptionKind) => interviewGuideFor(kind, NEUTRAL_INTERVIEW_GUIDE).join("\n");
 
 function minSuccesses(n: number, thresholdPct: number): number | null {
   for (let s = 0; s <= n; s++) if (wilson(s, n).low >= thresholdPct / 100) return s;
@@ -91,6 +96,8 @@ export function ExperimentBuilder({
   const assumption = assumptions.find((a) => a.id === assumptionId) ?? assumptions[0];
   const [tier, setTier] = useState(() => Math.max(0, options.findIndex((o) => o.type === initialType)));
   const type: ExperimentType = options[tier].type;
+  const kind = kindOf(assumption);
+  const [guide, setGuide] = useState(() => defaultGuide(kind));
   // The survey is kept while switching assumption or test type; the Test Card metric follows its key question.
   const [survey, setSurvey] = useState<SurveyConfig>(() =>
     templateSurvey({ assumption: assumption.statement, audience: audience || "de doelgroep", researcher: researcher || "de onderzoeker", product: ideaTitle, screen: true }),
@@ -127,6 +134,9 @@ export function ExperimentBuilder({
     setLockedAt(null);
     setChanging(false);
     setChangeReason("");
+    // De standaardleidraad volgt de soort aanname (prijs: ook uitgaven en budget), tenzij de gebruiker hem aanpaste.
+    const prev = assumptions.find((a) => a.id === lastKey.split("|")[1]);
+    if (prev) setGuide((g) => (g === defaultGuide(kindOf(prev)) ? defaultGuide(kind) : g));
   }
   const updateSurvey = (next: SurveyConfig) => {
     setSurvey(next);
@@ -159,7 +169,6 @@ export function ExperimentBuilder({
   const [surveyDraftId, setSurveyDraftId] = useState<string | null>(null);
   const recruitmentRequired = (RECRUITMENT_REQUIRED_TYPES as readonly string[]).includes(type);
   const [reach, setReach] = useState("");
-  const [guide, setGuide] = useState(NEUTRAL_INTERVIEW_GUIDE.join("\n"));
   const audit = useMemo(() => auditGuide(guide.split("\n"), { productNames: [ideaTitle, page.product_name] }), [guide, ideaTitle, page.product_name]);
   const auditSum = guideSummary(audit);
   const [variants, setVariants] = useState<VariantsResult | null>(null);
@@ -182,6 +191,9 @@ export function ExperimentBuilder({
   const countN = Number(successCount) || 0;
   const thresholdPct = activeRule === "absolute" ? (n > 0 && countN > 0 ? Math.min(100, Math.round((countN / n) * 1000) / 10) : 0) : Number(card.success_threshold_pct);
   const prior = priors[type] ?? FLAT_PRIOR;
+  // B0 punt 3: past de maatstaf bij de soort aanname? Opslaan als concept mag; goedkeuren niet.
+  const fit = metricFitsAssumption(kind, { type, metric_label: card.metric_label, metric_numerator: card.metric_numerator, decision_rule: v2 ? activeRule : null });
+  const suggestedTier = fit.suggestedType ? options.findIndex((o) => o.type === fit.suggestedType) : -1;
   const band =
     v2 && locked && thresholdPct > 0
       ? sampleBand({ rule: activeRule, thresholdPct, successCount: countN, prior, availablePerWeek: Number(perWeek) > 0 ? Number(perWeek) : null, maxDurationDays: Number(card.max_duration_days) || 0 })
@@ -280,6 +292,7 @@ export function ExperimentBuilder({
         <select className="field" id="as-select" value={assumption.id} onChange={(e) => setAssumptionId(e.target.value)}>
           {assumptions.map((a) => <option key={a.id} value={a.id}>{a.statement}</option>)}
         </select>
+        <p className="field-hint" style={{ marginTop: 6 }}>Soort aanname: {assumptionKindLabel(kind)}</p>
         {warning && <div className="note">{warning}</div>}
         <div className={`exp-options${options.length === 4 ? " four" : ""}`} role="radiogroup" aria-label="Experimenttype">
           {options.map((o, i) => (
@@ -291,6 +304,16 @@ export function ExperimentBuilder({
             </button>
           ))}
         </div>
+        {!fit.ok && (
+          <div className="form-error" role="status" id="tc-fit">
+            <p style={{ margin: 0 }}>{fit.reason} Opslaan als concept kan; goedkeuren pas als testtype en maatstaf bij de aanname passen.</p>
+            {suggestedTier >= 0 && suggestedTier !== tier && (
+              <button type="button" className="btn white sm mt-8" onClick={() => setTier(suggestedTier)}>
+                Kies de {EXPERIMENT_TYPES[options[suggestedTier].type].label.toLowerCase()}
+              </button>
+            )}
+          </div>
+        )}
         <div className="grid-3" style={{ gap: 12 }}>
           <div><div className="tiny">Wat leer je?</div><p style={{ fontSize: 14 }}>{options[tier].learn}</p></div>
           <div><div className="tiny">Wat kun je níét concluderen?</div><p style={{ fontSize: 14 }}>{options[tier].cannotConclude}</p></div>

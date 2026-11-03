@@ -32,6 +32,7 @@ import { contentHash } from "@/lib/claims";
 import { dedupeFragments } from "@/lib/signals/import";
 import type { Json } from "@/lib/database.types";
 import type { AssumptionCategory, ObservationKind } from "@/lib/domain/labels";
+import { assumptionKind, metricFitsAssumption } from "@/lib/domain/assumption-kind";
 
 export type ActionState = { error: string | null; ok?: string | null; fieldErrors?: Record<string, string> };
 
@@ -248,8 +249,21 @@ const TRANSITIONS: Record<string, string[]> = {
 export async function transitionExperiment(ideaId: string, expId: string, to: string, _: ActionState, form: FormData): Promise<ActionState> {
   await requireWritableIdea(ideaId);
   const supabase = await supabaseServer();
-  const { data: exp } = await supabase.from("experiments").select("state, type").eq("id", expId).eq("idea_id", ideaId).single();
+  const { data: exp } = await supabase
+    .from("experiments")
+    .select("state, type, hypotheses(metric_label, metric_numerator, decision_rule, assumptions(kind, statement, category))")
+    .eq("id", expId)
+    .eq("idea_id", ideaId)
+    .single();
   if (!exp || !TRANSITIONS[exp.state]?.includes(to)) return { error: "Deze stap is nu niet mogelijk." };
+  if (to === "approved" || to === "ready_for_review") {
+    // B0 punt 3: een Test Card waarvan de maatstaf niet bij de aanname past, kan niet worden goedgekeurd.
+    const h = exp.hypotheses;
+    if (h?.assumptions) {
+      const fit = metricFitsAssumption(assumptionKind(h.assumptions), { type: exp.type, metric_label: h.metric_label, metric_numerator: h.metric_numerator, decision_rule: h.decision_rule });
+      if (!fit.ok) return { error: fit.reason ?? "De maatstaf past niet bij de aanname." };
+    }
+  }
   if (to === "approved") {
     // Explicit human approval with the checks that protect participants and the test itself.
     const required =

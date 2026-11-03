@@ -14,6 +14,7 @@ import { EXPERIMENT_STATES, EXPERIMENT_TYPES, type AssumptionCategory, type Expe
 import { createExperiment, draftSurveyWithCoach, proposeCopyVariants } from "./actions";
 import { aiConfigured } from "@/lib/env";
 import { TEST_ROLES, testRole } from "@/lib/domain/primary-test";
+import { assumptionKind } from "@/lib/domain/assumption-kind";
 
 export const metadata: Metadata = { title: "Experimenten" };
 
@@ -133,7 +134,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
         <ExperimentBuilder
           assumptions={assumptions.map((a) => {
             const state = stateOf(a.primaryExperimentId);
-            return { id: a.id, statement: a.statement, primary: a.primaryExperimentId ? { locked: !!state && !["draft", "ready_for_review"].includes(state) } : null };
+            return { id: a.id, statement: a.statement, kind: assumptionKind(a), primary: a.primaryExperimentId ? { locked: !!state && !["draft", "ready_for_review"].includes(state) } : null };
           })}
           initialAssumption={selected.id}
           options={rec.options}

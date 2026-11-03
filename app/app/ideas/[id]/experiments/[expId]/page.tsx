@@ -25,6 +25,7 @@ import { DMU_ROLES, EXPERIMENT_STATES, EXPERIMENT_TYPES, OBSERVATION_KINDS, type
 import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, reviewObservation, setPrimaryTest, transitionExperiment } from "../actions";
 import { canDesignatePrimary, TEST_ROLES, testRole } from "@/lib/domain/primary-test";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
+import { assumptionKind, assumptionKindLabel, metricFitsAssumption } from "@/lib/domain/assumption-kind";
 
 export const metadata: Metadata = { title: "Experiment" };
 
@@ -32,7 +33,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
   const { id, expId } = await params;
   const { idea, canWrite } = await getIdea(id);
   const supabase = await supabaseServer();
-  const { data: exp } = await supabase.from("experiments").select("*, hypotheses(*, assumptions(statement, category))").eq("id", expId).eq("idea_id", id).maybeSingle();
+  const { data: exp } = await supabase.from("experiments").select("*, hypotheses(*, assumptions(statement, category, kind))").eq("id", expId).eq("idea_id", id).maybeSingle();
   if (!exp || !exp.hypotheses) notFound();
   const h = exp.hypotheses;
   const type = exp.type as ExperimentType;
@@ -74,6 +75,10 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
   const publicUrl = exp.public_slug ? `${env.appUrl}/t/${exp.public_slug}` : null;
   const running = state === "live" || state === "paused";
   const v = m.verdict;
+  // B0 punt 3: past de maatstaf bij de soort aanname? Zo niet, dan kan de Test Card niet ter review of goedgekeurd.
+  const kind = h.assumptions ? assumptionKind(h.assumptions) : null;
+  const fit = kind ? metricFitsAssumption(kind, { type, metric_label: h.metric_label, metric_numerator: h.metric_numerator, decision_rule: h.decision_rule }) : { ok: true };
+  const approvalBlock = fit.ok ? null : (fit.reason ?? "De maatstaf past niet bij de aanname.");
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Experimenten", exp.title]} coach="experiments" ideaId={id}>
@@ -149,6 +154,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
               <span className="tiny">Alleen de hoofdtest beslist over de aanname. Na goedkeuring ligt deze keuze vast.</span>
             </ActionForm>
           )}
+          {kind && <div className="data-row"><span>Soort aanname</span><strong style={{ textAlign: "right" }}>{assumptionKindLabel(kind)}</strong></div>}
           <div className="data-row"><span>Wij denken dat</span><strong style={{ textAlign: "right" }}>{h.we_believe}</strong></div>
           <div className="data-row"><span>Bij</span><strong style={{ textAlign: "right" }}>{h.target_group}</strong></div>
           <div className="data-row"><span>Dat toetsen we door</span><strong style={{ textAlign: "right" }}>{h.test_method}</strong></div>
@@ -198,13 +204,15 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           {canWrite && state === "draft" && (
             <>
               <p className="sub">Controleer de Test Card. Daarna bied je het experiment aan voor review.</p>
-              <ActionForm action={transitionExperiment.bind(null, id, expId, "ready_for_review")} submitLabel="Ter review aanbieden" footer={<button formAction={deleteDraft.bind(null, id, expId)} className="text-link" style={{ color: "var(--color-risk-text)" }}>Concept verwijderen</button>}>
+              {approvalBlock && <div className="form-error" id="approval-block" role="status">{approvalBlock} Maak een nieuwe Test Card met een passend testtype of een passende maatstaf.</div>}
+              <ActionForm action={transitionExperiment.bind(null, id, expId, "ready_for_review")} submitLabel="Ter review aanbieden" disabled={!!approvalBlock} describedBy={approvalBlock ? "approval-block" : undefined} footer={<button formAction={deleteDraft.bind(null, id, expId)} className="text-link" style={{ color: "var(--color-risk-text)" }}>Concept verwijderen</button>}>
                 <span />
               </ActionForm>
             </>
           )}
           {canWrite && state === "ready_for_review" && (
-            <ActionForm action={transitionExperiment.bind(null, id, expId, "approved")} submitLabel="Akkoord: keur goed en vergrendel">
+            <ActionForm action={transitionExperiment.bind(null, id, expId, "approved")} submitLabel="Akkoord: keur goed en vergrendel" disabled={!!approvalBlock} describedBy={approvalBlock ? "approval-block" : undefined}>
+              {approvalBlock && <div className="form-error" id="approval-block" role="status">Goedkeuren kan niet: {approvalBlock}</div>}
               <p className="sub">Goedkeuren vergrendelt de hypothese en drempels. Bevestig:</p>
               {type === "survey" ? (
                 <>
