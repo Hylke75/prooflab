@@ -1,7 +1,7 @@
 import type { ProviderId } from "./config";
 import { postJson, type HttpOptions } from "./http";
 import { toProviderSchema } from "./json-schema";
-import type { Citation, GenerateRequest, GenerateResult, ProviderAdapter, SearchResult } from "./types";
+import type { Citation, GenerateRequest, GenerateResult, ProviderAdapter, SearchQuery, SearchResult } from "./types";
 
 // Gemini API models.generateContent with the `google_search` grounding tool and JSON schema output.
 // https://ai.google.dev/api/generate-content · https://ai.google.dev/gemini-api/docs/google-search
@@ -68,6 +68,9 @@ export function parseGemini(res: GeminiResponse, fallbackModel: string, wantJson
     citations.push({ url: c.web.uri, title: c.web.title ?? null, citedText: null });
     searchResults.push({ url: c.web.uri, title: c.web.title ?? c.web.uri, pageAge: null });
   }
+  // Gemini reports its search queries but not which result belongs to which query: one log entry with all terms.
+  const terms = (gm?.webSearchQueries ?? []).map((q) => q.trim()).filter(Boolean);
+  const queries: SearchQuery[] = terms.length ? [{ query: terms.join(" · "), urls: [...new Set(searchResults.map((r) => r.url))] }] : [];
   const u = res.usageMetadata ?? {};
   const cached = u.cachedContentTokenCount ?? 0;
   let json: unknown = undefined;
@@ -94,5 +97,6 @@ export function parseGemini(res: GeminiResponse, fallbackModel: string, wantJson
     citations,
     searchResults,
     fetched: [],
+    queries,
   };
 }

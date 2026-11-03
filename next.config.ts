@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 // Cache Components stays off: every page sits behind a login and renders per request.
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // PDF-tekstextractie (lib/pdf-text.ts) draait alleen op de server; niet bundelen, Node laadt het pakket zelf.
+  serverExternalPackages: ["unpdf"],
   turbopack: {
     rules: {
       "*.css": {

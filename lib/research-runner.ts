@@ -1,6 +1,6 @@
 import "server-only";
 import { supabaseServer } from "@/lib/supabase/server";
-import { searchQuestion, extractClaims, challengeDossier, checkSupport, type ExcerptRef, type FoundSource, type IdeaContext } from "@/lib/ai/research";
+import { searchQuestion, extractClaims, challengeDossier, checkSupport, type ExcerptRef, type FoundSource, type IdeaContext, type QueryLog } from "@/lib/ai/research";
 import { mergeFoundSources } from "@/lib/ai/web-evidence";
 import { providersFor } from "@/lib/ai/settings";
 import { PROVIDER_LABELS, type ProviderId } from "@/lib/ai/providers/config";
@@ -126,6 +126,7 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
     const { data: q } = await supabase.from("research_questions").select("question").eq("id", task.question_id!).single();
     const res = await searchAcrossProviders(idea.id, "research:search", ctx, q!.question, mode === "quick" ? 3 : 6);
     const excerptIds = await storeFoundSources(idea.id, task.run_id, res.sources);
+    await writeSearchLog(task, q!.question, res.logs);
     return {
       output: { excerpt_ids: excerptIds, providers: res.perProvider },
       detail: `${res.sources.length} bronnen, ${excerptIds.length} letterlijke passages bewaard (${res.searches} zoekopdrachten). ${res.summary}`,
@@ -235,12 +236,14 @@ export async function searchAcrossProviders(ideaId: string, purpose: string, ctx
   let searches = 0;
   const lists: FoundSource[][] = [];
   const perProvider: ProviderSearch[] = [];
+  const logs: ProviderLog[] = [];
   settled.forEach((r, i) => {
     const provider = providers[i];
     if (r.status === "fulfilled") {
       cost += r.value.usage.cost;
       searches += r.value.usage.searches;
       lists.push(r.value.sources);
+      logs.push({ provider, entries: r.value.log });
       perProvider.push({ provider, ok: true, sources: r.value.sources.length, detail: r.value.detail });
     } else {
       // A refusal still used tokens: book them on the run.
@@ -258,7 +261,31 @@ export async function searchAcrossProviders(ideaId: string, purpose: string, ctx
     providers.length > 1
       ? `${perProvider.map((x) => `${PROVIDER_LABELS[x.provider].short}: ${x.detail}`).join("; ")}.${shared ? ` ${shared} ${shared === 1 ? "bron" : "bronnen"} door meer dan één aanbieder gevonden (ter informatie, geen extra bewijs).` : ""}`
       : `${PROVIDER_LABELS[providers[0]].short}: ${perProvider[0].detail}.`;
-  return { sources, cost, searches, perProvider, summary };
+  return { sources, cost, searches, perProvider, summary, logs };
+}
+
+export type ProviderLog = { provider: ProviderId | "prooflab"; entries: QueryLog[]; reused?: boolean };
+
+// One row per search query in research_search_log. A failing insert never fails the research step, but is logged.
+async function writeSearchLog(task: TaskRow, question: string, logs: ProviderLog[]) {
+  const rows = logs.flatMap((l) =>
+    l.entries.map((e) => ({
+      run_id: task.run_id,
+      task_id: task.id,
+      idea_id: task.idea_id,
+      question_id: task.question_id,
+      question: question.slice(0, 400),
+      provider: l.provider,
+      query: e.query.slice(0, 500) || "(geen zoekterm)",
+      urls: e.urls as unknown as Json,
+      passages: e.passages,
+      reused: !!l.reused,
+    })),
+  );
+  if (rows.length === 0) return;
+  const supabase = await supabaseServer();
+  const { error } = await supabase.from("research_search_log").insert(rows);
+  if (error) await log.warn("research_search_log_insert_failed", { runId: task.run_id, taskId: task.id, code: error.code });
 }
 
 // ---------------------------------------------------------------------------

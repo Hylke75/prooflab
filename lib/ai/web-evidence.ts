@@ -15,7 +15,90 @@ export type FoundSource = {
   foundBy: ProviderId[]; // which providers led to this page (information, never extra evidence weight)
 };
 
-export type PageFetcher = (url: string) => Promise<{ url: string; title: string | null; text: string }>;
+export type PageFetcher = (url: string) => Promise<{ url: string; title: string | null; text: string; kind?: "html" | "text" | "pdf" }>;
+
+// ---------------------------------------------------------------------------
+// Zoeklogboek: per zoekterm welke URL's gevonden zijn en wat ProofLab ermee deed (research_search_log).
+// ---------------------------------------------------------------------------
+
+export const URL_STATUS = {
+  bewaard: "Letterlijke passages bewaard",
+  pdf_geen_tekst: "PDF zonder leesbare tekst (bijvoorbeeld een scan) of te groot",
+  lege_pagina: "Pagina vrijwel leeg; de inhoud wordt vermoedelijk pas in de browser geladen",
+  geblokkeerd: "Pagina niet bereikbaar of geweigerd",
+  geen_relevante_alinea: "Geen alinea die bij de vraag past",
+  citaat_niet_letterlijk: "Citaat van het model staat niet letterlijk op de pagina",
+  niet_opgehaald: "Niet geopend",
+} as const;
+export type UrlStatus = keyof typeof URL_STATUS;
+export const isUrlStatus = (v: unknown): v is UrlStatus => typeof v === "string" && v in URL_STATUS;
+
+export type UrlLog = { url: string; title: string | null; status: UrlStatus; reason: string };
+export type QueryLog = { query: string; urls: UrlLog[]; passages: number };
+
+// Below this many characters of cleaned text an HTML page is treated as empty (content loaded by scripts).
+export const EMPTY_PAGE_CHARS = 200;
+const EMPTY_PDF_CHARS = 50;
+
+// Why a fetched page cannot yield passages, or null when its text is usable.
+export function pageProblem(page: { text: string; kind?: "html" | "text" | "pdf" }): "pdf_geen_tekst" | "lege_pagina" | null {
+  const n = page.text.trim().length;
+  if (page.kind === "pdf") return n < EMPTY_PDF_CHARS ? "pdf_geen_tekst" : null;
+  return n < EMPTY_PAGE_CHARS ? "lege_pagina" : null;
+}
+
+// Collects what happened to each URL during one search, then lays it out per search query. A URL keeps its best
+// outcome ("bewaard" is never overwritten). URLs a query returned that were never touched are "niet_opgehaald".
+export class UrlLedger {
+  private entries = new Map<string, UrlLog & { passages: number }>();
+
+  set(url: string, status: UrlStatus, opts: { title?: string | null; reason?: string; passages?: number } = {}) {
+    const key = sourceKey(url);
+    const prev = this.entries.get(key);
+    if (prev?.status === "bewaard" && status !== "bewaard") return;
+    this.entries.set(key, {
+      url,
+      title: opts.title ?? prev?.title ?? null,
+      status,
+      reason: (opts.reason ?? URL_STATUS[status]).slice(0, 300),
+      passages: status === "bewaard" ? (opts.passages ?? 0) : 0,
+    });
+  }
+
+  has(url: string): boolean {
+    return this.entries.has(sourceKey(url));
+  }
+
+  // One entry per query (in order). URLs the ledger knows but no query returned (pages the model fetched or cited
+  // directly) are added to the last query; without any query the fallback (the research question) is used.
+  build(queries: { query: string; urls: string[] }[], fallbackQuery: string, titles: Map<string, string> = new Map()): QueryLog[] {
+    const rows = (queries.length ? queries : [{ query: fallbackQuery, urls: [] }]).map((q) => ({ query: q.query.slice(0, 500), urls: [...q.urls] }));
+    const listed = new Set(rows.flatMap((r) => r.urls.map(sourceKey)));
+    for (const e of this.entries.values()) if (!listed.has(sourceKey(e.url))) rows[rows.length - 1].urls.push(e.url);
+    const counted = new Set<string>();
+    return rows.map((r) => {
+      const seen = new Set<string>();
+      const urls: UrlLog[] = [];
+      let passages = 0;
+      for (const url of r.urls) {
+        const key = sourceKey(url);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const e = this.entries.get(key);
+        urls.push(
+          e
+            ? { url: e.url, title: e.title ?? titles.get(url) ?? null, status: e.status, reason: e.reason }
+            : { url, title: titles.get(url) ?? null, status: "niet_opgehaald", reason: URL_STATUS.niet_opgehaald },
+        );
+        if (e && !counted.has(key)) {
+          counted.add(key);
+          passages += e.passages;
+        }
+      }
+      return { query: r.query, urls: urls.slice(0, 40), passages };
+    });
+  }
+}
 
 const MAX_PASSAGE = 1500;
 
@@ -85,6 +168,7 @@ export async function verifyQuotedSources(
   citationUrls: string[],
   fetchPage: PageFetcher,
   maxPages = 8,
+  ledger?: UrlLedger,
 ): Promise<{ sources: FoundSource[]; quotes: number; rejected: number; pagesFetched: number; pagesFailed: number }> {
   const urls = [...new Set([...claimed.map((c) => c.url), ...citationUrls])].slice(0, maxPages);
   const quotes = [...new Set(claimed.flatMap((c) => c.quotes))];
@@ -92,20 +176,34 @@ export async function verifyQuotedSources(
   const bySource = new Map<string, FoundSource>();
   const kept = new Set<string>();
   let fetchedOk = 0;
-  for (const p of pages) {
-    if (p.status !== "fulfilled") continue;
+  pages.forEach((p, i) => {
+    const asked = urls[i];
+    if (p.status !== "fulfilled") {
+      const reason = p.reason as { reason?: unknown; message?: unknown } | undefined;
+      ledger?.set(asked, reason?.reason === "pdf_geen_tekst" ? "pdf_geen_tekst" : "geblokkeerd", { reason: typeof reason?.message === "string" ? reason.message : undefined });
+      return;
+    }
     fetchedOk++;
     const page = p.value;
+    let here = 0;
     for (const q of quotes) {
       const passage = passageFor(page.text, q);
       if (!passage) continue;
       kept.add(q);
       const key = sourceKey(page.url);
       const src = bySource.get(key) ?? { url: page.url, title: page.title?.trim() || page.url, pageAge: null, excerpts: [], foundBy: [provider] };
-      if (!src.excerpts.includes(passage)) src.excerpts.push(passage);
+      if (!src.excerpts.includes(passage)) {
+        src.excerpts.push(passage);
+        here++;
+      }
       bySource.set(key, src);
     }
-  }
+    const problem = pageProblem(page);
+    if (here > 0) ledger?.set(asked, "bewaard", { title: page.title, passages: here });
+    else if (problem) ledger?.set(asked, problem, { title: page.title });
+    else if (claimed.some((c) => sourceKey(c.url) === sourceKey(asked) && c.quotes.length > 0)) ledger?.set(asked, "citaat_niet_letterlijk", { title: page.title });
+    else ledger?.set(asked, "geen_relevante_alinea", { title: page.title, reason: "Het model gaf geen letterlijk citaat van deze pagina." });
+  });
   return { sources: [...bySource.values()], quotes: quotes.length, rejected: quotes.length - kept.size, pagesFetched: fetchedOk, pagesFailed: urls.length - fetchedOk };
 }
 

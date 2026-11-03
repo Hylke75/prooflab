@@ -1,7 +1,7 @@
 import type { ProviderId } from "./config";
 import { postJson, type HttpOptions } from "./http";
 import { toProviderSchema } from "./json-schema";
-import type { Citation, GenerateRequest, GenerateResult, ProviderAdapter, SearchResult } from "./types";
+import type { Citation, GenerateRequest, GenerateResult, ProviderAdapter, SearchQuery, SearchResult } from "./types";
 
 // OpenAI Responses API (POST /v1/responses) with the built-in `web_search` tool and strict JSON schema output.
 // https://developers.openai.com/api/docs/guides/tools-web-search
@@ -54,6 +54,7 @@ export function parseOpenAi(res: OpenAiResponse, fallbackModel: string, wantJson
   const texts: string[] = [];
   const citations: Citation[] = [];
   const searchResults: SearchResult[] = [];
+  const queries: SearchQuery[] = [];
   let refused = res.incomplete_details?.reason === "content_filter";
   let searches = 0;
   for (const item of res.output ?? []) {
@@ -69,7 +70,13 @@ export function parseOpenAi(res: OpenAiResponse, fallbackModel: string, wantJson
       }
     } else if (item.type === "web_search_call" && "action" in item) {
       if (!item.action?.type || item.action.type === "search") searches++;
-      for (const s of item.action?.sources ?? []) if (s.url) searchResults.push({ url: s.url, title: s.url, pageAge: null });
+      const urls: string[] = [];
+      for (const s of item.action?.sources ?? []) {
+        if (!s.url) continue;
+        searchResults.push({ url: s.url, title: s.url, pageAge: null });
+        if (!urls.includes(s.url)) urls.push(s.url);
+      }
+      if (item.action?.query?.trim()) queries.push({ query: item.action.query.trim(), urls });
     }
   }
   const text = texts.join("\n").trim();
@@ -97,5 +104,6 @@ export function parseOpenAi(res: OpenAiResponse, fallbackModel: string, wantJson
     citations,
     searchResults,
     fetched: [],
+    queries,
   };
 }

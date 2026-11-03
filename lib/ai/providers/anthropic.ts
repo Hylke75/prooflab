@@ -1,7 +1,18 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type { ProviderId, TokenUsage } from "./config";
-import { AiProviderError, kindForStatus, type Citation, type FetchedPage, type GenerateRequest, type GenerateResult, type ProviderAdapter, type SearchResult } from "./types";
+import {
+  AiProviderError,
+  kindForStatus,
+  type Citation,
+  type FetchedPage,
+  type FetchFailure,
+  type GenerateRequest,
+  type GenerateResult,
+  type ProviderAdapter,
+  type SearchQuery,
+  type SearchResult,
+} from "./types";
 
 // Claude through the official Anthropic SDK: the existing behaviour (structured output via a Zod format,
 // server-side web_search + web_fetch with citations, server-side refusal fallback), behind the shared interface.
@@ -99,6 +110,10 @@ export function createAnthropicAdapter(cfg: { apiKey: string; model: string; fet
     const fetched: FetchedPage[] = [];
     const citations: Citation[] = [];
     const texts: string[] = [];
+    const queries: SearchQuery[] = [];
+    const queryById = new Map<string, SearchQuery>();
+    const fetchUrlById = new Map<string, string>();
+    const fetchFailed: FetchFailure[] = [];
     let model = cfg.model;
     let refused = false;
     for (let turn = 0; turn < 4; turn++) {
@@ -122,11 +137,35 @@ export function createAnthropicAdapter(cfg: { apiKey: string; model: string; fet
         break;
       }
       for (const block of res.content) {
-        if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
-          for (const r of block.content) searchResults.push({ url: r.url, title: r.title, pageAge: r.page_age ?? null });
-        } else if (block.type === "web_fetch_tool_result" && block.content.type === "web_fetch_result") {
-          const src = block.content.content.source;
-          if (src.type === "text") fetched.push({ url: block.content.url, title: block.content.content.title ?? null, text: src.data });
+        if (block.type === "server_tool_use") {
+          // The search term and the fetched URL come from the tool call itself (the results are encrypted).
+          if (block.name === "web_search" && typeof block.input.query === "string") {
+            const q = { query: block.input.query, urls: [] as string[] };
+            queries.push(q);
+            queryById.set(block.id, q);
+          } else if (block.name === "web_fetch" && typeof block.input.url === "string") {
+            fetchUrlById.set(block.id, block.input.url);
+          }
+        } else if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
+          const q = queryById.get(block.tool_use_id);
+          for (const r of block.content) {
+            searchResults.push({ url: r.url, title: r.title, pageAge: r.page_age ?? null });
+            if (q && !q.urls.includes(r.url)) q.urls.push(r.url);
+          }
+        } else if (block.type === "web_fetch_tool_result") {
+          if (block.content.type === "web_fetch_result") {
+            const doc = block.content.content;
+            const src = doc.source;
+            if (src.type === "text") fetched.push({ url: block.content.url, title: doc.title ?? null, text: src.data, kind: "text" });
+            // PDFs arrive as a base64 document; ProofLab extracts the text itself (server-only pdf.js).
+            else if (src.type === "base64" && src.media_type === "application/pdf") {
+              const { pdfToText } = await import("@/lib/pdf-text");
+              fetched.push({ url: block.content.url, title: doc.title ?? null, text: await pdfToText(Buffer.from(src.data, "base64")), kind: "pdf" });
+            }
+          } else {
+            const url = fetchUrlById.get(block.tool_use_id);
+            if (url) fetchFailed.push({ url, reason: block.content.error_code });
+          }
         } else if (block.type === "text") {
           texts.push(block.text);
           for (const c of block.citations ?? []) {
@@ -139,7 +178,7 @@ export function createAnthropicAdapter(cfg: { apiKey: string; model: string; fet
       if (res.stop_reason !== "pause_turn") break;
       messages.push({ role: "assistant", content: res.content });
     }
-    return { provider: id, model, text: texts.join("").trim(), json: undefined, refused, usage, citations, searchResults, fetched };
+    return { provider: id, model, text: texts.join("").trim(), json: undefined, refused, usage, citations, searchResults, fetched, queries, fetchFailed };
   }
 }
 

@@ -4,10 +4,20 @@ import { z } from "zod";
 import { RESEARCH_SYSTEM, type AiUsage } from "./client";
 import { generate, generateJson, generateText } from "./generate";
 import type { ProviderId } from "./providers/config";
-import { fetchPageText } from "@/lib/fetch-page";
-import { parseQuotedSources, relevantPassages, verifyQuotedSources, widen, type FoundSource, type PageFetcher } from "./web-evidence";
+import { fetchPageText, PageFetchError } from "@/lib/fetch-page";
+import {
+  pageProblem,
+  parseQuotedSources,
+  relevantPassages,
+  UrlLedger,
+  verifyQuotedSources,
+  widen,
+  type FoundSource,
+  type PageFetcher,
+  type QueryLog,
+} from "./web-evidence";
 
-export type { FoundSource } from "./web-evidence";
+export type { FoundSource, QueryLog } from "./web-evidence";
 
 export type IdeaContext = {
   title: string;
@@ -92,7 +102,9 @@ export async function searchQuestion(
   maxSearches: number,
   provider: ProviderId,
   deps: { fetchPage?: PageFetcher } = {},
-): Promise<{ sources: FoundSource[]; usage: AiUsage; detail: string }> {
+): Promise<{ sources: FoundSource[]; usage: AiUsage; detail: string; log: QueryLog[] }> {
+  const fetchPage = deps.fetchPage ?? fetchPageText;
+  const ledger = new UrlLedger();
   if (provider === "anthropic") {
     const { res, usage } = await generate(
       provider,
@@ -124,28 +136,35 @@ Schrijf "onbekend" als je iets niet kunt vinden.`,
       const passage = doc ? widen(doc.text, c.citedText) : c.citedText;
       if (passage && !src.excerpts.includes(passage)) src.excerpts.push(passage.slice(0, 1500));
     }
+    for (const s of bySource.values()) if (s.excerpts.length) ledger.set(s.url, "bewaard", { title: s.title, passages: s.excerpts.length, reason: "Letterlijk citaat van het model bewaard" });
     const cited = [...bySource.values()].filter((s) => s.excerpts.length > 0).length;
+    // Pages Claude could not fetch (blocked, unsupported, too large).
+    for (const f of res.fetchFailed ?? []) ledger.set(f.url, "geblokkeerd", { title: meta.get(f.url)?.title ?? null, reason: `Claude kon de pagina niet openen (${f.reason})` });
     // Pages Claude read but did not cite (for example when it ran out of turns before writing its answer): keep
     // their most relevant paragraphs, verbatim.
     for (const doc of res.fetched) {
       if (bySource.get(doc.url)?.excerpts.length) continue;
       const passages = relevantPassages(doc.text, question);
-      if (passages.length) bySource.set(doc.url, { url: doc.url, title: doc.title ?? meta.get(doc.url)?.title ?? doc.url, pageAge: meta.get(doc.url)?.pageAge ?? null, excerpts: passages, foundBy: [provider] });
+      const title = doc.title ?? meta.get(doc.url)?.title ?? doc.url;
+      if (passages.length) {
+        bySource.set(doc.url, { url: doc.url, title, pageAge: meta.get(doc.url)?.pageAge ?? null, excerpts: passages, foundBy: [provider] });
+        ledger.set(doc.url, "bewaard", { title, passages: passages.length, reason: "Meest relevante alinea's van een door Claude gelezen pagina" });
+      } else {
+        ledger.set(doc.url, pageProblem(doc) ?? "geen_relevante_alinea", { title });
+      }
     }
     // Search results that were never opened: ProofLab opens the most promising ones itself (SSRF-safe fetch).
-    const unopened = res.searchResults.filter((r) => !bySource.has(r.url)).slice(0, FALLBACK_PAGES);
+    const seen = new Set<string>();
+    const unopened = res.searchResults
+      .filter((r) => !bySource.has(r.url) && !ledger.has(r.url) && !seen.has(r.url) && seen.add(r.url))
+      .slice(0, FALLBACK_PAGES);
     let fetchedByUs = 0;
     for (const r of unopened) {
       if ([...bySource.values()].filter((x) => x.excerpts.length).length >= 8) break;
-      try {
-        const page = await (deps.fetchPage ?? fetchPageText)(r.url);
-        const passages = relevantPassages(page.text, question);
-        if (passages.length) {
-          bySource.set(page.url, { url: page.url, title: page.title ?? r.title, pageAge: r.pageAge, excerpts: passages, foundBy: [provider] });
-          fetchedByUs++;
-        }
-      } catch {
-        // Unreachable or blocked page: skip.
+      const opened = await openPage(fetchPage, r.url, question, ledger, r.title);
+      if (opened) {
+        bySource.set(opened.url, { url: opened.url, title: opened.title, pageAge: r.pageAge, excerpts: opened.passages, foundBy: [provider] });
+        fetchedByUs++;
       }
     }
     const sources = [...bySource.values()].filter((s) => s.excerpts.length > 0);
@@ -154,6 +173,7 @@ Schrijf "onbekend" als je iets niet kunt vinden.`,
       sources,
       usage,
       detail: `${sources.length} bronnen${extra > 0 ? ` (${cited} met citaat van het model, ${extra} met de meest relevante alinea's${fetchedByUs ? `, waarvan ${fetchedByUs} door ProofLab zelf geopend` : ""})` : ""}`,
+      log: ledger.build(res.queries ?? [], question, new Map(res.searchResults.map((r) => [r.url, r.title]))),
     };
   }
 
@@ -175,12 +195,32 @@ zelf op en gooit elk citaat weg dat niet letterlijk op de pagina staat. Vind je 
   );
   const claimed = parseQuotedSources(res.text);
   const citationUrls = res.citations.flatMap((c) => (c.url ? [c.url] : []));
-  const v = await verifyQuotedSources(provider, claimed, citationUrls, deps.fetchPage ?? fetchPageText);
+  const v = await verifyQuotedSources(provider, claimed, citationUrls, fetchPage, 8, ledger);
   return {
     sources: v.sources,
     usage,
     detail: `${v.sources.length} bronnen, ${v.quotes - v.rejected} van ${v.quotes} citaten letterlijk teruggevonden${v.pagesFailed ? `, ${v.pagesFailed} pagina's niet bereikbaar` : ""}`,
+    // Without reported queries (older responses) the research question stands in as the search term.
+    log: ledger.build(res.queries ?? [], question),
   };
+}
+
+// Opens a page ProofLab found in the search results itself and keeps its most relevant paragraphs. Records the
+// outcome in the ledger; returns null when nothing usable was found.
+async function openPage(fetchPage: PageFetcher, url: string, question: string, ledger: UrlLedger, title: string | null) {
+  try {
+    const page = await fetchPage(url);
+    const passages = relevantPassages(page.text, question);
+    const name = page.title ?? title ?? page.url;
+    if (passages.length) {
+      ledger.set(url, "bewaard", { title: name, passages: passages.length, reason: "Meest relevante alinea's; pagina door ProofLab zelf geopend" });
+      return { url: page.url, title: name, passages };
+    }
+    ledger.set(url, pageProblem(page) ?? "geen_relevante_alinea", { title: name });
+  } catch (e) {
+    ledger.set(url, e instanceof PageFetchError ? e.reason : "geblokkeerd", { title, reason: e instanceof Error ? e.message : undefined });
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
