@@ -26,6 +26,11 @@ export const RECRUITMENT_KEYS = Object.keys(RECRUITMENT_GROUPS) as [RecruitmentG
 // vast of het een bekende is (eigen netwerk) en anders de groep.
 export const RECRUITMENT_REQUIRED_TYPES = ["survey", "landing", "pricing"] as const;
 
+// Ontbreekt een verplichte wervingsgroep op de Test Card?
+export function recruitmentMissing(type: string, group: unknown): boolean {
+  return (RECRUITMENT_REQUIRED_TYPES as readonly string[]).includes(type) && asRecruitmentGroup(group) == null;
+}
+
 export function asRecruitmentGroup(v: unknown): RecruitmentGroup | null {
   return typeof v === "string" && v in RECRUITMENT_GROUPS ? (v as RecruitmentGroup) : null;
 }

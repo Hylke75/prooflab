@@ -7,7 +7,7 @@ import {
   OBSERVATION_LR,
   type ProbabilityObservation,
 } from "@/lib/domain/evidence";
-import { explainRecruitment, interviewRecruitment, recruitmentLabel } from "@/lib/domain/recruitment";
+import { explainRecruitment, interviewRecruitment, recruitmentLabel, recruitmentMissing } from "@/lib/domain/recruitment";
 
 // Methode 2026-11-c (golf A). Punt 4: herhaling binnen dezelfde wervingsgroep over verschillende bronnen heen telt
 // afnemend mee.
@@ -98,5 +98,17 @@ describe("punt 4: wervingsgroep", () => {
     expect(recruitmentLabel("paid_panel")).toBe("Betaald panel");
     expect(recruitmentLabel("iets")).toBe("Onbekend");
     expect(explainRecruitment({ group: "own_network", sources: 3 })).toBe("3 signalen uit dezelfde wervingsgroep (eigen netwerk): herhaling telt afnemend mee.");
+  });
+});
+
+describe("punt 13: wervingsgroep verplicht op de Test Card", () => {
+  it("bij enquête-, landing- en prijstests; niet bij interviews (per gesprek)", () => {
+    for (const t of ["survey", "landing", "pricing"]) {
+      expect(recruitmentMissing(t, "")).toBe(true);
+      expect(recruitmentMissing(t, "vrienden")).toBe(true);
+      expect(recruitmentMissing(t, "unknown")).toBe(false);
+      expect(recruitmentMissing(t, "cold")).toBe(false);
+    }
+    expect(recruitmentMissing("interview", null)).toBe(false);
   });
 });

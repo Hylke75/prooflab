@@ -1,3 +1,4 @@
+import { interviewRecruitment, RECRUITMENT_GROUPS, RECRUITMENT_KEYS, recruitmentLabel } from "@/lib/domain/recruitment";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -142,6 +143,16 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
             </div>
           )}
           <div className="data-row"><span>Kanalen</span><strong style={{ textAlign: "right" }}>{channels.map((c) => CHANNELS[c.channel as keyof typeof CHANNELS] ?? c.channel).join(", ")}</strong></div>
+          <div className="data-row">
+            <span>Wervingsgroep</span>
+            <strong style={{ textAlign: "right" }}>
+              {exp.type === "interview"
+                ? `Per gesprek vastgelegd${exp.recruitment_group ? `; standaard ${recruitmentLabel(exp.recruitment_group).toLowerCase()}` : ""}`
+                : exp.recruitment_group
+                  ? recruitmentLabel(exp.recruitment_group)
+                  : "Niet vastgelegd (telt als onbekend)"}
+            </strong>
+          </div>
           {h.expected_biases && <div className="note">Verwachte vertekeningen: {h.expected_biases}</div>}
         </div>
 
@@ -280,7 +291,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
               <div className="section-title">
                 <div>
                   <h3>{iv.participant_label}</h3>
-                  <p className="tiny">{DMU_ROLES[iv.dmu_role as keyof typeof DMU_ROLES]} · {iv.segment ?? "segment onbekend"} · via {CHANNELS[iv.recruited_via as keyof typeof CHANNELS] ?? iv.recruited_via} · {new Date(iv.held_on).toLocaleDateString("nl-NL")}{iv.is_acquaintance ? " · bekende" : ""}</p>
+                  <p className="tiny">{DMU_ROLES[iv.dmu_role as keyof typeof DMU_ROLES]} · {iv.segment ?? "segment onbekend"} · via {CHANNELS[iv.recruited_via as keyof typeof CHANNELS] ?? iv.recruited_via} · {new Date(iv.held_on).toLocaleDateString("nl-NL")}{iv.is_acquaintance ? " · bekende" : ""} · wervingsgroep {recruitmentLabel(interviewRecruitment(iv.is_acquaintance, iv.recruitment_group, exp.recruitment_group)).toLowerCase()}</p>
                 </div>
                 <span className="pill gray">{iv.record_type === "transcript" ? "Transcript" : "Notities (minder herleidbaar)"}</span>
               </div>
@@ -367,7 +378,14 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
                   </div>
                 </div>
                 <div className="form-line"><label htmlFor="iv-x">Transcript of notities</label><textarea className="field" id="iv-x" name="transcript" rows={8} /></div>
-                <label className="check-row"><input type="checkbox" name="is_acquaintance" /> Deze persoon is een bekende (vriend, collega, bestaande klant)</label>
+                <div className="form-line">
+                  <label htmlFor="iv-g">Wervingsgroep</label>
+                  <select className="field" id="iv-g" name="recruitment_group" defaultValue={exp.recruitment_group ?? "unknown"} aria-describedby="iv-g-hint">
+                    {RECRUITMENT_KEYS.filter((k) => k !== "own_network").map((k) => <option key={k} value={k}>{RECRUITMENT_GROUPS[k].label}</option>)}
+                  </select>
+                  <p className="field-hint" id="iv-g-hint">Is het een bekende? Vink dat hieronder aan: dan telt het gesprek als eigen netwerk. Gesprekken uit dezelfde groep tellen afnemend mee.</p>
+                </div>
+                <label className="check-row"><input type="checkbox" name="is_acquaintance" /> Deze persoon is een bekende (vriend, collega, bestaande klant): wervingsgroep eigen netwerk</label>
                 <label className="check-row"><input type="checkbox" name="consent_recorded" /> Toestemming voor verwerking is gegeven en vastgelegd (bewaartermijn 12 maanden)</label>
               </ActionForm>
             </div>

@@ -9,6 +9,7 @@ import { checkHypothesis } from "@/lib/domain/hypothesis";
 import { checkQuote } from "@/lib/domain/verify";
 import { KIND_DEFAULTS } from "@/lib/domain/evidence";
 import { CHANNELS } from "@/lib/domain/tracking";
+import { RECRUITMENT_KEYS, recruitmentMissing } from "@/lib/domain/recruitment";
 import { experimentMetrics, loadSurveyResponses, surveyConfigOf, type LandingConfig, type PricingConfig } from "@/lib/experiment-metrics";
 import { pct, requiredSample } from "@/lib/domain/stats";
 import { ideaMethodVersion } from "@/lib/method-data";
@@ -59,6 +60,8 @@ const Base = z.object({
   expected_pct: z.coerce.number().gt(0, "Vul de verwachte uitkomst in (in %).").max(100, "De verwachte uitkomst is hoogstens 100%.").optional(),
   available_per_week: z.coerce.number().int().min(0).optional(),
   cost_estimate_eur: z.coerce.number().min(0).optional(),
+  // Wervingsgroep (golf A, punt 13): verplicht bij enquête-, landing- en prijstests.
+  recruitment_group: z.enum(RECRUITMENT_KEYS).optional(),
 });
 
 export async function createExperiment(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
@@ -66,7 +69,7 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
   const ws = await getWorkspace();
   const raw = Object.fromEntries(form);
   // Lege getalvelden betekenen "niet ingevuld", niet 0.
-  for (const k of ["fail_threshold_pct", "success_count", "expected_pct", "available_per_week", "expected_reach"]) if (raw[k] === "") delete raw[k];
+  for (const k of ["fail_threshold_pct", "success_count", "expected_pct", "available_per_week", "expected_reach", "recruitment_group"]) if (raw[k] === "") delete raw[k];
   const p = Base.safeParse(raw);
   if (!p.success) return { error: p.error.issues[0].message };
   const v = p.data;
@@ -109,6 +112,10 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
     max_duration_days: v.max_duration_days,
   });
   if (!coach.ok) return { error: coach.issues[0].message };
+
+  if (recruitmentMissing(v.type, v.recruitment_group)) {
+    return { error: "Kies de wervingsgroep: via welke weg bereik je de deelnemers (eigen netwerk, warm, koud, betaald panel of onbekend)?" };
+  }
 
   const channels = form.getAll("channels").map(String).filter((c) => c in CHANNELS);
   if (channels.length === 0) return { error: "Kies minstens één wervingskanaal. Zonder werving zegt een test niets." };
@@ -184,6 +191,7 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       config,
       channels: channels.map((c) => ({ channel: c, expected_reach: v.expected_reach ? Math.round(v.expected_reach / channels.length) : null })),
       cost_estimate_eur: v.cost_estimate_eur ?? 0,
+      recruitment_group: v.recruitment_group ?? null,
     })
     .select("id")
     .single();
@@ -253,6 +261,8 @@ const InterviewSchema = z.object({
   held_on: z.string().date("Vul de datum van het gesprek in."),
   record_type: z.enum(["transcript", "notes"]),
   transcript: text(60000).min(50, "Plak het transcript of je notities (minimaal 50 tekens)."),
+  // Een bekende wordt in de database altijd eigen netwerk (is_acquaintance).
+  recruitment_group: z.enum(RECRUITMENT_KEYS).optional(),
 });
 
 export async function addInterview(ideaId: string, expId: string, _: ActionState, form: FormData): Promise<ActionState> {
