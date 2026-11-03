@@ -12,6 +12,7 @@ import { contentHash, recomputeClaim } from "@/lib/claims";
 import { aiSourceType, checkQuote, figuresAppearIn, normalizeText, registrableDomain, sourceTypeForDomain } from "@/lib/domain/verify";
 import { AiBudgetError, AiRefusedError } from "@/lib/ai/client";
 import { RunBudget, withRunBudget } from "@/lib/ai/budget";
+import { passagesPerRun, twoZeroRunsInARow } from "@/lib/domain/research-health";
 import { CBS_STATLINE_URL, CBS_TABLE, cbsKeywords, cbsLine, fetchCbsCompanyCounts, isSizeQuestion, type JsonFetcher } from "@/lib/integrations/cbs";
 import type { Idea } from "@/lib/data";
 import type { Json } from "@/lib/database.types";
@@ -80,6 +81,7 @@ export async function advanceRun(runId: string): Promise<RunState> {
   }
   if (!next) {
     await supabase.from("research_runs").update({ status: "done", finished_at: new Date().toISOString() }).eq("id", runId);
+    await alertOnZeroSources(run);
     return state();
   }
   // Claim the task; a concurrent request that lost the race simply returns the state.
@@ -127,6 +129,28 @@ export async function advanceRun(runId: string): Promise<RunState> {
     await supabase.from("research_runs").update({ error: runBudget.hit.slice(0, 500) }).eq("id", runId);
   }
   return state();
+}
+
+// Two consecutive finished runs of the same idea without a single kept passage: an incident for operations
+// (log.error goes to Sentry when SENTRY_DSN is set). Also counted on the system status page.
+async function alertOnZeroSources(run: { id: string; idea_id: string; created_at: string }) {
+  const supabase = await supabaseServer();
+  const { data: previous } = await supabase
+    .from("research_runs")
+    .select("id")
+    .eq("idea_id", run.idea_id)
+    .eq("status", "done")
+    .neq("id", run.id)
+    .lt("created_at", run.created_at)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const ids = [run.id, ...(previous ? [previous.id] : [])];
+  const { data: tasks } = await supabase.from("research_tasks").select("run_id, kind, output").in("run_id", ids).eq("kind", "search");
+  const counts = passagesPerRun(tasks ?? []);
+  if (previous && twoZeroRunsInARow(counts.get(run.id), counts.get(previous.id))) {
+    await log.error("research_zero_sources", { ideaId: run.idea_id, runId: run.id, previousRunId: previous.id, searchSteps: (tasks ?? []).filter((t) => t.run_id === run.id).length });
+  }
 }
 
 type TaskRow = { id: string; kind: string; question_id: string | null; run_id: string; idea_id: string };
