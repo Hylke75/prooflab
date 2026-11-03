@@ -46,6 +46,10 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.goto("/app/ideas/new");
   await page.getByRole("button", { name: "Is er voldoende markt voor dit aanbod?" }).click();
   await page.getByRole("button", { name: "Volgende stap" }).click();
+  await page.getByLabel("Geslaagd als…", { exact: true }).fill("Zes maanden na het besluit hebben minstens 10 eventbureaus een betaald abonnement.");
+  await page.getByLabel("Wat meet je?", { exact: true }).fill("betalende eventbureaus");
+  await page.getByLabel("Doelwaarde", { exact: true }).fill("10");
+  await page.getByRole("button", { name: "Volgende stap" }).click();
   const title = `E2E-idee ${Date.now()}`;
   await page.getByLabel("Korte naam", { exact: true }).fill(title);
   await page.getByLabel("Mijn idee", { exact: true }).fill("Een AI-assistent die zakelijke eventmanagers helpt binnen minuten een passende locatie te vinden.");
@@ -124,6 +128,15 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.getByRole("button", { name: "Keur goed: werk de aanname bij" }).click();
   await page.getByRole("button", { name: "Voer de Reality Check uit" }).click();
   await expect(page.getByText(/Advies:/)).toBeVisible();
+  // The decision needs a base rate and the consultant's own forecast at the decision moment.
+  await page.goto(`${ideaUrl}/outcome`);
+  await page.getByRole("button", { name: "Leg het basispercentage vast" }).click();
+  await expect(page.getByText("Basispercentage vastgelegd.")).toBeVisible();
+  await page.goto(`${ideaUrl}/evidence`);
+  await expect(page.getByRole("button", { name: "Bewaar mijn keuze" })).toBeDisabled();
+  await page.getByLabel("Waarom? (één zin)", { exact: true }).fill("Weinig gedragsbewijs, dus dicht bij het basispercentage.");
+  await page.getByRole("button", { name: "Leg mijn voorspelling vast" }).click();
+  await expect(page.getByText(/Voorspelling vastgelegd/)).toBeVisible();
   await page.getByRole("radio", { name: /Verder testen/ }).click();
   await page.getByLabel("Waarom? (komt in het rapport)", { exact: true }).fill("De steekproef was klein en betaalbereidheid is nog niet getest.");
   await page.getByRole("button", { name: "Bewaar mijn keuze" }).click();

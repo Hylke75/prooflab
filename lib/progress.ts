@@ -5,6 +5,9 @@ import { assumptionEvidence, assumptionProbability, type AssumptionProbability, 
 import type { AssumptionCategory, ClaimStatus } from "@/lib/domain/labels";
 import { rankByInformationValue, type VoiResult } from "@/lib/domain/recommend";
 import type { IdeaProgress } from "@/lib/domain/coach";
+import { getUser } from "@/lib/data";
+import { FORECAST_MOMENTS, type ForecastMoment, type ForecastState } from "@/lib/domain/forecast";
+import { todayInNL } from "@/lib/domain/sprint";
 
 export type AssumptionWithEvidence = {
   id: string;
@@ -145,11 +148,37 @@ async function loadReportMeta(ideaId: string): Promise<{ created_at: string; sha
   return (plain.data ?? []).map((r) => ({ created_at: r.created_at, shared_at: null }));
 }
 
+// The prediction loop of one idea for the current user. Undefined when the prediction schema is missing
+// (older databases), so the rest of the app keeps working without it.
+export const loadForecastState = cache(async (ideaId: string): Promise<ForecastState | undefined> => {
+  const supabase = await supabaseServer();
+  const user = await getUser();
+  const [idea, own, checkins, outcome] = await Promise.all([
+    supabase.from("ideas").select("outcome_statement, outcome_due, reference_class").eq("id", ideaId).maybeSingle(),
+    user
+      ? supabase.from("forecasts").select("moment").eq("idea_id", ideaId).eq("forecaster_id", user.id)
+      : Promise.resolve({ data: [] as { moment: string }[], error: null }),
+    supabase.from("outcome_checkins").select("id", { count: "exact", head: true }).eq("idea_id", ideaId),
+    supabase.from("idea_outcomes").select("idea_id").eq("idea_id", ideaId).maybeSingle(),
+  ]);
+  if (idea.error || own.error || checkins.error || outcome.error || !idea.data) return undefined;
+  return {
+    outcomeDefined: !!idea.data.outcome_statement,
+    baseRateChosen: !!idea.data.reference_class,
+    outcomeDue: idea.data.outcome_due,
+    ownMoments: (own.data ?? []).map((f) => f.moment).filter((m): m is ForecastMoment => (FORECAST_MOMENTS as readonly string[]).includes(m)),
+    checkins: checkins.count ?? 0,
+    resolved: !!outcome.data,
+    today: todayInNL(),
+  };
+});
+
 const maxIso = (list: (string | null | undefined)[]) => list.filter((x): x is string => !!x).sort().pop() ?? null;
 
 export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> => {
   const supabase = await supabaseServer();
   const count = { count: "exact" as const, head: true };
+  const forecastState = loadForecastState(ideaId);
   const [questions, claims, verified, weak, competitors, alternatives, segments, experiments, cards, checks, decisions, behaviour, sizing, reports] = await Promise.all([
     supabase.from("research_questions").select("id", count).eq("idea_id", ideaId),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId),
@@ -166,6 +195,7 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     supabase.from("sizing_factors").select("key, claims(status)").eq("idea_id", ideaId).eq("key", "base_count"),
     loadReportMeta(ideaId),
   ]);
+  const forecast = await forecastState;
   const assumptions = rankAssumptions(await loadAssumptions(ideaId));
   const cardList = cards.data ?? [];
   const approvedCards = cardList.filter((c) => c.status === "approved");
@@ -209,5 +239,6 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     latestReportAt: reports[0]?.created_at ?? null,
     latestReportShared: !!reports[0]?.shared_at,
     behaviourObservations: behaviour.count ?? 0,
+    forecast,
   };
 });

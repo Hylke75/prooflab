@@ -2,8 +2,9 @@
 
 import type { IconName } from "@/components/Icon";
 import type { SprintStage } from "@/lib/domain/sprint";
+import { followUpFor, forecastDue, MOMENT_LABELS, type ForecastState } from "@/lib/domain/forecast";
 
-export type CoachPage = "dashboard" | "intake" | "research" | "assumptions" | "experiments" | "evidence" | "report" | "clients" | "other";
+export type CoachPage = "dashboard" | "intake" | "research" | "assumptions" | "experiments" | "evidence" | "report" | "outcome" | "forecasts" | "clients" | "other";
 
 export type ExperimentSummary = {
   id: string;
@@ -43,6 +44,8 @@ export type IdeaProgress = {
   latestReportAt: string | null;
   latestReportShared: boolean;
   behaviourObservations: number;
+  // Prediction loop; absent when the database has no prediction schema yet (the coach then ignores it).
+  forecast?: ForecastState;
 };
 
 export type CoachSuggestion = { label: string; href: string; icon: IconName };
@@ -67,6 +70,8 @@ const PAGE_COPY: Record<CoachPage, [string, string]> = {
   experiments: ["Test gedrag, geen complimenten.", "Een enthousiaste reactie is prettig. Een echte afspraak of betaling zegt vaak meer."],
   evidence: ["Wat zegt dit bewijs echt?", "Het doel is leren, niet gelijk krijgen. Kijk ook naar wat een resultaat niet aantoont."],
   report: ["Maak je verhaal controleerbaar.", "Goede directierapporten maken duidelijk wat bekend is, wat geschat is en welke beslissing volgt."],
+  outcome: ["Voorspel, en kijk daarna wat er gebeurde.", "Leg vooraf vast wanneer het idee geslaagd is. Zes maanden na het besluit blijkt of de voorspellingen klopten."],
+  forecasts: ["Leer van je eigen voorspellingen.", "Een goede voorspeller zegt 70% en ziet het ook ongeveer 7 van de 10 keer gebeuren."],
   clients: ["Betrek de opdrachtgever.", "Als het leren alleen bij de consultant zit, is testen uitbesteed. Laat de opdrachtgever meebeslissen."],
   other: ["Eén stap tegelijk.", "ProofLab denkt kritisch mee. Jij houdt de regie."],
 };
@@ -80,6 +85,8 @@ const CLIENT_COPY: Record<CoachPage, [string, string, string]> = {
   experiments: ["Hoe wordt er getest?", "Elke test heeft vooraf vastgelegde drempels. Na goedkeuring kunnen die niet meer stil worden aangepast.", "Tijdens een lopende test ziet u voortgang, maar nog geen conclusie. Een uitspraak volgt pas na de afgesproken eindconditie."],
   evidence: ["Wat zegt het bewijs?", "Hier staan de waargenomen signalen, de Reality Check en het besluitvoorstel van het onderzoeksteam.", "Bent u aangewezen als beslisser, dan bevestigt u hier het besluit. Daarmee wordt het onderdeel van het rapport."],
   report: ["Het rapport.", "Elke gedeelde versie is een vaste momentopname met bronnen, beperkingen en tegenbewijs.", "Het rapport laat zien wat bekend is, wat geschat is en wat nog niet bewezen is."],
+  outcome: ["Hoe groot is de kans van slagen?", "Op vaste momenten geeft u een eigen kansinschatting, los van het onderzoeksteam.", "U ziet de andere voorspellingen pas nadat u de uwe hebt gegeven. Zo beïnvloedt niemand elkaar."],
+  forecasts: ["Voorspelkwaliteit.", "", ""],
   clients: ["Betrek de opdrachtgever.", "", ""],
   other: ["Zo werkt ProofLab.", "ProofLab maakt zichtbaar wat bewezen is en wat nog niet.", "Een AI-antwoord is nooit automatisch bewijs."],
 };
@@ -116,6 +123,8 @@ export function reportStale(p: IdeaProgress): boolean {
 export function nextAction(p: IdeaProgress): NextAction {
   const base = `/app/ideas/${p.ideaId}`;
   const exp = (e: ExperimentSummary) => `${base}/experiments/${e.id}`;
+  const prediction = predictionAction(p);
+  if (prediction) return prediction;
   if (p.questions === 0) return { title: "Maak de onderzoekskaart", detail: "Maximaal vijf vragen die je beslissing echt kunnen veranderen.", href: `${base}/research`, icon: "compass" };
   if (p.claims === 0) return { title: "Verzamel de eerste bronnen", detail: "Start een marktcheck of voeg zelf een bron met citaat toe.", href: `${base}/research?tab=sources`, icon: "compass" };
   if (!p.hasAlternatives) return { title: "Breng huidige alternatieven in kaart", detail: "Hoe lossen klanten dit nu op, ook zonder software of door niets te doen?", href: `${base}/research?tab=competitors`, icon: "compass" };
@@ -157,6 +166,28 @@ export function nextAction(p: IdeaProgress): NextAction {
     href: `${base}/assumptions`,
     icon: "layers",
   };
+}
+
+// The prediction loop: the outcome follow-up months after the decision comes first, then the outcome
+// definition, then a forecast at the moment that is open now (it closes when the next moment starts).
+export function predictionAction(p: IdeaProgress): NextAction | null {
+  const f = p.forecast;
+  if (!f) return null;
+  const base = `/app/ideas/${p.ideaId}`;
+  const fu = followUpFor(p);
+  if (fu?.outcomeDue) return { title: "Leg de uitkomst vast", detail: "Zes maanden na het besluit: is het doel gehaald? Leg het vast met bewijs, dan worden de voorspellingen gescoord.", href: `${base}/outcome#uitkomst`, icon: "check" };
+  if (fu?.checkinDue) return { title: "Geef de tussenstand", detail: "Drie maanden na het besluit: ligt het doel op koers? Een korte tussenstand houdt de uitkomstmeting eerlijk.", href: `${base}/outcome#tussenstand`, icon: "clock" };
+  if (f.resolved) return null;
+  if (!f.outcomeDefined) return { title: "Leg vast wanneer dit geslaagd is", detail: "Eén meetbare zin met een doelwaarde. Zonder die definitie kan niemand achteraf zeggen of het klopte.", href: `${base}/outcome#definitie`, icon: "trend" };
+  const due = forecastDue(p);
+  if (due)
+    return {
+      title: "Geef je voorspelling",
+      detail: `${MOMENT_LABELS[due].label}: hoe groot is de kans dat het doel wordt gehaald? Begin bij het basispercentage.`,
+      href: due === "decision" ? `${base}/evidence#voorspelling` : `${base}/outcome#voorspelling`,
+      icon: "trend",
+    };
+  return null;
 }
 
 // Where the dossier is on the sprint path (used for "loopt achter").
@@ -213,7 +244,10 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
       if (p.learningCardsDraft > 0) add("Keur de Learning Card goed", `${base}/evidence`, "shield");
       else if (endedWithoutCard(p).length > 0) add("Maak de Learning Card van de afgeronde test", `${base}/experiments/${endedWithoutCard(p)[0].id}`, "shield");
       if (realityCheckDue(p) || (!p.latestRealityCheckAt && p.experimentsEnded > 0)) add("Doe de Reality Check", `${base}/evidence`, "shield");
-      else if (decisionDue(p)) add("Neem het besluit", `${base}/evidence`, "check");
+      else if (decisionDue(p)) {
+        if (forecastDue(p) === "decision") add("Geef je voorspelling", `${base}/evidence#voorspelling`, "trend");
+        add("Neem het besluit", `${base}/evidence`, "check");
+      }
       if (p.behaviourObservations === 0) {
         add("Plan een test met echt klantgedrag", `${base}/experiments`, "flask");
         insight = ["De kern", "Er is nog geen waargenomen klantgedrag. Interesse in een gesprek is iets anders dan een aanvraag of betaling."];
@@ -229,6 +263,14 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
       if (p.decisions === 0) add("Leg het besluit vast", `${base}/evidence`, "check");
       if (p.reports === 0) insight = ["Mijn advies", "Een rapport is een vaste momentopname. Maak het als het besluit genomen is, of eerder als tussenstand."];
       else if (reportStale(p)) insight = ["Let hierop", "Het laatste besluit staat nog niet in een rapportversie."];
+      break;
+    }
+    case "outcome": {
+      const prediction = predictionAction(p);
+      if (prediction) add(prediction.title, prediction.href, prediction.icon);
+      if (p.forecast && !p.forecast.baseRateChosen && p.forecast.outcomeDefined) add("Kies een basispercentage", `${base}/outcome#basispercentage`, "compass");
+      if (p.forecast?.outcomeDefined && !p.forecast.outcomeDue) insight = ["Goed om te weten", "De uitkomstdatum wordt zes maanden na het besluit vastgezet. De tussenstand volgt na drie maanden."];
+      else insight = ["Mijn advies", "Begin bij het basispercentage en pas het aan op wat dit dossier anders maakt. Schrijf in één zin waarom."];
       break;
     }
     case "dashboard":
@@ -281,6 +323,7 @@ function clientCoach(page: CoachPage, p: IdeaProgress | null, isClientDecider: b
   if (p) {
     const base = `/app/ideas/${p.ideaId}`;
     if (isClientDecider && p.decisions > 0 && !p.latestDecisionConfirmed) suggestions.push({ label: "Bekijk en bevestig het besluit", href: `${base}/evidence`, icon: "check" });
+    if (forecastDue(p) && page !== "outcome") suggestions.push({ label: "Geef uw voorspelling", href: `${base}/outcome#voorspelling`, icon: "trend" });
     if (page !== "report") suggestions.push({ label: "Lees het laatst gedeelde rapport", href: `${base}/report`, icon: "file" });
     if (page !== "evidence" && suggestions.length < MAX_SUGGESTIONS) suggestions.push({ label: "Bekijk het bewijs tot nu toe", href: `${base}/evidence`, icon: "shield" });
   }

@@ -1,0 +1,140 @@
+import Link from "next/link";
+import { ActionForm } from "@/components/ui/ActionForm";
+import { ProbabilityField } from "./ProbabilityField";
+import { BaseRateSummary, baseRateStart } from "./BaseRate";
+import { requestAiForecast, submitForecast } from "@/app/app/ideas/[id]/outcome/actions";
+import type { ForecastRow, ForecastView } from "@/lib/forecast-data";
+import { aggregate, FORECAST_MOMENTS, MOMENT_LABELS, pct, type ForecastMoment } from "@/lib/domain/forecast";
+
+const KIND_PILL = { consultant: "blue", client: "orange", ai: "gray" } as const;
+
+function ForecastList({ rows }: { rows: ForecastRow[] }) {
+  const agg = aggregate(rows.filter((r) => r.kind !== "ai").map((r) => r.probability));
+  const ai = rows.find((r) => r.kind === "ai");
+  return (
+    <>
+      {agg && (
+        <div className="kpi-row" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))", margin: "12px 0 4px" }}>
+          <div>
+            <div className="tiny">Gemiddelde (mensen)</div>
+            <div className="mini-kpi num" style={{ fontSize: 24 }}>{pct(agg.mean)}</div>
+          </div>
+          <div>
+            <div className="tiny">Spreiding</div>
+            <div className="mini-kpi num" style={{ fontSize: 24 }}>{agg.n > 1 ? `${pct(agg.min)}–${pct(agg.max)}` : "—"}</div>
+          </div>
+          <div>
+            <div className="tiny">Voorspellers</div>
+            <div className="mini-kpi num" style={{ fontSize: 24 }}>{agg.n}</div>
+          </div>
+        </div>
+      )}
+      {agg && agg.n > 1 && (
+        <p className="tiny">Standaardafwijking {Math.round(agg.sd * 100)} procentpunt. Een grote spreiding betekent dat de inschattingen uiteenlopen: bespreek waarom.</p>
+      )}
+      {rows.map((r) => (
+        <div className="evidence-event" key={r.id}>
+          <div className="icon-circle num" style={{ width: 46, fontSize: 12, fontWeight: 800, borderRadius: 12 }}>{pct(r.probability)}</div>
+          <div>
+            <strong>{r.name}</strong>{" "}
+            <span className={`pill ${KIND_PILL[r.kind]}`}>{r.kind === "ai" ? "AI-voorspelling · geen bewijs" : r.kind === "consultant" ? "Consultant" : "Opdrachtgever"}</span>
+            <p>{r.rationale}</p>
+            <p className="tiny">
+              {new Date(r.createdAt).toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" })}
+              {r.model ? ` · model ${r.model}` : ""}
+            </p>
+          </div>
+        </div>
+      ))}
+      {ai && <p className="tiny">Het gemiddelde is alleen over mensen. De AI-voorspelling krijgt een eigen score en telt nooit als bewijs.</p>}
+    </>
+  );
+}
+
+// Blind forecasts at the open moment: you give your own probability first (starting at the base rate) and
+// only then see the others, their mean and spread. Compact on the evidence page, with history on the
+// outcome page.
+export function ForecastPanel({ view, compact = false }: { view: ForecastView; compact?: boolean }) {
+  const base = `/app/ideas/${view.ideaId}`;
+  const m = view.openMoment;
+  const given = m ? view.ownMoments.includes(m) : false;
+  const rows = m ? view.forecasts.filter((f) => f.moment === m) : [];
+  const hintId = `base-rate-${compact ? "c" : "f"}`;
+  const history = FORECAST_MOMENTS.filter((x) => x !== m && view.forecasts.some((f) => f.moment === x));
+
+  let body: React.ReactNode;
+  if (view.resolved) {
+    body = <p className="sub">De uitkomst is vastgelegd; voorspellen is gesloten. De scores staan bij de uitkomst.</p>;
+  } else if (!view.outcome.statement) {
+    body = (
+      <p className="sub">
+        Voorspellen kan zodra vastligt wanneer dit idee geslaagd is.{" "}
+        {view.canWrite ? <Link className="text-link" href={`${base}/outcome#definitie`}>Leg de uitkomst vast →</Link> : "Het onderzoeksteam legt dat vast."}
+      </p>
+    );
+  } else if (!view.baseRate) {
+    body = (
+      <p className="sub">
+        Elke voorspelling start bij een basispercentage.{" "}
+        {view.canWrite ? <Link className="text-link" href={`${base}/outcome#basispercentage`}>Kies het basispercentage →</Link> : "Het onderzoeksteam kiest dat eerst."}
+      </p>
+    );
+  } else if (!m) {
+    body = <p className="sub">Er is nu geen voorspelmoment open. Momenten: na de intake, na het marktonderzoek, na het eerste experiment en bij het besluit.</p>;
+  } else if (!given) {
+    body = (
+      <>
+        <p className="sub">
+          <strong>{MOMENT_LABELS[m].label}.</strong> Hoe groot is de kans dat het doel wordt gehaald? Begin bij het basispercentage en pas het aan op wat dit
+          dossier anders maakt.
+        </p>
+        <BaseRateSummary baseRate={view.baseRate} id={hintId} />
+        <ActionForm action={submitForecast.bind(null, view.ideaId)} submitLabel="Leg mijn voorspelling vast" pendingLabel="Vastleggen…">
+          <input type="hidden" name="moment" value={m} />
+          <ProbabilityField initial={baseRateStart(view.baseRate)} describedBy={hintId} />
+          <label className="field-label" htmlFor={`rationale-${compact ? "c" : "f"}`}>Waarom? (één zin)</label>
+          <input className="field" id={`rationale-${compact ? "c" : "f"}`} name="rationale" maxLength={300} required minLength={10} placeholder="Bijv. Weinig gedragsbewijs, dus dicht bij het basispercentage." />
+          <p className="field-hint" role="note">
+            {view.canWrite
+              ? "Je ziet de andere voorspellingen nadat je de jouwe hebt gegeven. Een gegeven voorspelling kun je niet meer wijzigen."
+              : "U ziet de andere voorspellingen nadat u de uwe hebt gegeven, zodat niemand op een ander ankert. Een gegeven voorspelling kan niet meer worden gewijzigd."}
+          </p>
+        </ActionForm>
+      </>
+    );
+  } else {
+    body = (
+      <>
+        <p className="sub"><strong>{MOMENT_LABELS[m].label}.</strong> Alle zichtbare voorspellingen voor dit moment.</p>
+        <ForecastList rows={rows} />
+        {view.aiAvailable && !rows.some((r) => r.kind === "ai") && (
+          <ActionForm action={requestAiForecast.bind(null, view.ideaId)} submitLabel="AI-voorspelling toevoegen" submitClass="btn white" pendingLabel="AI denkt na…">
+            <p className="tiny mt-12">Het model krijgt de uitkomstdefinitie, het basispercentage en een samenvatting van het dossier. Het telt als aparte voorspeller, nooit als bewijs.</p>
+          </ActionForm>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div className="card" id="voorspelling" style={{ scrollMarginTop: 100 }}>
+      <div className="section-title">
+        <h3>{compact ? "Jouw voorspelling" : "Voorspellingen"}</h3>
+        <span className="pill blue">{m ? MOMENT_LABELS[m].label : "Geen moment open"}</span>
+      </div>
+      {body}
+      {!compact && history.length > 0 && (
+        <details className="mt-12">
+          <summary className="text-link">Eerdere momenten ({history.length})</summary>
+          {history.map((h: ForecastMoment) => (
+            <div key={h} className="mt-12">
+              <strong style={{ fontSize: 13 }}>{MOMENT_LABELS[h].label}</strong>
+              <ForecastList rows={view.forecasts.filter((f) => f.moment === h)} />
+            </div>
+          ))}
+          <p className="tiny mt-8">Je ziet de voorspellingen van anderen alleen voor momenten waarop je zelf hebt voorspeld, of nadat de uitkomst bekend is.</p>
+        </details>
+      )}
+    </div>
+  );
+}
