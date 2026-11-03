@@ -8,6 +8,7 @@ import { checkHypothesis } from "@/lib/domain/hypothesis";
 import { testCardDefaults, type Option } from "@/lib/domain/recommend";
 import { DECISION_RULES, PASS_PROBABILITY, FAIL_PROBABILITY, requiredSample, sampleFeasibility, wilson, type DecisionRule } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
+import type { MethodVersion } from "@/lib/domain/method";
 import { auditGuide, guideSummary } from "@/lib/domain/interview-audit";
 import { honestyWarnings, type PreparedVariant } from "@/lib/domain/copy-honesty";
 import { GuideAuditList } from "@/components/experiments/InterviewAudit";
@@ -40,7 +41,9 @@ export function ExperimentBuilder({
   initialType,
   researcher = "",
   surveyDraftAction,
+  method = "2026-11-b",
 }: {
+  method?: MethodVersion;
   initialType?: ExperimentType;
   researcher?: string;
   surveyDraftAction?: SurveyDraftAction;
@@ -130,7 +133,9 @@ export function ExperimentBuilder({
   const n = Number(card.min_sample) || 0;
   const needed = n > 0 ? minSuccesses(n, Number(card.success_threshold_pct)) : null;
   // Beslisregel (methode 2026-11-b): vooraf rekenen hoeveel deelnemers nodig zijn bij de verwachte uitkomst.
-  const absoluteAllowed = type === "interview";
+  // Dossiers met methode 2026-11-a houden de intervalregel: geen beslisregel en geen vooraf berekend aantal.
+  const v2 = method === "2026-11-b";
+  const absoluteAllowed = v2 && type === "interview";
   const activeRule: DecisionRule = absoluteAllowed ? rule : "probability";
   const countN = Number(successCount) || 0;
   const thresholdPct = activeRule === "absolute" ? (n > 0 && countN > 0 ? Math.min(100, Math.round((countN / n) * 1000) / 10) : 0) : Number(card.success_threshold_pct);
@@ -193,7 +198,8 @@ export function ExperimentBuilder({
             <div className="form-line"><label htmlFor="tc-den">Noemer</label><input className="field" id="tc-den" name="metric_denominator" value={card.metric_denominator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_denominator", e.target.value)} /></div>
           </div>
           {type === "survey" && <p className="field-hint" id="tc-metric-hint" style={{ marginTop: -8, marginBottom: 12 }}>Teller en noemer volgen uit de kernvraag en de succesopties in de enquête hiernaast.</p>}
-          <input type="hidden" name="decision_rule" value={activeRule} />
+          {v2 && <input type="hidden" name="decision_rule" value={activeRule} />}
+          {v2 && (
           <fieldset className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }}>
             <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Beslisregel</legend>
             {absoluteAllowed ? (
@@ -213,6 +219,7 @@ export function ExperimentBuilder({
                 : `Geslaagd als de kans dat het echte percentage boven de succesdrempel ligt minstens ${PASS_PROBABILITY * 100}% is; niet geslaagd als de kans dat het boven de faaldrempel ligt ${FAIL_PROBABILITY * 100}% of minder is. Daartussen onbeslist.`}
             </p>
           </fieldset>
+          )}
           {activeRule === "absolute" ? (
             <>
               <input type="hidden" name="success_threshold_pct" value={thresholdPct || ""} />
@@ -234,6 +241,18 @@ export function ExperimentBuilder({
               </div>
             </>
           )}
+          {!v2 && (
+            needed !== null ? (
+              <div className="note" style={{ marginTop: 0 }}>
+                Met {n} deelnemers is &quot;geslaagd&quot; pas vast te stellen bij minimaal <strong>{needed}</strong> keer {card.metric_label.toLowerCase()} ({Math.round((needed / n) * 100)}%).
+                Daaronder blijft het onbeslist. Dit dossier rekent met methode 2026-11-a (intervalregel).
+              </div>
+            ) : (
+              <div className="note" style={{ marginTop: 0 }}>Met deze steekproef is de succesdrempel niet aantoonbaar te halen. Verhoog de steekproef.</div>
+            )
+          )}
+          {v2 && (
+          <>
           <div className="double-field">
             <div className="form-line">
               <label htmlFor="tc-exp">Verwachte uitkomst (%)</label>
@@ -266,6 +285,8 @@ export function ExperimentBuilder({
               <p className="field-hint">Ter informatie: met {n} deelnemers is het resultaat &quot;sterk bewezen&quot; (ook de ondergrens van het 95%-interval boven de drempel) vanaf {needed} keer {card.metric_label.toLowerCase()}.</p>
             )}
           </div>
+          </>
+          )}
           {type === "survey" && (
             <SamplePlanner
               compact

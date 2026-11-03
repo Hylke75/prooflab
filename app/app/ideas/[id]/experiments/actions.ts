@@ -11,6 +11,7 @@ import { KIND_DEFAULTS } from "@/lib/domain/evidence";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { experimentMetrics, loadSurveyResponses, surveyConfigOf, type LandingConfig, type PricingConfig } from "@/lib/experiment-metrics";
 import { pct, requiredSample } from "@/lib/domain/stats";
+import { ideaMethodVersion } from "@/lib/method-data";
 import { recommend } from "@/lib/domain/recommend";
 import { aiConfigured } from "@/lib/env";
 import { analyzeInterview, suggestCopyVariants } from "@/lib/ai/research";
@@ -81,7 +82,8 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
   }
   // Beslisregel: de aantalregel alleen voor sterke handelingen; in de code zijn dat de aanbetalingen en
   // herhaalaankopen die in interviews worden vastgelegd. Landing-, prijs- en enquêtetests meten een percentage.
-  const rule = v.decision_rule ?? null;
+  // Dossiers met methode 2026-11-a houden de intervalregel: daar wordt geen beslisregel vastgelegd.
+  const rule = (await ideaMethodVersion(ideaId)) === "2026-11-b" ? (v.decision_rule ?? "probability") : null;
   let requiredN: number | null = null;
   if (rule) {
     if (rule === "absolute" && v.type !== "interview") return { error: "Een vast aantal past alleen bij sterke handelingen (aanbetaling of herhaalaankoop in gesprekken). Kies de kansregel." };
@@ -456,7 +458,8 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
       n: m.n,
       successes: m.successes,
       interval: v.interval,
-      // Beslisregel en uitkomst zoals berekend; een goedgekeurde kaart verandert hierna nooit meer.
+      // Methodeversie, beslisregel en uitkomst zoals berekend; een goedgekeurde kaart verandert hierna nooit meer.
+      method_version: await ideaMethodVersion(ideaId),
       decision_rule: v.rule,
       probability: v.probability,
       probability_fail: v.probabilityFail,

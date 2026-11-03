@@ -2,6 +2,14 @@ import "server-only";
 import { cache } from "react";
 import { supabaseServer } from "@/lib/supabase/server";
 import { DEFAULT_CAPS, evidenceSourceKey, normaliseCaps, type EvidenceCaps } from "@/lib/domain/evidence";
+import { asMethodVersion, type MethodVersion } from "@/lib/domain/method";
+
+// De methodeversie waarmee een dossier rekent. Database zonder methodekolom: de oude rekenwijze.
+export const ideaMethodVersion = cache(async (ideaId: string): Promise<MethodVersion> => {
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase.from("ideas").select("method_version").eq("id", ideaId).maybeSingle();
+  return asMethodVersion(error ? null : data?.method_version);
+});
 
 export type CapsInUse = { caps: EvidenceCaps; custom: boolean };
 

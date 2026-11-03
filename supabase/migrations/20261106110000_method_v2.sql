@@ -4,6 +4,8 @@
 --   1. Beslisregel en vooraf berekend aantal deelnemers op de Test Card (hypotheses), vergrendeld na goedkeuring.
 --   2. Plafonds per bewijsniveau per werkruimte (org_evidence_caps): leden lezen, eigenaren schrijven.
 --   3. Herkomst van bewijs per bevinding en observatie (evidence_source_refs), voor één factor per bron.
+--   4. Methodeversie per dossier (ideas.method_version): bestaande dossiers '2026-11-a', nieuwe '2026-11-b';
+--      overstappen alleen vooruit en met audit (switch_method_version).
 
 -- ---------------------------------------------------------------------------
 -- 1. Beslisregel op de Test Card
@@ -169,3 +171,57 @@ revoke execute on function public.stamp_evidence_caps(), public.audit_evidence_c
   public.evidence_source_refs(uuid) from public, anon;
 revoke execute on function public.stamp_evidence_caps(), public.audit_evidence_caps() from authenticated;
 grant execute on function public.evidence_caps_for_idea(uuid), public.evidence_source_refs(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 4. Methodeversie per dossier
+-- ---------------------------------------------------------------------------
+
+-- Bestaande dossiers houden de rekenwijze waarmee ze zijn begonnen ('2026-11-a'); nieuwe dossiers starten op
+-- '2026-11-b'. De kolom wordt eerst met '2026-11-a' gevuld en daarna krijgt hij de nieuwe standaardwaarde.
+alter table public.ideas add column if not exists method_version text not null default '2026-11-a'
+  check (method_version in ('2026-11-a', '2026-11-b'));
+alter table public.ideas alter column method_version set default '2026-11-b';
+
+-- Overstappen kan alleen vooruit (2026-11-a → 2026-11-b), nooit terug: zo blijft elk rapport reproduceerbaar.
+create or replace function public.guard_method_version()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  if new.method_version is distinct from old.method_version
+     and not (old.method_version = '2026-11-a' and new.method_version = '2026-11-b') then
+    raise exception 'METHOD_VERSION: een dossier kan alleen overstappen van methode 2026-11-a naar 2026-11-b'
+      using errcode = 'P0001';
+  end if;
+  return new;
+end $$;
+drop trigger if exists ideas_method_version on public.ideas;
+create trigger ideas_method_version before update of method_version on public.ideas
+  for each row execute function public.guard_method_version();
+
+-- Overstappen met audit: wie, wanneer, van welke naar welke versie, en het overzicht (kans oud/nieuw per
+-- aanname, uitkomst oud/nieuw per test) dat vóór de bevestiging is getoond. Alleen consultants van het dossier.
+create or replace function public.switch_method_version(p_idea uuid, p_to text, p_preview jsonb)
+returns text language plpgsql security definer set search_path = '' as $$
+declare
+  v_from text;
+  v_org uuid;
+begin
+  if auth.uid() is null or not public.can_write_idea(p_idea) then
+    raise exception 'FORBIDDEN' using errcode = 'P0001';
+  end if;
+  select method_version, org_id into v_from, v_org from public.ideas where id = p_idea for update;
+  if v_from is null then
+    raise exception 'NOT_FOUND' using errcode = 'P0001';
+  end if;
+  if v_from = p_to then
+    return v_from;
+  end if;
+  update public.ideas set method_version = p_to where id = p_idea;
+  insert into public.audit_events (idea_id, org_id, actor_id, table_name, row_id, action, detail)
+  values (p_idea, v_org, auth.uid(), 'ideas', p_idea::text, 'method_switch',
+          jsonb_build_object('from', v_from, 'to', p_to, 'preview', coalesce(p_preview, '{}'::jsonb)));
+  return p_to;
+end $$;
+
+revoke execute on function public.guard_method_version(), public.switch_method_version(uuid, text, jsonb) from public, anon;
+revoke execute on function public.guard_method_version() from authenticated;
+grant execute on function public.switch_method_version(uuid, text, jsonb) to authenticated;

@@ -90,10 +90,21 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         status: a.status,
         premortem: a.origin === "premortem",
         probability: p ? { point: p.probability, low: p.band.low, high: p.band.high, prior: p.prior } : null,
+        // Methode 2026-11-b: plafond en samengevoegde signalen.
+        capReason: p?.capReason ?? null,
+        merged: p?.merged ?? [],
       };
     }),
     // Default or learned evidence factors (lib/domain/calibration.ts), so every probability can be reproduced.
     weights: d.weights,
+    // Methodeversie, beslisregels en gebruikte plafonds: elke kans en elk oordeel is daarmee te reproduceren.
+    methodology: {
+      version: d.method.version,
+      label: d.method.label,
+      rules: d.method.rules,
+      caps: d.method.caps,
+      capsCustom: d.method.capsCustom,
+    },
     simulation: d.simulation
       ? { label: d.simulation.label, draws: d.simulation.draws, somCount: d.simulation.somCount, somRevenue: d.simulation.somRevenue, threshold: d.simulation.threshold, pAboveThreshold: d.simulation.pAboveThreshold, thresholdIsBreakEven: d.simulation.thresholdIsBreakEven, mainDriver: d.simulation.drivers[0]?.key ?? null }
       : null,
@@ -144,6 +155,11 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         interval: e.metrics?.verdict.interval ?? null,
         verdict: e.metrics?.verdict.kind ?? null,
         verdictReason: e.metrics?.verdict.reason ?? "",
+        rule: e.metrics?.verdict.rule ?? null,
+        label: e.metrics?.verdict.label ?? null,
+        probability: e.metrics?.verdict.probability ?? null,
+        successCount: e.metrics?.verdict.successCount ?? null,
+        requiredN: e.hypotheses?.required_n ?? null,
         byChannel: e.metrics?.byChannel ?? [],
         byVariant: e.metrics?.byVariant ?? [],
         warnings: e.metrics?.warnings ?? [],

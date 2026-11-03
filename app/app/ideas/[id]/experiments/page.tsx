@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { asMethodVersion } from "@/lib/domain/method";
 import Link from "next/link";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { Stepper } from "@/components/ui/Stepper";
@@ -113,6 +114,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           audience={[idea.target_audience, idea.audience_detail, idea.region].filter(Boolean).join(", ")}
           action={createExperiment.bind(null, id)}
           ideaTitle={idea.title}
+          method={asMethodVersion(idea.method_version)}
           aiConnected={aiConfigured()}
           variantsAction={proposeCopyVariants.bind(null, id)}
           initialType={wantedType}

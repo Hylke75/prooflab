@@ -498,3 +498,18 @@ geldt het laagste niveau: een aanname zonder bewijs staat dus op hoogstens 40%, 
 Zo kan meer ondersteunend bewijs de kans nooit verlagen. Is het plafond actief, dan toont ProofLab wat er
 ontbreekt, bijvoorbeeld "begrensd op 75%: nog geen aanbetaling", met de kans zonder plafond ernaast. De
 bandbreedte wordt op dezelfde manier begrensd.
+
+### 9.4 Methodeversie en reproduceerbaarheid
+
+- Elk dossier rekent met één vaste methodeversie (`ideas.method_version`): **2026-11-a** (de rekenwijze tot en met
+  hoofdstuk 8, ongewijzigd) of **2026-11-b** (9.1–9.3). Per versie is er een rekenmodule (`lib/domain/method/`) die
+  zowel de kans per aanname als het oordeel per test berekent; dezelfde gegevens geven onder dezelfde versie altijd
+  dezelfde uitkomst.
+- Bestaande dossiers houden 2026-11-a; nieuwe dossiers starten op 2026-11-b. Een consultant kan een dossier laten
+  overstappen. Vooraf toont ProofLab per aanname de kans oud/nieuw en per test de uitkomst oud/nieuw; na bevestiging
+  wordt de versie bijgewerkt en komt de overstap met dat overzicht in het auditspoor. Terug kan niet.
+- Goedgekeurde Learning Cards veranderen nooit. Elke nieuwe kaart bewaart de methodeversie en de beslisregel; rekende
+  een goedgekeurde kaart met een andere versie dan het dossier nu, dan staat de uitkomst onder de huidige versie er
+  ter informatie naast.
+- Elk rapport (scherm en PDF) vermeldt de methodeversie, de beslisregels en de gebruikte plafonds (standaard of
+  ingesteld door de werkruimte). Rapporten van vóór de methodeversie zijn met 2026-11-a gemaakt.

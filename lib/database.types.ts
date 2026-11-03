@@ -1424,6 +1424,7 @@ export type Database = {
           id: string
           is_demo: boolean
           key_uncertainty: string | null
+          method_version: string
           org_id: string
           project_type: string
           region: string
@@ -1459,6 +1460,7 @@ export type Database = {
           id?: string
           is_demo?: boolean
           key_uncertainty?: string | null
+          method_version?: string
           org_id: string
           project_type: string
           region: string
@@ -1494,6 +1496,7 @@ export type Database = {
           id?: string
           is_demo?: boolean
           key_uncertainty?: string | null
+          method_version?: string
           org_id?: string
           project_type?: string
           region?: string
@@ -2746,6 +2749,7 @@ export type Database = {
         Args: { p_idea: string }
         Returns: { opinion: number; problem: number; small_action: number; quote: number; deposit: number }[]
       }
+      switch_method_version: { Args: { p_idea: string; p_to: string; p_preview: Json }; Returns: string }
       evidence_source_refs: {
         Args: { p_idea: string }
         Returns: {

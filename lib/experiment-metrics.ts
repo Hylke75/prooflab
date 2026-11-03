@@ -1,6 +1,8 @@
 import "server-only";
 import { supabaseServer } from "@/lib/supabase/server";
-import { betaBinomial, empiricalPrior, FLAT_PRIOR, verdictV1, verdictV2, type BayesEstimate, type BetaPrior, type RuledVerdict, type VerdictInput } from "@/lib/domain/stats";
+import { betaBinomial, empiricalPrior, FLAT_PRIOR, type BayesEstimate, type BetaPrior, type RuledVerdict } from "@/lib/domain/stats";
+import { methodOf, type MethodVersion } from "@/lib/domain/method";
+import { ideaMethodVersion } from "@/lib/method-data";
 import { QUALITY_VALUES, SurveyConfigSchema, type Answers, type Quality, type SurveyConfig, type SurveyCountRow } from "@/lib/domain/survey";
 import { surveySplitFromCounts, type ExportRow, type SurveySplit } from "@/lib/domain/survey-results";
 
@@ -167,17 +169,9 @@ type Hyp = {
 // Sterke handelingen die bij de aantalregel in een gesprek meetellen.
 export const STRONG_ACTION_KINDS = ["deposit", "repeat_purchase"] as const;
 
-// Het oordeel volgens de beslisregel van de Test Card. Test Cards zonder beslisregel (van vóór methode
-// 2026-11-b) houden de intervalregel.
-export function ruledVerdict(h: Hyp, input: VerdictInput): RuledVerdict {
-  if (h.decision_rule === "absolute" || h.decision_rule === "probability") {
-    return verdictV2({ ...input, rule: h.decision_rule, successCount: h.success_count ?? null });
-  }
-  return verdictV1(input);
-}
-
 // Computes the pre-registered metric from raw, deduplicated events (or coded interviews).
-export async function experimentMetrics(exp: Exp, h: Hyp): Promise<ExperimentMetrics> {
+// method: de methodeversie van het dossier (zonder: opgezocht). Het oordeel volgt de rekenmodule van die versie.
+export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion): Promise<ExperimentMetrics> {
   const supabase = await supabaseServer();
   const warnings: string[] = [];
   let n = 0;
@@ -269,7 +263,8 @@ export async function experimentMetrics(exp: Exp, h: Hyp): Promise<ExperimentMet
   // experiment has been ended or its pre-registered duration is over.
   const endConditionReached = ["ended", "analyzed", "decided"].includes(exp.state) || timeUp;
   if (n > 0 && n < h.min_sample) warnings.push(`Nog ${h.min_sample - n} deelnemers nodig voor de afgesproken steekproef.`);
-  const v = ruledVerdict(h, {
+  const version = method ?? (exp.idea_id ? await ideaMethodVersion(exp.idea_id) : undefined);
+  const v = methodOf(version).verdict(h, {
     successes,
     n,
     successThresholdPct: Number(h.success_threshold_pct),

@@ -198,6 +198,41 @@ d("methode 2026-11-b", () => {
     expect((await as(outsider, (c) => c.query("select * from public.evidence_source_refs($1)", [A.idea]))).rowCount).toBe(0);
   });
 
+  it("methodeversie: nieuwe dossiers op 2026-11-b, overstappen alleen vooruit en met audit", async () => {
+    expect((await db.query("select method_version from public.ideas where id = $1", [A.idea])).rows[0].method_version).toBe("2026-11-b");
+    const def = (await db.query("select column_default from information_schema.columns where table_schema = 'public' and table_name = 'ideas' and column_name = 'method_version'")).rows[0];
+    expect(def.column_default).toMatch(/2026-11-b/);
+
+    // Een bestaand dossier (van vóór de migratie) staat op 2026-11-a; hier nagebootst buiten de triggers om.
+    const old = await newIdea(owner);
+    await db.query("begin");
+    await db.query("set local session_replication_role = replica");
+    await db.query("update public.ideas set method_version = '2026-11-a' where id = $1", [old.idea]);
+    await db.query("commit");
+
+    const client = await user(`klant3-${randomUUID()}@example.com`);
+    await as(owner, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_decider')", [old.idea, client.email]));
+    await as(client, (c) => c.query("select public.claim_invitations()"));
+    await expect(as(client, (c) => c.query("select public.switch_method_version($1, '2026-11-b', '{}'::jsonb)", [old.idea]))).rejects.toThrow(/FORBIDDEN/);
+    await expect(as(client, (c) => c.query("update public.ideas set method_version = '2026-11-b' where id = $1", [old.idea]).then((r) => r.rowCount))).resolves.toBe(0);
+
+    const preview = { assumptions: [{ id: "x", from: 0.5, to: 0.4 }], tests: [] };
+    const to = await as(owner, async (c) => (await c.query("select public.switch_method_version($1, '2026-11-b', $2::jsonb) as v", [old.idea, JSON.stringify(preview)])).rows[0].v);
+    expect(to).toBe("2026-11-b");
+    const audit = await as(owner, async (c) => (await c.query("select actor_id, detail from public.audit_events where idea_id = $1 and action = 'method_switch'", [old.idea])).rows);
+    expect(audit).toHaveLength(1);
+    expect(audit[0].actor_id).toBe(owner.id);
+    expect(audit[0].detail).toMatchObject({ from: "2026-11-a", to: "2026-11-b", preview });
+
+    // Nogmaals overstappen doet niets; terug kan niet, ook niet buiten de rijbeveiliging om.
+    await as(owner, (c) => c.query("select public.switch_method_version($1, '2026-11-b', '{}'::jsonb)", [old.idea]));
+    expect((await db.query("select count(*)::int as n from public.audit_events where idea_id = $1 and action = 'method_switch'", [old.idea])).rows[0].n).toBe(1);
+    await expect(as(owner, (c) => c.query("update public.ideas set method_version = '2026-11-a' where id = $1", [old.idea]))).rejects.toThrow(/METHOD_VERSION/);
+    await expect(db.query("update public.ideas set method_version = '2026-11-a' where id = $1", [old.idea])).rejects.toThrow(/METHOD_VERSION/);
+    await expect(as(owner, (c) => c.query("select public.switch_method_version($1, '2026-11-a', '{}'::jsonb)", [old.idea]))).rejects.toThrow(/METHOD_VERSION/);
+    await expect(db.query("update public.ideas set method_version = '2027-01-a' where id = $1", [A.idea])).rejects.toThrow(/check|METHOD_VERSION/);
+  });
+
   it("accepteert alleen bekende beslisregels en een aantal bij de aantalregel", async () => {
     await expect(hypothesisWithRule(owner, A.idea, "onbekend" as "absolute")).rejects.toThrow(/check/);
     await expect(

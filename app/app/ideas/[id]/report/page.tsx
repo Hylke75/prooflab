@@ -7,6 +7,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import type { ReportSnapshot } from "@/lib/report";
 import { pct } from "@/lib/domain/stats";
 import { describeWeights } from "@/lib/domain/calibration";
+import { describeMethodology, ruleLabelText } from "@/lib/domain/method/describe";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { createReportVersion, shareReportVersion } from "./actions";
 import { PrintButton } from "./PrintButton";
@@ -29,6 +30,19 @@ async function loadVersions(ideaId: string): Promise<Version[]> {
   if (!full.error) return full.data ?? [];
   const plain = await supabase.from("reports").select("id, version, created_at").eq("idea_id", ideaId).order("version", { ascending: false });
   return (plain.data ?? []).map((v) => ({ ...v, shared_at: null, client_viewed_at: null }));
+}
+
+// Methodeversie, beslisregels en gebruikte plafonds van dit rapport.
+function MethodSection({ m }: { m: Parameters<typeof describeMethodology>[0] }) {
+  const d = describeMethodology(m);
+  return (
+    <div className="mt-12" style={{ breakInside: "avoid" }}>
+      <strong style={{ fontSize: 13 }}>Rekenwijze: {d.title}</strong>
+      <ul className="tiny" style={{ margin: "6px 0 0 18px", lineHeight: 1.6 }}>
+        {d.lines.map((l) => <li key={l}>{l}</li>)}
+      </ul>
+    </div>
+  );
 }
 
 const Notes = ({ n }: { n: number[] }) => (n.length ? <sup>[{n.join(", ")}]</sup> : <sup>[geen bron]</sup>);
@@ -268,7 +282,11 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                     <td>{a.statement}{"premortem" in a && a.premortem ? <span className="tiny"> (uit de pre-mortem)</span> : null}</td>
                     <td className="num">{a.importance}/5</td>
                     {"probability" in a && a.probability ? (
-                      <td className="num">{pct0(a.probability.point)} <span className="tiny">({pct0(a.probability.low)}–{pct0(a.probability.high)})</span></td>
+                      <td className="num">
+                        {pct0(a.probability.point)} <span className="tiny">({pct0(a.probability.low)}–{pct0(a.probability.high)})</span>
+                        {"capReason" in a && a.capReason ? <span className="tiny" style={{ display: "block" }}>{a.capReason}</span> : null}
+                        {"merged" in a && a.merged.length ? <span className="tiny" style={{ display: "block" }}>{a.merged.map((m) => `${m.signals} signalen uit ${m.label} samengevoegd`).join("; ")}</span> : null}
+                      </td>
                     ) : (
                       <td className="num">{a.evidence}%</td>
                     )}
@@ -281,7 +299,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               <p className="explain">
                 Geschatte kans dat de aanname klopt: een beginwaarde (meestal 50%), bijgewerkt met een vaste factor per soort bewijs. Uitspraken
                 tellen nauwelijks, gedrag en betalingen sterk. Tussen haakjes de bandbreedte als die factoren de helft zwakker of sterker zijn.{" "}
-                {"weights" in r && r.weights ? describeWeights(r.weights) : "Gebruikte factoren: de vaste standaardfactoren van ProofLab (rapport gemaakt vóór geleerde factoren bestonden)."}
+                {"weights" in r && r.weights ? describeWeights(r.weights) : "Gebruikte factoren: de vaste standaardfactoren van ProofLab (rapport gemaakt vóór geleerde factoren bestonden)."}{" "}
+                Rekenwijze: {describeMethodology("methodology" in r ? r.methodology : null).title}.
               </p>
             )}
           </section>
@@ -304,7 +323,9 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 <p>
                   Resultaat: {e.successes} van {e.n}
                   {e.interval ? ` (${pct(e.interval.point)}; 95%-interval ${pct(e.interval.low)}–${pct(e.interval.high)})` : ""}. Oordeel:{" "}
-                  <strong>{e.verdict === "pass" ? "geslaagd" : e.verdict === "fail" ? "niet geslaagd" : e.verdict === "running" ? "loopt nog" : "onbeslist"}</strong>. {e.verdictReason}
+                  <strong>{"label" in e && e.label ? e.label : e.verdict === "pass" ? "geslaagd" : e.verdict === "fail" ? "niet geslaagd" : e.verdict === "running" ? "loopt nog" : "onbeslist"}</strong>
+                  {"rule" in e ? ` (${ruleLabelText(e.rule)})` : ""}. {e.verdictReason}
+                  {"requiredN" in e && e.requiredN != null ? ` Vooraf berekend: ${e.requiredN} deelnemers nodig.` : ""}
                   {e.endedEarly ? " De test is vroegtijdig beëindigd." : ""}
                 </p>
                 {e.byChannel.length > 0 && (
@@ -424,6 +445,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               ))}
             </ol>
             {r.sources.length === 0 && <p>Geen bronnen.</p>}
+            <MethodSection m={"methodology" in r ? r.methodology : null} />
             <p className="tiny mt-12">
               Methode: elke bevinding steunt op een letterlijk citaat dat automatisch is teruggevonden in de bewaarde bronpassage; de status
               (geverifieerd, onderbouwde schatting, onvoldoende bewijs, tegenstrijdig, verouderd) wordt berekend, niet gekozen. Experimentdrempels
