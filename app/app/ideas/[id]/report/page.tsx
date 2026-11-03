@@ -287,6 +287,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             {r.experiments.map((e, i) => (
               <div key={i} className="mt-12" style={{ breakInside: "avoid" }}>
                 <strong style={{ fontSize: 13 }}>{e.title} ({e.type})</strong>
+                {e.selfReported && <p className="tiny">Zelfrapportage, geen waargenomen gedrag: een enquête meet wat mensen over zichzelf zeggen.</p>}
                 <p>
                   Hypothese: {e.hypothesis} Meting: {e.metric}. Vooraf vastgelegd ({e.lockedAt ? date(e.lockedAt) : "niet vergrendeld"}): {e.threshold}.
                 </p>
@@ -298,6 +299,11 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 </p>
                 {e.byChannel.length > 0 && (
                   <p className="tiny">Ruwe aantallen per kanaal: {e.byChannel.map((c) => `${CHANNELS[c.channel as keyof typeof CHANNELS] ?? c.channel} ${c.actions}/${c.visitors}`).join(" · ")}</p>
+                )}
+                {e.bySource && (
+                  <p className="tiny">
+                    Per herkomst: persoonlijk uitgenodigd {e.bySource.invitation.successes}/{e.bySource.invitation.n} · open link (herkomst niet te controleren) {e.bySource.openLink.successes}/{e.bySource.openLink.n}
+                  </p>
                 )}
                 {e.byVariant.length > 0 && <p className="tiny">Per prijspunt: {e.byVariant.map((v) => `${v.label} ${v.actions}/${v.visitors}`).join(" · ")}</p>}
                 {e.warnings.map((w) => <p className="tiny" key={w}>Let op: {w}</p>)}

@@ -1,6 +1,8 @@
 import "server-only";
 import { supabaseServer } from "@/lib/supabase/server";
 import { betaBinomial, empiricalPrior, FLAT_PRIOR, verdict, type BayesEstimate, type BetaPrior, type Verdict } from "@/lib/domain/stats";
+import { SurveyConfigSchema, type Answers, type SurveyConfig } from "@/lib/domain/survey";
+import { surveySplit, type ExportRow, type SurveySplit } from "@/lib/domain/survey-results";
 
 export type LandingConfig = {
   headline: string;
@@ -38,7 +40,45 @@ export type ExperimentMetrics = {
   // is reached: no peeking, same as the verdict.
   bayes: BayesEstimate | null;
   warnings: string[];
+  // Surveys only: the key metric per source (invitation vs open link) and channel. Self-reported answers.
+  survey: SurveySplit | null;
 };
+
+// The stored survey config, or null when it does not (or no longer) match the schema.
+export function surveyConfigOf(config: unknown): SurveyConfig | null {
+  const r = SurveyConfigSchema.safeParse(config);
+  return r.success ? r.data : null;
+}
+
+const RESPONSE_PAGE = 1000;
+const MAX_RESPONSES = 20000;
+
+// All responses of one survey, oldest first (paged: a single select is capped by the API).
+export async function loadSurveyResponses(expId: string): Promise<{ rows: ExportRow[]; error: boolean }> {
+  const supabase = await supabaseServer();
+  const rows: ExportRow[] = [];
+  for (let from = 0; from < MAX_RESPONSES; from += RESPONSE_PAGE) {
+    const { data, error } = await supabase
+      .from("survey_responses")
+      .select("id, answers, source, channel, duration_ms, created_at")
+      .eq("experiment_id", expId)
+      .order("created_at")
+      .order("id")
+      .range(from, from + RESPONSE_PAGE - 1);
+    if (error) return { rows, error: true };
+    for (const r of data ?? []) {
+      rows.push({
+        answers: (r.answers && typeof r.answers === "object" && !Array.isArray(r.answers) ? r.answers : {}) as Answers,
+        source: r.source === "invitation" ? "invitation" : "open_link",
+        channel: r.channel,
+        duration_ms: r.duration_ms,
+        created_at: r.created_at,
+      });
+    }
+    if ((data ?? []).length < RESPONSE_PAGE) break;
+  }
+  return { rows, error: false };
+}
 
 type Exp = {
   id: string;
@@ -94,8 +134,24 @@ export async function experimentMetrics(exp: Exp, h: Hyp): Promise<ExperimentMet
   let successes = 0;
   let byChannel: ChannelRow[] = [];
   let byVariant: VariantRow[] = [];
+  let survey: SurveySplit | null = null;
 
-  if (exp.type === "interview") {
+  if (exp.type === "survey") {
+    // The verdict uses every believable response (all sources), as pre-registered; the split per source shows
+    // how much of it comes from known, invited people.
+    const config = surveyConfigOf(exp.config);
+    const { rows, error } = await loadSurveyResponses(exp.id);
+    if (error) warnings.push("De antwoorden konden niet worden opgehaald; de cijfers hieronder zijn onvolledig.");
+    if (!config) {
+      warnings.push("De opzet van deze enquête is ongeldig; er kan geen kernvraag worden geteld.");
+    } else {
+      survey = surveySplit(config, rows, h.min_sample);
+      n = survey.all.n;
+      successes = survey.all.successes;
+      byChannel = survey.byChannel.map((c) => ({ channel: c.channel, visitors: c.n, actions: c.successes }));
+      warnings.push(...survey.warnings);
+    }
+  } else if (exp.type === "interview") {
     const [{ data: interviews }, { data: obs }] = await Promise.all([
       supabase.from("interviews").select("id, consent_recorded, is_acquaintance, dmu_role, recruited_via").eq("experiment_id", exp.id),
       supabase.from("observations").select("interview_id, kind").eq("experiment_id", exp.id).eq("is_synthetic", false),
@@ -161,5 +217,5 @@ export async function experimentMetrics(exp: Exp, h: Hyp): Promise<ExperimentMet
     endConditionReached,
   });
   const bayes = endConditionReached ? betaBinomial(await priorFor(exp), successes, n, Number(h.success_threshold_pct)) : null;
-  return { n, successes, label: h.metric_label, byChannel, byVariant, endConditionReached, verdict: v, bayes, warnings };
+  return { n, successes, label: h.metric_label, byChannel, byVariant, endConditionReached, verdict: v, bayes, warnings, survey };
 }

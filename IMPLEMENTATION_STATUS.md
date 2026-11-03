@@ -173,3 +173,15 @@ AI-uitkomsten zijn gelabeld als AI-voorstel tot een consultant ze accepteert.
 - [x] 7.6 AI-varianten voor landing- en prijstests plus deterministische eerlijkheidscontrole
 - [x] 7.8 Rode team per kritieke aanname (zoekt alleen tegenbewijs, zelfde citaat- en steuncontrole, koppeling "spreekt tegen")
 - [x] AI-oordeel en hercontrole in eigen kolommen (`claim_sources.ai_support_check`, `live_found`, `live_checked_at`; `sources.live_checked_at`, `live_error`); notities blijven wat mensen schreven
+
+## Enquêtes: bouwer en resultaten (3 november, Voorspelkracht 7.5)
+
+- [x] Enquête als vierde testvorm in de aanbeveling (niet in de informatiewaarde-keuze) en de Test Card; editor met titel, introductie, wie vraagt, duur, bedanktekst en vragenlijst (toevoegen, verwijderen, verplaatsen met toetsenbord; één keuze, meerdere keuzes, schaal, getal, open; opties; schaaluiteinden; "toon alleen als" op een eerdere keuzevraag) (`components/survey/SurveyEditor.tsx`, `lib/domain/survey-editor.ts`)
+- [x] Kernvraag en succesopties vullen teller en noemer van de Test Card; validatie met `SurveyConfigSchema` in het Nederlands; vraagcontrole (hypothetisch, sturend, pitch, dubbel) per vraag; opslag in `experiments.config` (vergrendeld na goedkeuring door de database)
+- [x] Coach-opzet "Laat de coach een eerste opzet maken" (`lib/ai/survey.ts`, `runAi("survey_draft")`, dossier omheind), nabewerking: hypothetische/sturende/verkopende vragen herschreven naar recent gedrag of weggelaten, maximaal 12 vragen, kernvraag uit het sjabloon als de voorgestelde onbruikbaar is, "Waarom deze vragen" (`lib/domain/survey-draft.ts`). Zonder AI of bij bereikt budget: het sjabloon, als sjabloon gelabeld
+- [x] Coachregel `survey_suggest`: kritieke aanname met interviewbewijs maar minder dan 20 datapunten en nog geen enquête
+- [x] Meting: kernvraag over alle geloofwaardige antwoorden (oordeel pas na de eindconditie), plus splitsing per herkomst en kanaal; waarschuwingen open link > 50%, te snelle antwoorden, te weinig uitgenodigde respondenten (`lib/domain/survey-results.ts`, `lib/experiment-metrics.ts`)
+- [x] Resultaten op de experimentpagina, CSV-export voor het onderzoeksteam (geen e-mailadressen; contactgegevens in open antwoorden verwijderd), open antwoorden als bron van het type enquête voor de klantsignalen
+- [x] Learning Card met observatie `survey_answer` (nooit gedrag); dossierlabel telt enquêtes niet als gedragsexperiment; Reality Check "Enquête positief, gedrag nog niet gezien"; rapport: "zelfrapportage, geen waargenomen gedrag" en splitsing per herkomst
+- [ ] Opdrachtgevers zien geen enquêtecijfers op de experimentpagina (ruwe antwoorden zijn alleen voor het onderzoeksteam leesbaar); zij zien de uitkomst via Learning Card en rapport. Een geaggregeerde RPC is nodig om dat te veranderen
+- [ ] Visuele controle in de browser tegen een database met de enquêtemigratie (de live Supabase heeft die migratie nog niet)

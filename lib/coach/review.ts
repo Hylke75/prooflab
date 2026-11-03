@@ -133,6 +133,7 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
         successThresholdPct: h?.success_threshold_pct ?? null,
         failThresholdPct: h?.fail_threshold_pct ?? null,
         guide: Array.isArray(guide) ? guide.filter((g): g is string => typeof g === "string") : [],
+        assumptionId: h?.assumption_id ?? null,
       };
     }),
     interviews: d.interviews.map((i) => ({ isAcquaintance: i.is_acquaintance })),

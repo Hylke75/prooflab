@@ -35,7 +35,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/t/[slug]">)
 
   const supabase = supabaseAnon();
   const { data: test } = await supabase.rpc("get_public_test", { p_slug: slug });
-  if (!test) return NextResponse.json({ ok: false }, { status: 404 });
+  // Surveys are answered through their own endpoint; their slugs never count as page events.
+  if (!test || (test as { type?: string }).type === "survey") return NextResponse.json({ ok: false }, { status: 404 });
   const t = test as { type: string; config: { price_points?: unknown[]; researcher?: string } };
   const variant = String(t.type === "pricing" ? variantFor(visitor.hash, t.config.price_points?.length ?? 1) : 0);
   const channel = channelFrom(b.utm_source);

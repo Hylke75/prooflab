@@ -3,13 +3,13 @@ import Link from "next/link";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { Stepper } from "@/components/ui/Stepper";
 import { ExperimentBuilder } from "@/components/experiments/ExperimentBuilder";
-import { getIdea } from "@/lib/data";
+import { getIdea, getWorkspace } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadInformationValue, loadProgress } from "@/lib/progress";
 import { stepsDone } from "@/lib/steps";
 import { recommend } from "@/lib/domain/recommend";
 import { EXPERIMENT_STATES, EXPERIMENT_TYPES, type AssumptionCategory, type ExperimentState, type ExperimentType } from "@/lib/domain/labels";
-import { createExperiment, proposeCopyVariants } from "./actions";
+import { createExperiment, draftSurveyWithCoach, proposeCopyVariants } from "./actions";
 import { aiConfigured } from "@/lib/env";
 
 export const metadata: Metadata = { title: "Experimenten" };
@@ -25,6 +25,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
   const { id } = await params;
   const sp = await searchParams;
   const { idea, canWrite } = await getIdea(id);
+  const ws = await getWorkspace();
   const supabase = await supabaseServer();
   // Ordered by information value (research 3.9): the default suggestion is the test that can change the decision most per euro and week.
   const [assumptions, progress, { data: experiments }, { count: interviewObs }] = await Promise.all([
@@ -34,6 +35,8 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
     supabase.from("observations").select("id", { count: "exact", head: true }).eq("idea_id", id).not("interview_id", "is", null),
   ]);
   const wanted = typeof sp.assumption === "string" ? sp.assumption : null;
+  // ?type=survey (from the coach's survey suggestion) preselects that test type.
+  const wantedType = typeof sp.type === "string" && sp.type in EXPERIMENT_TYPES ? (sp.type as ExperimentType) : undefined;
   const selected = assumptions.find((a) => a.id === wanted) ?? assumptions[0];
   const rec = selected
     ? recommend({ category: selected.category as AssumptionCategory, evidence: selected.evidence, hasDiscoveryEvidence: (interviewObs ?? 0) > 0 })
@@ -112,6 +115,10 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           ideaTitle={idea.title}
           aiConnected={aiConfigured()}
           variantsAction={proposeCopyVariants.bind(null, id)}
+          initialType={wantedType}
+          researcher={ws.org?.name ?? ""}
+          surveyDraftAction={draftSurveyWithCoach.bind(null, id)}
+          key={`${selected.id}|${wantedType ?? ""}`}
         />
       ) : (
         <p className="sub">Je kijkt mee als opdrachtgever. Experimenten worden opgezet door het onderzoeksteam.</p>

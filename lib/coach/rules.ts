@@ -56,6 +56,8 @@ export type CoachFacts = {
     successThresholdPct: number | null;
     failThresholdPct: number | null;
     guide: string[];
+    // The assumption the experiment tests (optional for callers that do not know it).
+    assumptionId?: string | null;
   }[];
   interviews: { isAcquaintance: boolean }[];
   observations: { kind: string; isBehaviour: boolean; isSynthetic: boolean; createdAt: string }[];
@@ -70,7 +72,10 @@ export type CoachFacts = {
 };
 
 const DAY = 86_400_000;
-const CUSTOMER_VOICE = ["review_site", "forum", "outreach", "interview"];
+// Below this many data points (interviews, respondents, visitors) for an assumption, a survey adds breadth.
+export const SURVEY_SUGGEST_BELOW = 20;
+
+const CUSTOMER_VOICE = ["review_site", "forum", "outreach", "interview", "survey"];
 
 function dayNumber(date: string): number {
   const [y, m, d] = date.slice(0, 10).split("-").map(Number);
@@ -211,6 +216,32 @@ export const RULES: Record<string, Rule> = {
         },
       ];
     }),
+
+  // Interviews told us how people deal with it; a survey shows how often that holds among many more people.
+  // Proactive: the coach offers to make the first draft. One note, for the most important assumption.
+  survey_suggest: (f, base) => {
+    const done = new Set(["refuted", "supported"]);
+    const candidates = f.assumptions
+      .filter((a) => a.importance >= 4 && !done.has(a.status))
+      .map((a) => {
+        const tests = f.experiments.filter((e) => e.assumptionId === a.id);
+        const interviews = tests.filter((e) => e.type === "interview").reduce((s, e) => s + e.n, 0);
+        const points = tests.reduce((s, e) => s + e.n, 0);
+        return { a, interviews, points, hasSurvey: tests.some((e) => e.type === "survey") };
+      })
+      .filter((c) => c.interviews > 0 && c.points < SURVEY_SUGGEST_BELOW && !c.hasSurvey)
+      .sort((x, y) => y.a.importance - x.a.importance || x.points - y.points);
+    const c = candidates[0];
+    if (!c) return null;
+    return {
+      code: `survey_suggest:${c.a.id}`,
+      kind: "tip",
+      title: "Meet met een enquête hoe breed het speelt",
+      body: `"${short(c.a.statement)}" heeft interviewbewijs (${plural(c.interviews, "gesprek", "gesprekken")}), maar nog maar ${plural(c.points, "datapunt", "datapunten")}. Laat de coach een eerste opzet voor een enquête maken; nodig bij voorkeur bekende respondenten persoonlijk uit. Het blijft zelfrapportage, geen gedrag.`,
+      href: `${base}/experiments?assumption=${c.a.id}&type=survey`,
+      audience: "consultant",
+    };
+  },
 
   acquaintances_majority: (f, base) => {
     if (f.interviews.length < 3) return null;
