@@ -2,6 +2,8 @@
 // unit-tested. Each rule has a stable code; a rule posts a note while its condition holds and closes its own
 // open note when the condition is gone. Notes are advice about the process, never evidence.
 
+import { openMoment } from "@/lib/domain/forecast";
+
 export type NoteKind = "tip" | "warning" | "question" | "praise";
 export type NoteAudience = "consultant" | "everyone";
 
@@ -62,7 +64,7 @@ export type CoachFacts = {
   decisions: { id: string; decidedAt: string; confirmed: boolean }[]; // oldest first
   decisionDeadline: string | null;
   clientDeciderInvited: boolean;
-  outcome: { defined: boolean; due: string | null; resolved: boolean; checkins: string[] };
+  outcome: { defined: boolean; due: string | null; resolved: boolean; checkins: string[]; clockStart?: string | null };
   forecasts: { moment: string; kind: string }[];
   outreach: { replies: number; latestReplyAt: string | null; latestImportAt: string | null };
 };
@@ -92,12 +94,19 @@ export function hypotheticalQuestions(guide: string[]): string[] {
   return guide.filter((q) => HYPOTHETICAL.test(q));
 }
 
-// The latest forecast moment the dossier has reached.
-export function openForecastMoment(f: CoachFacts): ForecastMoment {
-  if (f.decisions.length > 0 || f.realityCheck) return "decision";
-  if (f.experiments.some((e) => ["ended", "analyzed", "decided"].includes(e.state))) return "experiment";
-  if (f.claims.length > 0 && f.competitorKinds.some((k) => k === "alternative" || k === "status_quo")) return "research";
-  return "intake";
+// The forecast moment that is open now. Same rule as the database (open_forecast_moment) and the outcome
+// page (lib/domain/forecast.ts openMoment), so the coach never asks for a forecast the database refuses.
+export function openForecastMoment(f: CoachFacts): ForecastMoment | null {
+  return openMoment({
+    outcomeDefined: f.outcome.defined,
+    resolved: f.outcome.resolved,
+    marketDone: f.claims.length > 0 && f.competitorKinds.some((k) => k === "alternative" || k === "status_quo"),
+    experimentEnded: f.experiments.some((e) => ["ended", "analyzed", "decided"].includes(e.state)),
+    realityCheckDone: !!f.realityCheck,
+    outcomeDue: f.outcome.due,
+    clockStart: f.outcome.clockStart ?? null,
+    today: f.today,
+  });
 }
 
 // Pace extrapolation for a live test: participants expected at the end date at the current rate.
@@ -290,6 +299,7 @@ export const RULES: Record<string, Rule> = {
   forecast_missing: (f, base) => {
     if (!f.outcome.defined || f.outcome.resolved) return null;
     const m = openForecastMoment(f);
+    if (!m) return null;
     if (f.forecasts.some((x) => x.moment === m && x.kind === "consultant")) return null;
     return {
       code: `forecast:${m}`,

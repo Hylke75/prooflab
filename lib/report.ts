@@ -91,12 +91,19 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
     prediction: {
       outcome: d.prediction.outcome,
       baseRate: d.prediction.baseRate,
+      // Blind rule: before the outcome is known a report (also a shared one) only says how many forecasts
+      // exist per moment; probabilities and reasons appear once the outcome is recorded.
+      revealed: d.prediction.result != null,
       moments: FORECAST_MOMENTS.map((m) => {
         const rows = d.prediction.forecasts.filter((f) => f.moment === m);
+        if (d.prediction.result == null) {
+          return { moment: MOMENT_LABELS[m].label, count: rows.length, people: null, ai: null, forecasts: [] as { who: string; probability: number; rationale: string; brier: number | null }[] };
+        }
         const people = rows.filter((f) => f.forecaster_kind !== "ai").map((f) => Number(f.probability));
         const ai = rows.find((f) => f.forecaster_kind === "ai");
         return {
           moment: MOMENT_LABELS[m].label,
+          count: rows.length,
           people: aggregate(people),
           ai: ai ? Number(ai.probability) : null,
           forecasts: rows.map((f) => ({
@@ -106,7 +113,7 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
             brier: d.prediction.result ? brier(Number(f.probability), d.prediction.result.achieved as Achieved) : null,
           })),
         };
-      }).filter((m) => m.forecasts.length > 0),
+      }).filter((m) => m.count > 0),
       checkins: d.prediction.checkins.map((c) => ({ at: c.created_at, onTrack: ON_TRACK_LABELS[c.on_track as OnTrack], value: c.current_value, note: c.note })),
       result: d.prediction.result
         ? { achieved: ACHIEVED_LABELS[d.prediction.result.achieved as Achieved], value: d.prediction.result.actual_value, evidence: d.prediction.result.evidence, at: d.prediction.result.resolved_at }

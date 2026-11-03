@@ -38,9 +38,28 @@ type ObsLink = {
   } | null;
 };
 
-// The review columns arrive with the prediction migration; without them AI coding counts as unreviewed.
+// Observations come through observations_for_idea, so a client scores with the same evidence as the
+// consultant (raw observations are consultant-only; the function leaves out the literal quote). Older
+// databases without that function fall back to the direct embed.
 async function loadObservationLinks(ideaId: string): Promise<ObsLink[]> {
   const supabase = await supabaseServer();
+  const [links, obs] = await Promise.all([
+    supabase.from("assumption_observations").select("assumption_id, relation, observation_id").eq("idea_id", ideaId),
+    supabase.rpc("observations_for_idea", { p_idea: ideaId }),
+  ]);
+  if (!links.error && !obs.error) {
+    const byId = new Map((obs.data ?? []).map((o) => [o.id, o]));
+    return (links.data ?? []).map((l) => {
+      const o = byId.get(l.observation_id);
+      return {
+        assumption_id: l.assumption_id,
+        relation: l.relation,
+        observations: o
+          ? { is_fact: o.is_fact, is_behaviour: o.is_behaviour, is_real_context: o.is_real_context, is_costly: o.is_costly, is_synthetic: o.is_synthetic, kind: o.kind, origin: o.origin, review_status: o.review_status ?? null }
+          : null,
+      };
+    });
+  }
   const full = await supabase
     .from("assumption_observations")
     .select("assumption_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin, review_status)")

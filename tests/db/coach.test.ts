@@ -126,11 +126,11 @@ d("trajectory coach and outreach signals", () => {
       as("anon", async (c) =>
         (await c.query("select public.record_outreach_event($1, $2, $3, 'hash1', 'Q4', 'Klinkt interessant', $4) as ok", [key, tokenHash, event, dedupe])).rows[0].ok,
       );
-    expect(await rec(ingestKey, sha(token), "evt1")).toBe(true);
-    expect(await rec(ingestKey, sha(token), "evt1")).toBe(false);
-    expect(await rec(ingestKey, sha("onbekend"), "evt2")).toBe(false);
+    expect(await rec(ingestKey, sha(token), "evt1")).toBe("ok");
+    expect(await rec(ingestKey, sha(token), "evt1")).toBe("duplicate");
+    expect(await rec(ingestKey, sha("onbekend"), "evt2")).toBe("unknown");
     await expect(rec("fout", sha(token), "evt3")).rejects.toThrow(/FORBIDDEN/);
-    expect(await rec(ingestKey, sha(token), "evt4", "iets_vreemds")).toBe(true);
+    expect(await rec(ingestKey, sha(token), "evt4", "iets_vreemds")).toBe("ok");
     const rows = await as(alice, async (c) => (await c.query("select event_type from public.outreach_events where endpoint_id = $1 order by id", [endpoint])).rows);
     expect(rows.map((r) => r.event_type)).toEqual(["reply", "other"]);
     await expect(as("anon", (c) => c.query("insert into public.outreach_events (idea_id, endpoint_id, event_type, contact_hash, dedupe_key) values ($1, $2, 'reply', 'h', 'x')", [idea, endpoint]))).rejects.toThrow(/permission denied/);
@@ -138,7 +138,7 @@ d("trajectory coach and outreach signals", () => {
     expect(await as(client, async (c) => (await c.query("select * from public.integration_endpoints where idea_id = $1", [idea])).rowCount)).toBe(0);
 
     await as(alice, (c) => c.query("update public.integration_endpoints set active = false where id = $1", [endpoint]));
-    expect(await rec(ingestKey, sha(token), "evt5")).toBe(false);
+    expect(await rec(ingestKey, sha(token), "evt5")).toBe("unknown");
   });
 
   it("accepts the new source types for customer signals", async () => {

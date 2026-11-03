@@ -360,7 +360,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 {r.prediction.baseRate.own ? " (eigen afgeronde dossiers)." : ""}
                 {r.prediction.baseRate.note ? ` ${r.prediction.baseRate.note}` : ""}
               </p>
-              {r.prediction.moments.length > 0 && (
+              {r.prediction.moments.length > 0 && !("revealed" in r.prediction && r.prediction.revealed === false) && (
                 <table className="table mt-12">
                   <thead><tr><th>Moment</th><th>Mensen (gemiddeld, spreiding)</th><th>AI</th>{r.prediction.result ? <th>Brier per voorspelling</th> : null}</tr></thead>
                   <tbody>
@@ -374,6 +374,12 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                     ))}
                   </tbody>
                 </table>
+              )}
+              {"revealed" in r.prediction && r.prediction.revealed === false && r.prediction.moments.length > 0 && (
+                <p className="mt-8">
+                  Voorspellingen vastgelegd: {r.prediction.moments.map((m) => `${m.moment.toLowerCase()} (${m.count})`).join(", ")}. De kansen zelf blijven
+                  verborgen tot de uitkomst bekend is, zodat niemand op een ander kan afgaan.
+                </p>
               )}
               <p className="explain">
                 Iedereen geeft zijn kans zonder de anderen te zien. Een AI-voorspelling telt niet mee in het gemiddelde en is geen bewijs. De Brier-score

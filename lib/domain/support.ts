@@ -48,14 +48,16 @@ export function claimStatusWithSupport(
   const live = mapped.filter((_, i) => !evidence[i].liveMissing);
   const result = computeClaimStatus(claim, live, now);
   const withMissing = live.length === mapped.length ? result : computeClaimStatus(claim, mapped, now);
+  // Whether the quotes that vanished from their live page change the outcome (compare statuses, not objects).
+  const liveChangesStatus = withMissing.status !== result.status;
 
   // Literal quotes that the support check rejected are the reason, not a missing quote.
   const rejected = evidence.filter((e) => e.support === "not_supported" && e.quoteCheck === "exact" && !e.liveMissing);
   const literalFailures = evidence.filter((e) => e.quoteCheck === "not_found" || e.quoteCheck === "numbers_mismatch");
-  if (result.status === "insufficient" && rejected.length > 0 && literalFailures.length === 0 && withMissing === result) {
+  if (result.status === "insufficient" && rejected.length > 0 && literalFailures.length === 0 && !liveChangesStatus) {
     return { status: "insufficient", reason: "Het citaat staat er letterlijk, maar draagt de bewering inhoudelijk niet (steuncontrole)." };
   }
-  if (withMissing !== result && result.status === "insufficient" && SUPPORTABLE.has(withMissing.status)) {
+  if (liveChangesStatus && result.status === "insufficient" && SUPPORTABLE.has(withMissing.status)) {
     return { status: "outdated", reason: "Het citaat staat niet meer op de live pagina (hercontrole). Zoek een actuele bron." };
   }
   const partial = evidence.some((e) => e.support === "partial" && e.quoteCheck === "exact" && e.stance === "supports" && !e.liveMissing);

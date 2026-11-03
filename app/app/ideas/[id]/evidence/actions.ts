@@ -169,7 +169,10 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   const status = { continue: "continued", stop: "stopped", pause: "parked", adjust: "active", test_more: "active" }[p.data.action];
   await supabase.from("ideas").update({ status }).eq("id", ideaId);
   // The first decision after the outcome definition starts the six-month clock (set once, never moved).
-  if (progress.forecast && !idea.outcome_due) {
+  // The six-month clock starts at a final decision (continue, stop or pause). "Verder testen" and
+  // "bijsturen" keep the trajectory going, so the real go/no-go decision still gets its forecast.
+  const finalDecision = p.data.action === "continue" || p.data.action === "stop" || p.data.action === "pause";
+  if (progress.forecast && !idea.outcome_due && finalDecision) {
     const decidedOn = todayInNL();
     await supabase.from("ideas").update({ outcome_due: outcomeDueFor(decidedOn), outcome_clock_start: decidedOn }).eq("id", ideaId).is("outcome_due", null);
   }

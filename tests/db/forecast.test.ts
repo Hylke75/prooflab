@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Client } from "pg";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+
+const ingestKey = "forecast-test-key";
 
 // The database side of the forecasting and outcome loop as the app uses it (intake, base rate, decision
 // clock, AI forecasts, check-in, outcome, own base rate). Runs against a throwaway local Postgres with the
@@ -69,6 +71,7 @@ d("forecasting and outcome loop", () => {
   beforeAll(async () => {
     db = new Client({ connectionString: url });
     await db.connect();
+    await db.query("insert into public.ingest_keys (key_hash) values ($1) on conflict do nothing", [createHash("sha256").update(ingestKey).digest("hex")]);
     alice = await user(`alice-${randomUUID()}@example.com`);
     client = await user(`klant-${randomUUID()}@example.com`);
     org = await newOrg(alice);
@@ -96,6 +99,9 @@ d("forecasting and outcome loop", () => {
 
   it("starts the six-month clock once at the decision, also after forecasts exist", async () => {
     const idea = await newIdea(alice, org);
+    // The decision moment is open once a Reality Check exists.
+    await as(alice, (c) => c.query("insert into public.reality_checks (idea_id, findings, advice, advice_reason) values ($1, '[]', 'test_more', 'Nog te weinig bewijs')", [idea]));
+    await expect(as(alice, (c) => forecast(c, idea, "intake", "consultant", alice.id, 0.4))).rejects.toThrow(/FORECAST_MOMENT/);
     await as(alice, (c) => forecast(c, idea, "decision", "consultant", alice.id, 0.4));
     await as(alice, (c) => c.query("update public.ideas set outcome_due = (current_date + interval '6 months')::date where id = $1 and outcome_due is null", [idea]));
     await expect(as(alice, (c) => c.query("update public.ideas set outcome_due = current_date + 30 where id = $1", [idea]))).rejects.toThrow(/OUTCOME_LOCKED/);
@@ -106,15 +112,16 @@ d("forecasting and outcome loop", () => {
 
   it("records one AI forecast per moment, hidden from the consultant until their own forecast", async () => {
     const idea = await newIdea(alice, org);
-    await as(alice, (c) =>
-      c.query("insert into public.forecasts (idea_id, moment, forecaster_kind, forecaster_id, probability, rationale, model) values ($1, 'intake', 'ai', null, 0.25, 'Weinig bewijs', 'claude-opus-5-5')", [idea]),
-    );
+    // A user cannot type in an "AI" forecast; only the app server can record one (ingest secret).
+    await expect(
+      as(alice, (c) => c.query("insert into public.forecasts (idea_id, moment, forecaster_kind, forecaster_id, probability, rationale, model) values ($1, 'intake', 'ai', null, 0.25, 'Weinig bewijs', 'model')", [idea])),
+    ).rejects.toThrow(/row-level security/);
+    await expect(as(alice, (c) => c.query("select public.record_ai_forecast('fout', $1, 'intake', 0.25, 'x', 'model')", [idea]))).rejects.toThrow(/FORBIDDEN/);
+    await as(alice, (c) => c.query("select public.record_ai_forecast($1, $2, 'intake', 0.25, 'Weinig bewijs', 'model')", [ingestKey, idea]));
     expect(await as(alice, async (c) => (await c.query("select 1 from public.forecasts where idea_id = $1", [idea])).rowCount)).toBe(0);
     await as(alice, (c) => forecast(c, idea, "intake", "consultant", alice.id, 0.35));
     expect(await as(alice, async (c) => (await c.query("select 1 from public.forecasts where idea_id = $1", [idea])).rowCount)).toBe(2);
-    await expect(
-      as(alice, (c) => c.query("insert into public.forecasts (idea_id, moment, forecaster_kind, forecaster_id, probability, rationale) values ($1, 'intake', 'ai', null, 0.3, 'Nog een')", [idea])),
-    ).rejects.toThrow(/duplicate key/);
+    expect(await as(alice, async (c) => (await c.query("select public.record_ai_forecast($1, $2, 'intake', 0.3, 'Nog een', 'model') as ok", [ingestKey, idea])).rows[0].ok)).toBe(false);
     await expect(as(alice, (c) => forecast(c, idea, "intake", "consultant", alice.id, 0.5))).rejects.toThrow(/duplicate key/);
   });
 

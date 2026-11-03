@@ -168,7 +168,14 @@ export default async function IntegrationsPage({ params }: PageProps<"/app/ideas
             </ul>
           )}
           <ActionForm action={importOutreachReplies.bind(null, id)} submitLabel="Neem antwoorden op als klantsignalen" pendingLabel="Opnemen…" submitClass="btn soft">
-            <p className="tiny" style={{ marginTop: 12 }}>Per campagne één bron van het type outreach, met elk nieuw antwoord als fragment. Dubbele antwoorden worden overgeslagen.</p>
+            <p className="tiny" style={{ marginTop: 12 }}>
+              Per campagne één bron van het type outreach, met elk nieuw antwoord als fragment. Dubbele antwoorden worden overgeslagen.
+              E-mailadressen, telefoonnummers, links en ondertekeningen worden automatisch verwijderd; alleen consultants zien de fragmenten
+              en ze verlopen na 180 dagen.
+            </p>
+            <label className="check-row mt-12">
+              <input type="checkbox" name="no_personal_data" required /> Ik controleer de opgenomen antwoorden op namen die in de tekst zelf staan.
+            </label>
           </ActionForm>
         </div>
       </div>
@@ -194,6 +201,9 @@ export default async function IntegrationsPage({ params }: PageProps<"/app/ideas
               <input className="field" id="pg-url" name="url" type="url" required maxLength={2000} placeholder="https://…" />
             </div>
             <SourceMetaFields prefix="pg" titleRequired={false} />
+            <label className="check-row mt-12">
+              <input type="checkbox" name="no_personal_data" required /> Deze pagina is openbaar en ik mag de tekst bewaren; e-mailadressen, telefoonnummers en links worden automatisch vervangen.
+            </label>
           </ActionForm>
           <div className="divider" />
           <h3 style={{ fontSize: 15, marginBottom: 6 }}>Geïmporteerde klantsignalen</h3>

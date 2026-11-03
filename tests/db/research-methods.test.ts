@@ -91,14 +91,14 @@ d("research methods: support checks, customer signals, AI review, red team", () 
     await expect(as(alice, (c) => c.query("update public.claim_sources set support_check = 'maybe' where id = $1", [claimSource]))).rejects.toThrow(/check constraint/);
   });
 
-  it("stores customer signals with quotes; clients read them but cannot add or delete", async () => {
+  it("stores customer signals with quotes; clients cannot read, add or delete them", async () => {
     const quotes = JSON.stringify([{ text: "Offertes vergelijken kost me elke keer twee dagen", excerpt_id: excerpt, source_id: source, source_title: "Reviews concurrent" }]);
     const id = await as(alice, async (c) =>
       (await c.query("insert into public.customer_signals (idea_id, kind, label, mentions, quotes, origin) values ($1, 'pain', 'Offertes vergelijken kost tijd', 1, $2::jsonb, 'ai') returning id", [idea, quotes])).rows[0].id,
     );
     const seen = await as(client, async (c) => (await c.query("select quotes from public.customer_signals where idea_id = $1", [idea])).rows);
-    expect(seen).toHaveLength(1);
-    expect(seen[0].quotes[0].text).toContain("twee dagen");
+    // Signals quote people literally: consultants only (clients see the summary in the report).
+    expect(seen).toHaveLength(0);
     await expect(
       as(client, (c) => c.query("insert into public.customer_signals (idea_id, kind, label, mentions) values ($1, 'pain', 'Klant voegt toe', 1)", [idea])),
     ).rejects.toThrow(/row-level security/);

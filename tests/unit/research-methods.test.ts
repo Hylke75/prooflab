@@ -264,3 +264,19 @@ describe("honest test pages", () => {
     expect(v.warnings.length).toBe(1);
   });
 });
+
+describe("support explanation next to live-missing quotes", () => {
+  it("keeps the support-check reason when a vanished quote does not change the status", () => {
+    const now = new Date("2026-11-03");
+    const ev = (o: Partial<EvidenceWithSupport>): EvidenceWithSupport => ({
+      sourceType: "news", isPrimary: false, domain: "a.nl", publishedOn: "2026-03-01", contentHash: null,
+      quoteCheck: "exact", stance: "supports", support: "unchecked", ...o,
+    });
+    const r = claimStatusWithSupport(
+      { evidenceType: "third_party_estimate", freshness: "statistic" },
+      [ev({ support: "not_supported" }), ev({ domain: "b.nl", support: "not_supported", liveMissing: true })],
+      now,
+    );
+    expect(r.reason).toContain("draagt de bewering inhoudelijk niet");
+  });
+});

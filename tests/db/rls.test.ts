@@ -468,9 +468,9 @@ d("row level security and integrity rules", () => {
       as("anon", async (c) =>
         (await c.query("select public.record_outreach_event($1, $2, 'reply', 'contact1', 'MKB', 'Klinkt interessant, wat kost het?', $3) as ok", [ingestKey, token, dedupe])).rows[0].ok,
       );
-    expect(await rec(tokenHash, "evt-1")).toBe(true);
-    expect(await rec(tokenHash, "evt-1")).toBe(false);
-    expect(await rec("onbekend", "evt-2")).toBe(false);
+    expect(await rec(tokenHash, "evt-1")).toBe("ok");
+    expect(await rec(tokenHash, "evt-1")).toBe("duplicate");
+    expect(await rec("onbekend", "evt-2")).toBe("unknown");
     await expect(as("anon", (c) => c.query("select public.record_outreach_event('fout', $1, 'reply', 'c', null, 'x', 'e')", [tokenHash]))).rejects.toThrow(/FORBIDDEN/);
     expect(await as(alice, async (c) => (await c.query("select * from public.outreach_events where idea_id = $1", [A.idea])).rowCount)).toBe(1);
     expect(await as(client, async (c) => (await c.query("select * from public.outreach_events where idea_id = $1", [A.idea])).rowCount)).toBe(0);

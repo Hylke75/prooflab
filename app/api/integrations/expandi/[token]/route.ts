@@ -8,8 +8,8 @@ const MAX_EVENTS_PER_REQUEST = 25;
 
 // Webhook for Expandi (LinkedIn outreach). Server-to-server, so there is no same-origin check; the random
 // token in the URL identifies the dossier and the database checks the ingest secret and a rate limit per
-// endpoint. Expandi retries on errors, so everything except a malformed token or an oversized body is
-// answered with 200 and { ok }.
+// endpoint. Unknown or inactive token → 404 (stop at once); rate limit reached → 429 so Expandi retries
+// later instead of losing events; everything else → 200 with { ok, counted }.
 export async function POST(request: Request, ctx: RouteContext<"/api/integrations/expandi/[token]">) {
   const { token } = await ctx.params;
   if (!TOKEN_PATTERN.test(token)) return NextResponse.json({ ok: false }, { status: 404 });
@@ -59,7 +59,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/integration
       console.error("expandi webhook: event not recorded", error.message);
       return NextResponse.json({ ok: false });
     }
-    if (data) counted++;
+    if (data === "unknown") return NextResponse.json({ ok: false }, { status: 404 });
+    if (data === "rate") return NextResponse.json({ ok: false, reason: "rate_limited", counted }, { status: 429, headers: { "retry-after": "60" } });
+    if (data === "ok") counted++;
   }
   return NextResponse.json({ ok: true, counted });
 }

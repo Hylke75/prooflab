@@ -291,7 +291,7 @@ export async function analyzeInterviewWithAi(ideaId: string, expId: string, inte
   const supabase = await supabaseServer();
   const [{ data: iv }, { data: exp }] = await Promise.all([
     supabase.from("interviews").select("transcript").eq("id", interviewId).eq("idea_id", ideaId).single(),
-    supabase.from("experiments").select("hypotheses(we_believe)").eq("id", expId).single(),
+    supabase.from("experiments").select("hypotheses(we_believe)").eq("id", expId).eq("idea_id", ideaId).single(),
   ]);
   if (!iv) return { error: "Interview niet gevonden." };
   try {

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { getIdea, getUser, requireWritableIdea } from "@/lib/data";
 import { loadProgress } from "@/lib/progress";
-import { aiConfigured } from "@/lib/env";
+import { env, aiConfigured } from "@/lib/env";
 import { runAi, aiErrorMessage } from "@/lib/ai/guard";
 import { forecastOutcome } from "@/lib/ai/forecast";
 import { MODEL } from "@/lib/ai/client";
@@ -171,16 +171,17 @@ export async function requestAiForecast(ideaId: string, _: ActionState): Promise
   } catch (e) {
     return { error: aiErrorMessage(e, "De AI-voorspelling is niet gelukt. Probeer het later opnieuw.") };
   }
-  const { error } = await supabase.from("forecasts").insert({
-    idea_id: ideaId,
-    moment,
-    forecaster_kind: "ai",
-    forecaster_id: null,
-    probability: result.data.probability,
-    rationale: result.data.rationale,
-    model: result.model || MODEL,
+  // Recorded by the app server only (guarded by the ingest secret), so nobody can type in an "AI" forecast.
+  const { data: stored, error } = await supabase.rpc("record_ai_forecast", {
+    p_key: env.ingestSecret,
+    p_idea: ideaId,
+    p_moment: moment,
+    p_probability: result.data.probability,
+    p_rationale: result.data.rationale,
+    p_model: result.model || MODEL,
   });
-  if (error) return { error: error.code === "23505" ? "Er is al een AI-voorspelling voor dit moment." : "De AI-voorspelling kon niet worden opgeslagen." };
+  if (error) return { error: error.message.includes("FORECAST_MOMENT") ? "Dit voorspelmoment is niet meer open." : "De AI-voorspelling kon niet worden opgeslagen." };
+  if (!stored) return { error: "Er is al een AI-voorspelling voor dit moment." };
   refresh(ideaId);
   return { error: null, ok: "AI-voorspelling toegevoegd. Die telt als aparte voorspeller, nooit als bewijs." };
 }

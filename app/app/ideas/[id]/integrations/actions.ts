@@ -10,6 +10,7 @@ import { fetchPageText } from "@/lib/fetch-page";
 import { registrableDomain } from "@/lib/domain/verify";
 import { newWebhookToken, tokenHash } from "@/lib/integrations/expandi";
 import { NO_CAMPAIGN } from "@/lib/integrations/outreach-stats";
+import { scrubAll } from "@/lib/signals/scrub";
 import { dedupeFragments, MAX_FRAGMENTS, MAX_IMPORT_BYTES, pageExcerpts, splitFragments } from "@/lib/signals/import";
 
 export type ActionState = { error: string | null; ok?: string | null };
@@ -172,6 +173,11 @@ const PageSchema = z.object({
   title: z.string().trim().max(300).optional(),
   publisher: z.string().trim().max(200).optional(),
   published_on: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
+  no_personal_data: z.literal("on", { message: "Bevestig dat deze pagina geen persoonsgegevens bevat die je niet mag bewaren." }),
+});
+
+const ConfirmSchema = z.object({
+  no_personal_data: z.literal("on", { message: "Bevestig dat je de antwoorden na het opnemen op namen controleert." }),
 });
 
 export async function fetchPageSource(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
@@ -186,7 +192,8 @@ export async function fetchPageSource(ideaId: string, _: ActionState, form: Form
     return { error: `De pagina kon niet worden opgehaald: ${e instanceof Error ? e.message : "onbekende fout"}` };
   }
   const supabase = await supabaseServer();
-  const result = dedupeFragments(pageExcerpts(page.text), { existing: await existingExcerptTexts(supabase, ideaId) });
+  const scrubbed = scrubAll(pageExcerpts(page.text));
+  const result = dedupeFragments(scrubbed.texts, { existing: await existingExcerptTexts(supabase, ideaId) });
   if (result.fragments.length === 0) return { error: "Op deze pagina staat geen bruikbare tekst, of de tekst staat al in de bronnen. Sommige sites laden hun inhoud pas in de browser; plak de tekst dan zelf." };
   const err = await createSource(
     supabase,
@@ -197,7 +204,7 @@ export async function fetchPageSource(ideaId: string, _: ActionState, form: Form
       publisher: blank(v.publisher),
       url: page.url,
       published_on: blank(v.published_on),
-      access_note: `Paginatekst automatisch opgehaald op ${nlDate()} (${result.fragments.length} fragmenten). Controleer of de voorwaarden van het platform dit toestaan.`,
+      access_note: `Paginatekst automatisch opgehaald op ${nlDate()} (${result.fragments.length} fragmenten). E-mailadressen, telefoonnummers, links en accountnamen zijn automatisch vervangen. Controleer of de voorwaarden van het platform dit toestaan.`,
     },
     result.fragments,
   );
@@ -209,8 +216,10 @@ export async function fetchPageSource(ideaId: string, _: ActionState, form: Form
 // Expandi replies → customer signals
 // ---------------------------------------------------------------------------
 
-export async function importOutreachReplies(ideaId: string, _: ActionState): Promise<ActionState> {
+export async function importOutreachReplies(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
   await requireWritableIdea(ideaId);
+  const confirmed = ConfirmSchema.safeParse(Object.fromEntries(form));
+  if (!confirmed.success) return { error: confirmed.error.issues[0].message };
   const supabase = await supabaseServer();
   const { data: replies, error } = await supabase
     .from("outreach_events")
@@ -225,7 +234,7 @@ export async function importOutreachReplies(ideaId: string, _: ActionState): Pro
   const byCampaign = new Map<string, string[]>();
   for (const r of replies ?? []) {
     const key = r.campaign?.trim() || NO_CAMPAIGN;
-    byCampaign.set(key, [...(byCampaign.get(key) ?? []), r.message ?? ""]);
+    byCampaign.set(key, [...(byCampaign.get(key) ?? []), ...scrubAll([r.message ?? ""]).texts]);
   }
   let sources = 0;
   let fragments = 0;
@@ -243,7 +252,7 @@ export async function importOutreachReplies(ideaId: string, _: ActionState): Pro
         url: null,
         published_on: today(),
         access_note:
-          "Antwoorden op LinkedIn-outreach, ontvangen via de Expandi-webhook. Namen en profiel-URL's zijn niet opgeslagen. Kwalitatieve signalen: een antwoord is geen bewijs van betalingsbereidheid.",
+          "Antwoorden op LinkedIn-outreach, ontvangen via de Expandi-webhook. Contacten zijn gepseudonimiseerd; e-mailadressen, telefoonnummers, links en ondertekeningen zijn automatisch verwijderd. Alleen zichtbaar voor consultants, verloopt na 180 dagen. Kwalitatieve signalen: een antwoord is geen bewijs van betalingsbereidheid.",
       },
       result.fragments,
     );

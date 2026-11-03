@@ -145,6 +145,7 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
     outcome: {
       defined: !!idea.outcome_statement,
       due: idea.outcome_due,
+      clockStart: idea.outcome_clock_start,
       resolved: !!outcome.data,
       checkins: (checkins.data ?? []).map((c) => c.created_at),
     },

@@ -4,11 +4,26 @@ import { useId, useState } from "react";
 
 // A probability between 5 and 95%, as a slider and a number field that stay in sync.
 export function ProbabilityField({ initial, describedBy }: { initial: number; describedBy?: string }) {
-  const [value, setValue] = useState(Math.min(95, Math.max(5, Math.round(initial))));
+  const clamp = (n: number) => Math.min(95, Math.max(5, Math.round(n)));
+  const [value, setValue] = useState(clamp(initial));
+  // The typed text is kept as typed (so "30" can be typed digit by digit); it is clamped when leaving the field.
+  const [text, setText] = useState(String(clamp(initial)));
   const id = useId();
-  const set = (raw: string) => {
+  const fromSlider = (raw: string) => {
+    const n = clamp(Number(raw));
+    setValue(n);
+    setText(String(n));
+  };
+  const fromText = (raw: string) => {
+    setText(raw);
     const n = Number(raw);
-    if (Number.isFinite(n)) setValue(Math.min(95, Math.max(5, Math.round(n))));
+    if (raw.trim() !== "" && Number.isFinite(n) && n >= 5 && n <= 95) setValue(Math.round(n));
+  };
+  const commit = () => {
+    const n = Number(text);
+    const v = text.trim() === "" || !Number.isFinite(n) ? value : clamp(n);
+    setValue(v);
+    setText(String(v));
   };
   return (
     <div>
@@ -26,7 +41,7 @@ export function ProbabilityField({ initial, describedBy }: { initial: number; de
           max={95}
           step={1}
           value={value}
-          onChange={(e) => set(e.target.value)}
+          onChange={(e) => fromSlider(e.target.value)}
           aria-describedby={describedBy}
           aria-valuetext={`${value} procent`}
           style={{ flex: 1, minHeight: 44 }}
@@ -43,8 +58,9 @@ export function ProbabilityField({ initial, describedBy }: { initial: number; de
           min={5}
           max={95}
           step={1}
-          value={value}
-          onChange={(e) => set(e.target.value)}
+          value={text}
+          onChange={(e) => fromText(e.target.value)}
+          onBlur={commit}
           style={{ width: 86, minHeight: 44, padding: "10px 12px" }}
         />
         <span aria-hidden="true" className="tiny">%</span>

@@ -12,7 +12,7 @@ import { analyzeSignals, planResearch } from "@/lib/ai/research";
 import { aiSupportCheck } from "@/lib/research-runner";
 import { isSupportCheck } from "@/lib/domain/support";
 import { priceOnPage, recheckChanges, recheckQuotes, type CompetitorRecheck, type PageRecheck } from "@/lib/domain/recheck";
-import { isSignalSource, painAsAssumption, verifySignalGroups, type SignalExcerpt } from "@/lib/domain/customer-signals";
+import { isSignalSource, painAsAssumption, verifySignalGroups, type SignalExcerpt, type SignalQuote } from "@/lib/domain/customer-signals";
 import { ideaContext } from "@/lib/idea-context";
 import { aiErrorMessage, runAi } from "@/lib/ai/guard";
 
@@ -588,31 +588,58 @@ export async function analyzeCustomerSignals(ideaId: string, _: ActionState, for
   const chosen = new Set(form.getAll("source_id").map(String));
   if (chosen.size === 0) return { error: "Kies minstens één bron met klantsignalen." };
   const supabase = await supabaseServer();
-  const { data: sources } = await supabase.from("sources").select("id, title, source_type, origin, source_excerpts(id, text)").eq("idea_id", ideaId);
+  const { data: sources } = await supabase.from("sources").select("id, title, source_type, origin, created_at, source_excerpts(id, text, created_at)").eq("idea_id", ideaId);
   const usable = (sources ?? []).filter((s) => isSignalSource(s) && chosen.has(s.id));
-  const excerpts: SignalExcerpt[] = usable
-    .flatMap((s) => (s.source_excerpts ?? []).map((e) => ({ id: e.id, source_id: s.id, source_title: s.title, text: e.text })))
-    .slice(0, 60)
-    .map((e, i) => ({ ...e, ref: `K${i + 1}` }));
-  if (excerpts.length === 0) return { error: "Voeg eerst reviews, forumberichten of outreach-antwoorden toe als bron." };
+  // Deterministic order (oldest source and fragment first), analysed in batches so a large import is not
+  // reduced to an arbitrary sample.
+  const all = usable
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .flatMap((s) =>
+      (s.source_excerpts ?? [])
+        .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
+        .map((e) => ({ id: e.id, source_id: s.id, source_title: s.title, text: e.text })),
+    );
+  if (all.length === 0) return { error: "Voeg eerst reviews, forumberichten of outreach-antwoorden toe als bron." };
+  const BATCH = 60;
+  const MAX_BATCHES = 5;
+  const analysed = all.slice(0, BATCH * MAX_BATCHES);
+  const merged = new Map<string, { kind: "job" | "pain" | "gain" | "objection"; label: string; mentions: number; quotes: SignalQuote[] }>();
+  let droppedQuotes = 0;
+  let droppedGroups = 0;
   try {
-    const res = await runAi(ideaId, "customer_signals", () =>
-      analyzeSignals(ideaContext(idea), excerpts.map((e) => ({ ref: e.ref, title: e.source_title, text: e.text }))),
-    );
-    const { kept, droppedQuotes, droppedGroups } = verifySignalGroups(res.data.groups, excerpts);
-    if (kept.length) {
-      const { error } = await supabase
-        .from("customer_signals")
-        .insert(kept.map((g) => ({ idea_id: ideaId, kind: g.kind, label: g.label, mentions: g.mentions, quotes: g.quotes, origin: "ai" })));
-      if (error) return { error: "De klantsignalen konden niet worden opgeslagen." };
+    for (let start = 0; start < analysed.length; start += BATCH) {
+      const excerpts: SignalExcerpt[] = analysed.slice(start, start + BATCH).map((e, i) => ({ ...e, ref: `K${i + 1}` }));
+      const res = await runAi(ideaId, "customer_signals", () =>
+        analyzeSignals(ideaContext(idea), excerpts.map((e) => ({ ref: e.ref, title: e.source_title, text: e.text }))),
+      );
+      const v = verifySignalGroups(res.data.groups, excerpts);
+      droppedQuotes += v.droppedQuotes;
+      droppedGroups += v.droppedGroups;
+      // The same need found in several batches becomes one group with the summed number of verified quotes.
+      for (const g of v.kept) {
+        const key = `${g.kind}|${normalizeText(g.label)}`;
+        const prev = merged.get(key);
+        if (prev) {
+          prev.mentions += g.mentions;
+          prev.quotes = [...prev.quotes, ...g.quotes].slice(0, 20);
+        } else merged.set(key, { kind: g.kind, label: g.label, mentions: g.mentions, quotes: g.quotes.slice(0, 20) });
+      }
     }
-    return done(
-      ideaId,
-      `${kept.length} groepen met letterlijke citaten vastgelegd${droppedQuotes ? `; ${droppedQuotes} citaten weggelaten (niet letterlijk teruggevonden)` : ""}${droppedGroups ? `; ${droppedGroups} groepen zonder geldig citaat weggelaten` : ""}. Controleer ze en verwijder wat niet klopt.`,
-    );
   } catch (e) {
-    return { error: aiErrorMessage(e, "De analyse is mislukt. Leg klantsignalen handmatig vast.") };
+    if (merged.size === 0) return { error: aiErrorMessage(e, "De analyse is mislukt. Leg klantsignalen handmatig vast.") };
   }
+  const kept = [...merged.values()];
+  if (kept.length) {
+    const { error } = await supabase
+      .from("customer_signals")
+      .insert(kept.map((g) => ({ idea_id: ideaId, kind: g.kind, label: g.label, mentions: g.mentions, quotes: g.quotes, origin: "ai" })));
+    if (error) return { error: "De klantsignalen konden niet worden opgeslagen." };
+  }
+  const coverage = analysed.length < all.length ? ` Geanalyseerd: de eerste ${analysed.length} van ${all.length} fragmenten; start de analyse opnieuw met minder bronnen voor de rest.` : ` Alle ${all.length} fragmenten zijn geanalyseerd.`;
+  return done(
+    ideaId,
+    `${kept.length} groepen met letterlijke citaten vastgelegd${droppedQuotes ? `; ${droppedQuotes} citaten weggelaten (niet letterlijk teruggevonden)` : ""}${droppedGroups ? `; ${droppedGroups} groepen zonder geldig citaat weggelaten` : ""}.${coverage} Controleer ze en verwijder wat niet klopt.`,
+  );
 }
 
 const SignalSchema = z.object({

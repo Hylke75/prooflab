@@ -2394,8 +2394,13 @@ export type Database = {
       unsubscribe_invitation: { Args: { p_email_hash: string; p_key: string; p_token_hash: string }; Returns: boolean }
       record_outreach_event: {
         Args: { p_campaign: string | null; p_contact_hash: string; p_dedupe: string; p_event: string; p_key: string; p_message: string | null; p_token_hash: string }
+        Returns: string
+      }
+      record_ai_forecast: {
+        Args: { p_idea: string; p_key: string; p_model: string; p_moment: string; p_probability: number; p_rationale: string }
         Returns: boolean
       }
+      open_forecast_moment: { Args: { p_idea: string }; Returns: string | null }
       forecasts_exist: { Args: { p_idea: string }; Returns: boolean }
       forecast_scores: {
         Args: { p_org: string }
@@ -2426,6 +2431,7 @@ export type Database = {
           is_costly: boolean
           is_synthetic: boolean
           origin: string
+          review_status: string | null
           created_at: string
         }[]
       }
