@@ -37,6 +37,7 @@ import {
   setDecisiveQuestion,
 } from "./actions";
 import { decisiveFirst, isGenericTemplate } from "@/lib/research-questions";
+import { FAILURE_TEXT, failedProviders, retryable } from "@/lib/research-failures";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export const metadata: Metadata = { title: "Marktverkenning" };
@@ -69,7 +70,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   const progress = await loadProgress(id);
   const run = runRes.data;
   const { data: tasks } = run
-    ? await supabase.from("research_tasks").select("label, status, detail, kind, output").eq("run_id", run.id).order("position")
+    ? await supabase.from("research_tasks").select("id, label, status, detail, kind, output, question_id").eq("run_id", run.id).order("position")
     : { data: [] };
   // Zoeklogboek van de laatste run (RLS: alleen het onderzoeksteam leest het).
   const { data: logRows } =
@@ -371,7 +372,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               searchWith={searchProviders.map((p) => PROVIDER_LABELS[p].name)}
               estimates={runEstimates}
               worker={worker}
-              run={run ? { id: run.id, status: run.status, mode: run.mode, cost: Number(run.cost_usd), budget: Number(run.budget_usd), tasks: (tasks ?? []).map((t) => ({ label: t.label, status: t.status, detail: t.detail })) } : null}
+              run={run ? { id: run.id, status: run.status, mode: run.mode, cost: Number(run.cost_usd), budget: Number(run.budget_usd), tasks: (tasks ?? []).map((t) => runTaskView(t)) } : null}
               searchLog={groupSearchLog((logRows ?? []).filter((r) => r.kind !== "counter"), questions)}
               cbsAction={fetchCbsFigures.bind(null, id)}
             />
@@ -701,6 +702,26 @@ function groupSearchLog(rows: LogRow[], questions: { id: string; position: numbe
 }
 
 // Providers that would run the web search for this organisation (its choice first, ensemble on or off).
+// Fase B2, punt 5: per stap de mislukte aanbieders met een korte reden, en of "opnieuw proberen" kan.
+function runTaskView(t: { id: string; label: string; status: string; detail: string | null; kind: string; output: unknown; question_id: string | null }) {
+  const retryKind = !!t.question_id && ["search", "extract", "counter"].includes(t.kind);
+  return {
+    id: t.id,
+    label: t.label,
+    status: t.status,
+    detail: t.detail,
+    failures: t.status === "done" && retryKind
+      ? failedProviders(t.output).map((f) => ({
+          provider: f.provider,
+          name: isProvider(f.provider) ? PROVIDER_LABELS[f.provider].name : f.provider,
+          reason: FAILURE_TEXT[f.reason],
+          canRetry: retryable(f.reason),
+        }))
+      : [],
+    canRetry: retryKind && t.status === "failed",
+  };
+}
+
 function workerState(lease: { error: unknown; data: { lease_until: string } | null } | null): "busy" | "idle" | "unknown" {
   if (!lease || lease.error) return "unknown";
   return lease.data && new Date(lease.data.lease_until).getTime() > Date.now() ? "busy" : "idle";

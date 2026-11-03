@@ -3,14 +3,16 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
-import { cancelResearchRun, startResearchRun } from "@/app/app/ideas/[id]/research/actions";
+import { cancelResearchRun, retryResearchStep, startResearchRun } from "@/app/app/ideas/[id]/research/actions";
 import { openSourceForm } from "./source-prefill";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 
 // Tabelnummer van CBS StatLine (zie lib/integrations/cbs.ts; hier los omdat dat bestand server-only is).
 const CBS_TABLE = "81589NED";
 
-type Task = { label: string; status: string; detail: string | null };
+// Fase B2, punt 5: mislukte aanbieders met een korte reden en een knop "opnieuw proberen".
+type Failure = { provider: string; name: string; reason: string; canRetry: boolean };
+type Task = { id?: string; label: string; status: string; detail: string | null; failures?: Failure[]; canRetry?: boolean };
 type RunView = { id: string; status: string; mode: string; cost: number; budget: number; tasks: Task[] } | null;
 export type ProviderStatus = { id: string; name: string; keyEnv: string; connected: boolean };
 
@@ -173,6 +175,14 @@ export function ResearchRunPanel({
     };
   }, [active, canWrite, runId, router]);
 
+  const retry = (taskId: string, provider: string | null) =>
+    start(async () => {
+      setError(null);
+      const r = await retryResearchStep(ideaId, taskId, provider);
+      if (r.error) setError(r.error);
+      router.refresh();
+    });
+
   const begin = (mode: "quick" | "deep") =>
     start(async () => {
       setError(null);
@@ -269,6 +279,23 @@ export function ResearchRunPanel({
               <div style={{ flex: 1 }}>
                 <strong>{t.label}</strong>
                 {t.detail && <div className="tiny">{t.detail}</div>}
+                {(t.failures ?? []).map((f) => (
+                  <div key={f.provider} className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
+                    <span className="pill coral">
+                      {f.name}: mislukt ({f.reason})
+                    </span>
+                    {canWrite && f.canRetry && t.id && (
+                      <button type="button" className="btn white sm" disabled={pending} onClick={() => retry(t.id!, f.provider)}>
+                        Opnieuw proberen
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {canWrite && t.canRetry && t.id && (
+                  <button type="button" className="btn white sm mt-8" disabled={pending} onClick={() => retry(t.id!, null)}>
+                    Opnieuw proberen
+                  </button>
+                )}
               </div>
             </div>
           ))}

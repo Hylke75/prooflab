@@ -21,6 +21,7 @@ import { ensureDecisiveQuestion, loadRunQuestions, markDecisive } from "@/lib/re
 import { decisiveFirst } from "@/lib/research-questions";
 import { planSteps, runBudgetUsd } from "@/lib/research-steps";
 import { kickResearchRun } from "@/lib/research-worker";
+import { isProvider, PROVIDER_LABELS, type ProviderId } from "@/lib/ai/providers/config";
 import { isUnknown, normalizeReferenceDate, scopeValue, UNKNOWN } from "@/lib/domain/claim-scope";
 
 export type ActionState = { error: string | null; ok?: string | null };
@@ -522,6 +523,45 @@ export async function startResearchRun(ideaId: string, mode: "quick" | "deep"): 
   await kickResearchRun(run.id, { refresh: true });
   revalidatePath(`/app/ideas/${ideaId}/research`);
   return { runId: run.id };
+}
+
+// Fase B2, punt 5: een mislukte aanbieder of stap opnieuw proberen. Loopt er een run, dan komen de herhaalstappen
+// achteraan in die run; anders in een nieuwe kleine run met het plafond van de snelle check. Een herhaalde zoekstap
+// krijgt zijn uitleesstap mee (de zoekresultaten van eerder worden binnen 7 dagen hergebruikt, niet opnieuw betaald).
+export async function retryResearchStep(ideaId: string, taskId: string, provider: string | null): Promise<{ error?: string; ok?: string }> {
+  await requireWritableIdea(ideaId);
+  if (!aiConfigured()) return { error: "Live webonderzoek is niet verbonden." };
+  if (provider !== null && !isProvider(provider)) return { error: "Onbekende aanbieder." };
+  const supabase = await supabaseServer();
+  const { data: task } = await supabase.from("research_tasks").select("id, kind, question_id, label").eq("id", taskId).eq("idea_id", ideaId).maybeSingle();
+  if (!task || !task.question_id || !["search", "extract", "counter"].includes(task.kind)) return { error: "Deze stap kan niet opnieuw." };
+  const { data: q } = await supabase.from("research_questions").select("position").eq("id", task.question_id).eq("idea_id", ideaId).maybeSingle();
+  if (!q) return { error: "De onderzoeksvraag bestaat niet meer." };
+  const only = provider ? { only_providers: [provider] } : null;
+  const who = provider ? `${PROVIDER_LABELS[provider as ProviderId].name} ` : "";
+  const steps =
+    task.kind === "counter"
+      ? [{ kind: "counter", label: `Opnieuw: ${who}tegenbewijs zoeken (vraag ${q.position})`, output: only }]
+      : [
+          { kind: "search", label: `Opnieuw: ${who}bronnen zoeken (vraag ${q.position})`, output: only },
+          { kind: "extract", label: `Opnieuw: citaten controleren (vraag ${q.position})`, output: null },
+        ];
+  const { data: active } = await supabase.from("research_runs").select("id").eq("idea_id", ideaId).in("status", ["queued", "running"]).limit(1).maybeSingle();
+  let runId = active?.id ?? null;
+  if (!runId) {
+    const { data: run } = await supabase.from("research_runs").insert({ idea_id: ideaId, mode: "quick", budget_usd: runBudgetUsd("quick", env.researchBudgetUsd), status: "queued" }).select("id").single();
+    runId = run?.id ?? null;
+  }
+  if (!runId) return { error: "De herhaling kon niet worden gestart." };
+  const { data: last } = await supabase.from("research_tasks").select("position").eq("run_id", runId).order("position", { ascending: false }).limit(1).maybeSingle();
+  const start = (last?.position ?? 0) + 1;
+  const { error } = await supabase
+    .from("research_tasks")
+    .insert(steps.map((st, i) => ({ run_id: runId, idea_id: ideaId, position: start + i, kind: st.kind, question_id: task.question_id, label: st.label, output: st.output })));
+  if (error) return { error: "De herhaling kon niet worden gestart." };
+  await kickResearchRun(runId, { refresh: true });
+  revalidatePath(`/app/ideas/${ideaId}/research`);
+  return { ok: "Opnieuw ingepland; de server pakt het meteen op." };
 }
 
 export async function cancelResearchRun(ideaId: string, runId: string) {

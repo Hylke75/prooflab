@@ -5,6 +5,7 @@ import { mergeFoundSources } from "@/lib/ai/web-evidence";
 import { providersFor } from "@/lib/ai/settings";
 import { isProvider, modelFor, PROVIDER_LABELS, PROVIDERS, type ProviderId } from "@/lib/ai/providers/config";
 import { runDoneNote } from "@/lib/research-worker-plan";
+import { FAILURE_TEXT, failureCode, type FailureCode } from "@/lib/research-failures";
 import { fitsBudget, notStartedText, providersForRun, searchesFor, stepEstimateUsd, type ModelMap, type RunMode } from "@/lib/research-steps";
 import { assertAiBudget, runAi } from "@/lib/ai/guard";
 import { log } from "@/lib/log";
@@ -160,7 +161,14 @@ export async function advanceRun(runId: string): Promise<RunState> {
       .from("research_tasks")
       .update({
         status: retry ? "pending" : "failed",
-        detail: refused ? "Het model weigerde deze stap." : e instanceof AiBudgetError ? e.message : `Fout: ${e instanceof Error ? e.message.slice(0, 200) : "onbekend"}`,
+        // Fase B2, punt 5: een korte reden; "opnieuw proberen" staat in het paneel.
+        detail: refused
+          ? "Het model weigerde deze stap."
+          : e instanceof AiBudgetError
+            ? e.message
+            : `Mislukt (${FAILURE_TEXT[failureCode(e)]})${retry ? "; ProofLab probeert het automatisch opnieuw." : "."} ${e instanceof Error ? e.message.slice(0, 160) : ""}`.trim(),
+        // De reden ook als code, voor de knop "opnieuw proberen".
+        ...(retry ? {} : { output: { failure: failureCode(e) } }),
       })
       .eq("id", task.id);
   }
@@ -455,7 +463,8 @@ async function runCounterTask(task: TaskRow, idea: Idea, mode: RunMode, runWith:
 // Web search on every provider the organisation uses for research (also used by the red-team search)
 // ---------------------------------------------------------------------------
 
-export type ProviderSearch = { provider: ProviderId; ok: boolean; sources: number; detail: string };
+// reason (fase B2, punt 5): waarom een aanbieder faalde (timeout, quotum, geweigerd …), zie lib/research-failures.ts.
+export type ProviderSearch = { provider: ProviderId; ok: boolean; sources: number; detail: string; reason?: FailureCode };
 
 // Each provider searches independently (its own runAi: own ledger row, cap checked per call); the found
 // sources are merged by URL. A provider that fails does not stop the others; only when all fail is it an error.
@@ -490,7 +499,8 @@ export async function searchAcrossProviders(
     } else {
       // A refusal still used tokens: book them on the run.
       if (r.reason instanceof AiRefusedError) cost += r.reason.usage?.cost ?? 0;
-      perProvider.push({ provider, ok: false, sources: 0, detail: r.reason instanceof AiRefusedError ? "geweigerd" : "mislukt" });
+      const reason = failureCode(r.reason);
+      perProvider.push({ provider, ok: false, sources: 0, detail: `mislukt (${FAILURE_TEXT[reason]})`, reason });
     }
   });
   if (lists.length === 0) {
