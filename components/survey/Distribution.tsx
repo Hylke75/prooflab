@@ -7,6 +7,7 @@ import { PROMO_PLATFORMS, PROMO_PLATFORM_KEYS, type PromoPlatform } from "@/lib/
 import { CopyButton } from "./CopyButton";
 import { Invitations } from "./Invitations";
 import { PromoPosts } from "./PromoPosts";
+import { SamplePlanner } from "./SamplePlanner";
 
 // The channels a survey link is shared through; LinkedIn DMs via Expandi count as outreach.
 const SHARE_CHANNELS = ["network", "linkedin", "outreach", "meta", "newsletter", "other"] as const;
@@ -16,7 +17,9 @@ type Exp = { id: string; type: string; state: string; public_slug: string | null
 
 // "Verspreiden" on the experiment page: share links per channel, personal e-mail invitations (surveys) and
 // invitation posts (every test with a public link). Consultants only; from approval on.
-export async function Distribution({ ideaId, exp, canWrite }: { ideaId: string; exp: Exp; canWrite: boolean }) {
+type Plan = { success_threshold_pct: number; fail_threshold_pct: number | null; min_sample: number };
+
+export async function Distribution({ ideaId, exp, canWrite, plan }: { ideaId: string; exp: Exp; canWrite: boolean; plan?: Plan }) {
   if (!canWrite || !exp.public_slug || !["survey", "landing", "pricing"].includes(exp.type)) return null;
   const open = ["approved", "live", "paused"].includes(exp.state);
   const survey = exp.type === "survey";
@@ -66,6 +69,10 @@ export async function Distribution({ ideaId, exp, canWrite }: { ideaId: string; 
             {live ? " (let op: als je hem invult, telt je antwoord mee)" : " (antwoorden worden nog niet opgeslagen)"}.
           </p>
         </div>
+      )}
+
+      {survey && plan && open && (
+        <SamplePlanner successPct={Number(plan.success_threshold_pct)} failPct={plan.fail_threshold_pct == null ? null : Number(plan.fail_threshold_pct)} minSample={plan.min_sample} />
       )}
 
       {survey && c && (

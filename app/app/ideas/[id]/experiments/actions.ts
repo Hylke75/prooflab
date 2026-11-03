@@ -436,6 +436,9 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
               open_link: { n: s.openLink.n, successes: s.openLink.successes },
             },
             too_fast: s.all.tooFast,
+            screened_out: s.all.screenedOut,
+            failed_attention: s.all.failedAttention,
+            straightlining: s.all.straightlining,
           }
         : {}),
     } as unknown as Json,

@@ -129,6 +129,8 @@ export type Database = {
           answers: Json
           consent_given: boolean
           duration_ms: number | null
+          qualified: boolean
+          quality: string
           created_at: string
           retention_until: string
         }
@@ -143,6 +145,8 @@ export type Database = {
           answers: Json
           consent_given: boolean
           duration_ms?: number | null
+          qualified: boolean
+          quality: string
           created_at?: string
           retention_until?: string
         }
@@ -157,8 +161,37 @@ export type Database = {
           answers?: Json
           consent_given?: boolean
           duration_ms?: number | null
+          qualified?: boolean
+          quality?: string
           created_at?: string
           retention_until?: string
+        }
+        Relationships: []
+      }
+      survey_shares: {
+        Row: {
+          id: string
+          experiment_id: string
+          idea_id: string
+          questions: string[]
+          updated_by: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          experiment_id: string
+          idea_id: string
+          questions?: string[]
+          updated_by?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          experiment_id?: string
+          idea_id?: string
+          questions?: string[]
+          updated_by?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -2398,8 +2431,29 @@ export type Database = {
           p_slug: string
           p_token_hash: string | null
           p_visitor: string
+          p_qualified: boolean
+          p_quality: string
         }
         Returns: string
+      }
+      get_survey_config: { Args: { p_key: string; p_slug: string }; Returns: Json }
+      survey_key_counts: {
+        Args: { p_experiment: string }
+        Returns: {
+          source: string
+          channel: string
+          responses: number
+          n: number
+          successes: number
+          too_fast: number
+          screened_out: number
+          failed_attention: number
+          straightlining: number
+        }[]
+      }
+      survey_shared_summaries: {
+        Args: { p_experiment: string }
+        Returns: { question_id: string; value: string; answers: number; count: number }[]
       }
       unsubscribe_invitation: { Args: { p_email_hash: string; p_key: string; p_token_hash: string }; Returns: boolean }
       record_outreach_event: {

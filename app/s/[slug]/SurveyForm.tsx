@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { isVisible, type Answers, type AnswerValue, type SurveyQuestion } from "@/lib/domain/survey";
-import { questionErrors, visibleAnswers } from "@/lib/domain/survey-distribution";
+import { questionErrors, SCREENED_OUT, visibleAnswers } from "@/lib/domain/survey-distribution";
 
 type Props = {
   slug: string;
@@ -11,12 +11,16 @@ type Props = {
   researcher: string;
   thankYou: string;
   questions: SurveyQuestion[];
+  // With a screening question the form starts with that question alone; who is outside the target group is
+  // thanked and stops there, the others continue with the remaining questions.
+  screeningQuestion: string | null;
 };
 
 const choiceStyle: React.CSSProperties = { display: "flex", gap: 10, alignItems: "center", minHeight: 44, fontSize: 14, fontWeight: 600, cursor: "pointer" };
 
 // All questions on one page, each in its own fieldset. Conditional questions appear as soon as they apply.
-// On submit: an error summary with links to each question, inline errors, focus on the summary.
+// On submit: an error summary with links to each question, inline errors, focus on the summary. A screening
+// question comes first, on its own.
 export function SurveyForm(p: Props) {
   const [answers, setAnswers] = useState<Answers>({});
   const [consent, setConsent] = useState(false);
@@ -24,6 +28,7 @@ export function SurveyForm(p: Props) {
   const [formError, setFormError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [done, setDone] = useState<{ title: string; text: string } | null>(null);
+  const [step, setStep] = useState<"screen" | "rest">(p.screeningQuestion ? "screen" : "rest");
   const started = useRef<number | null>(null);
   const summary = useRef<HTMLDivElement>(null);
   const doneRef = useRef<HTMLHeadingElement>(null);
@@ -45,17 +50,25 @@ export function SurveyForm(p: Props) {
     });
   };
 
-  const visible = p.questions.filter((q) => isVisible(q, answers));
+  const asked = step === "screen" ? p.questions.filter((q) => q.id === p.screeningQuestion) : p.questions;
+  const visible = asked.filter((q) => isVisible(q, answers));
   const errorList = [...Object.entries(errors).filter(([id]) => visible.some((q) => q.id === id)), ...(errors.consent ? [["consent", errors.consent] as const] : [])];
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setFormError(null);
-    const errs = questionErrors(p.questions, answers);
+    const errs = questionErrors(asked, answers);
     if (!consent) errs.consent = "Geef toestemming om je antwoorden te versturen.";
     setErrors(errs);
     if (Object.keys(errs).length) {
       requestAnimationFrame(() => summary.current?.focus());
+      return;
+    }
+    const screening = step === "screen";
+    if (!p.live && screening) {
+      // Preview: the qualifying answers stay on the server, so the preview simply continues.
+      setStep("rest");
+      requestAnimationFrame(() => document.getElementById(`q-${p.questions.find((q) => q.id !== p.screeningQuestion)?.id}`)?.focus());
       return;
     }
     if (!p.live) {
@@ -71,7 +84,8 @@ export function SurveyForm(p: Props) {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          answers: visibleAnswers(p.questions, answers),
+          answers: visibleAnswers(asked, answers),
+          stage: screening ? "screen" : "full",
           consent,
           duration_ms: started.current ? Math.max(0, Date.now() - started.current) : undefined,
           token: p.token ?? undefined,
@@ -79,8 +93,13 @@ export function SurveyForm(p: Props) {
           website,
         }),
       });
-      const json = (await res.json().catch(() => null)) as { ok?: boolean; done?: boolean; result?: string; message?: string } | null;
-      if (json?.done) {
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; done?: boolean; result?: string; message?: string; qualified?: boolean; screenedOut?: boolean } | null;
+      if (screening && json?.qualified) {
+        setStep("rest");
+        requestAnimationFrame(() => document.getElementById(`q-${p.questions.find((q) => q.id !== p.screeningQuestion)?.id}`)?.focus());
+      } else if (json?.done && json.screenedOut) {
+        setDone({ title: SCREENED_OUT.title, text: SCREENED_OUT.text });
+      } else if (json?.done) {
         setDone(json.result === "ok" ? { title: "Dank je wel.", text: p.thankYou } : { title: json.result === "duplicate" ? "Al ingevuld." : "Niet opgeslagen.", text: json.message ?? "" });
       } else {
         setFormError(json?.message ?? "Er ging iets mis bij het versturen. Controleer je verbinding en probeer het opnieuw.");
@@ -262,7 +281,7 @@ export function SurveyForm(p: Props) {
         {errors.consent && <p id="q-consent-err" className="field-error" style={{ fontSize: 13 }}>{errors.consent}</p>}
       </div>
       <button className="btn primary" style={{ width: "100%", marginTop: 14, minHeight: 48, fontSize: 15 }} disabled={pending}>
-        {pending ? "Versturen…" : "Antwoorden versturen"}
+        {pending ? "Versturen…" : step === "screen" ? "Verder" : "Antwoorden versturen"}
       </button>
     </form>
   );

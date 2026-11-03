@@ -125,7 +125,7 @@ d("survey distribution: invitations, suppressions and promo posts", () => {
     expect(tokenHash(invitationToken(SALT, inv.id))).toBe(inv.hash);
     const submit = (visitor: string) =>
       as("anon", async (c) =>
-        (await c.query("select public.submit_survey($1, $2, $3, '', '{\"gezocht\":\"nee\"}', true, 30000, $4, 'net1') as r", [ingestKey, S.slug, visitor, inv.hash])).rows[0].r,
+        (await c.query("select public.submit_survey($1, $2, $3, '', '{\"gezocht\":\"nee\"}', true, 30000, $4, 'net1', true, 'ok') as r", [ingestKey, S.slug, visitor, inv.hash])).rows[0].r,
       );
     expect(await submit("v-jan")).toBe("ok");
     expect(await submit("v-jan-2")).toBe("duplicate");
@@ -181,7 +181,7 @@ d("survey distribution: invitations, suppressions and promo posts", () => {
     expect(pub.config.key_question).toBeUndefined();
     expect(pub.config.success_options).toBeUndefined();
     await as("anon", (c) =>
-      c.query("select public.submit_survey($1, $2, 'v-open', 'linkedin', '{\"gezocht\":\"ja\",\"toelichting\":\"Ik ben Jan van Bakkerij X\"}', true, 30000, null, 'net2')", [ingestKey, S.slug]),
+      c.query("select public.submit_survey($1, $2, 'v-open', 'linkedin', '{\"gezocht\":\"ja\",\"toelichting\":\"Ik ben Jan van Bakkerij X\"}', true, 30000, null, 'net2', true, 'ok')", [ingestKey, S.slug]),
     );
     const seen = await as(klant, async (c) => (await c.query("select source, channel, key_answer from public.survey_key_answers($1)", [S.e])).rows);
     expect(seen).toContainEqual({ source: "open_link", channel: "linkedin", key_answer: "ja" });

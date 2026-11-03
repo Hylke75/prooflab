@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { QUESTION_TYPES, type QuestionType, type SurveyConfig, type SurveyQuestion } from "@/lib/domain/survey";
+import { QUESTION_TYPES, STRAIGHTLINE_MIN_SCALES, type QuestionType, type SurveyConfig, type SurveyQuestion } from "@/lib/domain/survey";
 import {
+  addAttentionCheck,
   addOption,
   addQuestion,
   auditSurveyQuestion,
@@ -14,9 +15,14 @@ import {
   moveQuestion,
   removeOption,
   removeQuestion,
+  setAttention,
   setCondition,
   setKeyQuestion,
+  setScreening,
+  setShuffle,
   surveyErrors,
+  toggleFixed,
+  toggleQualifying,
   toggleSuccess,
   updateOption,
   updateQuestion,
@@ -85,6 +91,15 @@ export function SurveyEditor({
     const neighbour = c.questions[i + 1] ?? c.questions[i - 1];
     setFocusId(neighbour ? `sq-${neighbour.id}-text` : "sq-add");
     setAnnounce(`Vraag ${i + 1} verwijderd.${c.key_question === q.id ? " Kies een nieuwe kernvraag." : ""}`);
+  };
+
+  const addCheck = () => {
+    const next = addAttentionCheck(c);
+    if (next === c) return;
+    onChange(next);
+    const at = next.questions.findIndex((x) => !c.questions.some((y) => y.id === x.id));
+    if (at >= 0) setFocusId(`sq-${next.questions[at].id}-text`);
+    setAnnounce(`Controlevraag toegevoegd als vraag ${at + 1}.`);
   };
 
   const add = () => {
@@ -185,6 +200,7 @@ export function SurveyEditor({
             onMove={(dir) => move(q, dir)}
             onRemove={() => remove(q, i)}
             setFocusId={setFocusId}
+            setAnnounce={setAnnounce}
           />
         ))}
       </ol>
@@ -198,7 +214,15 @@ export function SurveyEditor({
         <button type="button" id="sq-add" className="btn white sm" onClick={add} disabled={c.questions.length >= MAX_EDITOR_QUESTIONS}>
           + Vraag toevoegen
         </button>
+        <button type="button" className="btn white sm" onClick={addCheck} disabled={c.questions.length >= MAX_EDITOR_QUESTIONS} aria-describedby="sv-quality-hint">
+          + Controlevraag toevoegen
+        </button>
       </div>
+      <p className="field-hint" id="sv-quality-hint">
+        Niet meegeteld in de kernmeting: antwoorden buiten de doelgroep (screeningsvraag), sneller ingevuld dan geloofwaardig, een fout beantwoorde
+        controlevraag (&quot;kies ‘Soms’ bij deze vraag&quot;) en overal hetzelfde antwoord bij {STRAIGHTLINE_MIN_SCALES} of meer schaalvragen. Ze worden wel
+        bewaard en apart geteld.
+      </p>
       {c.questions.length > 12 && <div className="note">Meer dan 12 vragen: lange enquêtes worden vaker afgebroken of slordig ingevuld.</div>}
 
       <div id="sv-errors" aria-live="polite">
@@ -224,6 +248,7 @@ function QuestionEditor({
   onMove,
   onRemove,
   setFocusId,
+  setAnnounce,
 }: {
   c: SurveyConfig;
   q: SurveyQuestion;
@@ -233,10 +258,13 @@ function QuestionEditor({
   onMove: (dir: -1 | 1) => void;
   onRemove: () => void;
   setFocusId: (id: string) => void;
+  setAnnounce: (s: string) => void;
 }) {
   const p = `sq-${q.id}`;
   const n = index + 1;
   const isKey = c.key_question === q.id;
+  const isScreen = c.screening?.question === q.id;
+  const isCheck = !!q.attention;
   const issues = auditSurveyQuestion(q.text, names);
   const deps = conditionCandidates(c, q.id);
   const dep = q.showIf ? c.questions.find((x) => x.id === q.showIf!.question) : undefined;
@@ -246,7 +274,7 @@ function QuestionEditor({
     <li className="card tight mt-12" style={isKey ? { borderColor: "#a5adfa", boxShadow: "inset 0 0 0 1px #9faafd" } : undefined}>
       <fieldset style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <legend className="tiny" style={{ fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", padding: 0 }}>
-          Vraag {n}{isKey ? " · kernvraag" : ""}
+          Vraag {n}{isKey ? " · kernvraag" : ""}{isScreen ? " · screeningsvraag" : ""}{isCheck ? " · controlevraag" : ""}
         </legend>
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end", marginTop: 6 }}>
           <div className="form-line" style={{ margin: 0, minWidth: 150 }}>
@@ -279,24 +307,89 @@ function QuestionEditor({
           <input className="field" id={`${p}-help`} maxLength={300} value={q.help ?? ""} onChange={(e) => set({ help: e.target.value || undefined })} />
         </div>
         <label className="check-row">
-          <input type="checkbox" checked={q.required} onChange={(e) => set({ required: e.target.checked })} disabled={isKey} /> Verplicht{isKey ? " (de kernvraag is altijd verplicht)" : ""}
+          <input type="checkbox" checked={q.required || isScreen} onChange={(e) => set({ required: e.target.checked })} disabled={isKey || isScreen || isCheck} /> Verplicht
+          {isKey ? " (de kernvraag is altijd verplicht)" : isScreen ? " (de screeningsvraag is altijd verplicht)" : isCheck ? " (een controlevraag is altijd verplicht)" : ""}
         </label>
 
         {isChoice(q) && (
           <>
+            {!isScreen && !isCheck && (
+              <label className="check-row">
+                <input type="radio" name="survey_key_ui" checked={isKey} onChange={() => onChange(updateQuestion(setKeyQuestion(c, q.id), q.id, { required: true }))} />
+                Dit is de kernvraag waarop de test wordt beoordeeld
+              </label>
+            )}
+            {!isKey && !isCheck && (
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  id={`${p}-screen`}
+                  checked={isScreen}
+                  onChange={(e) => {
+                    onChange(setScreening(c, e.target.checked ? q.id : null));
+                    setFocusId(`${p}-screen`);
+                    setAnnounce(e.target.checked ? "Screeningsvraag ingesteld en naar positie 1 verplaatst. Vink aan welke antwoorden bij de doelgroep horen." : "Screening uitgezet.");
+                  }}
+                  aria-describedby={isScreen ? `${p}-screen-hint` : undefined}
+                />
+                Screeningsvraag: wie geen doelgroepantwoord kiest, stopt hier
+              </label>
+            )}
+            {isScreen && (
+              <p className="field-hint" id={`${p}-screen-hint`} style={{ marginTop: -4 }}>
+                Staat altijd als eerste vraag. Wie buiten de doelgroep valt, krijgt een vriendelijk bedankje en geen verdere vragen; dat antwoord wordt
+                bewaard maar telt niet mee in de kernmeting.
+              </p>
+            )}
+            {!isKey && !isScreen && q.type === "single" && (
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  checked={isCheck}
+                  onChange={(e) => onChange(setAttention(c, q.id, e.target.checked ? (q.options?.[0]?.id ?? null) : null))}
+                  aria-describedby={isCheck ? `${p}-check-hint` : undefined}
+                />
+                Controlevraag (aandachtscheck)
+              </label>
+            )}
+            {isCheck && (
+              <p className="field-hint" id={`${p}-check-hint`} style={{ marginTop: -4 }}>
+                Zet in de vraag welk antwoord gekozen moet worden. Wie een ander antwoord kiest, telt niet mee (niet geloofwaardig).
+              </p>
+            )}
             <label className="check-row">
-              <input type="radio" name="survey_key_ui" checked={isKey} onChange={() => onChange(updateQuestion(setKeyQuestion(c, q.id), q.id, { required: true }))} />
-              Dit is de kernvraag waarop de test wordt beoordeeld
+              <input type="checkbox" checked={!!q.shuffle} onChange={(e) => onChange(setShuffle(c, q.id, e.target.checked))} aria-describedby={`${p}-shuffle-hint`} />
+              Volgorde husselen per respondent
             </label>
+            <p className="field-hint" id={`${p}-shuffle-hint`} style={{ marginTop: -4 }}>
+              Tegen de voorkeur voor de eerste optie. Zet uit bij opties met een vaste volgorde (week, maand, jaar). Opties met ‘vast’ blijven op hun plek.
+            </p>
             <fieldset style={{ border: 0, padding: 0, margin: "6px 0 0", minWidth: 0 }}>
-              <legend style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>Antwoordopties{isKey ? " (vink aan wat als succes telt)" : ""}</legend>
+              <legend style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+                Antwoordopties{isKey ? " (vink aan wat als succes telt)" : isScreen ? " (vink aan wat bij de doelgroep hoort)" : isCheck ? " (kies het juiste antwoord)" : ""}
+              </legend>
               {(q.options ?? []).map((o, k) => (
-                <div key={o.id} className="row" style={{ flexWrap: "nowrap", gap: 8, marginBottom: 6, alignItems: "center" }}>
+                <div key={o.id} className="row" style={{ flexWrap: "wrap", gap: 8, marginBottom: 6, alignItems: "center" }}>
                   <label className="sr-only" htmlFor={`${p}-${o.id}`}>Vraag {n}, optie {k + 1}</label>
-                  <input className="field" id={`${p}-${o.id}`} maxLength={160} value={o.label} onChange={(e) => onChange(updateOption(c, q.id, o.id, e.target.value))} />
+                  <input className="field" id={`${p}-${o.id}`} maxLength={160} value={o.label} onChange={(e) => onChange(updateOption(c, q.id, o.id, e.target.value))} style={{ flex: "1 1 220px" }} />
                   {isKey && (
                     <label className="check-row" style={{ margin: 0, whiteSpace: "nowrap" }}>
                       <input type="checkbox" checked={c.success_options.includes(o.id)} onChange={(e) => onChange(toggleSuccess(c, o.id, e.target.checked))} aria-label={`Optie ${k + 1} telt als succes`} /> succes
+                    </label>
+                  )}
+                  {isScreen && (
+                    <label className="check-row" style={{ margin: 0, whiteSpace: "nowrap" }}>
+                      <input type="checkbox" checked={c.screening!.qualifying.includes(o.id)} onChange={(e) => onChange(toggleQualifying(c, o.id, e.target.checked))} aria-label={`Optie ${k + 1} hoort bij de doelgroep`} /> doelgroep
+                    </label>
+                  )}
+                  {isCheck && (
+                    <label className="check-row" style={{ margin: 0, whiteSpace: "nowrap" }}>
+                      <input type="radio" name={`${p}-attention`} checked={q.attention?.option === o.id} onChange={() => onChange(setAttention(c, q.id, o.id))} aria-label={`Optie ${k + 1} is het juiste antwoord`} /> juist
+                    </label>
+                  )}
+                  {q.shuffle && (
+                    <label className="check-row" style={{ margin: 0, whiteSpace: "nowrap" }}>
+                      <input type="checkbox" checked={!!o.fixed} onChange={(e) => onChange(toggleFixed(c, q.id, o.id, e.target.checked))} aria-label={`Optie ${k + 1} blijft op zijn plek`} /> vast
                     </label>
                   )}
                   <button
@@ -351,7 +444,7 @@ function QuestionEditor({
           </div>
         )}
 
-        {!isKey && deps.length > 0 && (
+        {!isKey && !isScreen && !isCheck && deps.length > 0 && (
           <div className="mt-8">
             <div className="form-line" style={{ marginBottom: 6 }}>
               <label htmlFor={`${p}-cond`}>Toon alleen als</label>

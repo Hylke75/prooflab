@@ -12,6 +12,7 @@ import { auditGuide, guideSummary } from "@/lib/domain/interview-audit";
 import { honestyWarnings, type PreparedVariant } from "@/lib/domain/copy-honesty";
 import { GuideAuditList } from "@/components/experiments/InterviewAudit";
 import { SurveyEditor, type SurveyDraftAction } from "@/components/survey/SurveyEditor";
+import { SamplePlanner } from "@/components/survey/SamplePlanner";
 import { templateSurvey, type SurveyConfig } from "@/lib/domain/survey";
 import { metricFromKey, surveyErrors } from "@/lib/domain/survey-editor";
 
@@ -59,7 +60,7 @@ export function ExperimentBuilder({
   const type: ExperimentType = options[tier].type;
   // The survey is kept while switching assumption or test type; the Test Card metric follows its key question.
   const [survey, setSurvey] = useState<SurveyConfig>(() =>
-    templateSurvey({ assumption: assumption.statement, audience: audience || "de doelgroep", researcher: researcher || "de onderzoeker", product: ideaTitle }),
+    templateSurvey({ assumption: assumption.statement, audience: audience || "de doelgroep", researcher: researcher || "de onderzoeker", product: ideaTitle, screen: true }),
   );
   const surveyIssues = useMemo(() => (type === "survey" ? surveyErrors(survey) : []), [type, survey]);
   const defaults = useMemo(() => testCardDefaults(type, assumption.statement, audience), [type, assumption.statement, audience]);
@@ -184,6 +185,14 @@ export function ExperimentBuilder({
             </div>
           ) : (
             <div className="note" style={{ marginTop: 0 }}>Met deze steekproef is de succesdrempel niet aantoonbaar te halen. Verhoog de steekproef.</div>
+          )}
+          {type === "survey" && (
+            <SamplePlanner
+              compact
+              successPct={Number(card.success_threshold_pct)}
+              failPct={card.fail_threshold_pct === null || String(card.fail_threshold_pct) === "" ? null : Number(card.fail_threshold_pct)}
+              minSample={n}
+            />
           )}
           <div className="form-line"><label htmlFor="tc-bias">Verwachte vertekeningen</label><input className="field" id="tc-bias" name="expected_biases" value={card.expected_biases} onChange={(e) => set("expected_biases", e.target.value)} /></div>
           <fieldset className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }}>

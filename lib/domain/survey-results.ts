@@ -2,7 +2,22 @@
 // origin of the answers, the CSV export and the open answers that become customer signals. Pure functions.
 // Survey answers are self-reported: they never count as observed behaviour.
 
-import { keyMetric, minimumDurationMs, type AnswerValue, type KeyMetric, type ResponseRow, type SurveyConfig } from "./survey";
+import {
+  countResponses,
+  isBelievable,
+  keyMetricFromCounts,
+  minimumDurationMs,
+  notBelievable,
+  notBelievableText,
+  responseStatus,
+  STATUS_LABEL,
+  type AnswerValue,
+  type KeyMetric,
+  type QuestionSummary,
+  type ResponseRow,
+  type SurveyConfig,
+  type SurveyCountRow,
+} from "./survey";
 
 export const OPEN_LINK_WARNING_SHARE = 0.5;
 
@@ -16,20 +31,21 @@ export type SurveySplit = {
   warnings: string[];
 };
 
-const tooFastRow = (config: SurveyConfig, r: ResponseRow) => r.duration_ms != null && r.duration_ms < minimumDurationMs(config);
-
+// From response rows (tests, CSV) or from the per-source × channel counts of survey_key_counts() (the pages).
 export function surveySplit(config: SurveyConfig, rows: ResponseRow[], minSample: number): SurveySplit {
-  const all = keyMetric(config, rows);
-  const invitation = keyMetric(config, rows, "invitation");
-  const openLink = keyMetric(config, rows, "open_link");
+  return surveySplitFromCounts(config, countResponses(config, rows), minSample);
+}
+
+export function surveySplitFromCounts(config: SurveyConfig, counts: SurveyCountRow[], minSample: number): SurveySplit {
+  const all = keyMetricFromCounts(counts);
+  const invitation = keyMetricFromCounts(counts, "invitation");
+  const openLink = keyMetricFromCounts(counts, "open_link");
   const channels = new Map<string, { channel: string; n: number; successes: number }>();
-  for (const r of rows) {
-    if (tooFastRow(config, r)) continue;
-    const a = r.answers[config.key_question];
-    if (a == null) continue;
+  for (const r of counts) {
+    if (r.n === 0) continue;
     const c = channels.get(r.channel) ?? { channel: r.channel, n: 0, successes: 0 };
-    c.n++;
-    if ((Array.isArray(a) ? a : [String(a)]).some((x) => config.success_options.includes(x))) c.successes++;
+    c.n += r.n;
+    c.successes += r.successes;
     channels.set(r.channel, c);
   }
   const openLinkShare = all.n ? openLink.n / all.n : null;
@@ -39,13 +55,19 @@ export function surveySplit(config: SurveyConfig, rows: ResponseRow[], minSample
       `Open link: herkomst niet te controleren. ${Math.round(openLinkShare * 100)}% van de antwoorden komt via de open link; AI-agents en mensen buiten de doelgroep vullen open enquêtes overtuigend in. Weeg de uitgenodigde respondenten zwaarder.`,
     );
   }
-  if (all.tooFast > 0) {
+  if (all.tooFast > 0 && all.tooFast === notBelievable(all)) {
     warnings.push(`${all.tooFast} ${all.tooFast === 1 ? "antwoord is" : "antwoorden zijn"} niet meegeteld: sneller ingevuld dan geloofwaardig (minder dan ${Math.round(minimumDurationMs(config) / 1000)} seconden).`);
+  } else if (notBelievable(all) > 0) {
+    const x = notBelievable(all);
+    warnings.push(`${x} ${x === 1 ? "antwoord is" : "antwoorden zijn"} niet meegeteld omdat ze niet geloofwaardig zijn: ${notBelievableText(all)}.`);
   }
-  if (rows.length > 0 && invitation.n < minSample) {
+  if (all.screenedOut > 0) {
+    warnings.push(`${all.screenedOut} ${all.screenedOut === 1 ? "respondent viel" : "respondenten vielen"} buiten de doelgroep (screeningsvraag) en ${all.screenedOut === 1 ? "telt" : "tellen"} niet mee.`);
+  }
+  if (all.responses > 0 && invitation.n < minSample) {
     warnings.push(`Pas ${invitation.n} van de minimaal ${minSample} antwoorden komen van persoonlijk uitgenodigde, bekende respondenten.`);
   }
-  return { all, invitation, openLink, byChannel: [...channels.values()].sort((a, b) => b.n - a.n), responses: rows.length, openLinkShare, warnings };
+  return { all, invitation, openLink, byChannel: [...channels.values()].sort((a, b) => b.n - a.n), responses: all.responses, openLinkShare, warnings };
 }
 
 // ---------------------------------------------------------------------------
@@ -86,11 +108,9 @@ function answerText(config: SurveyConfig, qid: string, v: AnswerValue | undefine
 }
 
 export function surveyCsv(config: SurveyConfig, rows: ExportRow[]): string {
-  const min = minimumDurationMs(config);
   const header = ["respons", "datum", "bron", "kanaal", "duur_seconden", "meegeteld", ...config.questions.map((q, i) => `${i + 1}. ${q.text}`)];
   const lines = [header.map(csvCell).join(SEP)];
   rows.forEach((r, i) => {
-    const fast = r.duration_ms != null && r.duration_ms < min;
     lines.push(
       [
         String(i + 1),
@@ -98,7 +118,7 @@ export function surveyCsv(config: SurveyConfig, rows: ExportRow[]): string {
         SOURCE_LABEL[r.source],
         r.channel,
         r.duration_ms == null ? "" : String(Math.round(r.duration_ms / 1000)),
-        fast ? "nee (te snel)" : "ja",
+        STATUS_LABEL[responseStatus(config, r)],
         ...config.questions.map((q) => answerText(config, q.id, r.answers[q.id])),
       ]
         .map(csvCell)
@@ -125,7 +145,7 @@ export function openAnswers(config: SurveyConfig, rows: ResponseRow[]): OpenAnsw
   const textQs = config.questions.filter((q) => q.type === "text");
   const out: OpenAnswer[] = [];
   rows.forEach((r, i) => {
-    if (tooFastRow(config, r)) return;
+    if (!isBelievable(config, r)) return;
     for (const q of textQs) {
       const v = r.answers[q.id];
       if (typeof v !== "string") continue;
@@ -134,4 +154,77 @@ export function openAnswers(config: SurveyConfig, rows: ResponseRow[]): OpenAnsw
     }
   });
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Sharing per-question summaries with clients
+// ---------------------------------------------------------------------------
+
+// The database (survey_shared_summaries) returns nothing for a shared question with fewer believable answers.
+export const SHARE_MIN_N = 5;
+
+// Closed questions a consultant can share with clients: choice, scale and number. Never open answers, and not
+// attention checks (they say nothing about the topic).
+export function shareableQuestions(config: SurveyConfig): SurveyConfig["questions"] {
+  return config.questions.filter((q) => q.type !== "text" && !q.attention);
+}
+
+// Keeps only ids of shareable questions, in survey order.
+export function cleanShare(config: SurveyConfig, ids: unknown[]): string[] {
+  const want = new Set(ids.filter((x): x is string => typeof x === "string"));
+  return shareableQuestions(config)
+    .map((q) => q.id)
+    .filter((id) => want.has(id));
+}
+
+export type SharedRow = { question_id: string; value: string; answers: number; count: number };
+
+// Rebuilds per-question summaries from the aggregate rows of survey_shared_summaries(). Shared questions without
+// rows have too few believable answers to show (hidden).
+export function sharedSummaries(config: SurveyConfig, rows: SharedRow[], shared: string[]): { summaries: QuestionSummary[]; hidden: string[] } {
+  const summaries: QuestionSummary[] = [];
+  const hidden: string[] = [];
+  for (const q of shareableQuestions(config)) {
+    if (!shared.includes(q.id)) continue;
+    const mine = rows.filter((r) => r.question_id === q.id);
+    if (mine.length === 0) {
+      hidden.push(q.id);
+      continue;
+    }
+    const n = Number(mine[0].answers);
+    if (q.type === "single" || q.type === "multi") {
+      const count = (id: string) => Number(mine.find((r) => r.value === id)?.count ?? 0);
+      summaries.push({
+        id: q.id,
+        type: q.type,
+        text: q.text,
+        n,
+        options: (q.options ?? []).map((o) => ({ id: o.id, label: o.label, count: count(o.id), share: n ? count(o.id) / n : 0 })),
+      });
+      continue;
+    }
+    const distribution = mine
+      .map((r) => ({ value: Number(r.value), count: Number(r.count) }))
+      .filter((d) => Number.isFinite(d.value))
+      .sort((a, b) => a.value - b.value);
+    const total = distribution.reduce((s, d) => s + d.count, 0);
+    const at = (k: number) => {
+      let seen = 0;
+      for (const d of distribution) {
+        seen += d.count;
+        if (k < seen) return d.value;
+      }
+      return distribution[distribution.length - 1]?.value ?? 0;
+    };
+    summaries.push({
+      id: q.id,
+      type: q.type === "scale" ? "scale" : "number",
+      text: q.text,
+      n: total,
+      mean: total ? distribution.reduce((s, d) => s + d.value * d.count, 0) / total : null,
+      median: total ? (total % 2 ? at((total - 1) / 2) : (at(total / 2 - 1) + at(total / 2)) / 2) : null,
+      distribution,
+    });
+  }
+  return { summaries, hidden };
 }

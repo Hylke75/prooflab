@@ -320,6 +320,9 @@ export const SurveySubmitSchema = z.object({
   token: z.string().max(64).optional(),
   utm_source: z.string().max(40).optional(),
   website: z.string().max(200).optional(), // honeypot: real people leave it empty; filled = bot, nothing stored
+  // "screen": only the screening question (and consent). A respondent outside the target group is stored and
+  // done; one inside it continues with the other questions (nothing is stored yet).
+  stage: z.enum(["screen", "full"]).optional(),
 });
 export type SurveySubmit = z.infer<typeof SurveySubmitSchema>;
 
@@ -362,6 +365,13 @@ export function submitMessage(result: string, invited: boolean): SubmitOutcome {
       return { done: false, message: "Er ging iets mis bij het opslaan. Probeer het opnieuw." };
   }
 }
+
+// Shown to someone the screening question puts outside the target group: polite, no further questions, and
+// without telling which answer would have qualified.
+export const SCREENED_OUT = {
+  title: "Dank je wel.",
+  text: "Deze enquête is bedoeld voor een specifieke groep. Op basis van je antwoord hoef je verder niets in te vullen. Bedankt voor je tijd.",
+} as const;
 
 // ---------------------------------------------------------------------------
 // 6. Respondent-side checks (the public form; the server validates again)

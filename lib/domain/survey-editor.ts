@@ -3,7 +3,7 @@
 // audit into Dutch messages. The browser uses them for the live editor, the server again before saving.
 
 import type { z } from "zod";
-import { SurveyConfigSchema, type QuestionType, type SurveyConfig, type SurveyQuestion } from "./survey";
+import { looksFixed, SurveyConfigSchema, type QuestionType, type SurveyConfig, type SurveyQuestion } from "./survey";
 import { auditQuestion, type AuditIssue, type IssueKind } from "./interview-audit";
 
 export const MAX_EDITOR_QUESTIONS = 25;
@@ -23,13 +23,17 @@ export function newQuestion(type: QuestionType, existingIds: string[]): SurveyQu
   return withType({ id: nextId("q", existingIds), type: "text", text: "", required: true }, type);
 }
 
-// Changes the type and keeps what still fits: choice types keep (or get) two options, a scale gets ends.
+// Changes the type and keeps what still fits: choice types keep (or get) two options, a scale gets ends. New choice
+// questions shuffle their options per respondent (switch it off for options with a natural order).
 export function withType(q: SurveyQuestion, type: QuestionType): SurveyQuestion {
   const next: SurveyQuestion = { ...q, type };
   delete next.options;
   delete next.scale;
+  delete next.shuffle;
+  if (type !== "single") delete next.attention;
   if (type === "single" || type === "multi") {
     next.options = q.options && q.options.length >= 2 ? q.options : [{ id: "o1", label: "" }, { id: "o2", label: "" }];
+    next.shuffle = q.shuffle ?? true;
   }
   if (type === "scale") next.scale = q.scale ?? DEFAULT_SCALE;
   return next;
@@ -67,6 +71,7 @@ function forgetChoices(c: SurveyConfig, id: string): SurveyConfig {
     ...c,
     key_question: c.key_question === id ? "" : c.key_question,
     success_options: c.key_question === id ? [] : c.success_options,
+    screening: c.screening?.question === id ? undefined : c.screening,
     questions: c.questions.map((q) => (q.showIf?.question === id ? stripCondition(q) : q)),
   };
 }
@@ -115,8 +120,13 @@ export function removeOption(c: SurveyConfig, qid: string, oid: string): SurveyC
   return {
     ...c,
     success_options: c.key_question === qid ? c.success_options.filter((o) => o !== oid) : c.success_options,
+    screening: c.screening?.question === qid ? { ...c.screening, qualifying: c.screening.qualifying.filter((o) => o !== oid) } : c.screening,
     questions: c.questions.map((q) => {
-      if (q.id === qid) return { ...q, options: (q.options ?? []).filter((o) => o.id !== oid) };
+      if (q.id === qid) {
+        const next = { ...q, options: (q.options ?? []).filter((o) => o.id !== oid) };
+        if (next.attention?.option === oid) delete next.attention;
+        return next;
+      }
       if (q.showIf?.question === qid) {
         const options = q.showIf.options.filter((o) => o !== oid);
         return options.length ? { ...q, showIf: { ...q.showIf, options } } : stripCondition(q);
@@ -129,9 +139,100 @@ export function removeOption(c: SurveyConfig, qid: string, oid: string): SurveyC
 export function setKeyQuestion(c: SurveyConfig, qid: string): SurveyConfig {
   const q = c.questions.find((x) => x.id === qid);
   if (!q || !isChoice(q)) return c;
-  // The key question is asked to everyone.
-  const questions = c.questions.map((x) => (x.id === qid ? stripCondition(x) : x));
-  return { ...c, questions, key_question: qid, success_options: c.key_question === qid ? c.success_options : [] };
+  // The key question is asked to everyone; it cannot also screen or check attention.
+  const questions = c.questions.map((x) => (x.id === qid ? withoutAttention(stripCondition(x)) : x));
+  return {
+    ...c,
+    questions,
+    key_question: qid,
+    success_options: c.key_question === qid ? c.success_options : [],
+    screening: c.screening?.question === qid ? undefined : c.screening,
+  };
+}
+
+function withoutAttention(q: SurveyQuestion): SurveyQuestion {
+  const rest = { ...q };
+  delete rest.attention;
+  return rest;
+}
+
+// ---------------------------------------------------------------------------
+// Screening, option order and attention checks
+// ---------------------------------------------------------------------------
+
+// Makes a choice question the screening question (null: no screening). It moves to the top, is asked to everyone,
+// and no answer qualifies until the consultant ticks which answers belong to the target group.
+export function setScreening(c: SurveyConfig, qid: string | null): SurveyConfig {
+  if (!qid) return { ...c, screening: undefined };
+  const q = c.questions.find((x) => x.id === qid);
+  if (!q || !isChoice(q) || q.id === c.key_question) return c;
+  const moved = { ...withoutAttention(stripCondition(q)), required: true };
+  const keep = c.screening?.question === qid ? c.screening.qualifying : [];
+  return { ...c, questions: [moved, ...c.questions.filter((x) => x.id !== qid)], screening: { question: qid, qualifying: keep } };
+}
+
+export function toggleQualifying(c: SurveyConfig, oid: string, on: boolean): SurveyConfig {
+  if (!c.screening) return c;
+  const set = new Set(c.screening.qualifying);
+  if (on) set.add(oid);
+  else set.delete(oid);
+  const q = c.questions.find((x) => x.id === c.screening!.question);
+  return { ...c, screening: { ...c.screening, qualifying: (q?.options ?? []).map((o) => o.id).filter((id) => set.has(id)) } };
+}
+
+export function setShuffle(c: SurveyConfig, qid: string, on: boolean): SurveyConfig {
+  return {
+    ...c,
+    questions: c.questions.map((q) => {
+      if (q.id !== qid || !isChoice(q)) return q;
+      // Switching it on marks "Anders" / "Weet ik niet" style options as fixed, so they stay at the end.
+      const options = on ? (q.options ?? []).map((o) => (o.fixed == null && looksFixed(o.label) ? { ...o, fixed: true } : o)) : q.options;
+      return { ...q, shuffle: on, options };
+    }),
+  };
+}
+
+export function toggleFixed(c: SurveyConfig, qid: string, oid: string, on: boolean): SurveyConfig {
+  return {
+    ...c,
+    questions: c.questions.map((q) => (q.id === qid ? { ...q, options: (q.options ?? []).map((o) => (o.id === oid ? { ...o, fixed: on } : o)) } : q)),
+  };
+}
+
+// Marks a single-choice question as attention check with its instructed answer (null: an ordinary question).
+export function setAttention(c: SurveyConfig, qid: string, option: string | null): SurveyConfig {
+  return {
+    ...c,
+    questions: c.questions.map((q) => {
+      if (q.id !== qid) return q;
+      if (!option) return withoutAttention(q);
+      if (q.type !== "single" || q.id === c.key_question || q.id === c.screening?.question) return q;
+      return { ...stripCondition(q), required: true, attention: { option } };
+    }),
+  };
+}
+
+export const ATTENTION_TEXT = "Om te controleren of de vragen goed gelezen worden: kies bij deze vraag ‘Soms’.";
+
+// Adds a ready-made instructed-response item halfway the list (never before a screening question).
+export function addAttentionCheck(c: SurveyConfig): SurveyConfig {
+  if (c.questions.length >= MAX_EDITOR_QUESTIONS) return c;
+  const id = nextId("q", c.questions.map((q) => q.id));
+  const q: SurveyQuestion = {
+    id,
+    type: "single",
+    text: ATTENTION_TEXT,
+    required: true,
+    options: [
+      { id: "o1", label: "Nooit" },
+      { id: "o2", label: "Soms" },
+      { id: "o3", label: "Vaak" },
+      { id: "o4", label: "Altijd" },
+    ],
+    attention: { option: "o2" },
+  };
+  const at = Math.max(c.screening ? 1 : 0, Math.ceil(c.questions.length / 2));
+  return { ...c, questions: [...c.questions.slice(0, at), q, ...c.questions.slice(at)] };
 }
 
 export function toggleSuccess(c: SurveyConfig, oid: string, on: boolean): SurveyConfig {
@@ -183,7 +284,7 @@ export function metricFromKey(c: SurveyConfig): { metric_label: string; metric_n
   return {
     metric_label: `Kernvraag: ${short.length > 80 ? `${short.slice(0, 79).trimEnd()}…` : short}`.slice(0, 200),
     metric_numerator: `respondenten die ${quoteList(labels)} kozen`.slice(0, 200),
-    metric_denominator: "respondenten die de kernvraag beantwoordden",
+    metric_denominator: c.screening ? "geloofwaardige respondenten uit de doelgroep die de kernvraag beantwoordden" : "respondenten die de kernvraag beantwoordden",
   };
 }
 
@@ -208,6 +309,10 @@ const FIELD: Record<string, string> = {
   max: "het einde van de schaal",
   minLabel: "het label aan het begin van de schaal",
   maxLabel: "het label aan het einde van de schaal",
+  screening: "De screeningsvraag",
+  qualifying: "De doelgroepantwoorden",
+  attention: "De controlevraag",
+  option: "het juiste antwoord",
 };
 
 type Issue = z.core.$ZodIssue;
@@ -218,7 +323,12 @@ function dutch(issue: Issue): string {
   const cap = field.charAt(0).toUpperCase() + field.slice(1);
   if (issue.code === "too_small") {
     if (issue.origin === "string") return `${cap} is te kort (minimaal ${issue.minimum} tekens).`;
-    if (issue.origin === "array") return last === "questions" ? "Voeg minstens één vraag toe." : last === "success_options" ? "Kies minstens één succesoptie bij de kernvraag." : `${cap}: te weinig items.`;
+    if (issue.origin === "array") {
+      if (last === "questions") return "Voeg minstens één vraag toe.";
+      if (last === "success_options") return "Kies minstens één succesoptie bij de kernvraag.";
+      if (last === "qualifying") return "Vink bij de screeningsvraag minstens één antwoord aan dat bij de doelgroep hoort.";
+      return `${cap}: te weinig items.`;
+    }
     return `${cap} is te laag (minimaal ${issue.minimum}).`;
   }
   if (issue.code === "too_big") {

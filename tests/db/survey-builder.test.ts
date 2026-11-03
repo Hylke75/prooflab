@@ -105,7 +105,7 @@ d("survey builder: stored config, lock, self-reported evidence and open answers"
         try {
           await db.query("set local role anon");
           const out = await db.query(
-            "select public.submit_survey($1, $2, 'v-open-1', 'linkedin', $3, true, 60000, null, 'net-sb') as r",
+            "select public.submit_survey($1, $2, 'v-open-1', 'linkedin', $3, true, 60000, null, 'net-sb', true, 'ok') as r",
             [ingestKey, slug, JSON.stringify({ laatst: "maand", gezocht: "nee", last: 3, toelichting: "Te weinig tijd om uit te zoeken" })],
           );
           await db.query("commit");

@@ -1,8 +1,8 @@
 import "server-only";
 import { supabaseServer } from "@/lib/supabase/server";
 import { betaBinomial, empiricalPrior, FLAT_PRIOR, verdict, type BayesEstimate, type BetaPrior, type Verdict } from "@/lib/domain/stats";
-import { SurveyConfigSchema, type Answers, type SurveyConfig } from "@/lib/domain/survey";
-import { surveySplit, type ExportRow, type SurveySplit } from "@/lib/domain/survey-results";
+import { QUALITY_VALUES, SurveyConfigSchema, type Answers, type Quality, type SurveyConfig, type SurveyCountRow } from "@/lib/domain/survey";
+import { surveySplitFromCounts, type ExportRow, type SurveySplit } from "@/lib/domain/survey-results";
 
 export type LandingConfig = {
   headline: string;
@@ -44,23 +44,29 @@ export type ExperimentMetrics = {
   survey: SurveySplit | null;
 };
 
-// Only the pre-registered key question per response, for everyone who can read the dossier (clients included):
-// enough for the verdict and the split per source, without the other (possibly personal) answers.
-export async function loadSurveyKeyAnswers(expId: string, keyQuestion: string): Promise<{ rows: ExportRow[]; error: boolean }> {
+// The key metric per source × channel, counted in the database (survey_key_counts) from the quality flags the
+// submit route stored. Readable for everyone who can read the dossier (clients included): counts, no answers.
+export async function loadSurveyCounts(expId: string): Promise<{ counts: SurveyCountRow[]; error: boolean }> {
   const supabase = await supabaseServer();
-  const { data, error } = await supabase.rpc("survey_key_answers", { p_experiment: expId });
-  if (error) return { rows: [], error: true };
+  const { data, error } = await supabase.rpc("survey_key_counts", { p_experiment: expId });
+  if (error) return { counts: [], error: true };
   return {
-    rows: (data ?? []).map((r) => ({
-      answers: (r.key_answer == null ? {} : { [keyQuestion]: r.key_answer }) as Answers,
+    counts: (data ?? []).map((r) => ({
       source: r.source === "invitation" ? "invitation" : "open_link",
       channel: r.channel,
-      duration_ms: r.duration_ms,
-      created_at: r.created_at,
+      responses: Number(r.responses),
+      n: Number(r.n),
+      successes: Number(r.successes),
+      too_fast: Number(r.too_fast),
+      screened_out: Number(r.screened_out),
+      failed_attention: Number(r.failed_attention),
+      straightlining: Number(r.straightlining),
     })),
     error: false,
   };
 }
+
+const asQuality = (q: string): Quality => ((QUALITY_VALUES as readonly string[]).includes(q) ? (q as Quality) : "ok");
 
 // The stored survey config, or null when it does not (or no longer) match the schema.
 export function surveyConfigOf(config: unknown): SurveyConfig | null {
@@ -78,7 +84,7 @@ export async function loadSurveyResponses(expId: string): Promise<{ rows: Export
   for (let from = 0; from < MAX_RESPONSES; from += RESPONSE_PAGE) {
     const { data, error } = await supabase
       .from("survey_responses")
-      .select("id, answers, source, channel, duration_ms, created_at")
+      .select("id, answers, source, channel, duration_ms, qualified, quality, created_at")
       .eq("experiment_id", expId)
       .order("created_at")
       .order("id")
@@ -90,6 +96,8 @@ export async function loadSurveyResponses(expId: string): Promise<{ rows: Export
         source: r.source === "invitation" ? "invitation" : "open_link",
         channel: r.channel,
         duration_ms: r.duration_ms,
+        qualified: r.qualified,
+        quality: asQuality(r.quality),
         created_at: r.created_at,
       });
     }
@@ -158,12 +166,12 @@ export async function experimentMetrics(exp: Exp, h: Hyp): Promise<ExperimentMet
     // The verdict uses every believable response (all sources), as pre-registered; the split per source shows
     // how much of it comes from known, invited people.
     const config = surveyConfigOf(exp.config);
-    const { rows, error } = config ? await loadSurveyKeyAnswers(exp.id, config.key_question) : { rows: [], error: false };
+    const { counts, error } = config ? await loadSurveyCounts(exp.id) : { counts: [], error: false };
     if (error) warnings.push("De antwoorden konden niet worden opgehaald; de cijfers hieronder zijn onvolledig.");
     if (!config) {
       warnings.push("De opzet van deze enquête is ongeldig; er kan geen kernvraag worden geteld.");
     } else {
-      survey = surveySplit(config, rows, h.min_sample);
+      survey = surveySplitFromCounts(config, counts, h.min_sample);
       n = survey.all.n;
       successes = survey.all.successes;
       byChannel = survey.byChannel.map((c) => ({ channel: c.channel, visitors: c.n, actions: c.successes }));

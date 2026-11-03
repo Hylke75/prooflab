@@ -26,6 +26,7 @@ import {
   channelLink,
 } from "@/lib/domain/survey-distribution";
 import { emailHash, invitationToken, tokenHash } from "@/lib/domain/survey-tokens";
+import { cleanShare } from "@/lib/domain/survey-results";
 import { PROMO_MIN, PROMO_PLATFORMS, PROMO_PLATFORM_KEYS, finalizePost, isPromoPlatform, templatePosts, type PromoInput, type PromoPlatform } from "@/lib/domain/promo";
 import { SEND_GAP_MS, sendEmail, sleep } from "@/lib/email";
 import { aiErrorMessage, runAi } from "@/lib/ai/guard";
@@ -438,5 +439,32 @@ export async function deletePromoPost(ideaId: string, expId: string, postId: str
     return { ok: "Verwijderd." };
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Er ging iets mis.");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sharing per-question summaries with clients
+// ---------------------------------------------------------------------------
+
+// Which closed questions clients see as a summary (choice, scale, number; never open answers). Stored apart from
+// the locked survey config, so it can change while results come in.
+export async function saveSurveyShare(ideaId: string, expId: string, _: { error: string | null; ok?: string | null }, form: FormData): Promise<{ error: string | null; ok?: string | null }> {
+  try {
+    const exp = await loadExp(ideaId, expId);
+    const config = exp.type === "survey" ? surveyConfig(exp) : null;
+    if (!config) return { error: "Enquête niet gevonden." };
+    const questions = cleanShare(config, form.getAll("share"));
+    const supabase = await supabaseServer();
+    const { error } = await supabase
+      .from("survey_shares")
+      .upsert({ experiment_id: expId, idea_id: ideaId, questions, updated_at: new Date().toISOString() }, { onConflict: "experiment_id" });
+    if (error) return { error: "Opslaan is mislukt." };
+    refresh(ideaId, expId);
+    return {
+      error: null,
+      ok: questions.length ? `Opdrachtgevers zien nu ${questions.length} ${questions.length === 1 ? "vraag" : "vragen"} als samenvatting.` : "Opdrachtgevers zien alleen de kernvraag.",
+    };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Er ging iets mis." };
   }
 }

@@ -224,7 +224,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
         </div>
       )}
 
-      <Distribution ideaId={id} exp={exp} canWrite={canWrite} />
+      <Distribution ideaId={id} exp={exp} canWrite={canWrite} plan={h} />
 
       {type === "interview" && canWrite && (
         <>

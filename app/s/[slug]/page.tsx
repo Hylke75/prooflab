@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { supabaseAnon } from "@/lib/supabase/server";
-import { SurveyConfigSchema } from "@/lib/domain/survey";
+import { PublicSurveyConfigSchema, presentQuestions } from "@/lib/domain/survey";
+import { visitorFromRequest } from "@/lib/public-test";
 import { isSlug, isToken } from "@/lib/domain/survey-distribution";
 import { tokenHash } from "@/lib/domain/survey-tokens";
 import { SurveyForm } from "./SurveyForm";
@@ -33,7 +34,9 @@ function Message({ title, text, researcher }: { title: string; text: string; res
 }
 
 // Public, brand-neutral survey page. No cookies, no third-party scripts. Personal invitations use ?u=<token>;
-// open links carry ?utm_source=<channel>. The key question and its success options are not sent to the browser.
+// open links carry ?utm_source=<channel>. The key question, its success options, the qualifying screening answers
+// and the correct answers of attention checks are not sent to the browser. Options of shuffled questions appear in
+// an order per respondent (seeded by the invitation token or the visitor code: a reload shows the same order).
 export default async function SurveyPage({ params, searchParams }: PageProps<"/s/[slug]">) {
   const { slug } = await params;
   const sp = await searchParams;
@@ -43,7 +46,7 @@ export default async function SurveyPage({ params, searchParams }: PageProps<"/s
   const { data } = await supabaseAnon().rpc("get_public_survey", { p_slug: slug, p_token_hash: token ? tokenHash(token) : null });
   if (!data) notFound();
   const survey = data as unknown as PublicSurvey;
-  const parsed = SurveyConfigSchema.safeParse(survey.config);
+  const parsed = PublicSurveyConfigSchema.safeParse(survey.config);
   if (!parsed.success) return <Message title="Deze enquête is niet beschikbaar." text="Er is iets mis met deze vragenlijst. De onderzoeker is op de hoogte gebracht als het probleem blijft." />;
   const c = parsed.data;
 
@@ -57,6 +60,7 @@ export default async function SurveyPage({ params, searchParams }: PageProps<"/s
   }
   const live = survey.state === "live";
   const invited = !!token;
+  const seed = token ?? (await visitorFromRequest(slug)).hash;
 
   return (
     <div className="tp">
@@ -83,7 +87,8 @@ export default async function SurveyPage({ params, searchParams }: PageProps<"/s
             token={token}
             researcher={c.researcher}
             thankYou={c.thank_you}
-            questions={c.questions}
+            questions={presentQuestions(c.questions, seed)}
+            screeningQuestion={c.screening?.question ?? null}
           />
         </div>
       </main>
