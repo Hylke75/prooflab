@@ -88,6 +88,10 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.getByLabel("Bevinding (één zin)", { exact: true }).fill("Nederland telde in 2026 41.230 vestigingen in congres- en beursorganisatie.");
   await page.getByLabel("Letterlijk citaat uit het fragment", { exact: true }).fill("In 2026 telde Nederland 41.230 vestigingen in de branche congres- en beursorganisatie.");
   await expect(page.getByText("✓ Citaat staat letterlijk in het fragment.")).toBeVisible();
+  // Golf C: populatie, regio en peildatum per bevinding zijn verplicht; hier gelijk aan de intake (direct bewijs).
+  await page.getByLabel("Populatie", { exact: true }).fill("vestigingen in congres- en beursorganisatie");
+  await page.getByLabel("Regio", { exact: true }).fill("Nederland");
+  await page.getByLabel("Peildatum", { exact: true }).fill("2026");
   await page.getByLabel("Wat bewijst dit nog níét?", { exact: true }).fill("Dat deze bedrijven het probleem hebben of willen betalen.");
   await page.getByRole("button", { name: "Bevinding toetsen en opslaan" }).click();
   await expect(page.getByText(/Bevinding opgeslagen/)).toBeVisible();
