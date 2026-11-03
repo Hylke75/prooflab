@@ -186,7 +186,7 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
                 <h3>{idea.title}</h3>
                 <p>{idea.description.length > 140 ? `${idea.description.slice(0, 137)}…` : idea.description}</p>
                 <div className="progress" role="img" aria-label={`${done} van 5 stappen met bewijs afgerond`}>
-                  <div style={{ width: `${(done / 5) * 100}%`, background: idx % 2 ? "var(--coral)" : undefined }} />
+                  <div style={{ width: `${(done / 5) * 100}%`, background: idx % 2 ? "var(--color-risk)" : undefined }} />
                 </div>
                 <div className="idea-foot">
                   <span>

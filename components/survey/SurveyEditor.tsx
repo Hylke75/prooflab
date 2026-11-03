@@ -271,7 +271,7 @@ function QuestionEditor({
   const set = (patch: Partial<SurveyQuestion>) => onChange(updateQuestion(c, q.id, patch));
 
   return (
-    <li className="card tight mt-12" style={isKey ? { borderColor: "var(--color-primary)", boxShadow: "inset 0 0 0 1px var(--color-primary)" } : undefined}>
+    <li className="card tight mt-12" style={isKey ? { boxShadow: "inset 0 0 0 2px var(--color-primary)" } : undefined}>
       <fieldset style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <legend className="tiny" style={{ fontWeight: 600, padding: 0 }}>
           Vraag {n}{isKey ? " · kernvraag" : ""}{isScreen ? " · screeningsvraag" : ""}{isCheck ? " · controlevraag" : ""}

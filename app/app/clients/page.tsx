@@ -51,7 +51,7 @@ export default async function ClientsPage() {
               {list.map((i) => {
                 const mem = (members ?? []).filter((m) => m.idea_id === i.id);
                 return (
-                  <div key={i.id} style={{ borderTop: "1px solid var(--line)", paddingTop: 14, marginTop: 14 }}>
+                  <div key={i.id} style={{ borderTop: "1px solid var(--color-border)", paddingTop: 14, marginTop: 14 }}>
                     <div className="row between">
                       <Link className="text-link" href={`/app/ideas/${i.id}/research`} style={{ fontSize: 13 }}>{i.title}</Link>
                       <span className="tiny">{mem.length} meekijker(s)</span>

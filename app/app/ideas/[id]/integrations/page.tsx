@@ -131,7 +131,7 @@ export default async function IntegrationsPage({ params }: PageProps<"/app/ideas
           ) : (
             <div aria-label="Outreach per campagne" role="list">
               {stats.map((s) => (
-                <div key={s.campaign} className="data-row" role="listitem" style={{ alignItems: "start", borderBottom: "1px solid var(--line)", paddingBottom: 12 }}>
+                <div key={s.campaign} className="data-row" role="listitem" style={{ alignItems: "start", borderBottom: "1px solid var(--color-border)", paddingBottom: 12 }}>
                   <div>
                     <strong>{s.campaign}</strong>
                     <div className="tiny">

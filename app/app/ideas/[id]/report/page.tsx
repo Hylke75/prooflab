@@ -163,17 +163,17 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               {r.labelMissing.length ? ` Voor een hoger niveau ontbreekt: ${r.labelMissing.join("; ")}.` : ""}
             </p>
             <div className="grid-3" style={{ margin: "20px 0" }}>
-              <div style={{ background: "var(--color-surface-soft)", padding: 16, borderRadius: 12 }}>
+              <div style={{ background: "var(--color-surface-soft)", padding: 16, borderRadius: "var(--radius-inner)" }}>
                 <div className="tiny">Bevindingen met bron</div>
                 <div className="report-number">{r.counts.claims}</div>
                 <div className="tiny">{r.counts.verified} geverifieerd · {r.counts.insufficient} onvoldoende</div>
               </div>
-              <div style={{ background: "var(--color-success-soft)", padding: 16, borderRadius: 12 }}>
+              <div style={{ background: "var(--color-success-soft)", padding: 16, borderRadius: "var(--radius-inner)" }}>
                 <div className="tiny">Experimenten</div>
                 <div className="report-number">{String(r.experiments.length).padStart(2, "0")}</div>
                 <div className="tiny">{r.learningCards.length} met goedgekeurde Learning Card</div>
               </div>
-              <div style={{ background: "var(--color-warning-soft)", padding: 16, borderRadius: 12 }}>
+              <div style={{ background: "var(--color-warning-soft)", padding: 16, borderRadius: "var(--radius-inner)" }}>
                 <div className="tiny">Bereikbare jaaromzet (realistisch)</div>
                 <div className="report-number">{r.sizing.find((s) => s.label === "Realistisch") ? eur(r.sizing.find((s) => s.label === "Realistisch")!.somRevenue) : "?"}</div>
                 <div className="tiny">{r.sizing.find((s) => s.label === "Realistisch")?.status ?? "niet berekend"}</div>

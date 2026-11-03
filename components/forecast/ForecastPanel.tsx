@@ -38,7 +38,7 @@ function ForecastList({ rows }: { rows: ForecastRow[] }) {
       )}
       {rows.map((r) => (
         <div className="evidence-event" key={r.id}>
-          <div className="icon-circle num" style={{ width: 46, fontSize: 14, fontWeight: 700, borderRadius: 12 }}>{pct(r.probability)}</div>
+          <div className="icon-circle num" style={{ width: 46, fontSize: 14, fontWeight: 700, borderRadius: "var(--radius-pill)" }}>{pct(r.probability)}</div>
           <div>
             <strong>{r.name}</strong>{" "}
             <span className={`pill ${KIND_PILL[r.kind]}`}>{r.kind === "ai" ? "AI-voorspelling · geen bewijs" : r.kind === "consultant" ? "Consultant" : "Opdrachtgever"}</span>

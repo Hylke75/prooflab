@@ -393,7 +393,7 @@ export function Invitations(p: Props) {
             {job.progress.failed ? ` · ${job.progress.failed} mislukt` : ""}
             {job.progress.skipped ? ` · ${job.progress.skipped} overgeslagen` : ""}
           </label>
-          <progress id="inv-progress" max={Math.max(1, job.progress.total)} value={job.progress.done} style={{ width: "100%", accentColor: "var(--blue)" }} />
+          <progress id="inv-progress" max={Math.max(1, job.progress.total)} value={job.progress.done} style={{ width: "100%", accentColor: "var(--color-primary)" }} />
           {active && (
             <p className="tiny mt-8">
               ProofLab verstuurt op de achtergrond; je kunt dit tabblad sluiten.{" "}

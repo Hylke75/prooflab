@@ -55,7 +55,7 @@ export function Sidebar({
         <Icon name="close" />
       </button>
       <div className="brand">
-        <span className="mark" aria-hidden="true">◉</span>ProofLab<span style={{ color: "var(--lime)" }}>.</span>
+        <span className="mark" aria-hidden="true">◉</span>ProofLab<span style={{ color: "var(--color-accent)" }}>.</span>
       </div>
       <div className="nav-heading">Werkruimte</div>
       <nav className="side-nav" aria-label="Werkruimte">

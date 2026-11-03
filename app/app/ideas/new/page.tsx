@@ -37,7 +37,7 @@ export default async function NewIdeaPage() {
             Dat is juist het hele idee. We maken je aannames zichtbaar, onderzoeken de markt en zoeken de goedkoopste manier
             om het echte antwoord te vinden.
           </p>
-          <div style={{ position: "absolute", bottom: 26, left: 24, zIndex: 1, background: "var(--color-surface)", borderRadius: 12, padding: "11px 14px", fontSize: 14 }}>
+          <div style={{ position: "absolute", bottom: 26, left: 24, zIndex: 1, background: "var(--color-surface)", borderRadius: "var(--radius-pill)", padding: "11px 14px", fontSize: 14 }}>
             ✳ Eerst begrijpen. Dan bouwen.
           </div>
         </aside>

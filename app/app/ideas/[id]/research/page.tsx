@@ -328,17 +328,17 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
           <div className="card" style={{ marginTop: 18 }}>
             <div className="section-title"><h3>Concurrentielandschap</h3></div>
             <div className="grid-3">
-              <div style={{ padding: 15, background: "var(--color-surface-soft)", borderRadius: 14 }}>
+              <div style={{ padding: 15, background: "var(--color-surface-soft)", borderRadius: "var(--radius-inner)" }}>
                 <span className="pill blue">Direct</span>
                 <h3 style={{ fontSize: 16, margin: "12px 0 7px" }}>{competitors.filter((c) => c.kind === "direct").length} aanbieders</h3>
                 <p className="tiny">{competitors.filter((c) => c.kind === "direct").map((c) => c.name).slice(0, 3).join(", ") || "Nog niet onderzocht"}</p>
               </div>
-              <div style={{ padding: 15, background: "var(--color-warning-soft)", borderRadius: 14 }}>
+              <div style={{ padding: 15, background: "var(--color-warning-soft)", borderRadius: "var(--radius-inner)" }}>
                 <span className="pill coral">Indirect</span>
                 <h3 style={{ fontSize: 16, margin: "12px 0 7px" }}>{competitors.filter((c) => c.kind === "indirect").length} aanbieders</h3>
                 <p className="tiny">{competitors.filter((c) => c.kind === "indirect").map((c) => c.name).slice(0, 3).join(", ") || "Nog niet onderzocht"}</p>
               </div>
-              <div style={{ padding: 15, background: "var(--color-success-soft)", borderRadius: 14 }}>
+              <div style={{ padding: 15, background: "var(--color-success-soft)", borderRadius: "var(--radius-inner)" }}>
                 <span className="pill green">Alternatief</span>
                 <h3 style={{ fontSize: 16, margin: "12px 0 7px" }}>{competitors.filter((c) => c.kind === "alternative" || c.kind === "status_quo").length} alternatieven</h3>
                 <p className="tiny">{competitors.filter((c) => c.kind === "alternative" || c.kind === "status_quo").map((c) => c.name).slice(0, 3).join(", ")}</p>

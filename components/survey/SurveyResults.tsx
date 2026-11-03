@@ -242,7 +242,7 @@ function QuestionBlock({ q, index, config }: { q: QuestionSummary; index: number
   const def = config.questions.find((x) => x.id === q.id);
   const isKey = q.id === config.key_question;
   return (
-    <section className="mt-18" style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }} aria-labelledby={`sr-${q.id}`}>
+    <section className="mt-18" style={{ borderTop: "1px solid var(--color-border)", paddingTop: 14 }} aria-labelledby={`sr-${q.id}`}>
       <div className="tiny" style={{ fontWeight: 600 }}>
         Vraag {index + 1}{isKey ? " · kernvraag" : ""} · {q.n} {q.n === 1 ? "antwoord" : "antwoorden"}
       </div>
