@@ -5,25 +5,69 @@ import { PageFrame } from "@/components/shell/PageFrame";
 import { Stepper } from "@/components/ui/Stepper";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { RiskBoard, type BoardAssumption } from "@/components/assumptions/RiskBoard";
+import { RedTeamButton } from "@/components/assumptions/RedTeamButton";
 import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
-import { loadAssumptions, loadProgress, rankAssumptions } from "@/lib/progress";
+import { loadInformationValue, loadProgress } from "@/lib/progress";
+import { AI_UNREVIEWED_WEIGHT, CLAIM_LR, fmtLr, OBSERVATION_LR, type LrEntry } from "@/lib/domain/evidence";
+import { DECISION_BOUNDARY, EUR_PER_COST_UNIT, TEST_LR } from "@/lib/domain/recommend";
 import { stepsDone } from "@/lib/steps";
+import { loadIdeaWeights } from "@/lib/learning-data";
+import { describeWeights, type WeightsInUse } from "@/lib/domain/calibration";
 import { aiConfigured } from "@/lib/env";
 import { ASSUMPTION_CATEGORIES, type AssumptionCategory, type AssumptionStatus } from "@/lib/domain/labels";
-import { addAssumption, deleteAssumption, linkClaim, seedAssumptions, setImportance, unlinkClaim } from "./actions";
+import { addAssumption, deleteAssumption, linkClaim, seedAssumptions, setImportance, setPrior, unlinkClaim } from "./actions";
 
 export const metadata: Metadata = { title: "Aannames" };
+
+const lrText = (e: LrEntry) => (e.lr === 1 ? "telt niet mee" : e.against ? `÷ ${fmtLr(e.lr)} (tegenbewijs)` : `× ${fmtLr(e.lr)} (tegen: ÷ ${fmtLr(e.lr)})`);
+
+// The factors behind the probabilities and the ranking, visible as they are used in code.
+function HowWeCalculate({ weights }: { weights: WeightsInUse }) {
+  const rows = [...Object.values(OBSERVATION_LR), ...Object.values(CLAIM_LR)];
+  return (
+    <details className="card mt-18">
+      <summary className="text-link">Hoe rekent ProofLab de kans en de informatiewaarde uit?</summary>
+      <p className="sub mt-12">
+        Elke aanname begint op 50%. Elk stuk bewijs vermenigvuldigt de kansverhouding (odds) met een vaste factor; tegenbewijs deelt erdoor.
+        Meer van hetzelfde telt afnemend mee: n stuks tellen als log₂(1 + n) stuks, dus 20 dezelfde meningen brengen 50% maar naar ongeveer 60%.
+        AI-gecodeerde observaties tellen voor {AI_UNREVIEWED_WEIGHT * 100}% zolang niemand ze heeft beoordeeld, volledig na akkoord en niet na afkeuren. Synthetische data telt nooit mee.
+        De kans blijft altijd tussen 1% en 99%.
+      </p>
+      <div style={{ overflowX: "auto" }}>
+        <table className="table mt-12">
+          <caption className="sr-only">Factor per soort bewijs</caption>
+          <thead><tr><th scope="col">Soort bewijs</th><th scope="col">Factor op de kansverhouding</th><th scope="col">Waarom</th></tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.label}><td>{r.label}</td><td className="num">{lrText(r)}</td><td>{r.why}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="sub mt-12">
+        Informatiewaarde = belang × onzekerheid × hoeveel de goedkoopste geschikte test de kans kan verschuiven ÷ kosten van die test.
+        Een test is geschikt als een duidelijke uitkomst de kans over de beslisgrens van {DECISION_BOUNDARY * 100}% kan duwen. Kosten = weken doorlooptijd + € / {EUR_PER_COST_UNIT}.
+        Factor van één duidelijke testuitkomst: interviews × {fmtLr(TEST_LR.interview)}, landingpage × {fmtLr(TEST_LR.landing)}, prijs-/aanbodtest × {fmtLr(TEST_LR.pricing)}.
+      </p>
+      <p className="tiny mt-8">
+        Deze factoren zijn startaannames. Een werkruimte kan geleerde factoren aanzetten op de pagina Voorspelkwaliteit; die worden geschat uit eigen
+        afgeronde dossiers, per soort bewijs pas vanaf voldoende dossiers. {describeWeights(weights)}
+      </p>
+    </details>
+  );
+}
 
 export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/[id]/assumptions">) {
   const { id } = await params;
   const { idea, canWrite } = await getIdea(id);
   const supabase = await supabaseServer();
-  const [ranked, progress, { data: claims }, { data: links }] = await Promise.all([
-    loadAssumptions(id).then(rankAssumptions),
+  const [ranked, progress, { data: claims }, { data: links }, weights] = await Promise.all([
+    loadInformationValue(id),
     loadProgress(id),
     supabase.from("claims").select("id, statement, status").eq("idea_id", id).order("created_at"),
     supabase.from("assumption_claims").select("assumption_id, claim_id, relation, claims(statement, status)").eq("idea_id", id),
+    loadIdeaWeights(id),
   ]);
   const board: BoardAssumption[] = ranked.map((a) => ({
     ...a,
@@ -50,7 +94,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
 
       {board.length === 0 ? (
         <div className="empty-state">
-          <h3>Nog geen aannames</h3>
+          <h2 className="as-h3">Nog geen aannames</h2>
           <p>
             {aiConfigured()
               ? "Laat ProofLab aannames voorstellen op basis van je idee en de gevonden bevindingen, of voeg ze zelf toe."
@@ -71,6 +115,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
           linkActions={Object.fromEntries(board.map((a) => [a.id, linkClaim.bind(null, id, a.id)]))}
           unlinkActions={Object.fromEntries(board.map((a) => [a.id, Object.fromEntries(a.claims.map((c) => [c.id, unlinkClaim.bind(null, id, a.id, c.id)]))]))}
           importanceActions={Object.fromEntries(board.map((a) => [a.id, setImportance.bind(null, id, a.id)]))}
+          priorActions={Object.fromEntries(board.map((a) => [a.id, setPrior.bind(null, id, a.id)]))}
           deleteActions={Object.fromEntries(board.map((a) => [a.id, deleteAssumption.bind(null, id, a.id)]))}
         />
       )}
@@ -82,9 +127,12 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
         </div>
       )}
 
+      <RedTeamButton ideaId={id} assumptions={board} canWrite={canWrite} />
+      {board.length > 0 && <HowWeCalculate weights={weights.inUse} />}
+
       {canWrite && (
         <div className="card mt-18">
-          <h3>Aanname toevoegen</h3>
+          <h2 className="as-h3" id="nieuwe-aanname">Aanname toevoegen</h2>
           <ActionForm action={addAssumption.bind(null, id)} submitLabel="Toevoegen" resetOnSuccess>
             <div className="form-line mt-12">
               <label htmlFor="as-st">Wat moet waar zijn?</label>

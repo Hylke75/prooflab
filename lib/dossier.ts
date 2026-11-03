@@ -2,11 +2,13 @@ import "server-only";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadAssumptions, rankAssumptions } from "@/lib/progress";
 import { experimentMetrics } from "@/lib/experiment-metrics";
-import { computeSizing, computeUnitEconomics, SCENARIO_LABELS, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
+import { breakEvenRevenue, computeSizing, computeUnitEconomics, SCENARIO_LABELS, simulateSizing, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
+import { explainContribution } from "@/lib/domain/evidence";
 import { dossierLabel } from "@/lib/domain/dossier-label";
 import type { DossierFacts } from "@/lib/domain/reality-check";
 import type { ClaimStatus } from "@/lib/domain/labels";
 import type { Idea } from "@/lib/data";
+import { loadIdeaWeights } from "@/lib/learning-data";
 
 // Collects everything about one idea in a single pass. Used by the Reality Check and as the
 // immutable snapshot behind every report version.
@@ -23,11 +25,12 @@ export async function loadDossier(idea: Idea) {
         .order("created_at"),
       supabase.from("competitors").select("*").eq("idea_id", id).order("kind"),
       supabase.from("segments").select("*").eq("idea_id", id),
-      supabase.from("sizing_scenarios").select("*, sizing_factors(*, claims(status, statement))").eq("idea_id", id),
+      supabase.from("sizing_scenarios").select("*, sizing_factors(*, claims(status, statement, numeric_value))").eq("idea_id", id),
       supabase.from("unit_economics").select("*").eq("idea_id", id).maybeSingle(),
       supabase.from("experiments").select("*, hypotheses(*, assumptions(statement, category))").eq("idea_id", id).order("created_at"),
       supabase.from("interviews").select("id, experiment_id, dmu_role, is_acquaintance, consent_recorded, record_type, recruited_via").eq("idea_id", id),
-      supabase.from("observations").select("*").eq("idea_id", id),
+      // Clients get the same rows without literal interview quotes (enforced in the database).
+      supabase.rpc("observations_for_idea", { p_idea: id }),
       supabase.from("learning_cards").select("*").eq("idea_id", id).order("created_at"),
       supabase.from("reality_checks").select("*").eq("idea_id", id).order("created_at", { ascending: false }).limit(1),
       supabase.from("decisions").select("*").eq("idea_id", id).order("decided_at"),
@@ -38,6 +41,8 @@ export async function loadDossier(idea: Idea) {
     ]);
 
   const assumptions = rankAssumptions(await loadAssumptions(id));
+  // Which evidence factors those probabilities used (default or learned), for the report.
+  const weights = (await loadIdeaWeights(id)).inUse;
   const expList = experiments.data ?? [];
   const metrics = await Promise.all(expList.map((e) => (e.hypotheses ? experimentMetrics(e, e.hypotheses) : null)));
 
@@ -46,7 +51,12 @@ export async function loadDossier(idea: Idea) {
       const factors = (s.sizing_factors ?? []).sort((a, b) => a.position - b.position);
       const result = computeSizing(
         s.model as SizingModel,
-        factors.map((f) => ({ key: f.key, value: Number(f.value), claimStatus: (f.claims?.status as ClaimStatus) ?? null })),
+        factors.map((f) => ({
+          key: f.key,
+          value: Number(f.value),
+          claimStatus: (f.claims?.status as ClaimStatus) ?? null,
+          claimValue: f.claims?.numeric_value == null ? null : Number(f.claims.numeric_value),
+        })),
       );
       return {
         kind: s.kind as ScenarioKind,
@@ -69,6 +79,67 @@ export async function loadDossier(idea: Idea) {
       })
     : null;
 
+  // Research 3.8: Monte Carlo summary per scenario that has at least one factor with a 90% range.
+  const breakEven = ue.data ? breakEvenRevenue({ grossMarginPct: ue.data.gross_margin_pct, fixedCostsYear: ue.data.fixed_costs_year }) : null;
+  const simulations = (scenarios.data ?? [])
+    .map((s) => {
+      const sim = simulateSizing(
+        s.model as SizingModel,
+        (s.sizing_factors ?? []).map((f) => ({
+          key: f.key,
+          value: Number(f.value),
+          low: f.low_value == null ? null : Number(f.low_value),
+          high: f.high_value == null ? null : Number(f.high_value),
+        })),
+        { threshold: breakEven },
+      );
+      return sim ? { kind: s.kind as ScenarioKind, label: SCENARIO_LABELS[s.kind as ScenarioKind].label, thresholdIsBreakEven: breakEven != null, ...sim } : null;
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x);
+
+  // Research 3.5: estimated probability per assumption, with band and largest contributions.
+  const probabilities = assumptions.map((a) => ({
+    id: a.id,
+    statement: a.statement,
+    importance: a.importance,
+    origin: a.origin,
+    prior: a.probability.prior,
+    probability: a.probability.probability,
+    band: a.probability.band,
+    top: a.probability.top.map((c) => ({ label: c.label, direction: c.direction, count: c.count, lr: c.lr, weight: c.weight, explanation: explainContribution(c) })),
+  }));
+
+  // Prediction loop and customer signals. Forecasts follow the blind rule: the snapshot holds the forecasts
+  // the person making the report can see.
+  const [forecastsRes, outcomeRes, checkinsRes, refRes, signalsRes] = await Promise.all([
+    supabase.from("forecasts").select("moment, forecaster_kind, probability, rationale, created_at").eq("idea_id", id).order("created_at"),
+    supabase.from("idea_outcomes").select("achieved, actual_value, evidence, resolved_at").eq("idea_id", id).maybeSingle(),
+    supabase.from("outcome_checkins").select("on_track, current_value, note, created_at").eq("idea_id", id).order("created_at"),
+    idea.reference_class && !idea.reference_class.startsWith("own:") && idea.reference_class !== "none"
+      ? supabase.from("reference_classes").select("label, source_title, source_url, caveat").eq("id", idea.reference_class).maybeSingle()
+      : Promise.resolve({ data: null }),
+    supabase.from("customer_signals").select("kind, label, mentions").eq("idea_id", id).order("mentions", { ascending: false }).limit(12),
+  ]);
+  const prediction = {
+    outcome: {
+      statement: idea.outcome_statement ?? null,
+      metric: idea.outcome_metric ?? null,
+      target: idea.outcome_target ?? null,
+      due: idea.outcome_due ?? null,
+    },
+    baseRate: {
+      low: idea.base_rate_low ?? null,
+      high: idea.base_rate_high ?? null,
+      note: idea.base_rate_note ?? null,
+      reference: refRes.data ?? null,
+      own: idea.reference_class?.startsWith("own:") ?? false,
+    },
+    forecasts: forecastsRes.data ?? [],
+    result: outcomeRes.data ?? null,
+    checkins: checkinsRes.data ?? [],
+  };
+  const signals = signalsRes.data ?? [];
+
   const approvedCards = (cards.data ?? []).filter((c) => c.status === "approved");
   const label = dossierLabel({
     claims: (claims.data ?? []).map((c) => ({ status: c.status, domain: c.claim_sources?.[0]?.sources?.domain ?? null, sourceType: c.claim_sources?.[0]?.sources?.source_type ?? null })),
@@ -77,7 +148,8 @@ export async function loadDossier(idea: Idea) {
     behaviourCards: approvedCards
       .map((c) => {
         const e = expList.find((x) => x.id === c.experiment_id);
-        if (!e || e.type === "interview") return null;
+        // Interviews and surveys are what people say, not observed behaviour.
+        if (!e || e.type === "interview" || e.type === "survey") return null;
         return { verdict: c.verdict, channels: ((e.channels as { channel: string }[]) ?? []).map((x) => x.channel), endedOn: e.ended_at };
       })
       .filter((x): x is { verdict: string; channels: string[]; endedOn: string | null } => !!x),
@@ -103,6 +175,12 @@ export async function loadDossier(idea: Idea) {
     members: members.data ?? [],
     research: { runs: runs.data ?? [], ai: ai.data ?? [] },
     label,
+    probabilities,
+    weights,
+    simulation: simulations.find((s) => s.kind === "realistic") ?? simulations[0] ?? null,
+    simulations,
+    prediction,
+    signals,
   };
 }
 
@@ -130,9 +208,10 @@ export function factsFrom(d: Dossier): DossierFacts {
           revenueFactorSourced: realistic.factors.some((f) => /omzet|besteding/i.test(f.label) && (f.status === "verified" || f.status === "estimate")),
         }
       : null,
-    assumptions: d.assumptions.map((a) => ({ statement: a.statement, importance: a.importance, category: a.category, status: a.status, evidence: a.evidence, contradicting: a.contradicting })),
+    assumptions: d.assumptions.map((a) => ({ statement: a.statement, importance: a.importance, category: a.category, status: a.status, evidence: a.evidence, contradicting: a.contradicting, origin: a.origin })),
+    premortemDone: d.assumptions.some((a) => a.origin === "premortem"),
     experiments: d.experiments.map((e) => ({
-      type: e.type as "landing" | "interview" | "pricing",
+      type: e.type as "landing" | "interview" | "pricing" | "survey",
       state: e.state,
       assumptionCategory: e.hypotheses?.assumptions?.category ?? "desirability",
       verdict: e.metrics ? e.metrics.verdict.kind : null,
@@ -157,7 +236,7 @@ export function dossierSummaryForAi(d: Dossier): string {
     "Aannames (belangrijkheid, bewijs 0-1, status):",
     ...d.assumptions.map((a) => `- (${a.importance}, ${a.evidence.toFixed(2)}, ${a.status}) ${a.statement}`),
     "Experimenten:",
-    ...d.experiments.map((e) => `- ${e.title} [${e.state}] ${e.metrics ? `${e.metrics.successes}/${e.metrics.n}, oordeel: ${e.metrics.verdict.kind}` : ""}`),
+    ...d.experiments.map((e) => `- ${e.title} [${e.state}]${e.type === "survey" ? " (enquête: zelfrapportage, geen waargenomen gedrag)" : ""} ${e.metrics ? `${e.metrics.successes}/${e.metrics.n}, oordeel: ${e.metrics.verdict.kind}` : ""}`),
     "Learning Cards:",
     ...d.learningCards.map((c) => `- [${c.status}, ${c.verdict}] ${c.we_learned}`),
   ].join("\n");

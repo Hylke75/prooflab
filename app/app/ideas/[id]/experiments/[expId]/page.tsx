@@ -4,14 +4,23 @@ import { notFound } from "next/navigation";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { ResultMeter } from "@/components/experiments/ResultMeter";
-import { getIdea } from "@/lib/data";
+import { GuideAuditList, TranscriptAuditList } from "@/components/experiments/InterviewAudit";
+import { AiQualityCard } from "@/components/research/AiQualityCard";
+import { SurveyResults } from "@/components/survey/SurveyResults";
+import { Distribution } from "@/components/survey/Distribution";
+import { PerPostResults } from "@/components/survey/PerPostResults";
+import { getIdea, getWorkspace } from "@/lib/data";
+import { loadAiQuality } from "@/lib/ai-quality";
+import { auditGuide, auditTranscript, guideSummary } from "@/lib/domain/interview-audit";
+import { codingIsProposalOnly } from "@/lib/domain/ai-quality";
 import { supabaseServer } from "@/lib/supabase/server";
 import { experimentMetrics, type InterviewConfig, type LandingConfig, type PricingConfig } from "@/lib/experiment-metrics";
 import { aiConfigured, env, trackingConfigured } from "@/lib/env";
 import { pct } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { DMU_ROLES, EXPERIMENT_STATES, EXPERIMENT_TYPES, OBSERVATION_KINDS, type ExperimentState, type ExperimentType } from "@/lib/domain/labels";
-import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, transitionExperiment } from "../actions";
+import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, reviewObservation, transitionExperiment } from "../actions";
+import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export const metadata: Metadata = { title: "Experiment" };
 
@@ -30,6 +39,17 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
     type === "interview" && canWrite
       ? (await supabase.from("interviews").select("*, observations(*)").eq("experiment_id", expId).order("held_on")).data ?? []
       : [];
+  const quality = canWrite ? await loadAiQuality() : null;
+  const guideLines = type === "interview" ? ((exp.config as InterviewConfig).guide ?? []) : [];
+  const productNames = [idea.title, (exp.config as LandingConfig).product_name ?? ""];
+  const guideAudit = auditGuide(guideLines, { productNames });
+  let interviewerNames: string[] = [];
+  if (type === "interview" && canWrite) {
+    const ws = await getWorkspace();
+    const { data: me } = await supabase.from("profiles").select("full_name").eq("user_id", ws.user.id).maybeSingle();
+    const full = me?.full_name?.trim();
+    interviewerNames = full ? [full, full.split(/\s+/)[0]] : [];
+  }
   const channels = (exp.channels as { channel: string; expected_reach: number | null }[]) ?? [];
   const publicUrl = exp.public_slug ? `${env.appUrl}/t/${exp.public_slug}` : null;
   const running = state === "live" || state === "paused";
@@ -50,7 +70,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
         <div className="insight-banner">
           <div>
             <span className="pill green">{state === "live" ? "Meting loopt" : "Gepauzeerd"}</span>
-            <h3 style={{ margin: "10px 0 3px" }}>Een uitspraak volgt pas na de afgesproken eindconditie.</h3>
+            <h2 className="as-h3" style={{ margin: "10px 0 3px" }}>Een uitspraak volgt pas na de afgesproken eindconditie.</h2>
             <p>
               Gestart {exp.started_at ? new Date(exp.started_at).toLocaleDateString("nl-NL") : "—"} · loopt tot uiterlijk{" "}
               {exp.ends_at ? new Date(exp.ends_at).toLocaleDateString("nl-NL") : "—"}. Tussentijds kijken mag; tussentijds concluderen niet.
@@ -61,7 +81,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
 
       <div className="grid-3">
         <div className="live-stat">
-          <small>{type === "interview" ? "Geïnterviewden (met toestemming)" : "Unieke relevante bezoekers"}</small>
+          <small>{type === "interview" ? "Geïnterviewden (met toestemming)" : type === "survey" ? "Respondenten (geloofwaardig, kernvraag beantwoord)" : "Unieke relevante bezoekers"}</small>
           <strong className="num">{m.n}</strong>
           <span className="tiny">minimaal {h.min_sample} afgesproken</span>
         </div>
@@ -81,7 +101,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
         <div className={`verdict mt-18 ${v.kind}`}>
           <strong>{v.kind === "running" ? "Nog geen uitspraak" : v.kind === "pass" ? "Geslaagd volgens de vooraf vastgelegde regel" : v.kind === "fail" ? "Niet geslaagd" : "Onbeslist"}</strong>
           <p className="sub" style={{ marginTop: 4 }}>{v.reason}</p>
-          {v.kind !== "running" && <ResultMeter v={v} success={Number(h.success_threshold_pct)} fail={h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct)} />}
+          {v.kind !== "running" && <ResultMeter v={v} success={Number(h.success_threshold_pct)} fail={h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct)} bayes={m.bayes} />}
         </div>
       )}
       {m.warnings.map((w) => <div className="note" key={w}>{w}</div>)}
@@ -89,7 +109,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
       <div className="grid-2 mt-18">
         <div className="card">
           <div className="section-title">
-            <h3>Test Card</h3>
+            <h2 className="as-h3">Test Card</h2>
             <span className={`pill ${h.locked_at ? "dark" : "gray"}`}>{h.locked_at ? `Vergrendeld ${new Date(h.locked_at).toLocaleDateString("nl-NL")}` : "Concept"}</span>
           </div>
           <div className="data-row"><span>Wij denken dat</span><strong style={{ textAlign: "right" }}>{h.we_believe}</strong></div>
@@ -104,7 +124,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
         </div>
 
         <div className="card">
-          <div className="section-title"><h3>Volgende stap</h3></div>
+          <div className="section-title"><h2 className="as-h3">Volgende stap</h2></div>
           {!canWrite && <p className="sub">Je kijkt mee. Het onderzoeksteam beheert dit experiment.</p>}
           {canWrite && state === "draft" && (
             <>
@@ -117,7 +137,13 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           {canWrite && state === "ready_for_review" && (
             <ActionForm action={transitionExperiment.bind(null, id, expId, "approved")} submitLabel="Akkoord: keur goed en vergrendel">
               <p className="sub">Goedkeuren vergrendelt de hypothese en drempels. Bevestig:</p>
-              {type === "interview" ? (
+              {type === "survey" ? (
+                <>
+                  <label className="check-row"><input type="checkbox" name="check_honest" /> De enquête zegt eerlijk wie de vragen stelt en waarvoor; er wordt niets verkocht.</label>
+                  <label className="check-row"><input type="checkbox" name="check_privacy" /> Er wordt niet om naam of e-mailadres gevraagd in de vragen; uitnodigingen gaan alleen naar mensen met een bestaande relatie en vervallen na 180 dagen.</label>
+                  <label className="check-row"><input type="checkbox" name="check_pretest" /> De vragen zijn voorgelegd aan 3–5 echte mensen uit de doelgroep en waar nodig aangepast.</label>
+                </>
+              ) : type === "interview" ? (
                 <>
                   <label className="check-row"><input type="checkbox" name="check_consent" /> Deelnemers krijgen vooraf uitleg over doel, opname en bewaartermijn, en geven toestemming.</label>
                   <label className="check-row"><input type="checkbox" name="check_neutral" /> De leidraad bevat geen pitch of sturende vragen.</label>
@@ -134,7 +160,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           {canWrite && state === "approved" && (
             <>
               {type !== "interview" && !trackingConfigured() && <div className="form-error">Meting is niet geconfigureerd (INGEST_SECRET en TRACKING_SALT ontbreken). De test kan nog niet live.</div>}
-              {publicUrl && <p className="sub">Bekijk eerst het <a className="text-link" href={`/t/${exp.public_slug}`} target="_blank">voorbeeld</a> (metingen staan nog uit).</p>}
+              {publicUrl && type !== "survey" && <p className="sub">Bekijk eerst het <a className="text-link" href={`/t/${exp.public_slug}`} target="_blank">voorbeeld</a> (metingen staan nog uit).</p>}
               <ActionForm action={transitionExperiment.bind(null, id, expId, "live")} submitLabel={type === "interview" ? "Start de interviewronde" : "Publiceer en start de meting"}>
                 <span />
               </ActionForm>
@@ -153,7 +179,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           )}
           {(cards ?? []).length > 0 && <Link className="btn primary" href={`/app/ideas/${id}/evidence`}>Naar bewijs & besluit →</Link>}
 
-          {publicUrl && running && type !== "interview" && (
+          {publicUrl && running && type !== "interview" && type !== "survey" && (
             <div className="mt-18">
               <div className="eyebrow">DEEL PER KANAAL</div>
               {channels.map((c) => (
@@ -172,7 +198,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
         <div className="grid-2 mt-18">
           {m.byChannel.length > 0 && (
             <div className="card">
-              <h3>Per kanaal</h3>
+              <h2 className="as-h3">Per kanaal</h2>
               <table className="table mt-12">
                 <thead><tr><th>Kanaal</th><th>Deelnemers</th><th>{h.metric_label}</th><th>Ratio</th></tr></thead>
                 <tbody>
@@ -185,7 +211,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           )}
           {m.byVariant.length > 0 && (
             <div className="card">
-              <h3>Per prijspunt</h3>
+              <h2 className="as-h3">Per prijspunt</h2>
               <table className="table mt-12">
                 <thead><tr><th>Aanbod</th><th>Bezoekers</th><th>Gekozen</th><th>Ratio</th></tr></thead>
                 <tbody>
@@ -200,6 +226,10 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
         </div>
       )}
 
+      {canWrite && type !== "interview" && <PerPostResults expId={expId} type={type} rows={m.byContent} metricLabel={h.metric_label} />}
+
+      <Distribution ideaId={id} exp={exp} canWrite={canWrite} plan={h} />
+
       {type === "interview" && canWrite && (
         <>
           <div className="section-title mt-24"><h2>Interviews</h2><span className="pill gray">{interviews.length} gesprekken</span></div>
@@ -209,7 +239,20 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
               {(exp.config as InterviewConfig).guide?.map((q) => <li key={q}>{q}</li>)}
             </ol>
             {(exp.config as InterviewConfig).screener && <p className="tiny mt-8">Selectie: {(exp.config as InterviewConfig).screener}</p>}
+            {guideSummary(guideAudit).flagged > 0 ? (
+              <div className="note">
+                <strong>Leidraadcontrole: {guideSummary(guideAudit).flagged} van {guideAudit.length} vragen verdienen aandacht.</strong> Waarschuwing, geen blokkade.
+                <GuideAuditList audit={guideAudit} />
+              </div>
+            ) : (
+              <p className="tiny mt-8">Leidraadcontrole: geen hypothetische, sturende of verkopende vragen gevonden.</p>
+            )}
           </div>
+          {quality && (
+            <div className="mt-18">
+              <AiQualityCard measures={[{ title: "AI-codering van interviews: geaccepteerd", measure: quality.coding }]} />
+            </div>
+          )}
           {interviews.map((iv) => (
             <div className="card mt-18" key={iv.id}>
               <div className="section-title">
@@ -223,15 +266,30 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
                 <summary className="text-link">Transcript tonen</summary>
                 <div className="quote" style={{ whiteSpace: "pre-wrap", maxHeight: 280, overflow: "auto" }}>{iv.transcript}</div>
               </details>
+              <TranscriptAuditList turns={auditTranscript(iv.transcript, { productNames, interviewerNames })} />
               {(iv.observations ?? []).map((o) => (
                 <div className="evidence-event" key={o.id}>
                   <div className="icon-circle">{o.kind === "problem_confirmed" ? "✓" : o.kind === "problem_absent" || o.kind === "counter_example" ? "✕" : "•"}</div>
                   <div style={{ flex: 1 }}>
                     <strong>{OBSERVATION_KINDS[o.kind as keyof typeof OBSERVATION_KINDS]}: {o.summary}</strong>
                     {o.quote && <blockquote className="quote">“{o.quote}”</blockquote>}
-                    <p>{o.origin === "ai" ? "Voorgesteld door AI, citaat gecontroleerd" : "Handmatig gecodeerd"}</p>
+                    <p>
+                      {o.origin !== "ai"
+                        ? "Handmatig gecodeerd"
+                        : o.review_status === "accepted"
+                          ? `AI-codering, geaccepteerd door consultant${o.reviewed_at ? ` op ${new Date(o.reviewed_at).toLocaleDateString("nl-NL")}` : ""}`
+                          : o.review_status === "rejected"
+                            ? `AI-codering, afgewezen door consultant${o.reviewed_at ? ` op ${new Date(o.reviewed_at).toLocaleDateString("nl-NL")}` : ""}; telt niet mee`
+                            : `AI-voorstel, citaat letterlijk gecontroleerd; nog niet beoordeeld${quality && codingIsProposalOnly(quality.coding) ? " (AI-codering blijft een voorstel)" : ""}`}
+                    </p>
+                    {o.origin === "ai" && !o.review_status && (
+                      <div className="row mt-8">
+                        <form action={reviewObservation.bind(null, id, o.id, "accepted")}><button className="btn white sm">Accepteer codering</button><FormPendingOverlay /></form>
+                        <form action={reviewObservation.bind(null, id, o.id, "rejected")}><button className="btn white sm">Wijs af</button><FormPendingOverlay /></form>
+                      </div>
+                    )}
                   </div>
-                  {state !== "decided" && <form action={deleteObservation.bind(null, id, o.id)}><button className="text-link">Verwijder</button></form>}
+                  {state !== "decided" && o.origin === "manual" && <form action={deleteObservation.bind(null, id, o.id)}><button className="text-link">Verwijder</button><FormPendingOverlay /></form>}
                 </div>
               ))}
               {running && (
@@ -255,7 +313,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
                     {aiConfigured() && (
                       <ActionForm action={analyzeInterviewWithAi.bind(null, id, expId, iv.id)} submitLabel="Laat AI uitspraken markeren" submitClass="btn soft sm" pendingLabel="Analyseren…"><span /></ActionForm>
                     )}
-                    <form action={deleteInterview.bind(null, id, iv.id)}><button className="text-link" style={{ color: "#a43c42", marginTop: 12 }}>Interview verwijderen</button></form>
+                    <form action={deleteInterview.bind(null, id, iv.id)}><button className="text-link" style={{ color: "#a43c42", marginTop: 12 }}>Interview verwijderen</button><FormPendingOverlay /></form>
                   </div>
                 </div>
               )}
@@ -295,9 +353,11 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
         </>
       )}
 
-      {type !== "interview" && (
+      {type === "survey" && <SurveyResults ideaId={id} exp={exp} h={h} m={m} canWrite={canWrite} />}
+
+      {type !== "interview" && type !== "survey" && (
         <div className="card mt-18">
-          <h3>Testpagina</h3>
+          <h2 className="as-h3">Testpagina</h2>
           <p className="sub mt-8">
             {(exp.config as LandingConfig).headline} — {(exp.config as LandingConfig).cta_label}
             {type === "pricing" && ` · ${(exp.config as PricingConfig).price_points.map((p) => `${p.label} € ${p.amount} ${p.period}`).join(" · ")}`}

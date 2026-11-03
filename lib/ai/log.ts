@@ -1,6 +1,7 @@
 import "server-only";
 import { supabaseServer } from "@/lib/supabase/server";
 import { MODEL, PROMPT_VERSION } from "./client";
+import { log } from "@/lib/log";
 
 // Every AI call is recorded with model, prompt version, tokens and cost (never prompts or secrets).
 export async function logAiRun(input: {
@@ -11,7 +12,7 @@ export async function logAiRun(input: {
   detail?: string;
 }) {
   const supabase = await supabaseServer();
-  await supabase.from("ai_runs").insert({
+  const { error } = await supabase.from("ai_runs").insert({
     idea_id: input.ideaId,
     purpose: input.purpose,
     model: MODEL,
@@ -23,4 +24,6 @@ export async function logAiRun(input: {
     outcome: input.outcome,
     detail: input.detail?.slice(0, 500) ?? null,
   });
+  // The ledger is what the monthly cap is checked against: a missing row must be visible to operations.
+  if (error) await log.error("ai_ledger_insert_failed", { ideaId: input.ideaId, purpose: input.purpose, code: error.code });
 }

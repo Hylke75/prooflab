@@ -23,7 +23,16 @@ export class AiNotConfiguredError extends Error {
   }
 }
 
-export class AiRefusedError extends Error {}
+export type AiUsage = { cost: number; searches: number; inputTokens: number; outputTokens: number };
+
+// A refusal still costs tokens; the usage travels with the error so it is booked and logged.
+export class AiRefusedError extends Error {
+  constructor(message: string, readonly usage?: AiUsage) {
+    super(message);
+  }
+}
+
+export class AiBudgetError extends Error {}
 
 // Pricing for cost tracking (USD). Opus 5.5: $4 / $20 per MTok, cache reads $0.20; search $10 / 1000.
 export function costUsd(usage: {

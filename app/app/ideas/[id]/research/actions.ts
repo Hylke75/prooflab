@@ -6,11 +6,15 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { requireWritableIdea } from "@/lib/data";
 import { contentHash, recomputeClaim } from "@/lib/claims";
 import { fetchPageText } from "@/lib/fetch-page";
-import { checkQuote, normalizeText, registrableDomain } from "@/lib/domain/verify";
+import { checkQuote, normalizeText, numericFromInput, registrableDomain, valueInQuote } from "@/lib/domain/verify";
 import { aiConfigured, env } from "@/lib/env";
-import { planResearch } from "@/lib/ai/research";
+import { analyzeSignals, planResearch } from "@/lib/ai/research";
+import { aiSupportCheck } from "@/lib/research-runner";
+import { isSupportCheck } from "@/lib/domain/support";
+import { priceOnPage, recheckChanges, recheckQuotes, type CompetitorRecheck, type PageRecheck } from "@/lib/domain/recheck";
+import { isSignalSource, painAsAssumption, verifySignalGroups, type SignalExcerpt, type SignalQuote } from "@/lib/domain/customer-signals";
 import { ideaContext } from "@/lib/idea-context";
-import { logAiRun } from "@/lib/ai/log";
+import { aiErrorMessage, runAi } from "@/lib/ai/guard";
 
 export type ActionState = { error: string | null; ok?: string | null };
 
@@ -66,8 +70,7 @@ export async function aiPlan(ideaId: string, _: ActionState): Promise<ActionStat
   if (!aiConfigured()) return { error: "AI is niet verbonden; pas de vragen handmatig aan." };
   const supabase = await supabaseServer();
   try {
-    const res = await planResearch(ideaContext(idea));
-    await logAiRun({ ideaId, purpose: "plan", outcome: "ok", usage: res.usage });
+    const res = await runAi(ideaId, "plan", () => planResearch(ideaContext(idea)));
     // Manually edited questions are kept; template and earlier AI questions are replaced.
     const { data: existing } = await supabase.from("research_questions").select("id, position, origin").eq("idea_id", ideaId);
     const manual = (existing ?? []).filter((q) => q.origin === "manual");
@@ -77,8 +80,7 @@ export async function aiPlan(ideaId: string, _: ActionState): Promise<ActionStat
     if (rows.length) await supabase.from("research_questions").insert(rows);
     return done(ideaId, "De onderzoekskaart is opnieuw opgesteld. Controleer de vragen.");
   } catch (e) {
-    await logAiRun({ ideaId, purpose: "plan", outcome: "error", detail: String(e) });
-    return { error: "Het onderzoeksplan kon niet worden gemaakt. De huidige vragen blijven staan." };
+    return { error: aiErrorMessage(e, "Het onderzoeksplan kon niet worden gemaakt. De huidige vragen blijven staan.") };
   }
 }
 
@@ -91,7 +93,7 @@ const SourceSchema = z.object({
   title: z.string().trim().min(2, "Geef de bron een titel.").max(300),
   publisher: z.string().trim().max(200).optional(),
   published_on: z.string().trim().optional(),
-  source_type: z.enum(["official_statistic", "primary_document", "company_page", "research_report", "news", "review_site", "blog", "dataset_upload", "interview", "other"]),
+  source_type: z.enum(["official_statistic", "primary_document", "company_page", "research_report", "news", "review_site", "blog", "forum", "outreach", "dataset_upload", "interview", "other"]),
   excerpt: z.string().trim().min(20, "Plak het relevante fragment (minimaal 20 tekens).").max(6000),
   location: z.string().trim().max(200).optional(),
 });
@@ -188,7 +190,11 @@ export async function addClaim(ideaId: string, _: ActionState, form: FormData): 
   const { data: excerpt } = await supabase.from("source_excerpts").select("id, text, source_id").eq("id", v.excerpt_id).eq("idea_id", ideaId).single();
   if (!excerpt) return { error: "Bronfragment niet gevonden." };
   const check = checkQuote(v.quote, excerpt.text, v.stance === "supports" ? v.statement : undefined);
-  const numeric = blank(v.numeric_value);
+  const numericRaw = blank(v.numeric_value);
+  const numeric = numericFromInput(numericRaw);
+  if (numericRaw && numeric == null) return { error: "Het getal is niet leesbaar. Schrijf één getal, bijvoorbeeld 41.230 of 1,5 miljoen." };
+  // The stored figure feeds the market sizing, so it must be the figure in the quote.
+  if (numeric != null && !valueInQuote(numeric, v.quote)) return { error: "Het getal staat niet in het citaat. Neem het getal over zoals de bron het noemt." };
   const { data: claim, error } = await supabase
     .from("claims")
     .insert({
@@ -199,7 +205,7 @@ export async function addClaim(ideaId: string, _: ActionState, form: FormData): 
       evidence_type: v.evidence_type,
       region: blank(v.region),
       period: blank(v.period),
-      numeric_value: numeric ? Number(numeric.replace(/\./g, "").replace(",", ".")) : null,
+      numeric_value: numeric,
       unit: blank(v.unit),
       definition: blank(v.definition),
       supports: blank(v.supports),
@@ -352,19 +358,36 @@ export async function deleteSegment(ideaId: string, segmentId: string) {
 export async function saveScenario(ideaId: string, scenarioId: string, _: ActionState, form: FormData): Promise<ActionState> {
   await requireWritableIdea(ideaId);
   const supabase = await supabaseServer();
-  const { data: factors } = await supabase.from("sizing_factors").select("id, key, unit").eq("scenario_id", scenarioId).eq("idea_id", ideaId);
+  const { data: factors } = await supabase.from("sizing_factors").select("id, key, unit, label").eq("scenario_id", scenarioId).eq("idea_id", ideaId);
+  const rows: { id: string; value: number; claim_id: string | null; note: string | null; low_value: number | null; high_value: number | null }[] = [];
+  // Validate every factor first, so an error never leaves a half-saved scenario.
   for (const f of factors ?? []) {
-    const raw = String(form.get(`value_${f.key}`) ?? "").replace(",", ".");
-    const value = Number(raw);
-    if (!Number.isFinite(value) || value < 0) return { error: "Alle waarden moeten positieve getallen zijn." };
+    // Same reading as quotes: "41.230" is forty-one thousand, "2,5" is two and a half.
+    const value = numericFromInput(String(form.get(`value_${f.key}`) ?? ""));
+    if (value == null || value < 0) return { error: "Alle waarden moeten positieve getallen zijn." };
     if (f.unit === "percent" && value > 100) return { error: "Percentages liggen tussen 0 en 100." };
+    // Optional 90% range for the Monte Carlo simulation: both bounds or neither.
+    const rawLow = String(form.get(`low_${f.key}`) ?? "").trim();
+    const rawHigh = String(form.get(`high_${f.key}`) ?? "").trim();
+    let low: number | null = null;
+    let high: number | null = null;
+    if (rawLow || rawHigh) {
+      low = numericFromInput(rawLow);
+      high = numericFromInput(rawHigh);
+      if (low == null || high == null) return { error: `${f.label}: vul beide grenzen van de bandbreedte in, of laat ze allebei leeg.` };
+      if (low < 0 || high < 0) return { error: `${f.label}: de bandbreedte bestaat uit positieve getallen.` };
+      if (f.unit === "percent" && high > 100) return { error: `${f.label}: percentages liggen tussen 0 en 100.` };
+      if (low > high) return { error: `${f.label}: de ondergrens is hoger dan de bovengrens.` };
+      if (value < low || value > high) return { error: `${f.label}: de waarde ligt buiten de eigen bandbreedte.` };
+    }
     const claim = String(form.get(`claim_${f.key}`) ?? "");
-    await supabase
-      .from("sizing_factors")
-      .update({ value, claim_id: /^[0-9a-f-]{36}$/.test(claim) ? claim : null, note: blank(form.get(`note_${f.key}`)) })
-      .eq("id", f.id);
+    rows.push({ id: f.id, value, claim_id: /^[0-9a-f-]{36}$/.test(claim) ? claim : null, note: blank(form.get(`note_${f.key}`)), low_value: low, high_value: high });
   }
-  await supabase.from("sizing_scenarios").update({ updated_at: new Date().toISOString() }).eq("id", scenarioId);
+  for (const { id, ...row } of rows) {
+    const { error } = await supabase.from("sizing_factors").update(row).eq("id", id).eq("idea_id", ideaId);
+    if (error) return { error: "Opslaan mislukt. Probeer het opnieuw." };
+  }
+  await supabase.from("sizing_scenarios").update({ updated_at: new Date().toISOString() }).eq("id", scenarioId).eq("idea_id", ideaId);
   return done(ideaId, "Scenario opgeslagen.");
 }
 
@@ -428,4 +451,243 @@ export async function cancelResearchRun(ideaId: string, runId: string) {
   await supabase.from("research_tasks").update({ status: "skipped" }).eq("run_id", runId).eq("status", "pending");
   await supabase.from("research_runs").update({ status: "cancelled", finished_at: new Date().toISOString() }).eq("id", runId).eq("idea_id", ideaId);
   revalidatePath(`/app/ideas/${ideaId}/research`);
+}
+
+// ---------------------------------------------------------------------------
+// Support check: does the quote carry the claim? (research 7.1)
+// ---------------------------------------------------------------------------
+
+export async function checkClaimSupport(ideaId: string, claimSourceId: string, _: ActionState): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  if (!aiConfigured()) return { error: "AI is niet verbonden. Beoordeel zelf of het citaat de bewering draagt." };
+  const supabase = await supabaseServer();
+  const { data: link } = await supabase
+    .from("claim_sources")
+    .select("id, claim_id, quote, stance, support_checked_by, claims(statement)")
+    .eq("id", claimSourceId)
+    .eq("idea_id", ideaId)
+    .single();
+  if (!link?.claims) return { error: "Bronkoppeling niet gevonden." };
+  if (link.support_checked_by === "consultant") return { error: "Een consultant heeft dit citaat al beoordeeld; dat oordeel blijft staan." };
+  const res = await aiSupportCheck(ideaId, link.claims.statement, link.quote, link.stance as "supports" | "contradicts");
+  if (res.verdict === "unchecked") return { error: "De AI-steuncontrole is niet gelukt. Beoordeel het citaat zelf." };
+  await supabase
+    .from("claim_sources")
+    .update({ support_check: res.verdict, ai_support_check: res.verdict, support_checked_by: "ai", support_note: res.reason })
+    .eq("id", claimSourceId)
+    .eq("idea_id", ideaId);
+  const r = await recomputeClaim(link.claim_id);
+  revalidatePath(`/app/ideas/${ideaId}`, "layout");
+  return { error: null, ok: `AI-voorstel: ${res.reason ?? res.verdict} Status: ${r?.reason ?? "bijgewerkt"}` };
+}
+
+export async function overrideSupport(ideaId: string, claimSourceId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const verdict = form.get("verdict");
+  if (!isSupportCheck(verdict) || verdict === "unchecked") return { error: "Kies een oordeel." };
+  const note = z.string().trim().max(500).safeParse(form.get("note") ?? "");
+  if (!note.success) return { error: "De toelichting is te lang." };
+  const supabase = await supabaseServer();
+  const { data: link } = await supabase
+    .from("claim_sources")
+    .select("id, claim_id")
+    .eq("id", claimSourceId)
+    .eq("idea_id", ideaId)
+    .single();
+  if (!link) return { error: "Bronkoppeling niet gevonden." };
+  // The AI's own verdict stays in ai_support_check, so agreement can be measured (7.9).
+  const { error } = await supabase
+    .from("claim_sources")
+    .update({ support_check: verdict, support_checked_by: "consultant", support_note: note.data || null })
+    .eq("id", claimSourceId)
+    .eq("idea_id", ideaId);
+  if (error) return { error: "Opslaan mislukt." };
+  const r = await recomputeClaim(link.claim_id);
+  revalidatePath(`/app/ideas/${ideaId}`, "layout");
+  return { error: null, ok: `Oordeel vastgelegd. Status: ${r?.reason ?? "bijgewerkt"}` };
+}
+
+// ---------------------------------------------------------------------------
+// Competitor recheck (research 7.2): re-fetch, re-run the literal check, never delete
+// ---------------------------------------------------------------------------
+
+type CompetitorRow = { id: string; name: string; website: string | null; visible_price: string | null; claim_id: string | null };
+
+async function recheckCompetitorRow(ideaId: string, comp: CompetitorRow) {
+  const supabase = await supabaseServer();
+  const pages: PageRecheck[] = [];
+  const affectedClaims = new Set<string>();
+  if (comp.claim_id) {
+    affectedClaims.add(comp.claim_id);
+    const { data: links } = await supabase.from("claim_sources").select("source_id, sources(id, url)").eq("claim_id", comp.claim_id).eq("idea_id", ideaId);
+    const seen = new Set<string>();
+    for (const l of links ?? []) {
+      const src = l.sources;
+      if (!src?.url || seen.has(src.id)) continue;
+      seen.add(src.id);
+      // Every quote stored from this page is rechecked, also those of other findings.
+      const { data: quotes } = await supabase.from("claim_sources").select("id, quote, claim_id").eq("source_id", src.id).eq("idea_id", ideaId);
+      try {
+        const page = await fetchPageText(src.url);
+        const result = recheckQuotes((quotes ?? []).map((q) => ({ id: q.id, quote: q.quote })), page.text);
+        pages.push({ url: src.url, reachable: true, quotes: result });
+        const checkedAt = new Date().toISOString();
+        for (const r of result) {
+          await supabase.from("claim_sources").update({ live_found: r.found, live_checked_at: checkedAt }).eq("id", r.id).eq("idea_id", ideaId);
+        }
+        await supabase.from("sources").update({ live_checked_at: checkedAt, live_error: null }).eq("id", src.id).eq("idea_id", ideaId);
+        for (const q of quotes ?? []) affectedClaims.add(q.claim_id);
+      } catch (e) {
+        const message = e instanceof Error ? e.message.slice(0, 120) : "onbekende fout";
+        pages.push({ url: src.url, reachable: false, error: message });
+        await supabase.from("sources").update({ live_checked_at: new Date().toISOString(), live_error: message }).eq("id", src.id).eq("idea_id", ideaId);
+      }
+    }
+  }
+  let website: CompetitorRecheck["website"] = null;
+  if (comp.website) {
+    try {
+      const page = await fetchPageText(comp.website);
+      website = { reachable: true, priceFound: priceOnPage(comp.visible_price, page.text) };
+    } catch {
+      website = { reachable: false, priceFound: null };
+    }
+  }
+  for (const c of affectedClaims) await recomputeClaim(c);
+  await supabase.from("competitors").update({ last_checked_at: new Date().toISOString() }).eq("id", comp.id).eq("idea_id", ideaId);
+  return { name: comp.name, checked: pages.length + (website ? 1 : 0), changes: recheckChanges({ name: comp.name, pages, website }) };
+}
+
+export async function recheckCompetitors(ideaId: string, competitorId: string | null, _: ActionState): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  let query = supabase.from("competitors").select("id, name, website, visible_price, claim_id").eq("idea_id", ideaId);
+  if (competitorId) query = query.eq("id", competitorId);
+  const { data: comps } = await query.order("last_checked_at", { ascending: true, nullsFirst: true }).limit(25);
+  if (!comps?.length) return { error: "Geen aanbieders om te controleren." };
+  const results = [];
+  for (const c of comps) results.push(await recheckCompetitorRow(ideaId, c));
+  revalidatePath(`/app/ideas/${ideaId}`, "layout");
+  const checked = results.reduce((n, r) => n + r.checked, 0);
+  if (checked === 0) return { error: "Er is niets om op te halen: koppel een bevinding met bron-URL of vul de website in." };
+  const changed = results.filter((r) => r.changes.length);
+  if (!changed.length) return { error: null, ok: `${checked} pagina('s) opnieuw opgehaald. Alle citaten en prijzen teruggevonden.` };
+  return {
+    error: null,
+    ok: `${checked} pagina('s) opnieuw opgehaald. Wat veranderde: ${changed.map((r) => `${r.name}: ${r.changes.join(" ")}`).join(" · ")} Niets is verwijderd; de betrokken bevindingen zijn herberekend.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Customer signals (research 7.3): qualitative signals, never behaviour
+// ---------------------------------------------------------------------------
+
+export async function analyzeCustomerSignals(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  const { idea } = await requireWritableIdea(ideaId);
+  if (!aiConfigured()) return { error: "AI is niet verbonden. Leg klantsignalen handmatig vast." };
+  const chosen = new Set(form.getAll("source_id").map(String));
+  if (chosen.size === 0) return { error: "Kies minstens één bron met klantsignalen." };
+  const supabase = await supabaseServer();
+  const { data: sources } = await supabase.from("sources").select("id, title, source_type, origin, created_at, source_excerpts(id, text, created_at)").eq("idea_id", ideaId);
+  const usable = (sources ?? []).filter((s) => isSignalSource(s) && chosen.has(s.id));
+  // Deterministic order (oldest source and fragment first), analysed in batches so a large import is not
+  // reduced to an arbitrary sample.
+  const all = usable
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .flatMap((s) =>
+      (s.source_excerpts ?? [])
+        .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
+        .map((e) => ({ id: e.id, source_id: s.id, source_title: s.title, text: e.text })),
+    );
+  if (all.length === 0) return { error: "Voeg eerst reviews, forumberichten of outreach-antwoorden toe als bron." };
+  const BATCH = 60;
+  const MAX_BATCHES = 5;
+  const analysed = all.slice(0, BATCH * MAX_BATCHES);
+  const merged = new Map<string, { kind: "job" | "pain" | "gain" | "objection"; label: string; mentions: number; quotes: SignalQuote[] }>();
+  let droppedQuotes = 0;
+  let droppedGroups = 0;
+  try {
+    for (let start = 0; start < analysed.length; start += BATCH) {
+      const excerpts: SignalExcerpt[] = analysed.slice(start, start + BATCH).map((e, i) => ({ ...e, ref: `K${i + 1}` }));
+      const res = await runAi(ideaId, "customer_signals", () =>
+        analyzeSignals(ideaContext(idea), excerpts.map((e) => ({ ref: e.ref, title: e.source_title, text: e.text }))),
+      );
+      const v = verifySignalGroups(res.data.groups, excerpts);
+      droppedQuotes += v.droppedQuotes;
+      droppedGroups += v.droppedGroups;
+      // The same need found in several batches becomes one group with the summed number of verified quotes.
+      for (const g of v.kept) {
+        const key = `${g.kind}|${normalizeText(g.label)}`;
+        const prev = merged.get(key);
+        if (prev) {
+          prev.mentions += g.mentions;
+          prev.quotes = [...prev.quotes, ...g.quotes].slice(0, 20);
+        } else merged.set(key, { kind: g.kind, label: g.label, mentions: g.mentions, quotes: g.quotes.slice(0, 20) });
+      }
+    }
+  } catch (e) {
+    if (merged.size === 0) return { error: aiErrorMessage(e, "De analyse is mislukt. Leg klantsignalen handmatig vast.") };
+  }
+  const kept = [...merged.values()];
+  if (kept.length) {
+    const { error } = await supabase
+      .from("customer_signals")
+      .insert(kept.map((g) => ({ idea_id: ideaId, kind: g.kind, label: g.label, mentions: g.mentions, quotes: g.quotes, origin: "ai" })));
+    if (error) return { error: "De klantsignalen konden niet worden opgeslagen." };
+  }
+  const coverage = analysed.length < all.length ? ` Geanalyseerd: de eerste ${analysed.length} van ${all.length} fragmenten; start de analyse opnieuw met minder bronnen voor de rest.` : ` Alle ${all.length} fragmenten zijn geanalyseerd.`;
+  return done(
+    ideaId,
+    `${kept.length} groepen met letterlijke citaten vastgelegd${droppedQuotes ? `; ${droppedQuotes} citaten weggelaten (niet letterlijk teruggevonden)` : ""}${droppedGroups ? `; ${droppedGroups} groepen zonder geldig citaat weggelaten` : ""}.${coverage} Controleer ze en verwijder wat niet klopt.`,
+  );
+}
+
+const SignalSchema = z.object({
+  kind: z.enum(["job", "pain", "gain", "objection"]),
+  label: z.string().trim().min(3, "Omschrijf het signaal in een paar woorden.").max(300),
+  excerpt_id: z.string().uuid("Kies het fragment waar het citaat uit komt."),
+  quote: z.string().trim().min(8, "Neem een letterlijk citaat over (minimaal 8 tekens).").max(1000),
+});
+
+export async function addCustomerSignal(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const p = SignalSchema.safeParse(Object.fromEntries(form));
+  if (!p.success) return { error: p.error.issues[0].message };
+  const supabase = await supabaseServer();
+  const { data: ex } = await supabase.from("source_excerpts").select("id, text, source_id, sources(title)").eq("id", p.data.excerpt_id).eq("idea_id", ideaId).single();
+  if (!ex) return { error: "Fragment niet gevonden." };
+  if (checkQuote(p.data.quote, ex.text) !== "exact") return { error: "Dit citaat staat niet letterlijk in het fragment." };
+  const { error } = await supabase.from("customer_signals").insert({
+    idea_id: ideaId,
+    kind: p.data.kind,
+    label: p.data.label,
+    mentions: 1,
+    quotes: [{ text: p.data.quote, excerpt_id: ex.id, source_id: ex.source_id, source_title: ex.sources?.title ?? "" }],
+    origin: "manual",
+  });
+  if (error) return { error: "Opslaan mislukt." };
+  return done(ideaId, "Klantsignaal vastgelegd.");
+}
+
+export async function deleteCustomerSignal(ideaId: string, signalId: string) {
+  await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  await supabase.from("customer_signals").delete().eq("id", signalId).eq("idea_id", ideaId);
+  revalidatePath(`/app/ideas/${ideaId}`, "layout");
+}
+
+// A frequently mentioned pain becomes a candidate assumption (origin "ai" when the grouping came from AI).
+export async function assumptionFromSignal(ideaId: string, signalId: string, _: ActionState): Promise<ActionState> {
+  const { idea } = await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  const { data: sig } = await supabase.from("customer_signals").select("label, origin").eq("id", signalId).eq("idea_id", ideaId).single();
+  if (!sig) return { error: "Signaal niet gevonden." };
+  const statement = painAsAssumption(sig.label, idea.target_audience);
+  const { data: existing } = await supabase.from("assumptions").select("id").eq("idea_id", ideaId).eq("statement", statement).limit(1);
+  if (existing?.length) return { error: "Deze aanname bestaat al." };
+  const { error } = await supabase
+    .from("assumptions")
+    .insert({ idea_id: ideaId, statement, category: "desirability", importance: 4, origin: sig.origin === "ai" ? "ai" : "manual" });
+  if (error) return { error: "De aanname kon niet worden gemaakt." };
+  return done(ideaId, "Aanname gemaakt. Scherp hem aan op de pagina Aannames en toets hem met klantinterviews.");
 }

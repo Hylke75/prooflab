@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { assumptionEvidence, KIND_DEFAULTS, strength } from "@/lib/domain/evidence";
+import { assumptionEvidence, assumptionStatusFromVerdicts, KIND_DEFAULTS, strength } from "@/lib/domain/evidence";
 import { computeSizing, computeUnitEconomics } from "@/lib/domain/sizing";
 import { checkHypothesis } from "@/lib/domain/hypothesis";
 import { runRealityCheck, type DossierFacts } from "@/lib/domain/reality-check";
 import { templatePlan } from "@/lib/domain/research-plan";
-import { assignVariant, channelFrom, isLikelyBot, visitorHash } from "@/lib/domain/tracking";
+import { assignVariant, channelFrom, clientIp, isLikelyBot, visitorHash } from "@/lib/domain/tracking";
 
 describe("evidence strength", () => {
   it("ranks a deposit above a demo request above an opinion, and synthetic at zero", () => {
@@ -24,7 +24,7 @@ describe("evidence strength", () => {
 describe("market sizing", () => {
   it("computes TAM/SAM/SOM bottom-up with a visible formula", () => {
     const r = computeSizing("b2b_accounts", [
-      { key: "base_count", value: 12000, claimStatus: "verified" },
+      { key: "base_count", value: 12000, claimStatus: "verified", claimValue: 12000 },
       { key: "fit_pct", value: 20 },
       { key: "reach_pct", value: 50 },
       { key: "winnable_pct", value: 5 },
@@ -122,13 +122,23 @@ describe("research plan templates", () => {
 });
 
 describe("cookieless tracking", () => {
-  it("produces a stable, daily rotating hash", () => {
-    const a = visitorHash({ salt: "s", ip: "1.2.3.4", userAgent: "Mozilla/5.0 test", slug: "x", day: "2026-10-27" });
-    const b = visitorHash({ salt: "s", ip: "1.2.3.4", userAgent: "Mozilla/5.0 test", slug: "x", day: "2026-10-27" });
-    const c = visitorHash({ salt: "s", ip: "1.2.3.4", userAgent: "Mozilla/5.0 test", slug: "x", day: "2026-10-28" });
+  it("produces a code that is stable per test but differs between tests", () => {
+    const a = visitorHash({ salt: "s", ip: "1.2.3.4", userAgent: "Mozilla/5.0 test", slug: "x" });
+    const b = visitorHash({ salt: "s", ip: "1.2.3.4", userAgent: "Mozilla/5.0 test", slug: "x" });
+    const other = visitorHash({ salt: "s", ip: "1.2.3.4", userAgent: "Mozilla/5.0 test", slug: "y" });
+    const otherSecret = visitorHash({ salt: "t", ip: "1.2.3.4", userAgent: "Mozilla/5.0 test", slug: "x" });
     expect(a).toBe(b);
-    expect(a).not.toBe(c);
+    expect(a).not.toBe(other);
+    expect(a).not.toBe(otherSecret);
     expect(a).toHaveLength(32);
+    // The same visitor keeps the same price variant for the whole test.
+    expect(assignVariant(a, 3)).toBe(assignVariant(b, 3));
+  });
+  it("trusts only the platform or the right-most proxy for the client IP", () => {
+    const h = (m: Record<string, string>) => (n: string) => m[n] ?? null;
+    expect(clientIp(h({ "x-forwarded-for": "6.6.6.6, 10.0.0.1, 203.0.113.9" }))).toBe("203.0.113.9");
+    expect(clientIp(h({ "x-forwarded-for": "6.6.6.6", "x-vercel-forwarded-for": "198.51.100.4" }))).toBe("198.51.100.4");
+    expect(clientIp(h({}))).toBe("0.0.0.0");
   });
   it("filters bots and maps channels", () => {
     expect(isLikelyBot("LinkedInBot/1.0 (compatible; Mozilla/5.0)")).toBe(true);
@@ -154,11 +164,24 @@ describe("dossier labels", () => {
   });
   it("reaches a substantiated market picture, then behaviour evidence", () => {
     expect(dossierLabel(base).label).toBe("Onderbouwd marktbeeld");
-    expect(dossierLabel({ ...base, behaviourCards: [{ verdict: "inconclusive", channels: ["linkedin"], endedOn: "2026-10-01" }] }).label).toBe("Eerste gedragsbewijs");
+    // A failed or inconclusive test is learning, not behavioural evidence.
+    expect(dossierLabel({ ...base, behaviourCards: [{ verdict: "inconclusive", channels: ["linkedin"], endedOn: "2026-10-01" }] }).label).toBe("Onderbouwd marktbeeld");
+    expect(dossierLabel({ ...base, behaviourCards: [{ verdict: "fail", channels: ["linkedin"], endedOn: "2026-10-01" }] }).label).toBe("Onderbouwd marktbeeld");
+    expect(dossierLabel({ ...base, behaviourCards: [{ verdict: "pass", channels: ["linkedin"], endedOn: "2026-10-01" }] }).label).toBe("Eerste gedragsbewijs");
   });
   it("requires two passes in different periods or channels for repeated evidence", () => {
     const one = { verdict: "pass", channels: ["linkedin"], endedOn: "2026-09-01" };
     expect(dossierLabel({ ...base, behaviourCards: [one, { ...one }] }).label).toBe("Eerste gedragsbewijs");
     expect(dossierLabel({ ...base, behaviourCards: [one, { ...one, channels: ["meta_ads"] }] }).label).toBe("Herhaald marktgedragsbewijs");
+  });
+});
+
+describe("assumption status from approved experiments", () => {
+  it("keeps an earlier result when a later test is inconclusive and flags conflicts", () => {
+    expect(assumptionStatusFromVerdicts([])).toBe("untested");
+    expect(assumptionStatusFromVerdicts(["pass", "inconclusive"])).toBe("supported");
+    expect(assumptionStatusFromVerdicts(["fail"])).toBe("refuted");
+    expect(assumptionStatusFromVerdicts(["pass", "fail"])).toBe("inconclusive");
+    expect(assumptionStatusFromVerdicts(["inconclusive"])).toBe("inconclusive");
   });
 });

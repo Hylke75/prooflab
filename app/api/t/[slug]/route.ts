@@ -2,24 +2,33 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseAnon } from "@/lib/supabase/server";
 import { env, trackingConfigured } from "@/lib/env";
-import { consentText, variantFor, visitorFromRequest } from "@/lib/public-test";
-import { channelFrom } from "@/lib/domain/tracking";
+import { consentText, isSameOriginJson, variantFor, visitorFromRequest } from "@/lib/public-test";
+import { channelFrom, contentFrom } from "@/lib/domain/tracking";
 
 const Body = z.object({
   event: z.enum(["view", "cta_click", "submit"]),
   utm_source: z.string().max(40).optional(),
+  utm_content: z.string().max(40).optional(), // post code of the invitation post
   email: z.string().trim().email().max(254).optional().or(z.literal("")),
   consent: z.boolean().optional(),
   website: z.string().max(0).optional(), // honeypot: real people leave it empty
 });
 
-// Cookieless event ingest for public test pages. The visitor hash and price variant are
-// computed here on the server; the client cannot choose them.
+// Cookieless event ingest for public test pages. The visitor code and price variant are computed here on
+// the server; the client cannot choose them. The database counts a click only after a view and a
+// submission only after a click, and limits each network to 30 actions per minute per page.
 export async function POST(request: Request, ctx: RouteContext<"/api/t/[slug]">) {
   const { slug } = await ctx.params;
   if (!/^[a-f0-9]{14}$/.test(slug)) return NextResponse.json({ ok: false }, { status: 404 });
   if (!trackingConfigured()) return NextResponse.json({ ok: false, reason: "not_configured" }, { status: 503 });
-  const parsed = Body.safeParse(await request.json().catch(() => null));
+  if (!isSameOriginJson(request)) return NextResponse.json({ ok: false }, { status: 403 });
+  const raw = await request.text();
+  if (raw.length > 4000) return NextResponse.json({ ok: false }, { status: 413 });
+  let json: unknown = null;
+  try {
+    json = JSON.parse(raw);
+  } catch {}
+  const parsed = Body.safeParse(json);
   if (!parsed.success) return NextResponse.json({ ok: false }, { status: 400 });
   const b = parsed.data;
   const visitor = await visitorFromRequest(slug);
@@ -27,10 +36,12 @@ export async function POST(request: Request, ctx: RouteContext<"/api/t/[slug]">)
 
   const supabase = supabaseAnon();
   const { data: test } = await supabase.rpc("get_public_test", { p_slug: slug });
-  if (!test) return NextResponse.json({ ok: false }, { status: 404 });
+  // Surveys are answered through their own endpoint; their slugs never count as page events.
+  if (!test || (test as { type?: string }).type === "survey") return NextResponse.json({ ok: false }, { status: 404 });
   const t = test as { type: string; config: { price_points?: unknown[]; researcher?: string } };
   const variant = String(t.type === "pricing" ? variantFor(visitor.hash, t.config.price_points?.length ?? 1) : 0);
   const channel = channelFrom(b.utm_source);
+  const content = contentFrom(b.utm_content);
 
   if (b.event === "submit") {
     const email = b.email ? b.email : null;
@@ -45,6 +56,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/t/[slug]">)
       p_answers: {},
       p_consent: !!b.consent,
       p_consent_text: consentText(t.config.researcher ?? "de onderzoeker"),
+      p_rate_bucket: visitor.bucket,
+      p_content: content,
     });
     if (error) return NextResponse.json({ ok: false }, { status: 400 });
     return NextResponse.json({ ok: true, counted: data });
@@ -56,6 +69,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/t/[slug]">)
     p_event: b.event,
     p_variant: variant,
     p_channel: channel,
+    p_rate_bucket: visitor.bucket,
+    p_content: content,
   });
   if (error) return NextResponse.json({ ok: false }, { status: 400 });
   return NextResponse.json({ ok: true, counted: data });

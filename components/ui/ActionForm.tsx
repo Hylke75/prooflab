@@ -1,6 +1,7 @@
 "use client";
 
 import { startTransition, useActionState, useEffect, useRef } from "react";
+import { FormPendingOverlay, SavingOverlay } from "@/components/ui/SavingOverlay";
 
 export type FormState = { error: string | null; ok?: string | null };
 
@@ -39,6 +40,7 @@ export function ActionForm({
         <button className={submitClass} disabled={pending}>{pending ? pendingLabel : submitLabel}</button>
         {footer}
       </div>
+      <SavingOverlay active={pending} label={pendingLabel} />
     </form>
   );
 }
@@ -62,6 +64,7 @@ export function ConfirmButton({ action, label, confirm, className = "btn white s
       }}
     >
       <button className={className}>{label}</button>
+      <FormPendingOverlay />
     </form>
   );
 }

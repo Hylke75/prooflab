@@ -1,8 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { Icon } from "@/components/Icon";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
+import { Drawer } from "@/components/ui/Drawer";
 import { COMPETITOR_KINDS, type CompetitorKind } from "@/lib/domain/labels";
+import { RECHECK_DAYS, recheckDue } from "@/lib/domain/recheck";
+import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export type CompetitorView = {
   id: string;
@@ -18,7 +22,10 @@ export type CompetitorView = {
   weaknesses: string | null;
   differentiation_opportunity: string | null;
   origin: string;
+  last_checked_at: string | null;
   claim: { statement: string; status: string } | null;
+  // Results of the last live recheck of the pages behind the linked finding.
+  checks?: { url: string; note: string; missing: boolean }[];
 };
 
 type Action = (s: FormState, f: FormData) => Promise<FormState>;
@@ -30,7 +37,11 @@ export function CompetitorPanel({
   updateActions,
   deleteActions,
   claims,
+  recheckActions,
+  recheckAll,
 }: {
+  recheckActions?: Record<string, Action>;
+  recheckAll?: Action | null;
   competitors: CompetitorView[];
   canWrite: boolean;
   addAction: Action;
@@ -50,8 +61,18 @@ export function CompetitorPanel({
           <h2>Welke oplossingen zijn er al?</h2>
           <p className="sub">Vergelijk niet alleen vergelijkbare apps, maar ook hoe klanten het nu zonder jouw product oplossen.</p>
         </div>
-        {canWrite && <button className="btn white sm" onClick={() => setOpen("new")}>+ Aanbieder of alternatief</button>}
+        {canWrite && <button type="button" className="btn white sm" onClick={() => setOpen("new")}>+ Aanbieder of alternatief</button>}
       </div>
+      {canWrite && recheckAll && competitors.length > 0 && (
+        <div className="note" style={{ marginTop: 0, marginBottom: 14 }}>
+          <strong>Maandelijkse controle.</strong> ProofLab haalt de bronpagina&apos;s en websites opnieuw op en controleert of de citaten en prijzen er
+          nog letterlijk staan. Geen AI-oordeel; verdwenen citaten maken een bevinding &quot;verouderd&quot;, er wordt niets verwijderd.
+          {competitors.some((c) => recheckDue(c.last_checked_at)) && ` ${competitors.filter((c) => recheckDue(c.last_checked_at)).length} aanbieder(s) langer dan ${RECHECK_DAYS} dagen niet gecontroleerd.`}
+          <ActionForm action={recheckAll} submitLabel="Alles opnieuw controleren" submitClass="btn white sm" pendingLabel="Pagina's ophalen…">
+            <span />
+          </ActionForm>
+        </div>
+      )}
       <div className="filter-strip" role="group" aria-label="Filter op type">
         {([["all", "Alles"], ["direct", "Directe oplossingen"], ["indirect", "Indirecte oplossingen"], ["alternative", "Huidig alternatief"]] as const).map(([k, l]) => (
           <button key={k} className={`filter-btn${filter === k ? " active" : ""}`} aria-pressed={filter === k} onClick={() => setFilter(k)}>{l}</button>
@@ -70,6 +91,11 @@ export function CompetitorPanel({
             <div>
               <strong>{c.name}</strong>
               <small>{COMPETITOR_KINDS[c.kind].label}{c.origin === "ai" ? " · gevonden in bron" : ""}</small>
+              <small>
+                {c.last_checked_at ? `laatst gecontroleerd ${new Date(c.last_checked_at).toLocaleDateString("nl-NL")}` : "nog niet gecontroleerd"}
+                {recheckDue(c.last_checked_at) && <span className="pill orange" style={{ marginLeft: 6 }}>controle aanbevolen</span>}
+                {c.checks?.some((x) => x.missing) && <span className="pill coral" style={{ marginLeft: 6 }}>citaat verdwenen</span>}
+              </small>
             </div>
             <div>{c.positioning ?? "—"}</div>
             <div className="comp-col-hidden">
@@ -82,24 +108,37 @@ export function CompetitorPanel({
                 <span className="muted">Niet publiek</span>
               )}
             </div>
-            <button className="btn white sm" onClick={() => setOpen(c.id)}>Bekijk</button>
+            <button type="button" className="btn white sm" onClick={() => setOpen(c.id)} aria-label={`Bekijk ${c.name}`}>Bekijk</button>
           </div>
         ))}
       </div>
       <div className="note">Prijzen staan er alleen met peildatum en bron. Een ontbrekende prijs blijft &quot;niet publiek&quot;; ProofLab vult die nooit zelf in.</div>
 
-      {open && (
-        <>
-          <div className="drawer-backdrop" onClick={() => setOpen(null)} />
-          <div className="drawer" role="dialog" aria-modal="true" aria-label={current ? current.name : "Aanbieder toevoegen"}>
+      <Drawer open={!!open} onClose={() => setOpen(null)} portal className="drawer" labelledBy="competitor-drawer-title">
             <div className="row between">
-              <h3>{current ? current.name : "Aanbieder of alternatief toevoegen"}</h3>
-              <button className="round-btn" onClick={() => setOpen(null)} aria-label="Sluiten">×</button>
+              <h2 id="competitor-drawer-title">{current ? current.name : "Aanbieder of alternatief toevoegen"}</h2>
+              <button type="button" className="round-btn" onClick={() => setOpen(null)} aria-label="Sluiten">
+                <Icon name="close" />
+              </button>
             </div>
             {current && (
               <div className="stack mt-12">
                 <span className={`pill ${COMPETITOR_KINDS[current.kind].pill}`}>{COMPETITOR_KINDS[current.kind].label}</span>
                 {current.website && <a className="text-link" href={current.website} target="_blank" rel="noreferrer noopener">{current.website}</a>}
+                <div className="tiny">
+                  {current.last_checked_at ? `Laatst gecontroleerd ${new Date(current.last_checked_at).toLocaleString("nl-NL")}` : "Nog niet gecontroleerd"}
+                  {recheckDue(current.last_checked_at) ? ` · controle aanbevolen (ouder dan ${RECHECK_DAYS} dagen)` : ""}
+                </div>
+                {(current.checks ?? []).map((x) => (
+                  <div key={x.url} className={x.missing ? "form-error" : "note"} style={{ marginTop: 0 }}>
+                    {x.url}: {x.note}
+                  </div>
+                ))}
+                {canWrite && recheckActions?.[current.id] && (
+                  <ActionForm action={recheckActions[current.id]} submitLabel="Opnieuw controleren" submitClass="btn white sm" pendingLabel="Pagina's ophalen…">
+                    <span />
+                  </ActionForm>
+                )}
                 {current.claim ? (
                   <div className="note" style={{ marginTop: 0 }}>Onderbouwing: {current.claim.statement} ({current.claim.status})</div>
                 ) : (
@@ -125,11 +164,10 @@ export function CompetitorPanel({
             {canWrite && current && (
               <form action={deleteActions[current.id]} className="mt-18">
                 <button className="text-link" style={{ color: "#a43c42" }}>Verwijderen</button>
+                <FormPendingOverlay />
               </form>
             )}
-          </div>
-        </>
-      )}
+      </Drawer>
     </>
   );
 }

@@ -49,6 +49,9 @@ export const SOURCE_TYPES = {
   news: "Nieuws",
   review_site: "Reviewsite",
   blog: "Blog / opinie",
+  forum: "Forum / community",
+  outreach: "Outreach-antwoord (LinkedIn/Expandi)",
+  survey: "Enquête (open antwoorden)",
   dataset_upload: "Eigen dataset",
   interview: "Interview",
   other: "Overig",
@@ -102,6 +105,13 @@ export const EXPERIMENT_TYPES = {
     phase: "valideren",
     evidence: "Waargenomen keuze bij een prijs",
   },
+  survey: {
+    label: "Enquête",
+    short: "Vraag veel mensen naar hun recente gedrag, met één vooraf vastgelegde kernvraag.",
+    icon: "≡",
+    phase: "ontdekken",
+    evidence: "Uitgesproken antwoord (zelfrapportage)",
+  },
 } as const;
 export type ExperimentType = keyof typeof EXPERIMENT_TYPES;
 
@@ -139,6 +149,7 @@ export const OBSERVATION_KINDS = {
   deposit: "Aanbetaling gedaan",
   repeat_purchase: "Opnieuw gekocht",
   opinion: "Mening (\"leuk idee\")",
+  survey_answer: "Enquête-uitkomst (zelfrapportage)",
   other: "Overig",
 } as const;
 export type ObservationKind = keyof typeof OBSERVATION_KINDS;

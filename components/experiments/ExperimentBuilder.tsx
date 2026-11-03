@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { Icon } from "@/components/Icon";
 import { EXPERIMENT_TYPES, HONEST_REVEAL, NEUTRAL_INTERVIEW_GUIDE, type ExperimentType } from "@/lib/domain/labels";
@@ -8,6 +8,16 @@ import { checkHypothesis } from "@/lib/domain/hypothesis";
 import { testCardDefaults, type Option } from "@/lib/domain/recommend";
 import { wilson } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
+import { auditGuide, guideSummary } from "@/lib/domain/interview-audit";
+import { honestyWarnings, type PreparedVariant } from "@/lib/domain/copy-honesty";
+import { GuideAuditList } from "@/components/experiments/InterviewAudit";
+import { SurveyEditor, type SurveyDraftAction } from "@/components/survey/SurveyEditor";
+import { SamplePlanner } from "@/components/survey/SamplePlanner";
+import { templateSurvey, type SurveyConfig } from "@/lib/domain/survey";
+import { metricFromKey, surveyErrors } from "@/lib/domain/survey-editor";
+
+type VariantsResult = { error: string | null; variants: PreparedVariant[]; draftNotes: string[]; draftWarnings: string[] };
+type VariantsAction = (input: { assumption_id: string; type: "landing" | "pricing"; headline: string; subline: string; offer: string }) => Promise<VariantsResult>;
 
 type Assumption = { id: string; statement: string };
 type Action = (s: FormState, f: FormData) => Promise<FormState>;
@@ -24,7 +34,19 @@ export function ExperimentBuilder({
   warning,
   audience,
   action,
+  ideaTitle = "",
+  aiConnected = false,
+  variantsAction,
+  initialType,
+  researcher = "",
+  surveyDraftAction,
 }: {
+  initialType?: ExperimentType;
+  researcher?: string;
+  surveyDraftAction?: SurveyDraftAction;
+  ideaTitle?: string;
+  aiConnected?: boolean;
+  variantsAction?: VariantsAction;
   assumptions: Assumption[];
   initialAssumption: string;
   options: Option[];
@@ -34,15 +56,29 @@ export function ExperimentBuilder({
 }) {
   const [assumptionId, setAssumptionId] = useState(initialAssumption);
   const assumption = assumptions.find((a) => a.id === assumptionId) ?? assumptions[0];
-  const [tier, setTier] = useState(0);
+  const [tier, setTier] = useState(() => Math.max(0, options.findIndex((o) => o.type === initialType)));
   const type: ExperimentType = options[tier].type;
+  // The survey is kept while switching assumption or test type; the Test Card metric follows its key question.
+  const [survey, setSurvey] = useState<SurveyConfig>(() =>
+    templateSurvey({ assumption: assumption.statement, audience: audience || "de doelgroep", researcher: researcher || "de onderzoeker", product: ideaTitle, screen: true }),
+  );
+  const surveyIssues = useMemo(() => (type === "survey" ? surveyErrors(survey) : []), [type, survey]);
   const defaults = useMemo(() => testCardDefaults(type, assumption.statement, audience), [type, assumption.statement, audience]);
-  const [card, setCard] = useState(defaults);
+  const withSurveyMetric = (d: typeof defaults, s: SurveyConfig) => (type === "survey" ? { ...d, ...metricFromKey(s) } : d);
+  const [card, setCard] = useState(() => withSurveyMetric(defaults, survey));
   const [lastKey, setLastKey] = useState(`${type}|${assumption.id}`);
   if (lastKey !== `${type}|${assumption.id}`) {
     setLastKey(`${type}|${assumption.id}`);
-    setCard(defaults);
+    setCard(withSurveyMetric(defaults, survey));
   }
+  const updateSurvey = (next: SurveyConfig) => {
+    setSurvey(next);
+    const m = metricFromKey(next);
+    const keyText = (s: SurveyConfig) => s.questions.find((q) => q.id === s.key_question)?.text ?? "";
+    const keyChanged = next.key_question !== survey.key_question || next.success_options.join() !== survey.success_options.join() || keyText(next) !== keyText(survey);
+    // Teller and noemer always follow the key question; the label only when the key question itself changed.
+    setCard((c) => ({ ...c, metric_numerator: m.metric_numerator, metric_denominator: m.metric_denominator, metric_label: keyChanged ? m.metric_label : c.metric_label }));
+  };
   const [page, setPage] = useState({
     headline: "",
     subline: "",
@@ -57,6 +93,18 @@ export function ExperimentBuilder({
   ]);
   const [channels, setChannels] = useState<string[]>(["linkedin", "network"]);
   const [reach, setReach] = useState("");
+  const [guide, setGuide] = useState(NEUTRAL_INTERVIEW_GUIDE.join("\n"));
+  const audit = useMemo(() => auditGuide(guide.split("\n"), { productNames: [ideaTitle, page.product_name] }), [guide, ideaTitle, page.product_name]);
+  const auditSum = guideSummary(audit);
+  const [variants, setVariants] = useState<VariantsResult | null>(null);
+  const [variantsPending, startVariants] = useTransition();
+  const draftWarnings = honestyWarnings(page.headline, page.subline, page.offer);
+  const askVariants = () => {
+    if (!variantsAction || type === "interview" || type === "survey") return;
+    startVariants(async () => {
+      setVariants(await variantsAction({ assumption_id: assumption.id, type, headline: page.headline, subline: page.subline, offer: page.offer }));
+    });
+  };
 
   const coach = checkHypothesis({
     ...card,
@@ -75,7 +123,7 @@ export function ExperimentBuilder({
       <div className="card">
         <div className="section-title">
           <div>
-            <h3>Welk experiment past bij jouw vraag?</h3>
+            <h2 className="as-h3">Welk experiment past bij jouw vraag?</h2>
             <p className="sub" style={{ marginTop: 5 }}>Drie voorstellen, elk met een ander soort bewijs.</p>
           </div>
           <span className="pill blue">Aanbeveling</span>
@@ -85,7 +133,7 @@ export function ExperimentBuilder({
           {assumptions.map((a) => <option key={a.id} value={a.id}>{a.statement}</option>)}
         </select>
         {warning && <div className="note">{warning}</div>}
-        <div className="exp-options" role="radiogroup" aria-label="Experimenttype">
+        <div className={`exp-options${options.length === 4 ? " four" : ""}`} role="radiogroup" aria-label="Experimenttype">
           {options.map((o, i) => (
             <button key={o.tier} type="button" role="radio" aria-checked={tier === i} className={`exp-option${tier === i ? " selected" : ""}`} onClick={() => setTier(i)}>
               <span className="exp-ico">{EXPERIMENT_TYPES[o.type].icon}</span>
@@ -110,16 +158,18 @@ export function ExperimentBuilder({
         <input type="hidden" name="assumption_id" value={assumption.id} />
         <input type="hidden" name="type" value={type} />
         <div className="card" style={{ marginTop: 18 }}>
-          <div className="section-title"><h3>Jouw Test Card</h3><span className="pill gray">Concept</span></div>
+          <div className="section-title"><h2 className="as-h3">Jouw Test Card</h2><span className="pill gray">Concept</span></div>
+          <p className="explain" style={{ marginTop: -8, marginBottom: 14 }}>Een Test Card legt vóór de start vast wat je denkt, hoe je het toetst, wat je meet en wanneer het klopt. Na goedkeuring kan dat niet meer stil veranderen.</p>
           <div className="form-line"><label htmlFor="tc-title">Naam van het experiment</label><input className="field" id="tc-title" name="title" defaultValue={`${EXPERIMENT_TYPES[type].label}: ${assumption.statement.slice(0, 60)}`} key={`t-${type}-${assumption.id}`} /></div>
           <div className="form-line"><label htmlFor="tc-believe">Wij denken dat…</label><textarea className="field" id="tc-believe" name="we_believe" rows={3} value={card.we_believe} onChange={(e) => set("we_believe", e.target.value)} /></div>
           <div className="form-line"><label htmlFor="tc-target">Bij wie?</label><input className="field" id="tc-target" name="target_group" value={card.target_group} onChange={(e) => set("target_group", e.target.value)} /></div>
           <div className="form-line"><label htmlFor="tc-method">Dat toetsen we door…</label><input className="field" id="tc-method" name="test_method" value={card.test_method} onChange={(e) => set("test_method", e.target.value)} /></div>
           <div className="form-line"><label htmlFor="tc-metric">En we meten…</label><input className="field" id="tc-metric" name="metric_label" value={card.metric_label} onChange={(e) => set("metric_label", e.target.value)} /></div>
           <div className="double-field">
-            <div className="form-line"><label htmlFor="tc-num">Teller</label><input className="field" id="tc-num" name="metric_numerator" value={card.metric_numerator} onChange={(e) => set("metric_numerator", e.target.value)} /></div>
-            <div className="form-line"><label htmlFor="tc-den">Noemer</label><input className="field" id="tc-den" name="metric_denominator" value={card.metric_denominator} onChange={(e) => set("metric_denominator", e.target.value)} /></div>
+            <div className="form-line"><label htmlFor="tc-num">Teller</label><input className="field" id="tc-num" name="metric_numerator" value={card.metric_numerator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_numerator", e.target.value)} /></div>
+            <div className="form-line"><label htmlFor="tc-den">Noemer</label><input className="field" id="tc-den" name="metric_denominator" value={card.metric_denominator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_denominator", e.target.value)} /></div>
           </div>
+          {type === "survey" && <p className="field-hint" id="tc-metric-hint" style={{ marginTop: -8, marginBottom: 12 }}>Teller en noemer volgen uit de kernvraag en de succesopties in de enquête hiernaast.</p>}
           <div className="double-field">
             <div className="form-line"><label htmlFor="tc-succ">Het klopt als ≥ (%)</label><input className="field num" id="tc-succ" name="success_threshold_pct" type="number" min={1} max={100} value={card.success_threshold_pct} onChange={(e) => set("success_threshold_pct", e.target.value)} /></div>
             <div className="form-line"><label htmlFor="tc-fail">Het klopt niet als &lt; (%)</label><input className="field num" id="tc-fail" name="fail_threshold_pct" type="number" min={0} max={100} value={card.fail_threshold_pct ?? ""} onChange={(e) => set("fail_threshold_pct", e.target.value)} /></div>
@@ -135,6 +185,14 @@ export function ExperimentBuilder({
             </div>
           ) : (
             <div className="note" style={{ marginTop: 0 }}>Met deze steekproef is de succesdrempel niet aantoonbaar te halen. Verhoog de steekproef.</div>
+          )}
+          {type === "survey" && (
+            <SamplePlanner
+              compact
+              successPct={Number(card.success_threshold_pct)}
+              failPct={card.fail_threshold_pct === null || String(card.fail_threshold_pct) === "" ? null : Number(card.fail_threshold_pct)}
+              minSample={n}
+            />
           )}
           <div className="form-line"><label htmlFor="tc-bias">Verwachte vertekeningen</label><input className="field" id="tc-bias" name="expected_biases" value={card.expected_biases} onChange={(e) => set("expected_biases", e.target.value)} /></div>
           <fieldset className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }}>
@@ -159,19 +217,43 @@ export function ExperimentBuilder({
             </div>
           )}
           <div className="note">Je legt deze criteria vast vóór de test. Na goedkeuring zijn ze vergrendeld; wijzigen kan alleen met een nieuwe versie en een motivering.</div>
-          <button className="btn primary" style={{ marginTop: 18, width: "100%" }} disabled={!coach.ok}>
+          {surveyIssues.length > 0 && <div className="form-error">Maak de enquête eerst compleet (zie de meldingen bij de vragen).</div>}
+          <button className="btn primary" style={{ marginTop: 18, width: "100%" }} disabled={!coach.ok || surveyIssues.length > 0}>
             Test Card opslaan als concept <Icon name="arrow" size="sm" />
           </button>
         </div>
 
         <div className="card" style={{ marginTop: 18 }}>
-          <div className="section-title"><h3>Zo ziet jouw experiment eruit</h3><span className="pill blue">Live preview</span></div>
-          {type === "interview" ? (
+          <div className="section-title"><h2 className="as-h3">Zo ziet jouw experiment eruit</h2><span className="pill blue">Live preview</span></div>
+          {type === "survey" ? (
+            <>
+              <input type="hidden" name="survey_config" value={JSON.stringify(survey)} />
+              <SurveyEditor
+                value={survey}
+                onChange={updateSurvey}
+                productNames={[ideaTitle]}
+                assumptionId={assumption.id}
+                targetGroup={card.target_group}
+                aiConnected={aiConnected}
+                draftAction={surveyDraftAction}
+              />
+            </>
+          ) : type === "interview" ? (
             <>
               <div className="form-line">
                 <label htmlFor="tc-guide">Gespreksleidraad (één vraag per regel)</label>
-                <textarea className="field" id="tc-guide" name="guide" rows={9} defaultValue={NEUTRAL_INTERVIEW_GUIDE.join("\n")} />
+                <textarea className="field" id="tc-guide" name="guide" rows={9} value={guide} onChange={(e) => setGuide(e.target.value)} aria-describedby="tc-guide-audit" />
                 <p className="field-hint">Vragen over gedrag in het verleden. Geen pitch en geen &quot;zou je dit kopen?&quot;.</p>
+              </div>
+              <div id="tc-guide-audit" aria-live="polite">
+                {auditSum.flagged === 0 ? (
+                  <div className="form-ok" style={{ marginTop: 0 }}>Leidraadcontrole: geen hypothetische, sturende of verkopende vragen gevonden.</div>
+                ) : (
+                  <div className="note" style={{ marginTop: 0 }}>
+                    <strong>Leidraadcontrole: {auditSum.flagged} van {auditSum.total} vragen verdienen aandacht.</strong> Dit zijn waarschuwingen; je beslist zelf.
+                    <GuideAuditList audit={audit} />
+                  </div>
+                )}
               </div>
               <div className="form-line">
                 <label htmlFor="tc-screen">Selectiecriteria en uitsluitingen</label>
@@ -192,6 +274,51 @@ export function ExperimentBuilder({
                   </div>
                 )}
                 <span className="btn dark sm">{page.cta_label} →</span>
+              </div>
+              <div className="mt-12">
+                {draftWarnings.length > 0 && (
+                  <div className="note" style={{ marginTop: 0 }} role="status">
+                    <strong>Eerlijkheidscontrole:</strong>
+                    <ul style={{ margin: "6px 0 0 16px", padding: 0 }}>{draftWarnings.map((w) => <li key={w}>{w}</li>)}</ul>
+                  </div>
+                )}
+                {variantsAction && (
+                  aiConnected ? (
+                    <button type="button" className="btn soft sm mt-8" onClick={askVariants} disabled={variantsPending}>
+                      {variantsPending ? "Varianten bedenken…" : "Stel varianten voor (AI)"}
+                    </button>
+                  ) : (
+                    <p className="field-hint">AI niet verbonden: schrijf zelf twee of drie varianten en kies er één. De eerlijkheidscontrole werkt wel.</p>
+                  )
+                )}
+                {variants?.error && <div className="form-error" role="alert">{variants.error}</div>}
+                {variants && variants.draftNotes.length > 0 && (
+                  <div className="note">
+                    <strong>AI over je huidige concept (voorstel):</strong>
+                    <ul style={{ margin: "6px 0 0 16px", padding: 0 }}>{variants.draftNotes.map((w) => <li key={w}>{w}</li>)}</ul>
+                  </div>
+                )}
+                {variants && variants.variants.length > 0 && (
+                  <div className="stack mt-12" aria-label="Voorgestelde varianten">
+                    <div className="tiny"><span className="pill blue">AI-voorstel</span> Kies er één om in je concept over te nemen. Na goedkeuring verandert er niets meer.</div>
+                    {variants.variants.map((v, i) => (
+                      <div key={i} className="card tight">
+                        <div className="tiny">Variant {i + 1} · {v.angle}</div>
+                        <strong style={{ display: "block", marginTop: 6 }}>{v.headline}</strong>
+                        <p className="sub" style={{ fontSize: 13 }}>{v.subline}</p>
+                        <p className="tiny mt-8">{v.offer}</p>
+                        {[...v.ai_honesty_notes, ...v.warnings].length > 0 && (
+                          <ul className="tiny" style={{ margin: "6px 0 0 16px", padding: 0, color: "#976022" }}>
+                            {[...v.ai_honesty_notes, ...v.warnings].map((w) => <li key={w}>Let op: {w}</li>)}
+                          </ul>
+                        )}
+                        <button type="button" className="btn white sm mt-8" onClick={() => setPage({ ...page, headline: v.headline, subline: v.subline, offer: v.offer })}>
+                          Neem variant {i + 1} over
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="form-line mt-12"><label htmlFor="pg-name">Naam van het aanbod (merkneutraal)</label><input className="field" id="pg-name" name="product_name" value={page.product_name} onChange={(e) => setPage({ ...page, product_name: e.target.value })} /></div>
               <div className="form-line"><label htmlFor="pg-head">Kop</label><input className="field" id="pg-head" name="headline" value={page.headline} onChange={(e) => setPage({ ...page, headline: e.target.value })} /></div>

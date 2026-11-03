@@ -32,9 +32,9 @@ async function as<T>(who: Who, fn: (c: Client) => Promise<T>): Promise<T> {
   }
 }
 
-async function user(email: string) {
+async function user(email: string, confirmed = true) {
   const id = randomUUID();
-  await db.query("insert into auth.users (id, email) values ($1, $2)", [id, email]);
+  await db.query("insert into auth.users (id, email, email_confirmed_at) values ($1, $2, $3)", [id, email, confirmed ? new Date() : null]);
   return { id, email };
 }
 
@@ -180,39 +180,61 @@ d("row level security and integrity rules", () => {
     expect(slug).toMatch(/^[a-f0-9]{14}$/);
 
     const notLive = await as("anon", async (c) =>
-      (await c.query("select public.record_test_event($1, $2, 'v1', 'view', 'a', 'linkedin') as ok", [ingestKey, slug])).rows[0].ok,
+      (await c.query("select public.record_test_event($1, $2, 'v1', 'view', 'a', 'linkedin', 'net1') as ok", [ingestKey, slug])).rows[0].ok,
     );
     expect(notLive).toBe(false);
 
     await as(alice, (c) => c.query("update public.experiments set state = 'live' where id = $1", [x.experiment]));
     await expect(
-      as("anon", (c) => c.query("select public.record_test_event('wrong', $1, 'v1', 'view', 'a', 'linkedin')", [slug])),
+      as("anon", (c) => c.query("select public.record_test_event('wrong', $1, 'v1', 'view', 'a', 'linkedin', 'net1')", [slug])),
     ).rejects.toThrow(/FORBIDDEN/);
 
-    const first = await as("anon", async (c) =>
-      (await c.query("select public.record_test_event($1, $2, 'v1', 'view', 'a', 'linkedin') as ok", [ingestKey, slug])).rows[0].ok,
-    );
-    const again = await as("anon", async (c) =>
-      (await c.query("select public.record_test_event($1, $2, 'v1', 'view', 'a', 'linkedin') as ok", [ingestKey, slug])).rows[0].ok,
-    );
-    expect(first).toBe(true);
-    expect(again).toBe(false);
+    const ev = async (visitor: string, event: string) =>
+      as("anon", async (c) =>
+        (await c.query("select public.record_test_event($1, $2, $3, $4, 'a', 'linkedin', 'net1') as ok", [ingestKey, slug, visitor, event])).rows[0].ok,
+      );
+    const submit = async (visitor: string) =>
+      as("anon", async (c) =>
+        (await c.query("select public.submit_test_form($1, $2, $3, 'a', 'linkedin', 'x@example.com', '{}', true, 'toestemming', 'net1') as ok", [ingestKey, slug, visitor])).rows[0].ok,
+      );
+    // Behaviour only counts in order: no click or submission without having seen the page.
+    expect(await ev("v2", "cta_click")).toBe(false);
+    expect(await submit("v2")).toBe(false);
+    expect(await ev("v1", "view")).toBe(true);
+    expect(await ev("v1", "view")).toBe(false);
+    expect(await submit("v1")).toBe(false);
+    expect(await ev("v1", "cta_click")).toBe(true);
 
-    const sub1 = await as("anon", async (c) =>
-      (await c.query("select public.submit_test_form($1, $2, 'v1', 'a', 'linkedin', 'x@example.com', '{}', true, 'toestemming') as ok", [ingestKey, slug])).rows[0].ok,
-    );
-    const sub2 = await as("anon", async (c) =>
-      (await c.query("select public.submit_test_form($1, $2, 'v1', 'a', 'linkedin', 'x@example.com', '{}', true, 'toestemming') as ok", [ingestKey, slug])).rows[0].ok,
-    );
-    expect(sub1).toBe(true);
-    expect(sub2).toBe(false);
+    expect(await submit("v1")).toBe(true);
+    expect(await submit("v1")).toBe(false);
     const counts = await as(alice, async (c) =>
       (await c.query("select event_type, count(*)::int as n from public.test_events where experiment_id = $1 group by 1 order by 1", [x.experiment])).rows,
     );
     expect(counts).toEqual([
+      { event_type: "cta_click", n: 1 },
       { event_type: "submit", n: 1 },
       { event_type: "view", n: 1 },
     ]);
+    const agg = await as(alice, async (c) => (await c.query("select * from public.experiment_event_counts($1)", [x.experiment])).rows);
+    expect(agg).toEqual([{ channel: "linkedin", variant: "a", viewers: "1", clickers: "1", submitters: "1" }]);
+
+    // Rate limit: at most 30 recorded actions per minute per network and page.
+    let accepted = 0;
+    for (let i = 0; i < 40; i++) {
+      const ok = await as("anon", async (c) =>
+        (await c.query("select public.record_test_event($1, $2, $3, 'view', 'a', 'linkedin', 'net2') as ok", [ingestKey, slug, `bulk-${i}`])).rows[0].ok,
+      );
+      if (ok) accepted++;
+    }
+    expect(accepted).toBe(30);
+
+    // The pre-registered end date of a live test cannot be moved, and a live test cannot be deleted.
+    const before = await as(alice, async (c) => (await c.query("select ends_at from public.experiments where id = $1", [x.experiment])).rows[0].ends_at);
+    await as(alice, (c) => c.query("update public.experiments set ends_at = now() + interval '90 days' where id = $1", [x.experiment]));
+    const after = await as(alice, async (c) => (await c.query("select ends_at from public.experiments where id = $1", [x.experiment])).rows[0].ends_at);
+    expect(after).toEqual(before);
+    const deleted = await as(alice, async (c) => (await c.query("delete from public.experiments where id = $1", [x.experiment])).rowCount);
+    expect(deleted).toBe(0);
   });
 
   it("keeps decisions immutable and lets only the client decider confirm", async () => {
@@ -244,5 +266,254 @@ d("row level security and integrity rules", () => {
       (await c.query("select count(*)::int as n from public.audit_events where idea_id = $1 and table_name = 'decisions'", [A.idea])).rows[0].n,
     );
     expect(audit).toBeGreaterThanOrEqual(2);
+  });
+  it("never lets a consultant act as the client", async () => {
+    // Inviting with an account attached is reserved for claim_invitations().
+    await expect(
+      as(alice, (c) => c.query("insert into public.idea_members (idea_id, user_id, email, role) values ($1, $2, $3, 'client_decider')", [A.idea, alice.id, alice.email])),
+    ).rejects.toThrow(/row-level security/);
+    // Even a properly claimed invitation does not let an organisation member confirm.
+    await as(alice, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_decider')", [A.idea, alice.email]));
+    await as(alice, (c) => c.query("select public.claim_invitations()"));
+    const decision = await as(alice, async (c) => {
+      const rc = (await c.query("insert into public.reality_checks (idea_id, findings, advice, advice_reason) values ($1, '[]', 'adjust', 'x') returning id", [A.idea])).rows[0].id;
+      return (await c.query("insert into public.decisions (idea_id, reality_check_id, action, rationale) values ($1, $2, 'adjust', 'y') returning id", [A.idea, rc])).rows[0].id;
+    });
+    await expect(as(alice, (c) => c.query("select public.confirm_decision($1, 'zelf')", [decision]))).rejects.toThrow(/FORBIDDEN/);
+    await as(alice, (c) => c.query("delete from public.idea_members where idea_id = $1 and email = $2", [A.idea, alice.email]));
+  });
+
+  it("only lets confirmed e-mail addresses claim an invitation", async () => {
+    const unconfirmed = await user(`onbevestigd-${randomUUID()}@example.com`, false);
+    await as(alice, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_decider')", [A.idea, unconfirmed.email]));
+    const n = await as(unconfirmed, async (c) => (await c.query("select public.claim_invitations() as n")).rows[0].n);
+    expect(n).toBe(0);
+  });
+
+  it("bases decisions on the latest Reality Check and blocks continuing past blockers", async () => {
+    const ids = await as(alice, async (c) => {
+      const old = (await c.query("insert into public.reality_checks (idea_id, findings, advice, advice_reason, created_at) values ($1, '[]', 'continue', 'oud', now() - interval '1 day') returning id", [A.idea])).rows[0].id;
+      const blocked = (await c.query(`insert into public.reality_checks (idea_id, findings, advice, advice_reason) values ($1, '{"findings":[{"code":"missing_consent","severity":"blocker"}],"investorQuestions":[]}', 'pause', 'blokkade') returning id`, [A.idea])).rows[0].id;
+      return { old, blocked };
+    });
+    await expect(
+      as(alice, (c) => c.query("insert into public.decisions (idea_id, reality_check_id, action, rationale) values ($1, $2, 'adjust', 'x')", [A.idea, ids.old])),
+    ).rejects.toThrow(/DECISION_CHECK/);
+    await expect(
+      as(alice, (c) => c.query("insert into public.decisions (idea_id, reality_check_id, action, rationale) values ($1, $2, 'continue', 'x')", [A.idea, ids.blocked])),
+    ).rejects.toThrow(/DECISION_BLOCKED/);
+    // Reality checks themselves are never rewritten.
+    const changed = await as(alice, async (c) => (await c.query("update public.reality_checks set advice = 'continue' where id = $1", [ids.blocked])).rowCount);
+    expect(changed).toBe(0);
+  });
+
+  it("keeps references inside one dossier", async () => {
+    const B = await newIdea(alice);
+    const claimA = await as(alice, async (c) =>
+      (await c.query("insert into public.claims (idea_id, statement, evidence_type) values ($1, 'Bewering', 'ai_inference') returning id", [A.idea])).rows[0].id,
+    );
+    const assumptionB = await as(alice, async (c) =>
+      (await c.query("insert into public.assumptions (idea_id, statement, category) values ($1, 'Aanname', 'desirability') returning id", [B.idea])).rows[0].id,
+    );
+    await expect(
+      as(alice, (c) => c.query("insert into public.assumption_claims (assumption_id, claim_id, idea_id, relation) values ($1, $2, $3, 'supports')", [assumptionB, claimA, B.idea])),
+    ).rejects.toThrow(/IDEA_MISMATCH/);
+  });
+
+  it("makes approved Learning Cards, reports and AI budgets tamper-proof", async () => {
+    const x = await newExperiment(alice, A.idea);
+    const card = await as(alice, async (c) =>
+      (await c.query(
+        `insert into public.learning_cards (experiment_id, idea_id, we_believed, we_observed, we_learned, therefore, verdict, data_reliability)
+         values ($1, $2, 'a', 'b', 'c', 'd', 'pass', 'medium') returning id`, [x.experiment, A.idea])).rows[0].id,
+    );
+    // Generating a second concept card for the same experiment is refused.
+    await expect(
+      as(alice, (c) => c.query(
+        `insert into public.learning_cards (experiment_id, idea_id, we_believed, we_observed, we_learned, therefore, verdict, data_reliability)
+         values ($1, $2, 'a', 'b', 'c', 'd', 'pass', 'medium')`, [x.experiment, A.idea])),
+    ).rejects.toThrow(/learning_cards_one_draft/);
+    await as(alice, (c) => c.query("update public.learning_cards set status = 'approved' where id = $1", [card]));
+    await expect(as(alice, (c) => c.query("update public.learning_cards set verdict = 'fail' where id = $1", [card]))).rejects.toThrow(/CARD_LOCKED/);
+    await expect(as(alice, (c) => c.query("delete from public.learning_cards where id = $1", [card]))).rejects.toThrow(/CARD_LOCKED/);
+
+    const report = await as(alice, async (c) =>
+      (await c.query("insert into public.reports (idea_id, version, snapshot) values ($1, 1, '{}') returning id", [A.idea])).rows[0].id,
+    );
+    expect(await as(alice, async (c) => (await c.query("delete from public.reports where id = $1", [report])).rowCount)).toBe(0);
+    await expect(as(alice, (c) => c.query(`update public.reports set snapshot = '{"x":1}' where id = $1`, [report]))).rejects.toThrow(/REPORT_LOCKED/);
+    // Unshared versions stay invisible to the client; after sharing the client can see and mark them.
+    expect(await as(client, async (c) => (await c.query("select id from public.reports where id = $1", [report])).rowCount)).toBe(0);
+    await as(alice, (c) => c.query("update public.reports set shared_at = now() where id = $1", [report]));
+    expect(await as(client, async (c) => (await c.query("select public.mark_report_viewed($1) as ok", [report])).rows[0].ok)).toBe(true);
+    const r = await as(alice, async (c) => (await c.query("select shared_by, client_viewed_at from public.reports where id = $1", [report])).rows[0]);
+    expect(r.shared_by).toBe(alice.id);
+    expect(r.client_viewed_at).not.toBeNull();
+
+    await expect(
+      as(alice, (c) => c.query("insert into public.research_runs (idea_id, mode, budget_usd) values ($1, 'deep', 99999)", [A.idea])),
+    ).rejects.toThrow(/RUN_BUDGET/);
+    const run = await as(alice, async (c) => {
+      const id = (await c.query("insert into public.research_runs (idea_id, mode, budget_usd) values ($1, 'deep', 3) returning id", [A.idea])).rows[0].id;
+      const task = (await c.query("insert into public.research_tasks (run_id, idea_id, position, kind, label) values ($1, $2, 1, 'plan', 'Plan') returning id", [id, A.idea])).rows[0].id;
+      await c.query("select public.add_research_cost($1, 0.75)", [task]);
+      await c.query("update public.research_runs set cost_usd = 0, budget_usd = 500 where id = $1", [id]);
+      return (await c.query("select cost_usd, budget_usd from public.research_runs where id = $1", [id])).rows[0];
+    });
+    expect(Number(run.cost_usd)).toBe(0.75);
+    expect(Number(run.budget_usd)).toBe(3);
+  });
+
+  it("shows clients observations without the literal quote", async () => {
+    await as(alice, (c) =>
+      c.query("insert into public.observations (idea_id, kind, summary, quote) values ($1, 'problem_confirmed', 'Herkent het probleem', 'Wij verliezen elke week uren')", [A.idea]),
+    );
+    expect(await as(client, async (c) => (await c.query("select * from public.observations where idea_id = $1", [A.idea])).rowCount)).toBe(0);
+    const rows = await as(client, async (c) => (await c.query("select summary, quote from public.observations_for_idea($1)", [A.idea])).rows);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r: { quote: string | null }) => r.quote === null)).toBe(true);
+    const own = await as(alice, async (c) => (await c.query("select quote from public.observations_for_idea($1) where quote is not null", [A.idea])).rowCount);
+    expect(own).toBeGreaterThan(0);
+  });
+
+  it("keeps the audit trail when an idea is deleted", async () => {
+    const C = await newIdea(alice);
+    await as(alice, (c) => c.query("insert into public.claims (idea_id, statement, evidence_type) values ($1, 'Weg', 'ai_inference')", [C.idea]));
+    await as(alice, (c) => c.query("delete from public.ideas where id = $1", [C.idea]));
+    const n = await as(alice, async (c) =>
+      (await c.query("select count(*)::int as n from public.audit_events where idea_id = $1 and action = 'delete'", [C.idea])).rows[0].n,
+    );
+    expect(n).toBeGreaterThanOrEqual(2);
+  });
+  it("creates accounts by invitation or allowlist only", async () => {
+    const invited = `uitgenodigd-${randomUUID()}@example.com`;
+    await as(alice, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_viewer')", [A.idea, invited]));
+    await db.query("insert into public.signup_allowlist (entry) values ('@bureau.example') on conflict do nothing");
+    const may = async (email: string) =>
+      as("anon", async (c) => (await c.query("select public.may_create_account($1, $2) as ok", [ingestKey, email])).rows[0].ok);
+    expect(await may(invited)).toBe(true);
+    expect(await may("collega@bureau.example")).toBe(true);
+    expect(await may("vreemde@elders.example")).toBe(false);
+    await expect(as("anon", (c) => c.query("select public.may_create_account('fout', $1)", [invited]))).rejects.toThrow(/FORBIDDEN/);
+    const hook = (await db.query("select public.hook_before_user_created($1) as r", [{ user: { email: "vreemde@elders.example" } }])).rows[0].r;
+    expect(hook.error.http_code).toBe(403);
+    const ok = (await db.query("select public.hook_before_user_created($1) as r", [{ user: { email: invited } }])).rows[0].r;
+    expect(ok).toEqual({});
+  });
+  it("keeps forecasts blind, locks the outcome definition and scores against the real outcome", async () => {
+    const P = await newIdea(alice);
+    await as(alice, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_decider')", [P.idea, client.email]));
+    await as(client, (c) => c.query("select public.claim_invitations()"));
+    // No outcome definition yet: resolving is refused.
+    await expect(
+      as(alice, (c) => c.query("insert into public.idea_outcomes (idea_id, achieved, evidence) values ($1, 'yes', 'Tien klanten betalen')", [P.idea])),
+    ).rejects.toThrow(/OUTCOME_UNDEFINED/);
+    await as(alice, (c) =>
+      c.query("update public.ideas set outcome_statement = '15 betalende klanten', outcome_metric = 'betalende klanten', outcome_target = 15, outcome_due = current_date + 182 where id = $1", [P.idea]),
+    );
+    await as(alice, (c) => c.query("insert into public.forecasts (idea_id, moment, forecaster_kind, forecaster_id, probability, rationale) values ($1, 'intake', 'consultant', $2, 0.3, 'Weinig bewijs')", [P.idea, alice.id]));
+    // The client cannot see the consultant's forecast before giving their own.
+    expect(await as(client, async (c) => (await c.query("select * from public.forecasts where idea_id = $1", [P.idea])).rowCount)).toBe(0);
+    // Nobody can forecast in someone else's name or role.
+    await expect(
+      as(client, (c) => c.query("insert into public.forecasts (idea_id, moment, forecaster_kind, forecaster_id, probability, rationale) values ($1, 'intake', 'consultant', $2, 0.9, 'x x x')", [P.idea, client.id])),
+    ).rejects.toThrow(/row-level security/);
+    await as(client, (c) => c.query("insert into public.forecasts (idea_id, moment, forecaster_kind, forecaster_id, probability, rationale) values ($1, 'intake', 'client', $2, 0.8, 'Ik geloof erin')", [P.idea, client.id]));
+    expect(await as(client, async (c) => (await c.query("select * from public.forecasts where idea_id = $1", [P.idea])).rowCount)).toBe(2);
+    // Forecasts are never rewritten, and the outcome definition is fixed once forecasts exist.
+    await expect(as(alice, (c) => c.query("update public.forecasts set probability = 0.9 where idea_id = $1", [P.idea]))).rejects.toThrow(/permission denied/);
+    await expect(as(alice, (c) => c.query("update public.ideas set outcome_target = 5 where id = $1", [P.idea]))).rejects.toThrow(/OUTCOME_LOCKED/);
+    await expect(as(alice, (c) => c.query("update public.ideas set outcome_due = current_date + 400 where id = $1", [P.idea]))).rejects.toThrow(/OUTCOME_LOCKED/);
+    await expect(as(alice, (c) => c.query("update public.ideas set base_rate_low = 0.9, base_rate_high = 0.95 where id = $1", [P.idea]))).rejects.toThrow(/OUTCOME_LOCKED/);
+    // The lock is visible even to someone who cannot see the forecasts yet.
+    expect(await as(alice, async (c) => (await c.query("select public.forecasts_exist($1) as x", [P.idea])).rows[0].x)).toBe(true);
+    await as(alice, (c) => c.query("insert into public.idea_outcomes (idea_id, achieved, actual_value, evidence) values ($1, 'no', 4, 'Vier betalende klanten na zes maanden')", [P.idea]));
+    await expect(
+      as(alice, (c) => c.query("insert into public.forecasts (idea_id, moment, forecaster_kind, forecaster_id, probability, rationale) values ($1, 'decision', 'consultant', $2, 0.5, 'Te laat')", [P.idea, alice.id])),
+    ).rejects.toThrow(/FORECAST_CLOSED/);
+    const scores = await as(alice, async (c) => (await c.query("select forecaster_kind, round(brier, 2)::float as brier from public.forecast_scores($1) order by 1", [P.org])).rows);
+    expect(scores).toEqual([
+      { forecaster_kind: "client", brier: 0.64 },
+      { forecaster_kind: "consultant", brier: 0.09 },
+    ]);
+    // Other organisations see no scores.
+    expect(await as(bob, async (c) => (await c.query("select * from public.forecast_scores($1)", [P.org])).rowCount)).toBe(0);
+  });
+
+  it("lets a consultant review AI-coded observations without rewriting them", async () => {
+    const obs = await as(alice, async (c) =>
+      (await c.query("insert into public.observations (idea_id, kind, summary, quote, origin) values ($1, 'objection', 'Te duur', 'Dat is te duur voor ons', 'ai') returning id", [A.idea])).rows[0].id,
+    );
+    await as(alice, (c) => c.query("update public.observations set review_status = 'rejected' where id = $1", [obs]));
+    const row = await as(alice, async (c) => (await c.query("select review_status, reviewed_by from public.observations where id = $1", [obs])).rows[0]);
+    expect(row).toEqual({ review_status: "rejected", reviewed_by: alice.id });
+    await expect(as(alice, (c) => c.query("update public.observations set summary = 'Anders' where id = $1", [obs]))).rejects.toThrow(/OBSERVATION_LOCKED/);
+  });
+  it("keeps coach notes as said and accepts outreach events only with a valid endpoint", async () => {
+    const note = await as(alice, async (c) =>
+      (await c.query("insert into public.coach_notes (idea_id, code, kind, title, body, source) values ($1, 'no_alternatives', 'tip', 'Breng alternatieven in kaart', 'Hoe lossen klanten dit nu op?', 'rules') returning id", [A.idea])).rows[0].id,
+    );
+    await expect(
+      as(alice, (c) => c.query("insert into public.coach_notes (idea_id, code, kind, title, body, source) values ($1, 'no_alternatives', 'tip', 'Nog eens', 'Dubbel', 'rules')", [A.idea])),
+    ).rejects.toThrow(/coach_notes_open_code/);
+    await expect(as(alice, (c) => c.query("update public.coach_notes set body = 'Anders' where id = $1", [note]))).rejects.toThrow(/COACH_NOTE_LOCKED/);
+    await as(alice, (c) => c.query("update public.coach_notes set status = 'done' where id = $1", [note]));
+    expect((await as(alice, async (c) => (await c.query("select resolved_by from public.coach_notes where id = $1", [note])).rows[0])).resolved_by).toBe(alice.id);
+    // Clients only see notes meant for everyone.
+    expect(await as(client, async (c) => (await c.query("select * from public.coach_notes where id = $1", [note])).rowCount)).toBe(0);
+
+    const tokenHash = createHash("sha256").update("expandi-token").digest("hex");
+    await as(alice, (c) => c.query("insert into public.integration_endpoints (idea_id, provider, label, token_hash) values ($1, 'expandi', 'Campagne MKB', $2)", [A.idea, tokenHash]));
+    const rec = (token: string, dedupe: string) =>
+      as("anon", async (c) =>
+        (await c.query("select public.record_outreach_event($1, $2, 'reply', 'contact1', 'MKB', 'Klinkt interessant, wat kost het?', $3) as ok", [ingestKey, token, dedupe])).rows[0].ok,
+      );
+    expect(await rec(tokenHash, "evt-1")).toBe("ok");
+    expect(await rec(tokenHash, "evt-1")).toBe("duplicate");
+    expect(await rec("onbekend", "evt-2")).toBe("unknown");
+    await expect(as("anon", (c) => c.query("select public.record_outreach_event('fout', $1, 'reply', 'c', null, 'x', 'e')", [tokenHash]))).rejects.toThrow(/FORBIDDEN/);
+    expect(await as(alice, async (c) => (await c.query("select * from public.outreach_events where idea_id = $1", [A.idea])).rowCount)).toBe(1);
+    expect(await as(client, async (c) => (await c.query("select * from public.outreach_events where idea_id = $1", [A.idea])).rowCount)).toBe(0);
+  });
+  it("accepts survey answers once per visitor and per invitation, and honours unsubscribes", async () => {
+    const S = await newIdea(alice);
+    const ids = await as(alice, async (c) => {
+      const a = (await c.query("insert into public.assumptions (idea_id, statement, category, importance) values ($1, 'Ze zoeken hulp', 'desirability', 5) returning id", [S.idea])).rows[0].id;
+      const h = (await c.query(
+        `insert into public.hypotheses (idea_id, assumption_id, we_believe, target_group, test_method, metric_label, metric_numerator, metric_denominator, success_threshold_pct, min_sample, max_duration_days)
+         values ($1, $2, 'Ze zoeken actief', 'MKB', 'enquête', 'zocht actief', 'zocht', 'respondenten', 30, 20, 14) returning id`, [S.idea, a])).rows[0].id;
+      const e = (await c.query("insert into public.experiments (idea_id, hypothesis_id, type, title, config) values ($1, $2, 'survey', 'Enquête', '{}') returning id", [S.idea, h])).rows[0].id;
+      await c.query("update public.experiments set state = 'ready_for_review' where id = $1", [e]);
+      await c.query("update public.experiments set state = 'approved' where id = $1", [e]);
+      await c.query("update public.experiments set state = 'live' where id = $1", [e]);
+      const tokenHash = createHash("sha256").update("uitnodiging-1").digest("hex");
+      await c.query("insert into public.survey_invitations (experiment_id, idea_id, email, token_hash) values ($1, $2, 'klant@example.com', $3)", [e, S.idea, tokenHash]);
+      const slug = (await c.query("select public_slug from public.experiments where id = $1", [e])).rows[0].public_slug;
+      return { e, slug, tokenHash };
+    });
+    expect(ids.slug).toMatch(/^[a-f0-9]{14}$/);
+    const submit = (visitor: string, token: string | null, consent = true) =>
+      as("anon", async (c) =>
+        (await c.query("select public.submit_survey($1, $2, $3, 'linkedin', '{\"gezocht\":\"nee\"}', $4, 30000, $5, 'net9', true, 'ok') as r", [ingestKey, ids.slug, visitor, consent, token])).rows[0].r,
+      );
+    expect(await submit("v1", null, false)).toBe("consent");
+    expect(await submit("v1", null)).toBe("ok");
+    expect(await submit("v1", null)).toBe("duplicate");
+    expect(await submit("v2", ids.tokenHash)).toBe("ok");
+    expect(await submit("v3", ids.tokenHash)).toBe("duplicate");
+    expect(await submit("v4", "onbekend")).toBe("invalid");
+    const rows = await as(alice, async (c) => (await c.query("select source, channel from public.survey_responses where experiment_id = $1 order by source", [ids.e])).rows);
+    expect(rows).toEqual([{ source: "invitation", channel: "linkedin" }, { source: "open_link", channel: "linkedin" }]);
+    expect((await as(alice, async (c) => (await c.query("select status from public.survey_invitations where experiment_id = $1", [ids.e])).rows[0])).status).toBe("responded");
+    // Clients never see raw survey responses or invitation addresses.
+    expect(await as(client, async (c) => (await c.query("select * from public.survey_responses where experiment_id = $1", [ids.e])).rowCount)).toBe(0);
+    // Unsubscribing suppresses the address for the whole organisation.
+    const t2 = createHash("sha256").update("uitnodiging-2").digest("hex");
+    await as(alice, (c) => c.query("insert into public.survey_invitations (experiment_id, idea_id, email, token_hash) values ($1, $2, 'ander@example.com', $3)", [ids.e, S.idea, t2]));
+    expect(await as("anon", async (c) => (await c.query("select public.unsubscribe_invitation($1, $2, 'hash-ander') as ok", [ingestKey, t2])).rows[0].ok)).toBe(true);
+    expect(await as(alice, async (c) => (await c.query("select * from public.email_suppressions where org_id = $1", [S.org])).rowCount)).toBe(1);
+    expect(await submit("v5", t2)).toBe("invalid");
+    // Responses cannot be written directly.
+    await expect(as(alice, (c) => c.query("insert into public.survey_responses (experiment_id, idea_id, visitor_hash, source, answers, consent_given) values ($1, $2, 'x', 'open_link', '{}', true)", [ids.e, S.idea]))).rejects.toThrow(/permission denied/);
   });
 });

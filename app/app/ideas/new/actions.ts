@@ -8,6 +8,7 @@ import { getWorkspace } from "@/lib/data";
 import { templatePlan } from "@/lib/domain/research-plan";
 import { defaultFactors, MODEL_FACTORS, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import type { ProjectType, SectorTemplate } from "@/lib/domain/labels";
+import { OutcomeDefinitionSchema } from "@/lib/forecast-schemas";
 
 export type IntakeState = { error: string | null; field?: string };
 
@@ -21,6 +22,7 @@ const optionalText = z
 
 const IntakeSchema = z.object({
   decision_question: z.string().trim().min(10, "Beschrijf de beslissing in minimaal één korte zin.").max(400),
+  ...OutcomeDefinitionSchema.shape,
   decision_stakes: optionalText,
   decision_deadline: z
     .string()
@@ -44,6 +46,14 @@ const IntakeSchema = z.object({
   project_type: z.enum(["new_business", "new_product", "expansion", "revenue_model", "internal_innovation"], { message: "Kies het type project." }),
   sector_template: z.enum(["generic", "smb", "events", "media_culture"]),
   key_uncertainty: optionalText,
+  sprint_start: z
+    .string()
+    .trim()
+    .transform((s) => (s === "" ? null : s))
+    .refine((s) => s === null || /^\d{4}-\d{2}-\d{2}$/.test(s), "Kies een geldige startdatum voor de sprint.")
+    .nullable()
+    .optional(),
+  sprint_weeks: z.coerce.number().int().min(2, "Een sprint duurt minimaal 2 weken.").max(12, "Een sprint duurt maximaal 12 weken.").default(5),
   client_id: z.string().trim().optional(),
   new_client_name: z.string().trim().max(160).optional(),
 });
@@ -77,6 +87,9 @@ export async function createIdea(_: IntakeState, form: FormData): Promise<Intake
       client_id: clientId,
       title: v.title,
       decision_question: v.decision_question,
+      outcome_statement: v.outcome_statement,
+      outcome_metric: v.outcome_metric,
+      outcome_target: v.outcome_target,
       decision_stakes: v.decision_stakes ?? null,
       decision_deadline: v.decision_deadline ?? null,
       budget_eur: v.budget_eur ?? null,
@@ -88,6 +101,8 @@ export async function createIdea(_: IntakeState, form: FormData): Promise<Intake
       project_type: v.project_type,
       sector_template: v.sector_template,
       key_uncertainty: v.key_uncertainty ?? null,
+      sprint_start: v.sprint_start ?? null,
+      sprint_weeks: v.sprint_weeks,
     })
     .select("id")
     .single();

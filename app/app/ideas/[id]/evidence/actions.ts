@@ -3,14 +3,18 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
-import { getIdea, getWorkspace, requireWritableIdea } from "@/lib/data";
+import { getIdea, requireWritableIdea } from "@/lib/data";
+import { assumptionStatusFromVerdicts, type CardVerdict } from "@/lib/domain/evidence";
 import { dossierSummaryForAi, factsFrom, loadDossier } from "@/lib/dossier";
 import { runRealityCheck, type Finding } from "@/lib/domain/reality-check";
 import { aiConfigured } from "@/lib/env";
 import { challengeDossier } from "@/lib/ai/research";
 import { ideaContext } from "@/lib/idea-context";
-import { logAiRun } from "@/lib/ai/log";
+import { runAi } from "@/lib/ai/guard";
 import type { Json } from "@/lib/database.types";
+import { loadProgress } from "@/lib/progress";
+import { decisionBlocker, outcomeDueFor } from "@/lib/domain/forecast";
+import { todayInNL } from "@/lib/domain/sprint";
 
 export type ActionState = { error: string | null; ok?: string | null };
 const refresh = (id: string) => revalidatePath(`/app/ideas/${id}`, "layout");
@@ -35,15 +39,28 @@ export async function updateLearningCard(ideaId: string, cardId: string, _: Acti
 // Human approval is required before a result changes the status of an assumption.
 export async function approveLearningCard(ideaId: string, cardId: string, _: ActionState): Promise<ActionState> {
   await requireWritableIdea(ideaId);
-  const ws = await getWorkspace();
   const supabase = await supabaseServer();
   const { data: card } = await supabase.from("learning_cards").select("*, experiments(id, state, hypotheses(assumption_id))").eq("id", cardId).eq("idea_id", ideaId).single();
   if (!card || card.status !== "draft") return { error: "Deze Learning Card is al goedgekeurd." };
-  await supabase.from("learning_cards").update({ status: "approved", approved_by: ws.user.id, approved_at: new Date().toISOString() }).eq("id", cardId);
+  // Approver and time are stamped by the database; the guard makes a second approval impossible.
+  const { data: approved, error } = await supabase
+    .from("learning_cards")
+    .update({ status: "approved" })
+    .eq("id", cardId)
+    .eq("status", "draft")
+    .select("id");
+  if (error || !approved?.length) return { error: "Goedkeuren is niet gelukt. Ververs de pagina en probeer het opnieuw." };
   const assumptionId = card.experiments?.hypotheses?.assumption_id;
   if (assumptionId) {
-    const status = card.verdict === "pass" ? "supported" : card.verdict === "fail" ? "refuted" : "inconclusive";
-    await supabase.from("assumptions").update({ status }).eq("id", assumptionId);
+    // Every approved test of this assumption counts, not only the latest one.
+    const { data: verdicts } = await supabase
+      .from("learning_cards")
+      .select("verdict, experiments!inner(hypotheses!inner(assumption_id))")
+      .eq("idea_id", ideaId)
+      .eq("status", "approved")
+      .eq("experiments.hypotheses.assumption_id", assumptionId);
+    const status = assumptionStatusFromVerdicts((verdicts ?? []).map((v) => v.verdict as CardVerdict));
+    await supabase.from("assumptions").update({ status }).eq("id", assumptionId).eq("idea_id", ideaId);
   }
   if (card.experiments?.state === "ended") await supabase.from("experiments").update({ state: "analyzed" }).eq("id", card.experiments.id);
   refresh(ideaId);
@@ -58,12 +75,11 @@ export async function runCheck(ideaId: string, _: ActionState): Promise<ActionSt
   let aiUsed = false;
   if (aiConfigured()) {
     try {
-      const res = await challengeDossier(ideaContext(idea), dossierSummaryForAi(dossier));
-      await logAiRun({ ideaId, purpose: "reality_check", outcome: "ok", usage: res.usage });
+      const res = await runAi(ideaId, "reality_check", () => challengeDossier(ideaContext(idea), dossierSummaryForAi(dossier)));
       for (const c of res.data.challenges) findings.push({ code: "ai_challenge", severity: c.severity, title: c.title, detail: c.detail, source: "ai" });
       aiUsed = true;
-    } catch (e) {
-      await logAiRun({ ideaId, purpose: "reality_check", outcome: "error", detail: String(e) });
+    } catch {
+      // Logged by runAi; the rule-based check below still runs.
     }
   }
   const supabase = await supabaseServer();
@@ -79,6 +95,37 @@ export async function runCheck(ideaId: string, _: ActionState): Promise<ActionSt
   return { error: null, ok: "Reality Check uitgevoerd." };
 }
 
+// Pre-mortem (research 3.10): "Het is zes maanden na het besluit en dit is mislukt. Wat is de meest
+// waarschijnlijke reden?" Each reason becomes an assumption on the map (origin 'premortem'), so it is
+// tested like any other. Empty rows are skipped; at least one reason is required.
+const PremortemReason = z.object({
+  statement: z.string().trim().min(10, "Beschrijf elke reden in minstens één korte zin.").max(400),
+  category: z.enum(["desirability", "feasibility", "viability", "context"]),
+  importance: z.coerce.number().int().min(1).max(5),
+});
+
+export async function addPremortem(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const reasons: z.infer<typeof PremortemReason>[] = [];
+  for (const i of [1, 2, 3]) {
+    const statement = String(form.get(`reason_${i}`) ?? "").trim();
+    if (!statement) continue;
+    const p = PremortemReason.safeParse({
+      statement,
+      category: form.get(`category_${i}`) ?? "desirability",
+      importance: form.get(`importance_${i}`) ?? 4,
+    });
+    if (!p.success) return { error: p.error.issues[0].message };
+    reasons.push(p.data);
+  }
+  if (reasons.length === 0) return { error: "Vul minstens één reden in." };
+  const supabase = await supabaseServer();
+  const { error } = await supabase.from("assumptions").insert(reasons.map((r) => ({ ...r, idea_id: ideaId, origin: "premortem" })));
+  if (error) return { error: "De pre-mortem kon niet worden opgeslagen." };
+  refresh(ideaId);
+  return { error: null, ok: `${reasons.length} reden(en) staan nu als aanname op de risicokaart. Voer de Reality Check opnieuw uit.` };
+}
+
 const DecisionSchema = z.object({
   action: z.enum(["continue", "adjust", "test_more", "pause", "stop"]),
   rationale: z.string().trim().min(15, "Leg in minstens één zin uit waarom.").max(2000),
@@ -86,7 +133,7 @@ const DecisionSchema = z.object({
 });
 
 export async function saveDecision(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
-  await requireWritableIdea(ideaId);
+  const { idea } = await requireWritableIdea(ideaId);
   const p = DecisionSchema.safeParse(Object.fromEntries(form));
   if (!p.success) return { error: p.error.issues[0].message };
   const supabase = await supabaseServer();
@@ -96,7 +143,13 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   if (lastCard?.approved_at && lastCard.approved_at > check.created_at) return { error: "Er is nieuw bewijs sinds de laatste Reality Check. Voer de check opnieuw uit." };
   const blockers = ((check.findings as { findings?: Finding[] })?.findings ?? []).filter((f) => f.severity === "blocker");
   if (blockers.length && p.data.action === "continue") return { error: "Er zijn blokkerende punten in de Reality Check. 'Doorgaan' kan pas als die zijn opgelost." };
-  const { data: exps } = await supabase.from("experiments").select("id").eq("idea_id", ideaId).eq("state", "analyzed");
+  // Prediction loop: a decision is measured against the outcome six months later, so the outcome must be
+  // defined and the decider gives their own forecast while the decision moment is open.
+  const progress = await loadProgress(ideaId);
+  const blocker = decisionBlocker(progress);
+  if (blocker) return { error: blocker };
+  // The decision links the most recently ended analysed experiment; all analysed ones become decided.
+  const { data: exps } = await supabase.from("experiments").select("id").eq("idea_id", ideaId).eq("state", "analyzed").order("ended_at", { ascending: false });
   const { error } = await supabase.from("decisions").insert({
     idea_id: ideaId,
     reality_check_id: check.id,
@@ -105,10 +158,24 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
     rationale: p.data.rationale,
     next_step: p.data.next_step || null,
   });
-  if (error) return { error: "Het besluit kon niet worden opgeslagen." };
+  if (error) {
+    // The database enforces the same rules; show its reason when it refuses.
+    if (error.message.includes("DECISION_STALE")) return { error: "Er is nieuw bewijs sinds de laatste Reality Check. Voer de check opnieuw uit." };
+    if (error.message.includes("DECISION_BLOCKED")) return { error: "Er zijn blokkerende punten in de Reality Check. 'Doorgaan' kan pas als die zijn opgelost." };
+    if (error.message.includes("DECISION_CHECK")) return { error: "Voer de Reality Check opnieuw uit voordat je besluit." };
+    return { error: "Het besluit kon niet worden opgeslagen." };
+  }
   for (const e of exps ?? []) await supabase.from("experiments").update({ state: "decided" }).eq("id", e.id);
   const status = { continue: "continued", stop: "stopped", pause: "parked", adjust: "active", test_more: "active" }[p.data.action];
   await supabase.from("ideas").update({ status }).eq("id", ideaId);
+  // The first decision after the outcome definition starts the six-month clock (set once, never moved).
+  // The six-month clock starts at a final decision (continue, stop or pause). "Verder testen" and
+  // "bijsturen" keep the trajectory going, so the real go/no-go decision still gets its forecast.
+  const finalDecision = p.data.action === "continue" || p.data.action === "stop" || p.data.action === "pause";
+  if (progress.forecast && !idea.outcome_due && finalDecision) {
+    const decidedOn = todayInNL();
+    await supabase.from("ideas").update({ outcome_due: outcomeDueFor(decidedOn), outcome_clock_start: decidedOn }).eq("id", ideaId).is("outcome_due", null);
+  }
   refresh(ideaId);
   return { error: null, ok: "Besluit vastgelegd. De opdrachtgever kan het nu bevestigen; werk daarna het rapport bij." };
 }

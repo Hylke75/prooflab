@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon, type IconName } from "@/components/Icon";
+import { Drawer } from "@/components/ui/Drawer";
 import { useShell } from "./ShellProvider";
 
 type IdeaLink = { id: string; title: string };
@@ -13,16 +14,25 @@ const IDEA_NAV: { suffix: string; label: string; icon: IconName }[] = [
   { suffix: "/experiments", label: "Experimenten", icon: "flask" },
   { suffix: "/evidence", label: "Bewijs & besluit", icon: "shield" },
   { suffix: "/report", label: "Rapportage", icon: "file" },
+  // Not one of the five stepper steps: the prediction loop runs alongside them and continues after the decision.
+  { suffix: "/outcome", label: "Voorspelling & uitkomst", icon: "trend" },
+];
+
+// Consultant-only pages of the current idea.
+const IDEA_TEAM_NAV: { suffix: string; label: string; icon: IconName }[] = [
+  { suffix: "/integrations", label: "Bronnen & koppelingen", icon: "users" },
 ];
 
 export function Sidebar({
   workspaceName,
   isConsultant,
+  isOwner = false,
   ideas,
   aiConnected,
 }: {
   workspaceName: string;
   isConsultant: boolean;
+  isOwner?: boolean;
   ideas: IdeaLink[];
   aiConnected: boolean;
 }) {
@@ -40,14 +50,20 @@ export function Sidebar({
   );
 
   return (
-    <aside className={`sidebar${sidebarOpen ? " open" : ""}`} id="sidebar" aria-label="Hoofdnavigatie">
+    <Drawer as="aside" open={sidebarOpen} onClose={close} modalQuery="(max-width: 850px)" className={`sidebar${sidebarOpen ? " open" : ""}`} id="sidebar" label="Hoofdnavigatie">
+      <button type="button" className="round-btn sidebar-close" onClick={close} aria-label="Sluit navigatie">
+        <Icon name="close" />
+      </button>
       <div className="brand">
         <span className="mark" aria-hidden="true">◉</span>ProofLab<span style={{ color: "var(--lime)" }}>.</span>
       </div>
       <div className="nav-heading">Werkruimte</div>
-      <nav className="side-nav">
+      <nav className="side-nav" aria-label="Werkruimte">
         {link("/app", "Overzicht", "home", pathname === "/app")}
         {isConsultant && link("/app/clients", "Klanten", "users", pathname.startsWith("/app/clients"))}
+        {isConsultant && link("/app/forecasts", "Voorspelkwaliteit", "trend", pathname.startsWith("/app/forecasts"))}
+        {isConsultant && link("/app/privacy", "Privacyverzoeken", "settings", pathname.startsWith("/app/privacy"))}
+        {isOwner && link("/app/status", "Systeemstatus", "settings", pathname.startsWith("/app/status"))}
       </nav>
       {currentId && (
         <>
@@ -58,15 +74,16 @@ export function Sidebar({
               {current.title}
             </div>
           )}
-          <nav className="side-nav">
+          <nav className="side-nav" aria-label="Huidig idee">
             {IDEA_NAV.map((n) => link(`/app/ideas/${currentId}${n.suffix}`, n.label, n.icon, sub === n.suffix || (sub.startsWith(n.suffix) && n.suffix !== "")))}
+            {isConsultant && IDEA_TEAM_NAV.map((n) => link(`/app/ideas/${currentId}${n.suffix}`, n.label, n.icon, sub === n.suffix))}
           </nav>
         </>
       )}
       {isConsultant && (
         <>
           <div className="nav-heading">Aan de slag</div>
-          <nav className="side-nav">{link("/app/ideas/new", "Nieuw idee", "plus", pathname === "/app/ideas/new")}</nav>
+          <nav className="side-nav" aria-label="Aan de slag">{link("/app/ideas/new", "Nieuw idee", "plus", pathname === "/app/ideas/new")}</nav>
         </>
       )}
       <div className="sidebar-bottom">
@@ -83,6 +100,6 @@ export function Sidebar({
           <i style={aiConnected ? undefined : { background: "#e5b25d" }} /> {aiConnected ? "AI-onderzoek verbonden" : "AI niet verbonden · handmatige modus"}
         </div>
       </div>
-    </aside>
+    </Drawer>
   );
 }

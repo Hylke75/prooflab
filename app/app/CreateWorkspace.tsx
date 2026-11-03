@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { createWorkspace, type SimpleState } from "./workspace-actions";
+import { SavingOverlay } from "@/components/ui/SavingOverlay";
 
 export function CreateWorkspace() {
   const [state, action, pending] = useActionState<SimpleState, FormData>(createWorkspace, { error: null });
@@ -17,6 +18,7 @@ export function CreateWorkspace() {
       <label className="field-label" htmlFor="ws-name">Naam van je bureau of team</label>
       <input className="field" id="ws-name" name="name" placeholder="Bijv. Link & Lead" required minLength={2} maxLength={120} />
       <button className="btn primary mt-18" disabled={pending}>{pending ? "Bezig…" : "Werkruimte aanmaken"}</button>
+      <SavingOverlay active={pending} label="Werkruimte wordt aangemaakt…" />
     </form>
   );
 }

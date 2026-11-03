@@ -1,13 +1,28 @@
 import "server-only";
 import { headers } from "next/headers";
 import { env } from "@/lib/env";
-import { assignVariant, isLikelyBot, visitorHash } from "@/lib/domain/tracking";
+import { assignVariant, clientIp, isLikelyBot, rateBucket, visitorHash } from "@/lib/domain/tracking";
 
 export async function visitorFromRequest(slug: string) {
   const h = await headers();
-  const ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || h.get("x-real-ip") || "0.0.0.0";
+  const ip = clientIp((n) => h.get(n));
   const ua = h.get("user-agent") ?? "";
-  return { hash: visitorHash({ salt: env.trackingSalt || "dev-salt", ip, userAgent: ua, slug }), bot: isLikelyBot(ua) };
+  const salt = env.trackingSalt || "dev-salt";
+  return { hash: visitorHash({ salt, ip, userAgent: ua, slug }), bucket: rateBucket(salt, ip), bot: isLikelyBot(ua) };
+}
+
+// Events may only come from our own test page: same origin, JSON body. Blocks silent cross-site posts.
+export function isSameOriginJson(request: Request): boolean {
+  const type = request.headers.get("content-type") ?? "";
+  if (!type.toLowerCase().startsWith("application/json")) return false;
+  const origin = request.headers.get("origin");
+  if (!origin) return false;
+  try {
+    const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+    return new URL(origin).host === host || new URL(origin).origin === new URL(env.appUrl).origin;
+  } catch {
+    return false;
+  }
 }
 
 export function variantFor(hash: string, count: number): number {

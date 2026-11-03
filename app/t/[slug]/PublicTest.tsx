@@ -23,11 +23,13 @@ export function PublicTest(p: Props) {
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sent = useRef(false);
-  const utm = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("utm_source") ?? undefined : undefined;
+  const search = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const utm = search?.get("utm_source")?.slice(0, 40) ?? undefined;
+  const utmContent = search?.get("utm_content")?.slice(0, 40) ?? undefined;
 
   const send = (event: "view" | "cta_click" | "submit", extra: Record<string, unknown> = {}) =>
     p.live
-      ? fetch(`/api/t/${p.slug}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ event, utm_source: utm, ...extra }), keepalive: true })
+      ? fetch(`/api/t/${p.slug}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ event, utm_source: utm, utm_content: utmContent, ...extra }), keepalive: true })
       : Promise.resolve(null);
 
   useEffect(() => {

@@ -44,3 +44,10 @@ next-env.d.ts
 /test-results
 /playwright-report
 !.env.example
+
+# Agent worktrees
+.claude/worktrees/
+
+# Supabase CLI state
+/supabase/.temp
+/supabase/.branches

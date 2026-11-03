@@ -10,10 +10,12 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
   const { data: ideas } = await supabase.from("ideas").select("id, title").order("updated_at", { ascending: false }).limit(50);
   return (
     <ShellProvider>
+      <a className="skip-link" href="#main">Naar de inhoud</a>
       <div className="app">
         <Sidebar
           workspaceName={ws.org?.name ?? "Opdrachtgever"}
           isConsultant={!!ws.org}
+          isOwner={ws.org?.role === "owner"}
           ideas={ideas ?? []}
           aiConnected={aiConfigured()}
         />

@@ -20,9 +20,11 @@ export type DossierFacts = {
   claims: { status: ClaimStatus; section: string; sourceTypes: string[]; region?: string | null }[];
   competitors: { kind: string }[];
   sizing: { established: boolean; assumedFactors: number; totalFactors: number; revenueFactorSourced: boolean } | null;
-  assumptions: { statement: string; importance: number; category: string; status: string; evidence: number; contradicting: number }[];
+  assumptions: { statement: string; importance: number; category: string; status: string; evidence: number; contradicting: number; origin?: string }[];
+  // Research 3.10: whether the pre-mortem was done. Left out by callers that do not know (no finding).
+  premortemDone?: boolean;
   experiments: {
-    type: "landing" | "interview" | "pricing";
+    type: "landing" | "interview" | "pricing" | "survey";
     state: string;
     assumptionCategory: string;
     verdict: "pass" | "fail" | "inconclusive" | "running" | null;
@@ -79,6 +81,17 @@ export function runRealityCheck(f: DossierFacts): RealityCheckResult {
   if (top && top.evidence < 0.3 && f.experiments.length > 0) {
     add("too_few_experiments", "info", "Belangrijkste aanname nog zwak onderbouwd",
       `"${top.statement}" heeft nog weinig bewijs. Eén experiment is zelden genoeg voor de kritiekste aanname.`);
+  }
+  // Pre-mortem (research 3.10): the reasons for failure are assumptions like any other. Critical ones
+  // without evidence count as untested critical assumptions in the advice below.
+  if (f.premortemDone === false) {
+    add("no_premortem", "warning", "Nog geen pre-mortem",
+      "Stel de vraag: het is zes maanden na het besluit en dit is mislukt, wat is de meest waarschijnlijke reden? Leg 1 tot 3 redenen vast als aannames.");
+  }
+  const premortemOpen = f.assumptions.filter((a) => a.origin === "premortem" && a.importance >= 4 && a.status === "untested" && a.evidence === 0);
+  if (premortemOpen.length) {
+    add("premortem_untested", "warning", `${premortemOpen.length} faalreden(en) uit de pre-mortem nog niet getoetst`,
+      `Nog zonder bewijs: ${premortemOpen.map((a) => `"${a.statement}"`).join(", ")}. Ze tellen mee als ongeteste kritieke aannames.`);
   }
   const approvedCards = f.learningCards.filter((c) => c.status === "approved");
   if (approvedCards.length > 0 && f.decisionsAfterLastLearning === 0) {
@@ -141,6 +154,15 @@ export function runRealityCheck(f: DossierFacts): RealityCheckResult {
       add("warm_traffic_only", "info", "Alleen warm verkeer",
         "Alle bezoekers kwamen uit het eigen netwerk. Bekenden reageren positiever dan onbekende klanten.");
     }
+  }
+  // Surveys measure what people say about themselves (research 7.5): never counted as behaviour.
+  const surveys = started.filter((e) => e.type === "survey");
+  if (surveys.some((e) => e.verdict === "pass") && behaviour.length === 0) {
+    add("survey_not_behaviour", "warning", "Enquête positief, gedrag nog niet gezien",
+      "Een geslaagde enquête is zelfrapportage, geen waargenomen gedrag. Bevestig de uitkomst met een gedragstest (landingspagina of prijs-/aanbodtest) voordat je erop besluit.");
+  } else if (surveys.length) {
+    add("survey_self_reported", "info", "Enquête = zelfrapportage",
+      "Enquêteantwoorden tellen als uitgesproken antwoord, niet als gedrag. Antwoorden via een open link hebben geen controleerbare herkomst.");
   }
   if (f.interviews.length > 0) {
     const acquainted = f.interviews.filter((i) => i.isAcquaintance).length;
