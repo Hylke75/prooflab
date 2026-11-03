@@ -212,7 +212,7 @@ export function RiskBoard({
           <strong>Waarom nu testen (informatiewaarde {current.voi.index} van 100):</strong> {current.voi.why}
         </p>
         <p className="sub mt-12">
-          {current.supporting} ondersteunend en {current.contradicting} tegensprekend bewijs gekoppeld.
+          {current.supporting} ondersteunend en {current.contradicting} tegensprekend bewijs gekoppeld (waarnemingen per persoon geteld).
           {current.probability.counted === 0 ? " We weten hier nog weinig van." : ""}
         </p>
         {current.claims.length > 0 && (

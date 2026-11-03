@@ -1,5 +1,4 @@
 import "server-only";
-import type { Dossier } from "@/lib/dossier";
 import { CLAIM_STATUS, COMPETITOR_KINDS, DECISIONS, EVIDENCE_TYPES, EXPERIMENT_TYPES, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type DecisionAction, type EvidenceType, type ExperimentType, type SourceType } from "@/lib/domain/labels";
 import type { Finding } from "@/lib/domain/reality-check";
 import { asEvidenceLevel, testEvidenceLevel } from "@/lib/domain/evidence";
@@ -11,6 +10,8 @@ import { effortSummary } from "@/lib/domain/effort";
 import { deviationLabel, type RuleEvaluation } from "@/lib/domain/decision-rule";
 import { PROVIDER_LABELS, providerOfModel } from "@/lib/ai/providers/config";
 import { buildReportCounts } from "@/lib/domain/report-counts";
+import { evidenceLadder, type EvidenceLadder } from "@/lib/domain/dossier-label";
+import { ladderObservation, type Dossier } from "@/lib/dossier";
 
 // "AI · Gemini" for an AI forecast whose provider is known; null otherwise.
 function aiName(kind: string, model: string | null): string | null {
@@ -76,6 +77,9 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       verified: claims.filter((c) => c.statusKey === "verified").length,
       insufficient: claims.filter((c) => c.statusKey === "insufficient").length,
     },
+    // Fase B0, punt 1: klantwaarnemingen per persoon geteld (één interview = per bewijsniveau maximaal één waarneming).
+    // Oudere rapporten hebben dit veld niet.
+    observationCounts: evidenceLadder(d.observations.map(ladderObservation)) as EvidenceLadder | undefined,
     competitors: d.competitors.map((c) => ({ name: c.name, kind: COMPETITOR_KINDS[c.kind as CompetitorKind].label, positioning: c.positioning, price: c.visible_price ? `${c.visible_price} (peildatum ${c.price_checked_on ?? "onbekend"})` : "Niet publiek", differentiation: c.differentiation_opportunity })),
     sizing: d.sizing.map((s) => ({
       label: s.label,

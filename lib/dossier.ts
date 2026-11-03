@@ -5,7 +5,7 @@ import { loadAssumptions, rankAssumptions } from "@/lib/progress";
 import { experimentMetrics } from "@/lib/experiment-metrics";
 import { breakEvenRevenue, computeSizing, computeUnitEconomics, factorConsistency, SCENARIO_LABELS, simulateSizing, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import { explainContribution } from "@/lib/domain/evidence";
-import { dossierLabel } from "@/lib/domain/dossier-label";
+import { dossierLabel, type LadderObservation } from "@/lib/domain/dossier-label";
 import type { DossierFacts } from "@/lib/domain/reality-check";
 import type { ClaimStatus } from "@/lib/domain/labels";
 import type { Idea } from "@/lib/data";
@@ -216,6 +216,16 @@ export async function loadDossier(idea: Idea) {
 
 export type Dossier = Awaited<ReturnType<typeof loadDossier>>;
 
+// Een waarneming zoals de bewijsladder (lib/domain/dossier-label.ts) haar per persoon telt.
+export function ladderObservation(o: Dossier["observations"][number]): LadderObservation {
+  return {
+    interviewId: o.interview_id,
+    kind: o.kind,
+    isSynthetic: o.is_synthetic,
+    dims: { isFact: o.is_fact, isBehaviour: o.is_behaviour, isRealContext: o.is_real_context, isCostly: o.is_costly },
+  };
+}
+
 export function factsFrom(d: Dossier): DossierFacts {
   const lastApproved = d.learningCards.filter((c) => c.status === "approved").map((c) => c.approved_at ?? c.created_at).sort().pop();
   const realistic = d.sizing.find((s) => s.kind === "realistic") ?? d.sizing[0];
@@ -251,7 +261,16 @@ export function factsFrom(d: Dossier): DossierFacts {
       channels: ((e.channels as { channel: string }[]) ?? []).map((c) => c.channel),
     })),
     interviews: d.interviews.map((i) => ({ dmuRole: i.dmu_role, isAcquaintance: i.is_acquaintance, consent: i.consent_recorded })),
-    observations: d.observations.map((o) => ({ kind: o.kind, isBehaviour: o.is_behaviour, isSynthetic: o.is_synthetic, isCostly: o.is_costly })),
+    // Fase B0, punt 1: met interview en dimensies, zodat de Reality Check per persoon telt.
+    observations: d.observations.map((o) => ({
+      kind: o.kind,
+      interviewId: o.interview_id,
+      isFact: o.is_fact,
+      isBehaviour: o.is_behaviour,
+      isRealContext: o.is_real_context,
+      isSynthetic: o.is_synthetic,
+      isCostly: o.is_costly,
+    })),
     learningCards: d.learningCards.map((c) => ({ status: c.status as "draft" | "approved", verdict: c.verdict as "pass" | "fail" | "inconclusive" })),
     decisionsAfterLastLearning: lastApproved ? d.decisions.filter((x) => x.decided_at > lastApproved).length : d.decisions.length,
     isB2B: /zakelijk|b2b|organisatie|bedrijf|publieke/i.test(d.idea.target_audience) || d.idea.project_type === "internal_innovation",

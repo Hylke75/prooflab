@@ -3,6 +3,7 @@ import { cache } from "react";
 import { supabaseServer } from "@/lib/supabase/server";
 import { assumptionEvidence, type AssumptionProbability, type ObservationDims } from "@/lib/domain/evidence";
 import { METHODS, type MethodVersion } from "@/lib/domain/method";
+import { dedupeByPerson } from "@/lib/domain/per-person";
 import { ideaMethodVersion, loadIdeaCaps, loadSourceRefs } from "@/lib/method-data";
 import type { AssumptionCategory, ClaimStatus } from "@/lib/domain/labels";
 import { rankByInformationValue, type VoiResult } from "@/lib/domain/recommend";
@@ -44,6 +45,8 @@ type ObsLink = {
     kind: string;
     origin: string;
     review_status?: string | null;
+    interview_id?: string | null;
+    experiment_id?: string | null;
   } | null;
 };
 
@@ -65,19 +68,30 @@ async function loadObservationLinks(ideaId: string): Promise<ObsLink[]> {
         observation_id: l.observation_id,
         relation: l.relation,
         observations: o
-          ? { is_fact: o.is_fact, is_behaviour: o.is_behaviour, is_real_context: o.is_real_context, is_costly: o.is_costly, is_synthetic: o.is_synthetic, kind: o.kind, origin: o.origin, review_status: o.review_status ?? null }
+          ? {
+              is_fact: o.is_fact,
+              is_behaviour: o.is_behaviour,
+              is_real_context: o.is_real_context,
+              is_costly: o.is_costly,
+              is_synthetic: o.is_synthetic,
+              kind: o.kind,
+              origin: o.origin,
+              review_status: o.review_status ?? null,
+              interview_id: o.interview_id,
+              experiment_id: o.experiment_id,
+            }
           : null,
       };
     });
   }
   const full = await supabase
     .from("assumption_observations")
-    .select("assumption_id, observation_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin, review_status)")
+    .select("assumption_id, observation_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin, review_status, interview_id, experiment_id)")
     .eq("idea_id", ideaId);
   if (!full.error) return full.data ?? [];
   const plain = await supabase
     .from("assumption_observations")
-    .select("assumption_id, observation_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin)")
+    .select("assumption_id, observation_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin, interview_id, experiment_id)")
     .eq("idea_id", ideaId);
   return plain.data ?? [];
 }
@@ -102,6 +116,14 @@ export const loadAssumptionInputs = cache(async (ideaId: string) => {
 });
 export type AssumptionInputs = Awaited<ReturnType<typeof loadAssumptionInputs>>;
 
+const obsDims = (o: NonNullable<ObsLink["observations"]>): ObservationDims => ({
+  isFact: o.is_fact,
+  isBehaviour: o.is_behaviour,
+  isRealContext: o.is_real_context,
+  isCostly: o.is_costly,
+  isSynthetic: o.is_synthetic,
+});
+
 // Computes the evidence axis and the probability of every assumption with the calculation module of a method
 // version (lib/domain/method): the dossier's own version, or another one for the comparison before a switch.
 export function computeAssumptions(inputs: AssumptionInputs, version: MethodVersion): AssumptionWithEvidence[] {
@@ -121,19 +143,12 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
           relevance: l.claims!.relevance ?? null,
         };
       });
-    const observations = obsLinks
-      .filter((l) => l.assumption_id === a.id && l.observations)
-      .map((l) => {
-        const o = l.observations!;
-        const dims: ObservationDims = {
-          isFact: o.is_fact,
-          isBehaviour: o.is_behaviour,
-          isRealContext: o.is_real_context,
-          isCostly: o.is_costly,
-          isSynthetic: o.is_synthetic,
-        };
-        return { ...dims, relation: l.relation as "supports" | "contradicts" };
-      });
+    // Bewijsas en aantallen per persoon (fase B0, punt 1): één interview levert per bewijsniveau en richting maximaal
+    // één waarneming. De kans zelf voegt per bron samen in de rekenmodule van de methode.
+    const observations = dedupeByPerson(
+      obsLinks.filter((l) => l.assumption_id === a.id && l.observations),
+      (l) => ({ interviewId: l.observations!.interview_id, kind: l.observations!.kind, relation: l.relation, dims: obsDims(l.observations!) }),
+    ).map((l) => ({ ...obsDims(l.observations!), relation: l.relation as "supports" | "contradicts" }));
     const e = assumptionEvidence(claims, observations);
     const probability = method.probability(
       claims,

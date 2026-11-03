@@ -17,6 +17,7 @@ import { explainRecruitment } from "@/lib/domain/recruitment";
 import { asEvidenceLevel, outcomeWithLevel } from "@/lib/domain/evidence";
 import { allTestsSummary } from "@/lib/domain/all-tests";
 import { formatGroups } from "@/lib/domain/report-counts";
+import { ladderSummary } from "@/lib/domain/dossier-label";
 import { CALIBRATION_MIN_RESOLVED } from "@/lib/domain/probability-display";
 
 export const metadata: Metadata = { title: "Rapportage" };
@@ -183,6 +184,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             <p>
               {r.decision?.rationale ?? r.realityCheck?.reason ?? "Het onderzoek loopt nog."} Bewijsniveau: <strong>{r.label}</strong>.
               {r.labelMissing.length ? ` Voor een hoger niveau ontbreekt: ${r.labelMissing.join("; ")}.` : ""}
+              {r.observationCounts ? ` ${ladderSummary(r.observationCounts)}` : ""}
             </p>
             <div className="grid-3" style={{ margin: "20px 0" }}>
               <div style={{ background: "var(--color-surface-soft)", padding: 16, borderRadius: "var(--radius-inner)" }}>

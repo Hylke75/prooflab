@@ -148,7 +148,7 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
       };
     }),
     interviews: d.interviews.map((i) => ({ isAcquaintance: i.is_acquaintance })),
-    observations: d.observations.map((o) => ({ kind: o.kind, isBehaviour: o.is_behaviour, isSynthetic: o.is_synthetic, createdAt: o.created_at })),
+    observations: d.observations.map((o) => ({ kind: o.kind, isBehaviour: o.is_behaviour, isSynthetic: o.is_synthetic, createdAt: o.created_at, interviewId: o.interview_id })),
     learningCards: d.learningCards.map((c) => ({ id: c.id, status: c.status, approvedAt: c.approved_at })),
     realityCheck: d.realityCheck ? { id: d.realityCheck.id, createdAt: d.realityCheck.created_at } : null,
     decisions: d.decisions.map((x) => ({ id: x.id, decidedAt: x.decided_at, confirmed: !!x.client_confirmed_at, action: x.action, extendWeeks: x.extend_weeks ?? null })),
