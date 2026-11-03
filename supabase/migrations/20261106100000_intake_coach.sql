@@ -49,3 +49,59 @@ create trigger ideas_outcome_lock before update of outcome_statement, outcome_me
   outcome_clock_start, outcome_min_value_per_customer, outcome_revenue_target, outcome_measure_date,
   reference_class, base_rate_low, base_rate_high on public.ideas
   for each row execute function public.guard_outcome_definition();
+
+-- ---------------------------------------------------------------------------
+-- 3. Referentieklasse "Nieuwe B2B-dienst / bureau-aanbod, klanten binnen 6 maanden"
+-- ---------------------------------------------------------------------------
+-- Niet toegevoegd aan reference_classes: er is (op 3 november 2026) geen betrouwbare, citeerbare bron gevonden met
+-- een letterlijk percentage voor deze klasse. Een referentie staat nooit zonder bron. In plaats daarvan kan de
+-- consultant een voorstel per dossier laten zoeken (hieronder).
+
+-- Door AI voorgestelde referenties, per dossier. Alleen de app-server legt ze vast (ingest-sleutel), en alleen
+-- nadat ProofLab de pagina zelf ophaalde en het citaat met het percentage er letterlijk op terugvond.
+create table if not exists public.reference_proposals (
+  id uuid primary key default gen_random_uuid(),
+  idea_id uuid not null references public.ideas(id) on delete cascade,
+  label text not null check (char_length(label) between 2 and 160),
+  rate numeric not null check (rate between 0 and 1),
+  source_url text not null check (source_url ~* '^https?://' and char_length(source_url) <= 2000),
+  source_title text not null check (char_length(source_title) between 1 and 300),
+  quote text not null check (char_length(quote) between 8 and 1000),
+  passage text not null check (char_length(passage) between 8 and 1500),
+  model text check (char_length(model) <= 80),
+  created_by uuid default auth.uid() references auth.users(id),
+  created_at timestamptz not null default now()
+);
+create index if not exists reference_proposals_idea_idx on public.reference_proposals(idea_id, created_at desc);
+create index if not exists reference_proposals_created_by_fk on public.reference_proposals(created_by);
+
+alter table public.reference_proposals enable row level security;
+drop policy if exists reference_proposals_select on public.reference_proposals;
+create policy reference_proposals_select on public.reference_proposals for select to authenticated
+  using (public.can_read_idea(idea_id));
+-- Geen insert-, update- of delete-policies: vastleggen kan alleen via record_reference_proposal.
+
+create or replace function public.record_reference_proposal(
+  p_key text, p_idea uuid, p_label text, p_rate numeric, p_url text, p_title text, p_quote text, p_passage text, p_model text)
+returns uuid language plpgsql security definer set search_path = '' as $$
+declare v_id uuid;
+begin
+  if not public.ingest_key_ok(p_key) or not public.can_write_idea(p_idea) then
+    raise exception 'FORBIDDEN' using errcode = 'P0001';
+  end if;
+  -- De controle van het citaat op de pagina gebeurt in de app (lib/domain/reference-proposal.ts); de ingest-sleutel
+  -- garandeert dat alleen de app-server hier komt, niet een gebruiker met een eigen 'citaat'.
+  insert into public.reference_proposals (idea_id, label, rate, source_url, source_title, quote, passage, model)
+  values (p_idea, left(p_label, 160), p_rate, p_url, left(p_title, 300), p_quote, p_passage, left(p_model, 80))
+  returning id into v_id;
+  return v_id;
+end $$;
+
+revoke execute on function public.record_reference_proposal(text, uuid, text, numeric, text, text, text, text, text) from public, anon;
+grant execute on function public.record_reference_proposal(text, uuid, text, numeric, text, text, text, text, text) to authenticated;
+
+revoke all on public.reference_proposals from anon;
+grant select on public.reference_proposals to authenticated;
+
+create trigger reference_proposals_audit after insert or update or delete on public.reference_proposals
+  for each row execute function public.audit_row();

@@ -8,6 +8,7 @@ import { PROVIDER_LABELS, providerOfModel, type ProviderId } from "@/lib/ai/prov
 import { ensembleProviders } from "@/lib/ai/providers/select";
 import type { IdeaProgress } from "@/lib/domain/coach";
 import { PROJECT_TYPES, type ProjectType } from "@/lib/domain/labels";
+import { PROPOSAL_REFERENCE_PREFIX } from "@/lib/domain/reference-proposal";
 import {
   CHECKIN_AFTER_MONTHS,
   FORECAST_MOMENTS,
@@ -25,7 +26,9 @@ import {
   type OnTrack,
 } from "@/lib/domain/forecast";
 
-export type ReferenceClass = { id: string; label: string; low: number; high: number; sourceTitle: string; sourceUrl: string; caveat: string };
+// Een referentieklasse uit de vaste lijst, of een door AI voorgesteld en door ProofLab nagelopen voorstel voor dit
+// dossier (id "proposal:<uuid>", met het letterlijke citaat). Elke referentie heeft een bron.
+export type ReferenceClass = { id: string; label: string; low: number; high: number; sourceTitle: string; sourceUrl: string; caveat: string; quote?: string };
 
 export type BaseRateView =
   | { kind: "class"; label: string; low: number; high: number; sourceTitle: string; sourceUrl: string | null; caveat: string; note: string | null }
@@ -94,7 +97,7 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
   const { idea, canWrite } = access;
   const ws = await getWorkspace();
   const supabase = await supabaseServer();
-  const [classes, forecasts, outcome, checkins, own, anyForecast, orgResolved, behaviour] = await Promise.all([
+  const [classes, forecasts, outcome, checkins, own, anyForecast, orgResolved, behaviour, proposals] = await Promise.all([
     supabase.from("reference_classes").select("*").order("position"),
     supabase.from("forecasts").select("*").eq("idea_id", idea.id).order("created_at"),
     supabase.from("idea_outcomes").select("*").eq("idea_id", idea.id).maybeSingle(),
@@ -104,6 +107,8 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
     supabase.rpc("forecasts_exist", { p_idea: idea.id }),
     canWrite ? supabase.rpc("own_base_rate", { p_org: idea.org_id, p_project_type: null, p_min: 0 }) : Promise.resolve({ data: null, error: null }),
     supabase.from("experiments").select("id", { count: "exact", head: true }).eq("idea_id", idea.id).in("type", ["landing", "pricing"]).in("state", ["ended", "analyzed", "decided"]),
+    // Ontbreekt de tabel (oudere database), dan zijn er gewoon geen voorstellen.
+    supabase.from("reference_proposals").select("id, label, rate, source_url, source_title, quote").eq("idea_id", idea.id).order("created_at", { ascending: false }).limit(10),
   ]);
   if (classes.error || forecasts.error || outcome.error || checkins.error) return null;
 
@@ -116,6 +121,18 @@ export const loadForecastView = cache(async (access: IdeaAccess, progress: IdeaP
     sourceUrl: c.source_url,
     caveat: c.caveat,
   }));
+  for (const r of proposals.data ?? []) {
+    referenceClasses.push({
+      id: `${PROPOSAL_REFERENCE_PREFIX}${r.id}`,
+      label: r.label,
+      low: Number(r.rate),
+      high: Number(r.rate),
+      sourceTitle: r.source_title,
+      sourceUrl: r.source_url,
+      caveat: "Door AI voorgesteld; ProofLab vond het citaat letterlijk op de bronpagina. Controleer of de vergelijkingsgroep en de termijn passen bij dit doel.",
+      quote: r.quote,
+    });
+  }
 
   const rows = forecasts.data ?? [];
   const ids = [...new Set(rows.map((f) => f.forecaster_id).filter((x): x is string => !!x))];

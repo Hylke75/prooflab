@@ -90,4 +90,22 @@ d("intake en succescriterium", () => {
     }
     await expect(as(alice, (c) => c.query("update public.ideas set outcome_revenue_target = -5 where id = $1", [idea]))).rejects.toThrow();
   });
+
+  it("legt referentievoorstellen alleen via de app-server vast (ingest-sleutel), nooit direct", async () => {
+    const idea = await newIdea(alice, org);
+    const args = [idea, "Nieuwe B2B-diensten", 0.38, "https://example.org/rapport", "Rapport", "had 38% binnen zes maanden een klant", "Er had 38% binnen zes maanden een klant.", "gpt-x"];
+    await expect(
+      as(alice, (c) =>
+        c.query("insert into public.reference_proposals (idea_id, label, rate, source_url, source_title, quote, passage, model) values ($1, $2, $3, $4, $5, $6, $7, $8)", args),
+      ),
+    ).rejects.toThrow(/row-level security|permission denied/);
+    await expect(as(alice, (c) => c.query("select public.record_reference_proposal('verkeerd', $1, $2, $3, $4, $5, $6, $7, $8)", args))).rejects.toThrow(/FORBIDDEN/);
+    const id = await as(alice, async (c) => (await c.query("select public.record_reference_proposal($9, $1, $2, $3, $4, $5, $6, $7, $8) as id", [...args, ingestKey])).rows[0].id);
+    const rows = await as(alice, async (c) => (await c.query("select id, rate::float, created_by from public.reference_proposals where idea_id = $1", [idea])).rows);
+    expect(rows).toEqual([{ id, rate: 0.38, created_by: alice.id }]);
+    // Een bron is verplicht: zonder http(s)-URL weigert de database.
+    await expect(
+      as(alice, (c) => c.query("select public.record_reference_proposal($9, $1, $2, $3, $4, $5, $6, $7, $8)", [...args.slice(0, 3), "geen-url", ...args.slice(4), ingestKey])),
+    ).rejects.toThrow(/check/);
+  });
 });
