@@ -16,7 +16,7 @@ export type AssumptionWithEvidence = {
   evidence: number;
   supporting: number;
   contradicting: number;
-  // Estimated probability that the assumption holds (research 3.5), from a 50% prior.
+  // Estimated probability that the assumption holds (research 3.5), from the stored starting value (default 50%).
   probability: AssumptionProbability;
 };
 
@@ -87,6 +87,7 @@ export const loadAssumptions = cache(async (ideaId: string): Promise<AssumptionW
           origin: l.observations!.origin,
           reviewStatus: l.observations!.review_status ?? null,
         })),
+      a.prior == null ? 0.5 : Number(a.prior),
     );
     return {
       probability,

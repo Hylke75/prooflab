@@ -41,6 +41,7 @@ export function RiskBoard({
   linkActions,
   unlinkActions,
   importanceActions,
+  priorActions,
   deleteActions,
 }: {
   ideaId: string;
@@ -50,18 +51,20 @@ export function RiskBoard({
   linkActions: Record<string, Action>;
   unlinkActions: Record<string, Record<string, () => Promise<void>>>;
   importanceActions: Record<string, (f: FormData) => Promise<void>>;
+  priorActions: Record<string, (f: FormData) => Promise<void>>;
   deleteActions: Record<string, () => Promise<void>>;
 }) {
   const [sel, setSel] = useState(assumptions[0]?.id ?? null);
   const [cluster, setCluster] = useState<string | null>(null);
-  // What-if starting value for the selected assumption; not stored.
-  const [prior, setPrior] = useState(0.5);
+  // Starting value for the selected assumption: the stored one, which a consultant can change and save.
+  const storedPrior = (id: string | null) => assumptions.find((a) => a.id === id)?.probability.prior ?? 0.5;
+  const [prior, setPrior] = useState(storedPrior(assumptions[0]?.id ?? null));
   const popRef = useRef<HTMLDivElement>(null);
   const clusterBtn = useRef<HTMLButtonElement | null>(null);
   const current = assumptions.find((a) => a.id === sel) ?? assumptions[0];
   const select = (id: string) => {
     setSel(id);
-    setPrior(0.5);
+    setPrior(storedPrior(id));
   };
   // The horizontal axis is the estimated probability: more likely true = further left.
   const placed = layoutRiskPoints(assumptions.map((a) => ({ id: a.id, importance: a.importance, evidence: a.probability.probability })));
@@ -194,7 +197,7 @@ export function RiskBoard({
           {current.origin === "premortem" && <span className="pill coral">Uit de pre-mortem</span>}
           <span className="pill gray">Bewijsscore {Math.round(current.evidence * 100)} van 100</span>
         </div>
-        <ProbabilityDetail a={current} prior={prior} setPrior={setPrior} />
+        <ProbabilityDetail a={current} prior={prior} setPrior={setPrior} save={canWrite ? priorActions[current.id] : undefined} />
         <p className="sub mt-12">
           <strong>Waarom nu testen (informatiewaarde {current.voi.index} van 100):</strong> {current.voi.why}
         </p>
@@ -247,7 +250,7 @@ export function RiskBoard({
 }
 
 // Probability with its band, the three largest contributions and a what-if starting value.
-function ProbabilityDetail({ a, prior, setPrior }: { a: BoardAssumption; prior: number; setPrior: (p: number) => void }) {
+function ProbabilityDetail({ a, prior, setPrior, save }: { a: BoardAssumption; prior: number; setPrior: (p: number) => void; save?: (f: FormData) => Promise<void> }) {
   const p = probabilityFromShift(prior, a.probability.shift);
   const band = bandFromShift(prior, a.probability.shift);
   const ignored = a.probability.ignored.synthetic + a.probability.ignored.rejected;
@@ -279,7 +282,7 @@ function ProbabilityDetail({ a, prior, setPrior }: { a: BoardAssumption; prior: 
         </p>
       )}
       <div className="row mt-8">
-        <label className="tiny" htmlFor={`prior-${a.id}`}>Beginwaarde (verkennen)</label>
+        <label className="tiny" htmlFor={`prior-${a.id}`}>Beginwaarde</label>
         <select
           className="field"
           id={`prior-${a.id}`}
@@ -290,7 +293,16 @@ function ProbabilityDetail({ a, prior, setPrior }: { a: BoardAssumption; prior: 
           {PRIORS.map((x) => <option key={x} value={x}>{pctR(x)}</option>)}
         </select>
       </div>
-      <p className="explain">Probeer een andere beginwaarde om te zien hoe gevoelig de kans daarvoor is. Dit wordt niet opgeslagen; de kaart rekent met 50%.</p>
+      {save && prior !== a.probability.prior && (
+        <form action={save} className="mt-8">
+          <input type="hidden" name="prior" value={prior} />
+          <button className="btn white sm">Bewaar {pctR(prior)} als beginwaarde</button>
+        </form>
+      )}
+      <p className="explain">
+        Hoe waarschijnlijk vond je dit vóór enig bewijs? Kies een andere waarde om te zien hoe gevoelig de kans daarvoor is
+        {save ? "; bewaar hem als je hem kunt onderbouwen (bijvoorbeeld met het basispercentage)." : "."} Opgeslagen: {pctR(a.probability.prior)}.
+      </p>
     </div>
   );
 }

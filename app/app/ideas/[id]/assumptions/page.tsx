@@ -13,7 +13,7 @@ import { DECISION_BOUNDARY, EUR_PER_COST_UNIT, TEST_LR } from "@/lib/domain/reco
 import { stepsDone } from "@/lib/steps";
 import { aiConfigured } from "@/lib/env";
 import { ASSUMPTION_CATEGORIES, type AssumptionCategory, type AssumptionStatus } from "@/lib/domain/labels";
-import { addAssumption, deleteAssumption, linkClaim, seedAssumptions, setImportance, unlinkClaim } from "./actions";
+import { addAssumption, deleteAssumption, linkClaim, seedAssumptions, setImportance, setPrior, unlinkClaim } from "./actions";
 
 export const metadata: Metadata = { title: "Aannames" };
 
@@ -108,6 +108,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
           linkActions={Object.fromEntries(board.map((a) => [a.id, linkClaim.bind(null, id, a.id)]))}
           unlinkActions={Object.fromEntries(board.map((a) => [a.id, Object.fromEntries(a.claims.map((c) => [c.id, unlinkClaim.bind(null, id, a.id, c.id)]))]))}
           importanceActions={Object.fromEntries(board.map((a) => [a.id, setImportance.bind(null, id, a.id)]))}
+          priorActions={Object.fromEntries(board.map((a) => [a.id, setPrior.bind(null, id, a.id)]))}
           deleteActions={Object.fromEntries(board.map((a) => [a.id, deleteAssumption.bind(null, id, a.id)]))}
         />
       )}

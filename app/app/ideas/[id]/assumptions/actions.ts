@@ -40,6 +40,16 @@ export async function setImportance(ideaId: string, assumptionId: string, form: 
   refresh(ideaId);
 }
 
+// The starting probability before any evidence ("hoe waarschijnlijk vonden we dit vooraf?").
+export async function setPrior(ideaId: string, assumptionId: string, form: FormData) {
+  await requireWritableIdea(ideaId);
+  const n = z.coerce.number().min(0.01).max(0.99).safeParse(form.get("prior"));
+  if (!n.success) return;
+  const supabase = await supabaseServer();
+  await supabase.from("assumptions").update({ prior: n.data }).eq("id", assumptionId).eq("idea_id", ideaId);
+  refresh(ideaId);
+}
+
 export async function deleteAssumption(ideaId: string, assumptionId: string) {
   await requireWritableIdea(ideaId);
   const supabase = await supabaseServer();

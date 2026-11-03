@@ -465,6 +465,7 @@ export type Database = {
       }
       assumptions: {
         Row: {
+          prior: number | null
           category: string
           created_at: string
           id: string
@@ -475,6 +476,7 @@ export type Database = {
           status: string
         }
         Insert: {
+          prior?: number | null
           category: string
           created_at?: string
           id?: string
@@ -485,6 +487,7 @@ export type Database = {
           status?: string
         }
         Update: {
+          prior?: number | null
           category?: string
           created_at?: string
           id?: string

@@ -244,6 +244,9 @@ end $$;
 create trigger observations_review_guard before update on public.observations
   for each row execute function public.guard_observation_review();
 
+-- A chosen starting probability per assumption (default 50% when empty); see lib/domain/evidence.ts.
+alter table public.assumptions add column if not exists prior numeric check (prior between 0.01 and 0.99);
+
 alter table public.assumptions drop constraint if exists assumptions_origin_check;
 alter table public.assumptions add constraint assumptions_origin_check check (origin in ('manual', 'ai', 'template', 'premortem'));
 
