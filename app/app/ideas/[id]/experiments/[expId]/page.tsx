@@ -4,14 +4,19 @@ import { notFound } from "next/navigation";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { ResultMeter } from "@/components/experiments/ResultMeter";
-import { getIdea } from "@/lib/data";
+import { GuideAuditList, TranscriptAuditList } from "@/components/experiments/InterviewAudit";
+import { AiQualityCard } from "@/components/research/AiQualityCard";
+import { getIdea, getWorkspace } from "@/lib/data";
+import { loadAiQuality } from "@/lib/ai-quality";
+import { auditGuide, auditTranscript, guideSummary } from "@/lib/domain/interview-audit";
+import { codingIsProposalOnly } from "@/lib/domain/ai-quality";
 import { supabaseServer } from "@/lib/supabase/server";
 import { experimentMetrics, type InterviewConfig, type LandingConfig, type PricingConfig } from "@/lib/experiment-metrics";
 import { aiConfigured, env, trackingConfigured } from "@/lib/env";
 import { pct } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { DMU_ROLES, EXPERIMENT_STATES, EXPERIMENT_TYPES, OBSERVATION_KINDS, type ExperimentState, type ExperimentType } from "@/lib/domain/labels";
-import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, transitionExperiment } from "../actions";
+import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, reviewObservation, transitionExperiment } from "../actions";
 
 export const metadata: Metadata = { title: "Experiment" };
 
@@ -30,6 +35,17 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
     type === "interview" && canWrite
       ? (await supabase.from("interviews").select("*, observations(*)").eq("experiment_id", expId).order("held_on")).data ?? []
       : [];
+  const quality = canWrite ? await loadAiQuality() : null;
+  const guideLines = type === "interview" ? ((exp.config as InterviewConfig).guide ?? []) : [];
+  const productNames = [idea.title, (exp.config as LandingConfig).product_name ?? ""];
+  const guideAudit = auditGuide(guideLines, { productNames });
+  let interviewerNames: string[] = [];
+  if (type === "interview" && canWrite) {
+    const ws = await getWorkspace();
+    const { data: me } = await supabase.from("profiles").select("full_name").eq("user_id", ws.user.id).maybeSingle();
+    const full = me?.full_name?.trim();
+    interviewerNames = full ? [full, full.split(/\s+/)[0]] : [];
+  }
   const channels = (exp.channels as { channel: string; expected_reach: number | null }[]) ?? [];
   const publicUrl = exp.public_slug ? `${env.appUrl}/t/${exp.public_slug}` : null;
   const running = state === "live" || state === "paused";
@@ -209,7 +225,20 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
               {(exp.config as InterviewConfig).guide?.map((q) => <li key={q}>{q}</li>)}
             </ol>
             {(exp.config as InterviewConfig).screener && <p className="tiny mt-8">Selectie: {(exp.config as InterviewConfig).screener}</p>}
+            {guideSummary(guideAudit).flagged > 0 ? (
+              <div className="note">
+                <strong>Leidraadcontrole: {guideSummary(guideAudit).flagged} van {guideAudit.length} vragen verdienen aandacht.</strong> Waarschuwing, geen blokkade.
+                <GuideAuditList audit={guideAudit} />
+              </div>
+            ) : (
+              <p className="tiny mt-8">Leidraadcontrole: geen hypothetische, sturende of verkopende vragen gevonden.</p>
+            )}
           </div>
+          {quality && (
+            <div className="mt-18">
+              <AiQualityCard measures={[{ title: "AI-codering van interviews: geaccepteerd", measure: quality.coding }]} />
+            </div>
+          )}
           {interviews.map((iv) => (
             <div className="card mt-18" key={iv.id}>
               <div className="section-title">
@@ -223,15 +252,30 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
                 <summary className="text-link">Transcript tonen</summary>
                 <div className="quote" style={{ whiteSpace: "pre-wrap", maxHeight: 280, overflow: "auto" }}>{iv.transcript}</div>
               </details>
+              <TranscriptAuditList turns={auditTranscript(iv.transcript, { productNames, interviewerNames })} />
               {(iv.observations ?? []).map((o) => (
                 <div className="evidence-event" key={o.id}>
                   <div className="icon-circle">{o.kind === "problem_confirmed" ? "✓" : o.kind === "problem_absent" || o.kind === "counter_example" ? "✕" : "•"}</div>
                   <div style={{ flex: 1 }}>
                     <strong>{OBSERVATION_KINDS[o.kind as keyof typeof OBSERVATION_KINDS]}: {o.summary}</strong>
                     {o.quote && <blockquote className="quote">“{o.quote}”</blockquote>}
-                    <p>{o.origin === "ai" ? "Voorgesteld door AI, citaat gecontroleerd" : "Handmatig gecodeerd"}</p>
+                    <p>
+                      {o.origin !== "ai"
+                        ? "Handmatig gecodeerd"
+                        : o.review_status === "accepted"
+                          ? `AI-codering, geaccepteerd door consultant${o.reviewed_at ? ` op ${new Date(o.reviewed_at).toLocaleDateString("nl-NL")}` : ""}`
+                          : o.review_status === "rejected"
+                            ? `AI-codering, afgewezen door consultant${o.reviewed_at ? ` op ${new Date(o.reviewed_at).toLocaleDateString("nl-NL")}` : ""}; telt niet mee`
+                            : `AI-voorstel, citaat letterlijk gecontroleerd; nog niet beoordeeld${quality && codingIsProposalOnly(quality.coding) ? " (AI-codering blijft een voorstel)" : ""}`}
+                    </p>
+                    {o.origin === "ai" && !o.review_status && (
+                      <div className="row mt-8">
+                        <form action={reviewObservation.bind(null, id, o.id, "accepted")}><button className="btn white sm">Accepteer codering</button></form>
+                        <form action={reviewObservation.bind(null, id, o.id, "rejected")}><button className="btn white sm">Wijs af</button></form>
+                      </div>
+                    )}
                   </div>
-                  {state !== "decided" && <form action={deleteObservation.bind(null, id, o.id)}><button className="text-link">Verwijder</button></form>}
+                  {state !== "decided" && o.origin === "manual" && <form action={deleteObservation.bind(null, id, o.id)}><button className="text-link">Verwijder</button></form>}
                 </div>
               ))}
               {running && (

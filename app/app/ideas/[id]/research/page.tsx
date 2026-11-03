@@ -9,6 +9,12 @@ import { ResearchRunPanel } from "@/components/research/ResearchRunPanel";
 import { AddClaimForm, AddSourceForm } from "@/components/research/SourceForms";
 import { CompetitorPanel, type CompetitorView } from "@/components/research/CompetitorPanel";
 import { SizingPanel } from "@/components/research/SizingPanel";
+import { SupportControls } from "@/components/research/SupportControls";
+import { AiQualityCard } from "@/components/research/AiQualityCard";
+import { CustomerSignals, type SignalView } from "@/components/research/CustomerSignals";
+import { loadAiQuality } from "@/lib/ai-quality";
+import { isSignalSource, parseSignalQuotes, type SignalKind } from "@/lib/domain/customer-signals";
+import { SUPPORT_LABEL, isLiveMissing, isSupportCheck, parseRecheckNote, type SupportCheck } from "@/lib/domain/support";
 import { UnitEconomicsPanel } from "@/components/research/UnitEconomicsPanel";
 import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
@@ -18,8 +24,8 @@ import { aiConfigured } from "@/lib/env";
 import { CLAIM_STATUS, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type EvidenceType, type SourceType } from "@/lib/domain/labels";
 import { breakEvenRevenue, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import {
-  addClaim, addSource, aiPlan, deleteClaim, deleteCompetitor, deleteQuestion, deleteSegment, deleteSource,
-  saveCompetitor, saveQuestion, saveScenario, saveSegment, saveUnitEconomics,
+  addClaim, addSource, aiPlan, checkClaimSupport, deleteClaim, deleteCompetitor, deleteQuestion, deleteSegment, deleteSource,
+  overrideSupport, recheckCompetitors, saveCompetitor, saveQuestion, saveScenario, saveSegment, saveUnitEconomics,
 } from "./actions";
 
 export const metadata: Metadata = { title: "Marktverkenning" };
@@ -33,20 +39,22 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   const sp = await searchParams;
   const { idea, canWrite } = await getIdea(id);
   const supabase = await supabaseServer();
-  const [qs, claimsRes, sourcesRes, compRes, segRes, scenRes, ueRes, runRes] = await Promise.all([
+  const [qs, claimsRes, sourcesRes, compRes, segRes, scenRes, ueRes, runRes, signalsRes] = await Promise.all([
     supabase.from("research_questions").select("*").eq("idea_id", id).order("position"),
     supabase
       .from("claims")
-      .select("*, claim_sources(quote, stance, quote_check, sources(title, url, publisher, published_on, source_type, domain))")
+      .select("*, claim_sources(id, source_id, quote, stance, quote_check, support_check, support_checked_by, support_note, sources(title, url, publisher, published_on, source_type, domain, access_note))")
       .eq("idea_id", id)
       .order("created_at"),
     supabase.from("sources").select("*, source_excerpts(id, text, location)").eq("idea_id", id).order("created_at", { ascending: false }),
-    supabase.from("competitors").select("*, claims(statement, status)").eq("idea_id", id).order("created_at"),
+    supabase.from("competitors").select("*, claims(statement, status, claim_sources(quote, sources(url, access_note)))").eq("idea_id", id).order("created_at"),
     supabase.from("segments").select("*").eq("idea_id", id).order("created_at"),
     supabase.from("sizing_scenarios").select("*, sizing_factors(*)").eq("idea_id", id),
     supabase.from("unit_economics").select("*").eq("idea_id", id).maybeSingle(),
     supabase.from("research_runs").select("*").eq("idea_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("customer_signals").select("*").eq("idea_id", id).order("mentions", { ascending: false }),
   ]);
+  const quality = canWrite ? await loadAiQuality() : null;
   const progress = await loadProgress(id);
   const run = runRes.data;
   const { data: tasks } = run
@@ -73,6 +81,11 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     section: c.section,
     numeric_value: c.numeric_value,
     evidence: (c.claim_sources ?? []).map((e) => ({
+      id: e.id,
+      source_id: e.source_id,
+      support_check: e.support_check,
+      support_checked_by: e.support_checked_by,
+      support_note: e.support_note,
       quote: e.quote,
       stance: e.stance,
       quote_check: e.quote_check,
@@ -81,7 +94,27 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   }));
   const sources = sourcesRes.data ?? [];
   const excerpts = sources.flatMap((s) => (s.source_excerpts ?? []).map((e) => ({ id: e.id, text: e.text, sourceTitle: s.title })));
-  const competitors: CompetitorView[] = (compRes.data ?? []).map((c) => ({ ...c, kind: c.kind as CompetitorKind, claim: c.claims ? { statement: c.claims.statement, status: c.claims.status } : null }));
+  const competitors: CompetitorView[] = (compRes.data ?? []).map((c) => ({
+    ...c,
+    kind: c.kind as CompetitorKind,
+    claim: c.claims ? { statement: c.claims.statement, status: c.claims.status } : null,
+    checks: [...new Map((c.claims?.claim_sources ?? []).flatMap((l) => {
+      const mark = parseRecheckNote(l.sources?.access_note);
+      if (!l.sources?.url || !mark) return [];
+      const missing = isLiveMissing(l.sources.access_note, l.quote);
+      return [[l.sources.url, { url: l.sources.url, note: `hercontrole ${new Date(mark.date).toLocaleDateString("nl-NL")}: ${missing ? "citaat niet meer gevonden op de pagina" : mark.text}`, missing }] as const];
+    })).values()],
+  }));
+  const signals: SignalView[] = (signalsRes.data ?? []).map((s) => ({ id: s.id, kind: s.kind as SignalKind, label: s.label, mentions: s.mentions, origin: s.origin, quotes: parseSignalQuotes(s.quotes) }));
+  const signalSources = sources
+    .filter((s) => isSignalSource(s))
+    .map((s) => ({ id: s.id, title: s.title, source_type: s.source_type, excerpts: (s.source_excerpts ?? []).map((e) => ({ id: e.id, text: e.text })) }))
+    .filter((s) => s.excerpts.length > 0);
+  const supportCounts = (sourceId: string) => {
+    const counts: Record<SupportCheck, number> = { supports: 0, partial: 0, not_supported: 0, unchecked: 0 };
+    for (const c of claims) for (const e of c.evidence) if (e.source_id === sourceId) counts[isSupportCheck(e.support_check) ? e.support_check : "unchecked"]++;
+    return counts;
+  };
   const verified = claims.filter((c) => c.status === "verified").length;
   const answered = questions.filter((q) => q.status === "answered").length;
   const openQuestion = questions.find((q) => q.status !== "answered");
@@ -92,6 +125,23 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     .map((c) => ({ id: c.id, statement: c.statement, status: c.status, numeric_value: c.numeric_value }));
 
   const tab = typeof sp.tab === "string" ? sp.tab : "overview";
+  const evidenceActions = (claim: (typeof claims)[number]) =>
+    canWrite
+      ? (eid: string) => {
+          const e = claim.evidence.find((x) => x.id === eid);
+          if (!e) return null;
+          return (
+            <SupportControls
+              id={eid}
+              checkedBy={e.support_checked_by ?? null}
+              current={e.support_check ?? "unchecked"}
+              aiConnected={aiConfigured()}
+              checkAction={checkClaimSupport.bind(null, id, eid)}
+              overrideAction={overrideSupport.bind(null, id, eid)}
+            />
+          );
+        }
+      : undefined;
   const claimActions = (cid: string) =>
     canWrite ? (
       <form action={deleteClaim.bind(null, id, cid)}>
@@ -258,11 +308,11 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                 return (
                   <div key={q.id} className="stack">
                     <div className="eyebrow" style={{ marginBottom: 0 }}>VRAAG {q.position} · {q.question}</div>
-                    {list.map((c) => <InsightCard key={c.id} claim={c} actions={claimActions(c.id)} />)}
+                    {list.map((c) => <InsightCard key={c.id} claim={c} actions={claimActions(c.id)} evidenceActions={evidenceActions(c)} />)}
                   </div>
                 );
               })}
-              {claims.filter((c) => !c.question_id).map((c) => <InsightCard key={c.id} claim={c} actions={claimActions(c.id)} />)}
+              {claims.filter((c) => !c.question_id).map((c) => <InsightCard key={c.id} claim={c} actions={claimActions(c.id)} evidenceActions={evidenceActions(c)} />)}
             </div>
           )}
 
@@ -298,6 +348,8 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
             addAction={saveCompetitor.bind(null, id, null)}
             updateActions={Object.fromEntries(competitors.map((c) => [c.id, saveCompetitor.bind(null, id, c.id)]))}
             deleteActions={Object.fromEntries(competitors.map((c) => [c.id, deleteCompetitor.bind(null, id, c.id)]))}
+            recheckActions={Object.fromEntries(competitors.map((c) => [c.id, recheckCompetitors.bind(null, id, c.id)]))}
+            recheckAll={recheckCompetitors.bind(null, id, null)}
           />
         </div>
 
@@ -356,6 +408,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               </ActionForm>
             </div>
           )}
+          <CustomerSignals ideaId={id} signals={signals} sources={signalSources} canWrite={canWrite} aiConnected={aiConfigured()} />
           <div className="card" style={{ marginTop: 18 }}>
             <div className="eyebrow">GOEDE VRAAG VOOR ECHT ONDERZOEK</div>
             <h3 style={{ margin: "7px 0" }}>&quot;Kun je vertellen over de laatste keer dat je dit probleem had?&quot;</h3>
@@ -402,7 +455,9 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
           <div className="card">
             {sources.length === 0 && <p className="sub">Nog geen bronnen.</p>}
             {sources.map((s) => {
-              const used = claims.filter((c) => c.evidence.some((e) => e.source?.title === s.title)).length;
+              const used = claims.filter((c) => c.evidence.some((e) => e.source_id === s.id)).length;
+              const sc = supportCounts(s.id);
+              const recheck = parseRecheckNote(s.access_note);
               return (
                 <div className="source-item" key={s.id}>
                   <span className="source-icon" aria-hidden="true">{s.source_type === "official_statistic" ? "▣" : s.url ? "↗" : "◉"}</span>
@@ -413,7 +468,16 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                       {s.publisher ? ` · ${s.publisher}` : ""} · {s.published_on ? new Date(s.published_on).toLocaleDateString("nl-NL") : "datum onbekend"} · opgehaald{" "}
                       {new Date(s.retrieved_at).toLocaleDateString("nl-NL")} · {(s.source_excerpts ?? []).length} fragment(en) · {used} bevinding(en)
                     </p>
-                    {s.access_note && <p>{s.access_note}</p>}
+                    {s.access_note && <p style={{ whiteSpace: "pre-line" }}>{s.access_note}</p>}
+                    {used > 0 && (
+                      <p style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                        Draagt het citaat de bewering?
+                        {(Object.keys(sc) as SupportCheck[]).filter((k) => sc[k] > 0).map((k) => (
+                          <span key={k} className={`pill ${SUPPORT_LABEL[k].pill}`} title={SUPPORT_LABEL[k].explain}>{sc[k]}× {SUPPORT_LABEL[k].label.toLowerCase()}</span>
+                        ))}
+                        {recheck && recheck.missing.length > 0 && <span className="pill coral">citaat niet meer op de pagina</span>}
+                      </p>
+                    )}
                     <details>
                       <summary className="text-link">Bewaarde fragmenten</summary>
                       {(s.source_excerpts ?? []).map((e) => (
@@ -443,6 +507,16 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                 <p className="sub" style={{ margin: "6px 0 12px" }}>ProofLab controleert of het citaat letterlijk in het fragment staat en bepaalt de status zelf.</p>
                 <AddClaimForm action={addClaim.bind(null, id)} excerpts={excerpts} questions={questions.map((q) => ({ id: q.id, position: q.position, question: q.question }))} />
               </div>
+            </div>
+          )}
+          {quality && (
+            <div className="mt-18">
+              <AiQualityCard
+                measures={[
+                  { title: "Steuncontrole: eens met de consultant", measure: quality.support },
+                  { title: "AI-codering van interviews: geaccepteerd", measure: quality.coding },
+                ]}
+              />
             </div>
           )}
           <div className="note">

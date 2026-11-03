@@ -1,6 +1,6 @@
 import "server-only";
 import { supabaseServer } from "@/lib/supabase/server";
-import { searchQuestion, extractClaims, challengeDossier, type ExcerptRef } from "@/lib/ai/research";
+import { searchQuestion, extractClaims, challengeDossier, checkSupport, type ExcerptRef, type FoundSource } from "@/lib/ai/research";
 import { assertAiBudget, runAi } from "@/lib/ai/guard";
 import { env } from "@/lib/env";
 import { ideaContext } from "@/lib/idea-context";
@@ -9,6 +9,7 @@ import { aiSourceType, checkQuote, figuresAppearIn, normalizeText, registrableDo
 import { AiBudgetError, AiRefusedError } from "@/lib/ai/client";
 import type { Idea } from "@/lib/data";
 import type { Json } from "@/lib/database.types";
+import { keepAfterSupportCheck, type SupportCheck } from "@/lib/domain/support";
 
 type RunState = { status: string; done: number; total: number; current: string | null; cost: number; budget: number; error: string | null };
 
@@ -115,49 +116,7 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
   if (task.kind === "search") {
     const { data: q } = await supabase.from("research_questions").select("question").eq("id", task.question_id!).single();
     const res = await runAi(idea.id, "research:search", () => searchQuestion(ctx, q!.question, mode === "quick" ? 3 : 6));
-    const excerptIds: string[] = [];
-    for (const s of res.sources) {
-      const domain = registrableDomain(s.url);
-      const { data: existing } = await supabase.from("sources").select("id").eq("idea_id", idea.id).eq("url", s.url).maybeSingle();
-      let sourceId = existing?.id;
-      if (!sourceId) {
-        const published = parsePageAge(s.pageAge);
-        const { data: created } = await supabase
-          .from("sources")
-          .insert({
-            idea_id: idea.id,
-            run_id: task.run_id,
-            url: s.url,
-            domain,
-            title: s.title.slice(0, 300),
-            published_on: published,
-            source_type: sourceTypeForDomain(domain),
-            origin: "ai_search",
-            access_note: "Gevonden via live webzoekopdracht; alleen geciteerde passages zijn bewaard.",
-            content_hash: contentHash(s.excerpts.join("\n")),
-          })
-          .select("id")
-          .single();
-        sourceId = created?.id;
-      }
-      if (!sourceId) continue;
-      // A repeated run reuses passages it already stored instead of duplicating them.
-      const { data: known } = await supabase.from("source_excerpts").select("id, text").eq("source_id", sourceId);
-      const byText = new Map((known ?? []).map((k) => [normalizeText(k.text), k.id]));
-      for (const raw of s.excerpts) {
-        const text = raw.slice(0, 6000);
-        const existingId = byText.get(normalizeText(text));
-        if (existingId) {
-          excerptIds.push(existingId);
-          continue;
-        }
-        const { data: ex } = await supabase.from("source_excerpts").insert({ source_id: sourceId, idea_id: idea.id, text, location: "geciteerde passage" }).select("id").single();
-        if (ex) {
-          excerptIds.push(ex.id);
-          byText.set(normalizeText(text), ex.id);
-        }
-      }
-    }
+    const excerptIds = await storeFoundSources(idea.id, task.run_id, res.sources);
     return {
       output: { excerpt_ids: excerptIds },
       detail: `${res.sources.length} bronnen, ${excerptIds.length} letterlijke passages bewaard (${res.usage.searches} zoekopdrachten).`,
@@ -198,55 +157,9 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
         .eq("origin", "ai_search");
     }
 
-    let kept = 0;
-    let rejected = 0;
-    let duplicates = 0;
-    const { data: knownClaims } = await supabase.from("claims").select("statement").eq("idea_id", idea.id);
-    const seenStatements = new Set((knownClaims ?? []).map((c) => normalizeText(c.statement)));
-    for (const c of res.data.claims) {
-      const ex = byRef.get(c.excerpt_ref);
-      if (!ex) {
-        rejected++;
-        continue;
-      }
-      const check = checkQuote(c.quote, ex.text, c.stance === "supports" ? c.statement : undefined);
-      // Claims whose quote cannot be found verbatim are not stored: an AI paraphrase is not evidence.
-      if (check !== "exact") {
-        rejected++;
-        continue;
-      }
-      // The same finding from a repeated run is not stored again (it would inflate the evidence count).
-      if (seenStatements.has(normalizeText(c.statement))) {
-        duplicates++;
-        continue;
-      }
-      seenStatements.add(normalizeText(c.statement));
-      const { data: claim } = await supabase
-        .from("claims")
-        .insert({
-          idea_id: idea.id,
-          question_id: q!.id,
-          section: c.section,
-          statement: c.statement,
-          evidence_type: c.evidence_type,
-          region: c.region,
-          period: c.period,
-          numeric_value: c.numeric_value,
-          unit: c.unit,
-          definition: c.definition,
-          supports: c.supports,
-          does_not_prove: c.does_not_prove,
-          limitations: c.limitations,
-          freshness_kind: c.freshness_kind,
-          origin: "ai",
-        })
-        .select("id")
-        .single();
-      if (!claim) continue;
-      await supabase.from("claim_sources").insert({ claim_id: claim.id, idea_id: idea.id, source_id: ex.source_id, excerpt_id: ex.id, quote: c.quote, stance: c.stance, quote_check: check });
-      await recomputeClaim(claim.id);
-      kept++;
-    }
+    const stored = await storeExtractedClaims(idea.id, q!.id, byRef, res.data.claims);
+    const { rejected, duplicates, unsupported } = stored;
+    const kept = stored.claimIds.length;
 
     let competitors = 0;
     const { data: knownCompetitors } = await supabase.from("competitors").select("name").eq("idea_id", idea.id);
@@ -273,9 +186,9 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
       competitors++;
     }
     return {
-      output: { claims: kept, rejected, duplicates, competitors },
-      detail: `${kept} bevindingen met gecontroleerd citaat${rejected ? `, ${rejected} afgewezen (citaat niet letterlijk teruggevonden)` : ""}${duplicates ? `, ${duplicates} al bekend` : ""}${competitors ? `, ${competitors} aanbieders` : ""}.`,
-      cost: res.usage.cost,
+      output: { claims: kept, rejected, duplicates, unsupported, competitors },
+      detail: `${kept} bevindingen met gecontroleerd citaat${rejected ? `, ${rejected} afgewezen (citaat niet letterlijk teruggevonden)` : ""}${unsupported ? `, ${unsupported} afgewezen (citaat draagt de bewering niet)` : ""}${duplicates ? `, ${duplicates} al bekend` : ""}${competitors ? `, ${competitors} aanbieders` : ""}.`,
+      cost: res.usage.cost + stored.cost,
     };
   }
 
@@ -293,6 +206,160 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
   }
 
   return { output: {}, detail: "Overgeslagen.", cost: 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Shared storage steps (also used by the red-team search on the assumptions page)
+// ---------------------------------------------------------------------------
+
+// Stores found sources and their verbatim passages; a repeated search reuses what is already stored.
+export async function storeFoundSources(ideaId: string, runId: string | null, found: FoundSource[]): Promise<string[]> {
+  const supabase = await supabaseServer();
+  const excerptIds: string[] = [];
+  for (const s of found) {
+    const domain = registrableDomain(s.url);
+    const { data: existing } = await supabase.from("sources").select("id").eq("idea_id", ideaId).eq("url", s.url).maybeSingle();
+    let sourceId = existing?.id;
+    if (!sourceId) {
+      const published = parsePageAge(s.pageAge);
+      const { data: created } = await supabase
+        .from("sources")
+        .insert({
+          idea_id: ideaId,
+          run_id: runId,
+          url: s.url,
+          domain,
+          title: s.title.slice(0, 300),
+          published_on: published,
+          source_type: sourceTypeForDomain(domain),
+          origin: "ai_search",
+          access_note: "Gevonden via live webzoekopdracht; alleen geciteerde passages zijn bewaard.",
+          content_hash: contentHash(s.excerpts.join("\n")),
+        })
+        .select("id")
+        .single();
+      sourceId = created?.id;
+    }
+    if (!sourceId) continue;
+    const { data: known } = await supabase.from("source_excerpts").select("id, text").eq("source_id", sourceId);
+    const byText = new Map((known ?? []).map((k) => [normalizeText(k.text), k.id]));
+    for (const raw of s.excerpts) {
+      const text = raw.slice(0, 6000);
+      const existingId = byText.get(normalizeText(text));
+      if (existingId) {
+        excerptIds.push(existingId);
+        continue;
+      }
+      const { data: ex } = await supabase.from("source_excerpts").insert({ source_id: sourceId, idea_id: ideaId, text, location: "geciteerde passage" }).select("id").single();
+      if (ex) {
+        excerptIds.push(ex.id);
+        byText.set(normalizeText(text), ex.id);
+      }
+    }
+  }
+  return excerptIds;
+}
+
+// The independent support check for one quote. A failed or refused check leaves the claim "unchecked"
+// (the literal check already passed); its cost is booked either way.
+export async function aiSupportCheck(
+  ideaId: string,
+  statement: string,
+  quote: string,
+  relation: "supports" | "contradicts" = "supports",
+): Promise<{ verdict: SupportCheck; reason: string | null; cost: number }> {
+  try {
+    const res = await runAi(ideaId, "research:support", () => checkSupport(statement, quote, relation));
+    return { verdict: res.data.verdict, reason: res.data.reason.slice(0, 500), cost: res.usage.cost };
+  } catch (e) {
+    return { verdict: "unchecked", reason: null, cost: e instanceof AiRefusedError ? (e.usage?.cost ?? 0) : 0 };
+  }
+}
+
+type ExtractedClaim = Awaited<ReturnType<typeof extractClaims>>["data"]["claims"][number];
+type StoredExcerpt = { id: string; text: string; source_id: string };
+
+// Stores extracted claims whose quote is literally in the excerpt (same figures) and that the support
+// check does not reject. `stance` overrides the link direction (red team: the quote carries a counter-finding).
+export async function storeExtractedClaims(
+  ideaId: string,
+  questionId: string | null,
+  byRef: Map<string, StoredExcerpt>,
+  claims: ExtractedClaim[],
+  opts: { stance?: "supports" | "contradicts" } = {},
+): Promise<{ claimIds: string[]; rejected: number; duplicates: number; unsupported: number; cost: number }> {
+  const supabase = await supabaseServer();
+  let rejected = 0;
+  let duplicates = 0;
+  let unsupported = 0;
+  let cost = 0;
+  const claimIds: string[] = [];
+  const { data: knownClaims } = await supabase.from("claims").select("statement").eq("idea_id", ideaId);
+  const seenStatements = new Set((knownClaims ?? []).map((c) => normalizeText(c.statement)));
+  for (const c of claims) {
+    const ex = byRef.get(c.excerpt_ref);
+    if (!ex) {
+      rejected++;
+      continue;
+    }
+    const stance = opts.stance ?? c.stance;
+    const check = checkQuote(c.quote, ex.text, stance === "supports" ? c.statement : undefined);
+    // Claims whose quote cannot be found verbatim are not stored: an AI paraphrase is not evidence.
+    if (check !== "exact") {
+      rejected++;
+      continue;
+    }
+    // The same finding from a repeated run is not stored again (it would inflate the evidence count).
+    if (seenStatements.has(normalizeText(c.statement))) {
+      duplicates++;
+      continue;
+    }
+    // Second, independent check: does the literal quote actually carry the statement?
+    const support = await aiSupportCheck(ideaId, c.statement, c.quote);
+    cost += support.cost;
+    if (!keepAfterSupportCheck(support.verdict)) {
+      unsupported++;
+      continue;
+    }
+    seenStatements.add(normalizeText(c.statement));
+    const { data: claim } = await supabase
+      .from("claims")
+      .insert({
+        idea_id: ideaId,
+        question_id: questionId,
+        section: c.section,
+        statement: c.statement,
+        evidence_type: c.evidence_type,
+        region: c.region,
+        period: c.period,
+        numeric_value: c.numeric_value,
+        unit: c.unit,
+        definition: c.definition,
+        supports: c.supports,
+        does_not_prove: c.does_not_prove,
+        limitations: c.limitations,
+        freshness_kind: c.freshness_kind,
+        origin: "ai",
+      })
+      .select("id")
+      .single();
+    if (!claim) continue;
+    await supabase.from("claim_sources").insert({
+      claim_id: claim.id,
+      idea_id: ideaId,
+      source_id: ex.source_id,
+      excerpt_id: ex.id,
+      quote: c.quote,
+      stance,
+      quote_check: check,
+      support_check: support.verdict,
+      support_checked_by: support.verdict === "unchecked" ? null : "ai",
+      support_note: support.reason,
+    });
+    await recomputeClaim(claim.id);
+    claimIds.push(claim.id);
+  }
+  return { claimIds, rejected, duplicates, unsupported, cost };
 }
 
 function parsePageAge(age: string | null): string | null {
