@@ -334,7 +334,7 @@ h2.as-h3,.section-title h2.as-h3{font-size:20px;line-height:28px;font-weight:700
 @media(max-width:1160px){.exp-options.four{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.exp-options.four{grid-template-columns:minmax(0,1fr)}.survey-bar{grid-template-columns:minmax(0,1fr) auto}.survey-bar .track{grid-column:1/-1;order:3}}
 /* Saving overlay (components/ui/SavingOverlay.tsx): shown while a save takes longer than a moment. */
-.saving-overlay{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:20px;background:var(--color-overlay);animation:saving-in .2s ease-out}
+.saving-overlay{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.55);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);animation:saving-in .2s ease-out}
 .saving-card{background:var(--color-surface);border-radius:var(--radius-card);box-shadow:var(--shadow-lg);padding:30px 34px;width:min(360px,100%);text-align:center;display:grid;justify-items:center;gap:12px}
 .saving-label{font-family:var(--font-heading);font-weight:700;font-size:18px;color:var(--color-heading);margin:0}
 .saving-spinner{width:40px;height:40px;border-radius:50%;border:4px solid var(--color-surface-soft-2);border-top-color:var(--color-primary);animation:saving-spin .8s linear infinite}
