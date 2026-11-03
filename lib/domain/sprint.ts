@@ -103,8 +103,10 @@ export function sprintStatus(input: {
 
   const milestones = sprintMilestones(weeks).map((m) => {
     const order = SPRINT_PHASES[m.phase].order;
+    // B1c: "huidig" is waar het dossier echt staat (uit getDossierStatus via sprintStage), niet de kalenderweek.
+    // Loopt er een test, dan staat de balk op Testen, ook als het marktonderzoek nog niet klaar is.
     const status: "done" | "current" | "upcoming" =
-      input.stage > order ? "done" : state !== "not_started" && m.phase === phase && state === "running" ? "current" : "upcoming";
+      input.stage > order ? "done" : state !== "not_started" && Math.min(4, input.stage) === order && state !== "finished" ? "current" : "upcoming";
     return { ...m, status };
   });
 

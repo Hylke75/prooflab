@@ -260,7 +260,7 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
   const count = { count: "exact" as const, head: true };
   const forecastState = loadForecastState(ideaId);
   const [questions, claims, verified, weak, competitors, alternatives, segments, experiments, cards, checks, decisions, behaviour, sizing, reports] = await Promise.all([
-    supabase.from("research_questions").select("id", count).eq("idea_id", ideaId),
+    supabase.from("research_questions").select("id, status, position").eq("idea_id", ideaId).order("position").order("created_at"),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId).eq("status", "verified"),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId).eq("status", "insufficient"),
@@ -274,6 +274,15 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     supabase.from("observations").select("id", count).eq("idea_id", ideaId).eq("is_behaviour", true).eq("is_synthetic", false),
     supabase.from("sizing_factors").select("key, claims(status)").eq("idea_id", ideaId).eq("key", "base_count"),
     loadReportMeta(ideaId),
+  ]);
+  // B1c: de beslissende vraag (tot fase B2: de eerste vraag) en echte waarnemingen uit tests.
+  const questionList = questions.data ?? [];
+  const decisive = questionList[0] ?? null;
+  const [decisiveVerified, realTestObs] = await Promise.all([
+    decisive
+      ? supabase.from("claims").select("id", count).eq("idea_id", ideaId).eq("question_id", decisive.id).eq("status", "verified")
+      : Promise.resolve({ count: 0 }),
+    supabase.from("observations").select("id", count).eq("idea_id", ideaId).eq("is_synthetic", false).not("experiment_id", "is", null),
   ]);
   const forecast = await forecastState;
   const assumptions = rankAssumptions(await loadAssumptions(ideaId));
@@ -292,7 +301,7 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
   const top = assumptions.find((a) => a.status !== "supported" && a.status !== "refuted") ?? assumptions[0];
   return {
     ideaId,
-    questions: questions.count ?? 0,
+    questions: questionList.length,
     claims: claims.count ?? 0,
     verifiedClaims: verified.count ?? 0,
     weakClaims: weak.count ?? 0,
@@ -319,6 +328,20 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     latestReportAt: reports[0]?.created_at ?? null,
     latestReportShared: !!reports[0]?.shared_at,
     behaviourObservations: behaviour.count ?? 0,
+    dossier: {
+      questions: questionList.length,
+      claims: claims.count ?? 0,
+      verifiedClaims: verified.count ?? 0,
+      decisiveQuestion: decisive ? { status: decisive.status, verifiedClaims: decisiveVerified.count ?? 0 } : null,
+      assumptions: assumptions.length,
+      criticalWithPrimaryTest: assumptions.filter((a) => a.importance >= 4 && a.primaryExperimentId).length,
+      assumptionsWithEvidence: assumptions.filter((a) => a.evidence > 0).length,
+      experiments: expList.length,
+      experimentsLive: states.filter((s) => s === "live" || s === "paused").length,
+      experimentsEnded: states.filter((s) => ["ended", "analyzed", "decided"].includes(s)).length,
+      realTestObservations: realTestObs.count ?? 0,
+      decisions: decisionList.length,
+    },
     forecast,
   };
 });

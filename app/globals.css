@@ -404,3 +404,14 @@ details.quickline[open]>summary::after{transform:rotate(180deg)}
 .question-text strong{display:block;overflow-wrap:break-word;hyphens:auto}
 .quickline .question-meta{display:block;margin-top:6px;line-height:22px}
 .quickline .question-meta .pill{display:inline-flex;margin:0 8px 2px 0;vertical-align:middle}
+/* ---- Test Card (fase B1): eerst de drempels, dan het aantal deelnemers; fouten bij het veld ---- */
+.tc-step{border-top:1px solid var(--color-border);padding-top:16px;margin-top:8px}
+.tc-step-title{display:flex;align-items:center;gap:10px;font-size:16px;margin:0 0 12px}
+.tc-step-title .num{width:28px;height:28px;border-radius:50%;background:var(--color-surface-soft);color:var(--color-primary);display:grid;place-items:center;font-size:13px;font-weight:700;flex:none}
+.tc-lock{margin:4px 0 16px}
+.tc-need{font-size:18px;font-weight:600;color:var(--color-heading);margin:0 0 8px}
+.tc-need strong{font-size:24px}
+.tc-save{margin-top:8px}
+.field[aria-invalid="true"]{border-color:var(--color-risk-text)}
+.assumption-item.just-saved{outline:2px solid var(--color-primary);outline-offset:2px}
+@media (prefers-reduced-motion:no-preference){.assumption-item.just-saved{animation:appear var(--dur) ease-out both}}

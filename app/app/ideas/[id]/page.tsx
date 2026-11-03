@@ -10,7 +10,7 @@ import { loadOpenNotes } from "@/lib/coach/review";
 import { NOTE_KINDS, type NoteKind } from "@/lib/coach/rules";
 import { nextAction, predictionTip, sprintStage } from "@/lib/domain/coach";
 import { SPRINT_PHASES, sprintStatus, todayInNL } from "@/lib/domain/sprint";
-import { currentStepLabel, stepOverview } from "@/lib/steps";
+import { dossierStatus, stepOverview } from "@/lib/steps";
 
 export const metadata: Metadata = { title: "Dossieroverzicht" };
 
@@ -50,7 +50,9 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
       : s.state === "finished"
         ? "Sprint afgerond"
         : `Sprint start over ${s.daysToStart} ${s.daysToStart === 1 ? "dag" : "dagen"}`;
-  const done = steps.filter((x) => x.done).length;
+  // B1c: één huidige stap, en apart hoeveel stappen echt bewijs hebben (niet hetzelfde als "klaar").
+  const status = dossierStatus(progress);
+  const withEvidence = status.stepsWithEvidence;
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Overzicht"]} coach="overview" ideaId={id}>
@@ -70,8 +72,8 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
         </div>
         <div className="card tight">
           <div className="eyebrow">Huidige stap</div>
-          <strong>{currentStepLabel(progress)}</strong>
-          <p className="tiny mt-8">{done} van 5 stappen met bewijs</p>
+          <strong>{status.currentLabel}</strong>
+          <p className="tiny mt-8">{status.steps.find((x) => x.key === status.current)?.why ?? "Alle stappen zijn afgerond."}</p>
         </div>
         <div className="card tight">
           <div className="eyebrow">Beslisdatum en inzet</div>
@@ -101,21 +103,22 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
         <div className="card">
           <div className="section-title">
             <h2 className="as-h3">Voortgang per stap</h2>
-            <span className="pill gray num">{done}/5</span>
+            <span className="pill gray num" title="Stappen met echte waarnemingen of geverifieerde bronnen">{withEvidence} van 4 met bewijs</span>
           </div>
           <ol className="stack" style={{ listStyle: "none", padding: 0, margin: 0 }} aria-label="Stappen van het dossier">
-            {steps.map((step, i) => (
+            {steps.map((step) => (
               <li key={step.key} className="quickline" aria-current={step.current ? "step" : undefined}>
                 <span className="num" style={step.done ? { background: "var(--color-primary)", color: "var(--color-on-dark)" } : undefined} aria-hidden="true">
-                  {step.done ? <Icon name="check" size="sm" /> : i + 1}
+                  {step.done ? <Icon name="check" size="sm" /> : step.number}
                 </span>
                 <div>
                   <strong>
                     <Link href={step.href}>{step.label}</Link>
                   </strong>
                   <span>{step.counts}</span>
+                  <span>{step.why}{step.hasEvidence ? "" : " Nog geen echt bewijs in deze stap."}</span>
                 </div>
-                <span className={`pill ${step.done ? "green" : step.current ? "blue" : "gray"}`}>{step.done ? "Klaar" : step.current ? "Nu" : "Later"}</span>
+                <span className={`pill ${step.done ? "green" : step.current ? "blue" : step.state === "running" ? "orange" : "gray"}`}>{step.current && !step.done ? `Nu · ${step.statusLabel}` : step.statusLabel}</span>
               </li>
             ))}
           </ol>

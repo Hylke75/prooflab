@@ -108,12 +108,16 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.getByRole("radio", { name: /Landingpage-test/ }).click();
   await page.getByLabel("Kop", { exact: true }).fill("Vind de perfecte eventlocatie in minuten.");
   await page.getByLabel("Ondertitel", { exact: true }).fill("Een persoonlijke selectie, zonder eindeloos zoeken.");
+  // Fase B1b: eerst de drempels vastleggen; daarna rekent ProofLab het aantal deelnemers uit.
+  await page.getByRole("button", { name: "Leg drempels vast" }).click();
+  await expect(page.getByText(/Je hebt ongeveer \d+ deelnemers nodig/)).toBeVisible();
   await page.getByLabel("Minimale steekproef", { exact: true }).fill("5");
-  // Methode 2026-11-b: de verwachte uitkomst is verplicht; daarmee rekent ProofLab vooraf het benodigde aantal uit.
-  await page.getByLabel("Verwachte uitkomst (%)", { exact: true }).fill("30");
-  await expect(page.getByText(/Benodigd: \d+ deelnemers/)).toBeVisible();
   await page.getByRole("radio", { name: "Koud", exact: true }).check();
   await page.getByRole("button", { name: /Test Card opslaan als concept/ }).click();
+  // Fase B1a: na opslaan terug op het bord met een bevestiging; daarvandaan naar het concept.
+  await page.waitForURL(/\/experiments\?opgeslagen=/);
+  await expect(page.getByText("Test Card opgeslagen als concept.")).toBeVisible();
+  await page.getByRole("link", { name: "Open het concept →" }).click();
   await page.waitForURL(/\/experiments\/[0-9a-f-]{36}/);
   await page.getByRole("button", { name: "Ter review aanbieden" }).click();
   await expect(page.getByRole("button", { name: "Akkoord: keur goed en vergrendel" })).toBeVisible();

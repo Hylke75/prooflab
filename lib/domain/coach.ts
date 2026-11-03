@@ -15,6 +15,9 @@ export type ExperimentSummary = {
   hasApprovedCard: boolean;
 };
 
+import { getDossierStatus, type DossierInput } from "./dossier-status";
+import { dossierInput } from "@/lib/steps";
+
 export type IdeaProgress = {
   ideaId: string;
   questions: number;
@@ -44,6 +47,8 @@ export type IdeaProgress = {
   latestReportAt: string | null;
   latestReportShared: boolean;
   behaviourObservations: number;
+  // Fase B1c: invoer voor getDossierStatus(); ontbreekt in oudere testdata, dan rekent lib/steps met de tellers hierboven.
+  dossier?: DossierInput;
   // Prediction loop; absent when the database has no prediction schema yet (the coach then ignores it).
   forecast?: ForecastState;
 };
@@ -223,12 +228,13 @@ export function predictionAction(p: IdeaProgress): NextAction | null {
 }
 
 // Where the dossier is on the sprint path (used for "loopt achter").
+// Waar het dossier echt staat (fase B1c): de huidige stap uit getDossierStatus(). Een lopende test zet het dossier
+// in de testfase. Na het besluit telt het rapport nog mee: zonder (actueel) rapport is de sprint niet rond.
 export function sprintStage(p: IdeaProgress): SprintStage {
-  if (p.claims === 0 || !p.hasAlternatives) return 1;
-  if (p.assumptions === 0 || p.experiments.length === 0) return 2;
-  if (p.experimentsEnded === 0) return 3;
-  if (p.decisions === 0 || p.reports === 0 || reportStale(p)) return 4;
-  return 5;
+  const s = getDossierStatus(dossierInput(p));
+  const stage = ({ market: 1, assumptions: 2, test: 3, decide: 4, done: 5 } as const)[s.current];
+  if (stage === 5 && (p.reports === 0 || reportStale(p))) return 4;
+  return stage;
 }
 
 function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSuggestion[]; insight?: [string, string] } {

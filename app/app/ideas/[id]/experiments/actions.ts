@@ -5,14 +5,14 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { getWorkspace, requireWritableIdea } from "@/lib/data";
-import { checkHypothesis } from "@/lib/domain/hypothesis";
 import { checkQuote } from "@/lib/domain/verify";
 import { KIND_DEFAULTS, testEvidenceLevel } from "@/lib/domain/evidence";
 import { CHANNELS } from "@/lib/domain/tracking";
-import { RECRUITMENT_KEYS, recruitmentMissing } from "@/lib/domain/recruitment";
+import { RECRUITMENT_KEYS } from "@/lib/domain/recruitment";
 import { canDesignatePrimary } from "@/lib/domain/primary-test";
-import { experimentMetrics, loadSurveyResponses, surveyConfigOf, type LandingConfig, type PricingConfig } from "@/lib/experiment-metrics";
-import { pct, requiredSample } from "@/lib/domain/stats";
+import { earlierTestsOfType, experimentMetrics, loadSurveyResponses, surveyConfigOf, type LandingConfig, type PricingConfig } from "@/lib/experiment-metrics";
+import { errorSummary, sampleBand, validateTestCard } from "@/lib/domain/test-card";
+import { empiricalPrior, pct } from "@/lib/domain/stats";
 import { ideaMethodVersion } from "@/lib/method-data";
 import { METHODS } from "@/lib/domain/method";
 import { recommend } from "@/lib/domain/recommend";
@@ -33,7 +33,7 @@ import { dedupeFragments } from "@/lib/signals/import";
 import type { Json } from "@/lib/database.types";
 import type { AssumptionCategory, ObservationKind } from "@/lib/domain/labels";
 
-export type ActionState = { error: string | null; ok?: string | null };
+export type ActionState = { error: string | null; ok?: string | null; fieldErrors?: Record<string, string> };
 
 const refresh = (id: string) => revalidatePath(`/app/ideas/${id}`, "layout");
 
@@ -42,23 +42,22 @@ const text = (max: number) => z.string().trim().max(max);
 const Base = z.object({
   assumption_id: z.string().uuid("Kies de aanname die je toetst."),
   type: z.enum(["landing", "interview", "pricing", "survey"]),
-  title: text(140).min(3, "Geef het experiment een naam."),
+  title: text(140),
   we_believe: text(600),
   target_group: text(300),
-  test_method: text(300).min(3, "Beschrijf hoe je toetst."),
-  metric_label: text(200).min(3, "Beschrijf wat je meet."),
+  test_method: text(300),
+  metric_label: text(200),
   metric_numerator: text(200),
   metric_denominator: text(200),
-  success_threshold_pct: z.coerce.number(),
+  success_threshold_pct: z.coerce.number().optional(),
   fail_threshold_pct: z.coerce.number().optional(),
-  min_sample: z.coerce.number().int(),
-  max_duration_days: z.coerce.number().int(),
+  min_sample: z.coerce.number().int().optional(),
+  max_duration_days: z.coerce.number().int().optional(),
   expected_biases: text(600).optional(),
   expected_reach: z.coerce.number().int().min(0).optional(),
   // Methode 2026-11-b: beslisregel en de aannames voor het vooraf berekende aantal deelnemers.
   decision_rule: z.enum(["absolute", "probability"]).optional(),
-  success_count: z.coerce.number().int().min(1, "Het afgesproken aantal is minstens 1.").optional(),
-  expected_pct: z.coerce.number().gt(0, "Vul de verwachte uitkomst in (in %).").max(100, "De verwachte uitkomst is hoogstens 100%.").optional(),
+  success_count: z.coerce.number().int().optional(),
   available_per_week: z.coerce.number().int().min(0).optional(),
   cost_estimate_eur: z.coerce.number().min(0).optional(),
   // Wervingsgroep (golf A, punt 13): verplicht bij enquête-, landing- en prijstests.
@@ -70,64 +69,99 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
   const ws = await getWorkspace();
   const raw = Object.fromEntries(form);
   // Lege getalvelden betekenen "niet ingevuld", niet 0.
-  for (const k of ["fail_threshold_pct", "success_count", "expected_pct", "available_per_week", "expected_reach", "recruitment_group"]) if (raw[k] === "") delete raw[k];
+  for (const k of ["fail_threshold_pct", "success_count", "available_per_week", "expected_reach", "recruitment_group", "success_threshold_pct", "min_sample", "max_duration_days", "cost_estimate_eur"]) {
+    if (raw[k] === "") delete raw[k];
+  }
   const p = Base.safeParse(raw);
-  if (!p.success) return { error: p.error.issues[0].message };
+  if (!p.success) {
+    const issue = p.error.issues[0];
+    const field = String(issue.path[0] ?? "");
+    return { error: "De Test Card is nog niet opgeslagen: controleer het gemarkeerde veld.", fieldErrors: { [field || "title"]: issue.message } };
+  }
   const v = p.data;
+  const fieldErrors: Record<string, string> = {};
   let survey: z.infer<typeof SurveyConfigSchema> | null = null;
   if (v.type === "survey") {
     // The key question and its success options are the pre-registered metric: the Test Card follows them.
     const json = parseSurveyJson(raw.survey_config);
     const errors = surveyErrors(json);
-    if (errors.length) return { error: `Enquête: ${errors[0]}` };
-    survey = SurveyConfigSchema.parse(json);
-    const m = metricFromKey(survey);
-    v.metric_numerator = m.metric_numerator;
-    v.metric_denominator = m.metric_denominator;
+    if (errors.length) fieldErrors.survey = `Enquête: ${errors[0]}`;
+    else {
+      survey = SurveyConfigSchema.parse(json);
+      const m = metricFromKey(survey);
+      v.metric_numerator = m.metric_numerator;
+      v.metric_denominator = m.metric_denominator;
+    }
   }
   // Beslisregel: de aantalregel alleen voor sterke handelingen; in de code zijn dat de aanbetalingen en
   // herhaalaankopen die in interviews worden vastgelegd. Landing-, prijs- en enquêtetests meten een percentage.
   // Dossiers met methode 2026-11-a houden de intervalregel: daar wordt geen beslisregel vastgelegd.
   const rule = METHODS[await ideaMethodVersion(ideaId)].usesRules ? (v.decision_rule ?? "probability") : null;
-  let requiredN: number | null = null;
-  if (rule) {
-    if (rule === "absolute" && v.type !== "interview") return { error: "Een vast aantal past alleen bij sterke handelingen (aanbetaling of herhaalaankoop in gesprekken). Kies de kansregel." };
-    if (v.expected_pct == null) return { error: "Vul de verwachte uitkomst in: daarmee rekent ProofLab vooraf het benodigde aantal deelnemers uit." };
-    if (rule === "absolute") {
-      if (v.success_count == null) return { error: "Leg vast hoeveel sterke handelingen minimaal nodig zijn." };
-      if (v.success_count > v.min_sample) return { error: "Het afgesproken aantal kan niet groter zijn dan de minimale steekproef." };
-      // De percentagedrempel volgt uit het aantal: nodig voor het 95%-interval en het label "sterk bewezen".
-      v.success_threshold_pct = Math.min(100, Math.round((v.success_count / v.min_sample) * 1000) / 10);
-      v.fail_threshold_pct = undefined;
-    }
-    requiredN = requiredSample({ rule, expectedPct: v.expected_pct, thresholdPct: v.success_threshold_pct, successCount: v.success_count ?? null });
+  if (rule === "absolute" && v.min_sample && v.success_count) {
+    // De percentagedrempel volgt uit het aantal: nodig voor het 95%-interval en het label "sterk bewezen".
+    v.success_threshold_pct = Math.min(100, Math.round((v.success_count / v.min_sample) * 1000) / 10);
+    v.fail_threshold_pct = undefined;
   }
-  const coach = checkHypothesis({
-    we_believe: v.we_believe,
-    target_group: v.target_group,
-    metric_numerator: v.metric_numerator,
-    metric_denominator: v.metric_denominator,
-    success_threshold_pct: v.success_threshold_pct,
-    fail_threshold_pct: v.fail_threshold_pct ?? null,
-    min_sample: v.min_sample,
-    max_duration_days: v.max_duration_days,
-  });
-  if (!coach.ok) return { error: coach.issues[0].message };
-
-  if (recruitmentMissing(v.type, v.recruitment_group)) {
-    return { error: "Kies de wervingsgroep: via welke weg bereik je de deelnemers (eigen netwerk, warm, koud, betaald panel of onbekend)?" };
-  }
-
   const channels = form.getAll("channels").map(String).filter((c) => c in CHANNELS);
-  if (channels.length === 0) return { error: "Kies minstens één wervingskanaal. Zonder werving zegt een test niets." };
+  const pricePoints: PricingConfig["price_points"] = [];
+  for (let i = 0; i < 3; i++) {
+    const label = String(raw[`price_label_${i}`] ?? "").trim();
+    const amount = Number(String(raw[`price_amount_${i}`] ?? "").replace(",", "."));
+    const period = String(raw[`price_period_${i}`] ?? "").trim() || "eenmalig";
+    if (label && Number.isFinite(amount) && amount > 0) pricePoints.push({ label: label.slice(0, 60), amount, period: period.slice(0, 30) });
+  }
+  const guideLines = String(raw.guide ?? "").split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 15);
+  Object.assign(
+    fieldErrors,
+    validateTestCard({
+      type: v.type,
+      title: v.title,
+      we_believe: v.we_believe,
+      target_group: v.target_group,
+      test_method: v.test_method,
+      metric_label: v.metric_label,
+      metric_numerator: v.metric_numerator,
+      metric_denominator: v.metric_denominator,
+      success_threshold_pct: v.success_threshold_pct ?? null,
+      fail_threshold_pct: v.fail_threshold_pct ?? null,
+      min_sample: v.min_sample ?? null,
+      max_duration_days: v.max_duration_days ?? null,
+      rule,
+      success_count: v.success_count ?? null,
+      thresholds_locked: raw.thresholds_locked === "1",
+      recruitment_group: String(v.recruitment_group ?? ""),
+      channels,
+      headline: String(raw.headline ?? ""),
+      price_points: pricePoints.length,
+      guide_questions: guideLines.length,
+    }),
+  );
+  if (Object.keys(fieldErrors).length) return { error: errorSummary(fieldErrors), fieldErrors };
+  // Alle verplichte getallen zijn hierboven gecontroleerd.
+  const minSample = v.min_sample as number;
+  const maxDays = v.max_duration_days as number;
+  const successPct = v.success_threshold_pct as number;
+
+  // Fase B1b: het benodigde aantal volgt uit de vastgelegde drempels en eerdere tests van dit type, niet uit een
+  // verwachting van de gebruiker. Het middenscenario wordt bewaard als expected_pct en required_n.
+  let band: ReturnType<typeof sampleBand> | null = null;
+  if (rule) {
+    band = sampleBand({
+      rule,
+      thresholdPct: successPct,
+      successCount: v.success_count ?? null,
+      prior: empiricalPrior(await earlierTestsOfType(ideaId, v.type).catch(() => [])),
+      availablePerWeek: v.available_per_week ?? null,
+      maxDurationDays: maxDays,
+    });
+  }
+  const thresholdChange = String(raw.threshold_change_reason ?? "").trim().slice(0, 600);
 
   let config: Json;
   if (survey) {
     config = survey as unknown as Json;
   } else if (v.type === "interview") {
-    const guide = String(raw.guide ?? "").split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 15);
-    if (guide.length < 3) return { error: "Een gespreksleidraad heeft minstens drie vragen." };
-    config = { guide, screener: String(raw.screener ?? "").trim().slice(0, 600), target_n: v.min_sample };
+    config = { guide: guideLines, screener: String(raw.screener ?? "").trim().slice(0, 600), target_n: minSample };
   } else {
     const landing: LandingConfig = {
       headline: String(raw.headline ?? "").trim().slice(0, 140),
@@ -139,17 +173,8 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       product_name: String(raw.product_name ?? "").trim().slice(0, 80) || v.title,
       researcher: ws.org?.name ?? "de onderzoeker",
     };
-    if (landing.headline.length < 5) return { error: "Schrijf een kop voor de testpagina." };
     if (v.type === "pricing") {
-      const points: PricingConfig["price_points"] = [];
-      for (let i = 0; i < 3; i++) {
-        const label = String(raw[`price_label_${i}`] ?? "").trim();
-        const amount = Number(String(raw[`price_amount_${i}`] ?? "").replace(",", "."));
-        const period = String(raw[`price_period_${i}`] ?? "").trim() || "eenmalig";
-        if (label && Number.isFinite(amount) && amount > 0) points.push({ label: label.slice(0, 60), amount, period: period.slice(0, 30) });
-      }
-      if (points.length === 0) return { error: "Voeg minstens één prijspunt toe." };
-      config = { ...landing, price_points: points } satisfies PricingConfig;
+      config = { ...landing, price_points: pricePoints } satisfies PricingConfig;
     } else {
       config = landing;
     }
@@ -167,21 +192,23 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       metric_label: v.metric_label,
       metric_numerator: v.metric_numerator,
       metric_denominator: v.metric_denominator,
-      success_threshold_pct: v.success_threshold_pct,
+      success_threshold_pct: successPct,
       fail_threshold_pct: v.fail_threshold_pct ?? null,
-      min_sample: v.min_sample,
-      max_duration_days: v.max_duration_days,
+      min_sample: minSample,
+      max_duration_days: maxDays,
       expected_biases: v.expected_biases || null,
+      // Drempels die na het vastleggen (stap 1) toch zijn gewijzigd: de motivering blijft bij deze versie bewaard.
+      change_reason: thresholdChange ? `Drempels gewijzigd na vastleggen: ${thresholdChange}` : null,
       // Vastgelegd met de drempels en na goedkeuring vergrendeld (guard_hypothesis_lock).
       decision_rule: rule,
       success_count: rule === "absolute" ? (v.success_count ?? null) : null,
-      expected_pct: rule ? (v.expected_pct ?? null) : null,
+      expected_pct: band ? band.expectedPct : null,
       available_per_week: rule ? (v.available_per_week ?? null) : null,
-      required_n: requiredN,
+      required_n: band ? band.requiredN : null,
     })
     .select("id")
     .single();
-  if (hErr || !h) return { error: "De hypothese kon niet worden opgeslagen." };
+  if (hErr || !h) return { error: `De Test Card kon niet worden opgeslagen (hypothese: ${hErr?.message ?? "onbekende fout"}). Probeer het opnieuw.` };
   const { data: exp, error } = await supabase
     .from("experiments")
     .insert({
@@ -198,7 +225,7 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
     })
     .select("id")
     .single();
-  if (error || !exp) return { error: "Het experiment kon niet worden opgeslagen." };
+  if (error || !exp) return { error: `De Test Card kon niet worden opgeslagen (experiment: ${error?.message ?? "onbekende fout"}). Probeer het opnieuw.` };
   await supabase.from("assumptions").update({ status: "testing" }).eq("id", v.assumption_id).eq("idea_id", ideaId).eq("status", "untested");
   // Hoofdtest (golf A, punt 11): vooraf aanwijzen. Kan het niet (de huidige hoofdtest ligt al vast), dan blijft
   // deze test verkennend; de testpagina laat zien waarom.
@@ -206,7 +233,8 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
     await supabase.from("assumptions").update({ primary_experiment_id: exp.id }).eq("id", v.assumption_id).eq("idea_id", ideaId);
   }
   refresh(ideaId);
-  redirect(`/app/ideas/${ideaId}/experiments/${exp.id}`);
+  // Terug naar het bord, met een bevestiging en het nieuwe concept gemarkeerd.
+  redirect(`/app/ideas/${ideaId}/experiments?opgeslagen=${exp.id}#bord`);
 }
 
 const TRANSITIONS: Record<string, string[]> = {

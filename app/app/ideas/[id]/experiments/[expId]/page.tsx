@@ -167,7 +167,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
             <div className="data-row">
               <span>Vooraf berekend</span>
               <strong style={{ textAlign: "right" }}>
-                {h.required_n != null ? `${h.required_n} deelnemers nodig` : "drempel niet haalbaar met de verwachting"} bij een verwachte uitkomst van {h.expected_pct}%
+                {h.required_n != null ? `ongeveer ${h.required_n} deelnemers nodig` : "drempel niet aantoonbaar haalbaar"}{h.expected_pct != null ? ` (rekenscenario: ${h.expected_pct}%)` : ""}
                 {h.available_per_week != null ? ` · ${h.available_per_week} beschikbaar per week` : ""}
               </strong>
             </div>
