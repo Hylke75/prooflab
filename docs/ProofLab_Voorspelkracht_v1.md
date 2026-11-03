@@ -513,3 +513,81 @@ bandbreedte wordt op dezelfde manier begrensd.
   ter informatie naast.
 - Elk rapport (scherm en PDF) vermeldt de methodeversie, de beslisregels en de gebruikte plafonds (standaard of
   ingesteld door de werkruimte). Rapporten van vóór de methodeversie zijn met 2026-11-a gemaakt.
+
+## 10. Onderzoek en herleidbaarheid (golf C, 7 november 2026)
+
+Golf C van het verbeterplan (`docs/VERBETERPLAN_WERKWIJZE.md`) maakt bureauonderzoek beter toetsbaar en houdt
+rapporten herleidbaar na de bewaartermijn. Geen van deze punten verandert de rekenwijze van 2026-11-a of 2026-11-b.
+
+### 10.1 Populatie, regio en peildatum per bevinding (punt 7)
+
+Een letterlijk citaat zegt nog niet dat een cijfer over de juiste groep, het juiste gebied of een recent moment gaat.
+
+- Elke bevinding heeft drie verplichte velden: **populatie**, **regio** en **peildatum** (jaar, maand of datum). Wat
+  niet uit de bron blijkt, staat er expliciet als "onbekend".
+- Bij AI-extractie vraagt het schema om deze drie velden. ProofLab houdt een veld alleen als het uit het citaat of het
+  bewaarde fragment blijkt: een betekenisvol woord van de populatie of regio moet er letterlijk in staan, het jaartal
+  van de peildatum ook. Anders wordt het "onbekend".
+- ProofLab vergelijkt de velden met de intake (`lib/domain/claim-scope.ts`):
+  - populatie: een vastgesteld ander soort doelgroep (bijvoorbeeld huishoudens bij een B2B-idee);
+  - regio: een ander, breder of kleiner gebied dan de intake (een Europees cijfer of een stad bij een Nederlandse
+    markt);
+  - peildatum: ouder dan de verouderingstermijn van dat soort gegeven (statistiek 3 jaar, prijs 1 jaar, regelgeving
+    1,5 jaar), gemeten op de beslisdatum, of op vandaag als die ontbreekt.
+- Wijkt een veld af, dan staat er een waarschuwing bij de bevinding en telt ze als **indirect** (`claims.relevance`).
+  "Onbekend" is geen afwijking, maar ook geen bevestiging: het blijft zichtbaar als onbekend.
+- **Weging.** In de bewijsberekening telt een indirecte bevinding met halve sterkte (`relevanceWeight()`, factor
+  0,5). Dat geldt pas in een nieuwe methodeversie: bij het samenvoegen van golf A en C komt de weging in die versie
+  (2026-11-c). 2026-11-a en 2026-11-b lezen het veld niet en rekenen ongewijzigd.
+
+### 10.2 Jaar en regio per sizing-factor (punt 8)
+
+Een marktomvang vermenigvuldigt getallen die vaak uit verschillende bronnen komen. Een bedrijventelling uit 2019
+keer een aandeel uit een Europees onderzoek van 2025 levert een precies ogend, maar onzeker getal op.
+
+- Elke sizing-factor heeft een **jaar** en een **regio** (`sizing_factors.year`, `.region`; leeg is onbekend). Wie
+  een bevinding als bron koppelt, krijgt het jaar uit de peildatum en de regio van die bevinding voorgesteld.
+- `factorConsistency()` (`lib/domain/sizing.ts`) vergelijkt de factoren van één scenario. Liggen de bekende jaren
+  **meer dan 2 jaar** uit elkaar, of gaan factoren over **verschillende regio's** (hetzelfde gebied in een andere
+  schrijfwijze telt niet als verschil), dan volgt een waarschuwing op het scherm en in het rapport.
+- De Monte Carlo-simulatie verbreedt dan elke 90%-bandbreedte: ×1,5 per soort verschil, ×2 bij jaar én regio.
+  Log-normaal: de afstand tot het geometrisch midden wordt in log-schaal zoveel keer groter. Driehoek (ondergrens 0):
+  de afstand van de waarde tot de bovengrens. Percentages blijven hoogstens 100.
+- Zonder verschil is de simulatie exact gelijk aan die van vóór golf C. Een onbekend jaar of een onbekende regio is
+  geen verschil, maar ProofLab vraagt erom.
+
+### 10.3 Verplichte zoekopdracht naar tegenbewijs (punt 10)
+
+Zoekinstructies die het antwoord op een vraag zoeken, vinden vooral bevestiging. Daarom krijgt elke onderzoeksvraag
+in een run een eigen stap **"Tegenbewijs zoeken"**, direct na het zoeken en uitlezen van die vraag.
+
+- De stap zoekt uitsluitend naar bronnen die het idee bij die vraag tegenspreken: een kleinere of krimpende markt,
+  klanten zonder het probleem of zonder betalingsbereidheid, mislukte vergelijkbare initiatieven, regels of kosten.
+- Hij draait binnen dezelfde budgetbewaking als de andere stappen (`RunBudget`): is het runbudget op, dan wordt hij
+  overgeslagen en staat dat bij de stap. Zoeken en uitlezen gebruiken het goedkopere onderzoeksmodel.
+- Elke zoekterm komt in het zoeklogboek met `kind = 'counter'`. Hergebruik van eerdere zoekresultaten (binnen 7
+  dagen) gebeurt alleen binnen hetzelfde soort zoekopdracht: een gewone zoekopdracht telt nooit als zoeken naar
+  tegenbewijs.
+- Gevonden passages worden fragmenten in de bronnenbibliotheek. Alleen tegenbevindingen worden bewaard, met relatie
+  **"contradicts"** en dezelfde controles als elke andere bevinding: het citaat moet letterlijk in het fragment staan
+  en de steuncontrole mag het niet afwijzen.
+- Het scherm toont het tegenbewijs apart ("Tegenbewijs"), met per vraag de uitkomst van de stap en een eigen
+  zoeklogboek. Niets gevonden staat er eerlijk bij, met de kanttekening dat dit niet bewijst dat het idee klopt.
+
+### 10.4 Momentopname van aantallen bij elk rapport (punt 19)
+
+Bewaartermijnen beschermen deelnemers, maar gaan in tegen herleidbaarheid: na 180 of 365 dagen zijn e-mailadressen,
+transcripten, citaten en open antwoorden weg (`purge_expired_personal_data`).
+
+- Elk rapport bewaart daarom in zijn onveranderlijke momentopname (`reports.snapshot.tallies`,
+  `lib/domain/report-counts.ts`) een **geanonimiseerde telling**: per test n en successen, uitgesplitst per bron
+  (bij enquêtes uitnodiging of open link, anders het kanaal), per kanaal en per wervingsgroep (bij interviews:
+  bekenden en onbekenden, alleen het aantal), en bij enquêtes de kernvraag per bron met het aantal opgeslagen
+  antwoorden. Afgebroken en lopende tests staan erin met hun aantallen.
+- Er staan geen persoonsgegevens in: geen namen, adressen, citaten, open antwoorden of tijdstippen per persoon.
+- De momentopname valt niet onder de bewaartermijn. Rapporten zijn na het maken niet te wijzigen of te verwijderen en
+  de opruimtaak raakt ze niet (gecontroleerd in `tests/db/golf-c.test.ts`).
+- **Gevolg voor herleiding.** Binnen de bewaartermijn is elk getal in een rapport terug te voeren op de ruwe
+  antwoorden, events en citaten. **Na de bewaartermijn kan herleiding alleen nog op aantallen**: wie het rapport
+  later controleert, kan nagaan hoeveel deelnemers per bron, kanaal en groep er waren en hoeveel succesvol, maar niet
+  meer wat individuele deelnemers zeiden of deden.

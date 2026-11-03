@@ -5,6 +5,7 @@ import type { Finding } from "@/lib/domain/reality-check";
 import { ACHIEVED_LABELS, FORECAST_MOMENTS, FORECASTER_LABELS, MOMENT_LABELS, ON_TRACK_LABELS, aggregate, brier, type Achieved, type ForecasterKind, type OnTrack } from "@/lib/domain/forecast";
 import { ensembleMean } from "@/lib/ai/providers/select";
 import { PROVIDER_LABELS, providerOfModel } from "@/lib/ai/providers/config";
+import { buildReportCounts } from "@/lib/domain/report-counts";
 
 // "AI · Gemini" for an AI forecast whose provider is known; null otherwise.
 function aiName(kind: string, model: string | null): string | null {
@@ -36,6 +37,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
     limitations: c.limitations,
     notes: (c.claim_sources ?? []).filter((s) => s.quote_check === "exact").map((s) => footnote(s.sources)).filter((n): n is number => n !== null),
     contradicted: (c.claim_sources ?? []).some((s) => s.stance === "contradicts" && s.quote_check === "exact"),
+    // Golf C, punt 7: waarover het cijfer gaat, en of het direct of indirect bij de intake past.
+    scope: { population: c.population, region: c.region, referenceDate: c.reference_date, relevance: c.relevance },
   }));
 
   const check = d.realityCheck;
@@ -79,6 +82,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       provenance: s.result.provenance,
       status: s.result.label,
       factors: s.factors,
+      // Golf C, punt 8: waarschuwing als jaar of regio van de factoren verschillen.
+      originWarnings: s.consistency.warnings,
     })),
     unit: d.unit,
     assumptions: d.assumptions.map((a) => {
@@ -106,7 +111,7 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       capsCustom: d.method.capsCustom,
     },
     simulation: d.simulation
-      ? { label: d.simulation.label, draws: d.simulation.draws, somCount: d.simulation.somCount, somRevenue: d.simulation.somRevenue, threshold: d.simulation.threshold, pAboveThreshold: d.simulation.pAboveThreshold, thresholdIsBreakEven: d.simulation.thresholdIsBreakEven, mainDriver: d.simulation.drivers[0]?.key ?? null }
+      ? { label: d.simulation.label, draws: d.simulation.draws, somCount: d.simulation.somCount, somRevenue: d.simulation.somRevenue, threshold: d.simulation.threshold, pAboveThreshold: d.simulation.pAboveThreshold, thresholdIsBreakEven: d.simulation.thresholdIsBreakEven, mainDriver: d.simulation.drivers[0]?.key ?? null, widen: d.simulation.widen }
       : null,
     signals: d.signals.map((s) => ({ kind: s.kind, label: s.label, mentions: s.mentions })),
     prediction: {
@@ -170,6 +175,30 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
           ? { invitation: { n: e.metrics.survey.invitation.n, successes: e.metrics.survey.invitation.successes }, openLink: { n: e.metrics.survey.openLink.n, successes: e.metrics.survey.openLink.successes } }
           : null,
       })),
+    // Golf C, punt 19: geanonimiseerde momentopname van alle aantallen. Valt niet onder de bewaartermijn; na die
+    // termijn is herleiding alleen op deze aantallen mogelijk.
+    tallies: buildReportCounts(
+      d.experiments
+        .filter((e) => !["draft", "ready_for_review"].includes(e.state) || (e.metrics?.n ?? 0) > 0)
+        .map((e) => ({
+          title: e.title,
+          type: EXPERIMENT_TYPES[e.type as ExperimentType].label,
+          state: e.state,
+          metrics: e.metrics
+            ? {
+                n: e.metrics.n,
+                successes: e.metrics.successes,
+                byChannel: e.metrics.byChannel,
+                survey: e.metrics.survey
+                  ? { invitation: e.metrics.survey.invitation, openLink: e.metrics.survey.openLink, responses: e.metrics.survey.responses }
+                  : null,
+              }
+            : null,
+          interviews: d.interviews
+            .filter((i) => i.experiment_id === e.id)
+            .map((i) => ({ recruitedVia: i.recruited_via, isAcquaintance: i.is_acquaintance, consent: i.consent_recorded })),
+        })),
+    ),
     learningCards: d.learningCards.filter((c) => c.status === "approved").map((c) => ({ believed: c.we_believed, observed: c.we_observed, learned: c.we_learned, therefore: c.therefore, verdict: c.verdict, reliability: c.data_reliability })),
     realityCheck: check ? { at: check.created_at, advice: DECISIONS[check.advice as DecisionAction].label, reason: check.advice_reason, findings: checkFindings, aiUsed: check.ai_used } : null,
     decision: lastDecision

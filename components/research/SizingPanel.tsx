@@ -2,15 +2,30 @@
 
 import { useMemo, useState } from "react";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
-import { computeSizing, MODEL_FACTORS, SCENARIO_LABELS, simulateSizing, type FactorUnit, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
+import { computeSizing, factorConsistency, MODEL_FACTORS, SCENARIO_LABELS, simulateSizing, type FactorUnit, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import { CLAIM_STATUS, type ClaimStatus } from "@/lib/domain/labels";
 import { numericFromInput } from "@/lib/domain/verify";
 
-type Factor = { key: string; label: string; unit: string; value: number; claim_id: string | null; note: string | null; low?: number | null; high?: number | null };
+type Factor = {
+  key: string;
+  label: string;
+  unit: string;
+  value: number;
+  claim_id: string | null;
+  note: string | null;
+  low?: number | null;
+  high?: number | null;
+  year?: number | null;
+  region?: string | null;
+};
 type Scenario = { id: string; kind: ScenarioKind; model: SizingModel; factors: Factor[] };
-type Claim = { id: string; statement: string; status: ClaimStatus; numeric_value: number | null };
+type Claim = { id: string; statement: string; status: ClaimStatus; numeric_value: number | null; region?: string | null; reference_date?: string | null };
 type Action = (s: FormState, f: FormData) => Promise<FormState>;
-type FactorState = { value: number; claim: string; low: string; high: string };
+type FactorState = { value: number; claim: string; low: string; high: string; year: string; region: string };
+const EMPTY: FactorState = { value: 0, claim: "", low: "", high: "", year: "", region: "" };
+// Jaar uit een peildatum ("2025-06" → "2025"); leeg als die onbekend is.
+const yearOf = (ref: string | null | undefined) => (ref && /^\d{4}/.test(ref) ? ref.slice(0, 4) : "");
+const knownText = (v: string | null | undefined) => (v && v.trim().toLowerCase() !== "onbekend" ? v : "");
 
 const eur = (n: number) => `€ ${Math.round(n).toLocaleString("nl-NL")}`;
 const int = (n: number) => Math.round(n).toLocaleString("nl-NL");
@@ -42,7 +57,19 @@ export function SizingPanel({
     Object.fromEntries(
       sorted.map((s) => [
         s.id,
-        Object.fromEntries(s.factors.map((f) => [f.key, { value: f.value, claim: f.claim_id ?? "", low: f.low == null ? "" : String(f.low), high: f.high == null ? "" : String(f.high) }])),
+        Object.fromEntries(
+          s.factors.map((f) => [
+            f.key,
+            {
+              value: f.value,
+              claim: f.claim_id ?? "",
+              low: f.low == null ? "" : String(f.low),
+              high: f.high == null ? "" : String(f.high),
+              year: f.year == null ? "" : String(f.year),
+              region: f.region ?? "",
+            },
+          ]),
+        ),
       ]),
     ),
   );
@@ -61,14 +88,24 @@ export function SizingPanel({
     );
   }, [scenario, current, claims]);
   const thresholdValue = num(threshold);
+  // Golf C, punt 8: passen jaar en regio van de factoren bij elkaar? Zo niet: waarschuwing en bredere band.
+  const consistency = useMemo(() => {
+    if (!scenario) return null;
+    return factorConsistency(
+      scenario.factors.map((f) => {
+        const y = current[f.key]?.year.trim() ?? "";
+        return { key: f.key, label: f.label, year: /^\d{4}$/.test(y) ? Number(y) : null, region: current[f.key]?.region ?? null };
+      }),
+    );
+  }, [scenario, current]);
   const sim = useMemo(() => {
     if (!scenario) return null;
     return simulateSizing(
       scenario.model,
       scenario.factors.map((f) => ({ key: f.key, value: current[f.key]?.value ?? 0, low: num(current[f.key]?.low ?? ""), high: num(current[f.key]?.high ?? "") })),
-      { threshold: thresholdValue != null && Number.isFinite(thresholdValue) && thresholdValue >= 0 ? thresholdValue : null },
+      { threshold: thresholdValue != null && Number.isFinite(thresholdValue) && thresholdValue >= 0 ? thresholdValue : null, widen: consistency?.widen ?? 1 },
     );
-  }, [scenario, current, thresholdValue]);
+  }, [scenario, current, thresholdValue, consistency]);
 
   if (!scenario || !result) return <div className="empty-state"><p>Geen scenario&apos;s gevonden.</p></div>;
   const set = (key: string, patch: Partial<FactorState>) =>
@@ -102,7 +139,7 @@ export function SizingPanel({
           <ActionForm key={scenario.id} action={actions[scenario.id]} submitLabel="Scenario opslaan" submitClass={canWrite ? "btn primary" : "btn primary hidden"}>
             <div className="scenario-inputs">
               {defs.map((def) => {
-                const f = current[def.key] ?? { value: 0, claim: "", low: "", high: "" };
+                const f = current[def.key] ?? EMPTY;
                 const linked = claims.find((c) => c.id === f.claim);
                 return (
                   <div key={def.key} className="factor">
@@ -121,7 +158,13 @@ export function SizingPanel({
                       {canWrite && (
                         <select className="field" style={{ marginTop: 6, padding: "8px 30px 8px 10px", fontSize: 13 }} name={`claim_${def.key}`} value={f.claim} onChange={(e) => {
                           const c = claims.find((x) => x.id === e.target.value);
-                          set(def.key, { claim: e.target.value, ...(c?.numeric_value != null ? { value: c.numeric_value } : {}) });
+                          set(def.key, {
+                            claim: e.target.value,
+                            ...(c?.numeric_value != null ? { value: c.numeric_value } : {}),
+                            // Jaar en regio van de gekoppelde bevinding, als die bekend zijn en het veld nog leeg is.
+                            ...(c && !f.year && yearOf(c.reference_date) ? { year: yearOf(c.reference_date) } : {}),
+                            ...(c && !f.region && knownText(c.region) ? { region: knownText(c.region) } : {}),
+                          });
                         }} aria-label={`Bron voor ${def.label}`}>
                           <option value="">Aanname (geen bron)</option>
                           {claims.map((c) => (
@@ -145,6 +188,7 @@ export function SizingPanel({
                     />
                     <span id={`u-${def.key}`} className="sr-only">{unitWord(def.unit)}</span>
                     <RangeInputs def={def} f={f} canWrite={canWrite} onChange={(patch) => set(def.key, patch)} />
+                    <OriginInputs def={def} f={f} canWrite={canWrite} onChange={(patch) => set(def.key, patch)} />
                   </div>
                 );
               })}
@@ -172,6 +216,17 @@ export function SizingPanel({
         </div>
       </div>
 
+      {consistency && consistency.warnings.length > 0 && (
+        <div className="note" role="note">
+          <strong>Factoren passen niet zonder meer bij elkaar.</strong> {consistency.warnings.join(" ")}
+        </div>
+      )}
+      {consistency && consistency.warnings.length === 0 && (consistency.unknownYear.length > 0 || consistency.unknownRegion.length > 0) && (
+        <p className="explain">
+          Bij {Math.max(consistency.unknownYear.length, consistency.unknownRegion.length)} factor(en) is het jaar of de regio onbekend. Vul ze in, dan controleert ProofLab of de getallen bij elkaar passen.
+        </p>
+      )}
+
       <div className="card mt-18" aria-live="polite">
         <div className="section-title">
           <h3>Hoe zeker is dit? (simulatie)</h3>
@@ -186,6 +241,7 @@ export function SizingPanel({
             <p className="sub">
               {sim.draws.toLocaleString("nl-NL")} doorgerekende combinaties van de {sim.rangedFactors} factor(en) met een bandbreedte; de overige factoren staan vast op hun waarde.
               P10 betekent: in 10% van de combinaties is de uitkomst lager.
+              {sim.widen > 1 ? ` De bandbreedtes zijn ${sim.widen.toLocaleString("nl-NL")}× verbreed, omdat de factoren in jaar of regio verschillen.` : ""}
             </p>
             <div style={{ overflowX: "auto" }}>
               <table className="table mt-12">
@@ -295,6 +351,52 @@ function RangeInputs({
         style={{ width: 96, padding: "8px 10px" }}
       />
       {problem && <span id={`rp-${def.key}`} role="status" style={{ color: "var(--color-risk-text)", fontWeight: 700 }}>{problem}</span>}
+    </div>
+  );
+}
+
+// Jaar en regio van het getal (golf C, punt 8). Leeg betekent onbekend.
+function OriginInputs({
+  def,
+  f,
+  canWrite,
+  onChange,
+}: {
+  def: { key: string; label: string };
+  f: FactorState;
+  canWrite: boolean;
+  onChange: (patch: Partial<FactorState>) => void;
+}) {
+  const badYear = f.year.trim() !== "" && !/^\d{4}$/.test(f.year.trim());
+  return (
+    <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 13, color: "var(--color-text-muted)" }}>
+      <span id={`o-${def.key}`}>Jaar en regio van dit getal:</span>
+      <input
+        className="field num"
+        name={`year_${def.key}`}
+        inputMode="numeric"
+        maxLength={4}
+        placeholder="jaar"
+        value={f.year}
+        onChange={(e) => onChange({ year: e.target.value })}
+        disabled={!canWrite}
+        aria-label={`Jaar van ${def.label}`}
+        aria-describedby={badYear ? `oy-${def.key}` : `o-${def.key}`}
+        style={{ width: 80, padding: "8px 10px" }}
+      />
+      <input
+        className="field"
+        name={`region_${def.key}`}
+        maxLength={120}
+        placeholder="regio"
+        value={f.region}
+        onChange={(e) => onChange({ region: e.target.value })}
+        disabled={!canWrite}
+        aria-label={`Regio van ${def.label}`}
+        aria-describedby={`o-${def.key}`}
+        style={{ width: 150, padding: "8px 10px" }}
+      />
+      {badYear && <span id={`oy-${def.key}`} role="status" style={{ color: "var(--color-risk-text)", fontWeight: 700 }}>Schrijf het jaar als vier cijfers, bijvoorbeeld 2025.</span>}
     </div>
   );
 }

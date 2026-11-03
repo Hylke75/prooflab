@@ -107,6 +107,17 @@ const SEARCH_INSTRUCTIONS = (idea: IdeaContext, question: string) => `${ideaBloc
 Zoek de best onderbouwde, actuele bronnen voor deze vraag in de regio ${idea.region}. Geef voorrang aan officiële
 statistiek (zoals CBS of Eurostat), primaire documenten (prijspagina's, jaarverslagen) en onderzoeksrapporten met methode.`;
 
+// Golf C, punt 10: een aparte, verplichte zoekopdracht per vraag die alleen tegenbewijs zoekt. Zoekinstructies die
+// alleen het antwoord zoeken, vinden vooral bevestiging.
+const COUNTER_INSTRUCTIONS = (idea: IdeaContext, question: string) => `${ideaBlock(idea)}
+<onderzoeksvraag>${question}</onderzoeksvraag>
+Zoek uitsluitend naar TEGENBEWIJS voor het idee bij deze vraag in de regio ${idea.region}: bronnen die laten zien dat
+het antwoord tegenvalt, dat de markt kleiner, verzadigd of krimpend is, dat klanten het probleem niet hebben of niet
+willen betalen, dat vergelijkbare initiatieven zijn mislukt of gestopt, of dat regels of kosten het idee in de weg zitten.
+Zoek niet naar bevestiging. Geef voorrang aan officiële statistiek, primaire documenten en onderzoek met methode.`;
+
+export type SearchFocus = "evidence" | "counter";
+
 // Claude fetches pages itself (web_fetch) and cites verbatim text; ChatGPT and Gemini name the page and copy the
 // literal sentence, which ProofLab then looks up on the page it fetches itself (lib/ai/web-evidence.ts).
 // Search results ProofLab opens itself when the model did not (no AI cost; only verbatim paragraphs are kept).
@@ -117,9 +128,11 @@ export async function searchQuestion(
   question: string,
   maxSearches: number,
   provider: ProviderId,
-  deps: { fetchPage?: PageFetcher; avoidQueries?: string[] } = {},
+  deps: { fetchPage?: PageFetcher; avoidQueries?: string[]; focus?: SearchFocus } = {},
 ): Promise<{ sources: FoundSource[]; usage: AiUsage; detail: string; log: QueryLog[]; stoppedForBudget: boolean }> {
   const fetchPage = deps.fetchPage ?? fetchPageText;
+  const counter = deps.focus === "counter";
+  const instructions = counter ? COUNTER_INSTRUCTIONS(idea, question) : SEARCH_INSTRUCTIONS(idea, question);
   const ledger = new UrlLedger();
   // Terms already searched (and paid for) for this idea in the last 7 days; ProofLab reuses those results.
   const avoid = (deps.avoidQueries ?? []).slice(0, 15);
@@ -131,8 +144,8 @@ export async function searchQuestion(
       provider,
       {
         system: RESEARCH_SYSTEM,
-        user: `${SEARCH_INSTRUCTIONS(idea, question)}${avoidText}
-Open de belangrijkste pagina's met web_fetch. Zoek ook naar tegenbewijs.
+        user: `${instructions}${avoidText}
+Open de belangrijkste pagina's met web_fetch.${counter ? "" : " Zoek ook naar tegenbewijs."}
 Vat daarna in maximaal tien zinnen samen wat de bronnen letterlijk zeggen, met een citaat bij elke feitelijke bewering.
 Schrijf "onbekend" als je iets niet kunt vinden.`,
         maxTokens: 8000,
@@ -204,8 +217,8 @@ Schrijf "onbekend" als je iets niet kunt vinden.`,
     provider,
     {
       system: RESEARCH_SYSTEM,
-      user: `${SEARCH_INSTRUCTIONS(idea, question)}${avoidText}
-Zoek ook naar tegenbewijs. Geef daarna per bruikbare bron precies dit formaat, zonder andere tekst:
+      user: `${instructions}${avoidText}
+${counter ? "" : "Zoek ook naar tegenbewijs. "}Geef daarna per bruikbare bron precies dit formaat, zonder andere tekst:
 BRON: <volledige URL van de pagina>
 CITAAT: <één zin of korte alinea, letterlijk en woord voor woord van die pagina gekopieerd>
 Een bron mag meerdere CITAAT-regels hebben. Maximaal acht bronnen. Parafraseer nooit: ProofLab haalt elke pagina
@@ -270,7 +283,10 @@ const ExtractSchema = z.object({
       excerpt_ref: z.string(),
       quote: z.string().describe("Letterlijke tekst uit het fragment, minimaal 8 tekens"),
       stance: z.enum(["supports", "contradicts"]).describe("Ondersteunt of weerspreekt de aanname in de onderzoeksvraag"),
-      region: z.string().nullable(),
+      // Populatie, regio en peildatum (golf C, punt 7): alleen wat uit het citaat of fragment blijkt, anders "onbekend".
+      population: z.string().describe('Over welke populatie het cijfer of de uitspraak gaat (bijv. "mkb-bedrijven met 10-50 werknemers"), alleen als dat in het citaat of fragment staat; anders "onbekend"'),
+      region: z.string().describe('Het gebied waarover de bevinding gaat, alleen als dat in het citaat of fragment staat; anders "onbekend"'),
+      reference_date: z.string().describe('Peildatum van het cijfer als JJJJ, JJJJ-MM of JJJJ-MM-DD, alleen als die in het citaat of fragment staat; anders "onbekend"'),
       period: z.string().nullable(),
       numeric_value: z.number().nullable(),
       unit: z.string().nullable(),
@@ -303,7 +319,7 @@ function fenceTag(): string {
   return `data-${randomBytes(6).toString("hex")}`;
 }
 
-export async function extractClaims(idea: IdeaContext, question: string, excerpts: ExcerptRef[], provider: ProviderId) {
+export async function extractClaims(idea: IdeaContext, question: string, excerpts: ExcerptRef[], provider: ProviderId, opts: { focus?: SearchFocus } = {}) {
   const tag = fenceTag();
   const clean = (s: string) => s.replace(/[<>]/g, " ").slice(0, 300);
   const docs = excerpts
@@ -324,9 +340,16 @@ ${docs}
 
 Haal uit deze fragmenten alleen beweringen die relevant zijn voor de onderzoeksvraag. Elke bewering verwijst naar
 precies één fragment (excerpt_ref) en bevat een letterlijk citaat daaruit. Neem getallen in de bewering alleen op als
-ze letterlijk in het citaat staan. Classificeer elke bron (source_ref). Noem concurrenten of alternatieven alleen als
+ze letterlijk in het citaat staan. Geef per bewering de populatie, de regio en de peildatum waar het cijfer over gaat,
+alleen als die uit het citaat of het fragment blijken; schrijf anders "onbekend". Vul ze nooit aan vanuit het idee. Classificeer elke bron (source_ref). Noem concurrenten of alternatieven alleen als
 ze in een fragment voorkomen; een prijs alleen als die letterlijk in het citaat staat. Als de fragmenten de vraag niet
-beantwoorden, geef dan lege lijsten.`,
+beantwoorden, geef dan lege lijsten.${
+      opts.focus === "counter"
+        ? `
+Deze fragmenten komen uit een zoekopdracht naar tegenbewijs. Neem alleen beweringen op die het idee bij deze vraag
+tegenspreken of afzwakken, met stance "contradicts". Formuleer de bewering als wat het citaat zelf zegt.`
+        : ""
+    }`,
     "medium",
     "research",
   );

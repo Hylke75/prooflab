@@ -3,7 +3,7 @@ import { PROPOSAL_REFERENCE_PREFIX } from "@/lib/domain/reference-proposal";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadAssumptions, rankAssumptions } from "@/lib/progress";
 import { experimentMetrics } from "@/lib/experiment-metrics";
-import { breakEvenRevenue, computeSizing, computeUnitEconomics, SCENARIO_LABELS, simulateSizing, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
+import { breakEvenRevenue, computeSizing, computeUnitEconomics, factorConsistency, SCENARIO_LABELS, simulateSizing, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import { explainContribution } from "@/lib/domain/evidence";
 import { dossierLabel } from "@/lib/domain/dossier-label";
 import type { DossierFacts } from "@/lib/domain/reality-check";
@@ -69,8 +69,10 @@ export async function loadDossier(idea: Idea) {
         kind: s.kind as ScenarioKind,
         label: SCENARIO_LABELS[s.kind as ScenarioKind].label,
         model: s.model,
-        factors: factors.map((f) => ({ label: f.label, value: Number(f.value), unit: f.unit, source: f.claims?.statement ?? null, status: f.claims?.status ?? null })),
+        factors: factors.map((f) => ({ label: f.label, value: Number(f.value), unit: f.unit, source: f.claims?.statement ?? null, status: f.claims?.status ?? null, year: f.year, region: f.region })),
         result,
+        // Golf C, punt 8: passen jaar en regio van de factoren bij elkaar?
+        consistency: factorConsistency(factors.map((f) => ({ key: f.key, label: f.label, year: f.year, region: f.region }))),
       };
     })
     .sort((a, b) => ["conservative", "realistic", "optimistic"].indexOf(a.kind) - ["conservative", "realistic", "optimistic"].indexOf(b.kind));
@@ -98,7 +100,7 @@ export async function loadDossier(idea: Idea) {
           low: f.low_value == null ? null : Number(f.low_value),
           high: f.high_value == null ? null : Number(f.high_value),
         })),
-        { threshold: breakEven },
+        { threshold: breakEven, widen: factorConsistency((s.sizing_factors ?? []).map((f) => ({ key: f.key, year: f.year, region: f.region }))).widen },
       );
       return sim ? { kind: s.kind as ScenarioKind, label: SCENARIO_LABELS[s.kind as ScenarioKind].label, thresholdIsBreakEven: breakEven != null, ...sim } : null;
     })

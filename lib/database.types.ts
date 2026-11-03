@@ -972,7 +972,10 @@ export type Database = {
           origin: string
           period: string | null
           question_id: string | null
-          region: string | null
+          region: string
+          population: string
+          reference_date: string
+          relevance: string
           section: string
           statement: string
           status: string
@@ -995,7 +998,10 @@ export type Database = {
           origin?: string
           period?: string | null
           question_id?: string | null
-          region?: string | null
+          region?: string
+          population?: string
+          reference_date?: string
+          relevance?: string
           section?: string
           statement: string
           status?: string
@@ -1018,7 +1024,10 @@ export type Database = {
           origin?: string
           period?: string | null
           question_id?: string | null
-          region?: string | null
+          region?: string
+          population?: string
+          reference_date?: string
+          relevance?: string
           section?: string
           statement?: string
           status?: string
@@ -2236,6 +2245,7 @@ export type Database = {
           created_at: string
           id: string
           idea_id: string
+          kind: string
           passages: number
           provider: string
           query: string
@@ -2250,6 +2260,7 @@ export type Database = {
           created_at?: string
           id?: string
           idea_id: string
+          kind?: string
           passages?: number
           provider: string
           query: string
@@ -2267,6 +2278,7 @@ export type Database = {
           passages?: number
           provider?: string
           query?: string
+          kind?: string
           question?: string | null
           question_id?: string | null
           reused?: boolean
@@ -2360,6 +2372,8 @@ export type Database = {
           label: string
           note: string | null
           position: number
+          year: number | null
+          region: string | null
           scenario_id: string
           unit: string
           value: number
@@ -2374,6 +2388,8 @@ export type Database = {
           label: string
           note?: string | null
           position: number
+          year?: number | null
+          region?: string | null
           scenario_id: string
           unit: string
           value: number
@@ -2388,6 +2404,8 @@ export type Database = {
           label?: string
           note?: string | null
           position?: number
+          year?: number | null
+          region?: string | null
           scenario_id?: string
           unit?: string
           value?: number

@@ -218,6 +218,12 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                     {list.map((c, i) => (
                       <li key={i}>
                         {c.statement} <Notes n={c.notes} /> <em className="tiny">({c.status}{c.contradicted ? ", tegengesproken" : ""})</em>
+                        {c.scope && (
+                          <div className="tiny">
+                            Populatie: {c.scope.population} · regio: {c.scope.region} · peildatum: {c.scope.referenceDate}
+                            {c.scope.relevance === "indirect" ? " · indirect (wijkt af van de intake)" : ""}
+                          </div>
+                        )}
                         {c.doesNotProve && <div className="tiny">Bewijst niet: {c.doesNotProve}</div>}
                       </li>
                     ))}
@@ -254,6 +260,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             </table>
             {r.sizing[1] && <p className="tiny mt-8 mono">Formule (realistisch): {r.sizing[1].formula}</p>}
             <p>{r.sizing[1]?.status}. Dit is omzetpotentieel onder de getoonde aannames, geen winst en geen voorspelling.</p>
+            {/* Golf C, punt 8 (oudere rapporten hebben dit veld niet). */}
+            {(r.sizing[1]?.originWarnings ?? []).length > 0 && <p className="tiny mt-8">Let op: {r.sizing[1]!.originWarnings.join(" ")}</p>}
             {r.simulation && (
               <p className="mt-8">
                 Met bandbreedtes per factor ({int(r.simulation.draws)} trekkingen, scenario {r.simulation.label.toLowerCase()}): SOM-omzet tussen {eur(r.simulation.somRevenue.p10)} en {eur(r.simulation.somRevenue.p90)} (80% van de uitkomsten), mediaan {eur(r.simulation.somRevenue.p50)}.
@@ -345,6 +353,33 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 <strong>Learning Card.</strong> We dachten: {c.believed} We zagen: {c.observed} Daaruit leren we: {c.learned} Daarom: {c.therefore} (betrouwbaarheid: {{ low: "laag", medium: "middel", high: "hoog" }[c.reliability as "low"]})
               </div>
             ))}
+            {/* Golf C, punt 19: momentopname van de aantallen (rapporten van vóór 7 november 2026 hebben die niet). */}
+            {r.tallies && r.tallies.tests.length > 0 && (
+              <div className="mt-12" style={{ breakInside: "avoid" }}>
+                <strong style={{ fontSize: 13 }}>Momentopname van de aantallen</strong>
+                <p className="tiny">{r.tallies.note}</p>
+                <div style={{ overflowX: "auto" }}>
+                  <table className="table mt-8">
+                    <caption className="sr-only">Aantallen per test, bron, kanaal en wervingsgroep</caption>
+                    <thead>
+                      <tr><th scope="col">Test</th><th scope="col">n</th><th scope="col">Successen</th><th scope="col">Per bron</th><th scope="col">Per kanaal</th><th scope="col">Per wervingsgroep</th></tr>
+                    </thead>
+                    <tbody>
+                      {r.tallies.tests.map((t, i) => (
+                        <tr key={i}>
+                          <th scope="row" style={{ textAlign: "left", fontWeight: 700 }}>{t.test} <span className="tiny">({t.type})</span></th>
+                          <td className="num">{t.n}</td>
+                          <td className="num">{t.successes}</td>
+                          <td className="tiny">{t.bySource.map((x) => `${x.source} ${x.successes}/${x.n}`).join(" · ") || "—"}</td>
+                          <td className="tiny">{t.byChannel.map((x) => `${CHANNELS[x.channel as keyof typeof CHANNELS] ?? x.channel} ${x.successes}/${x.n}`).join(" · ") || "—"}</td>
+                          <td className="tiny">{t.byGroup.map((x) => `${x.group} ${x.n}`).join(" · ") || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="report-section">
