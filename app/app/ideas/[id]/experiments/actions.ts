@@ -385,7 +385,7 @@ export async function addInterview(ideaId: string, expId: string, _: ActionState
   if (error) return { error: "Opslaan mislukt." };
   refresh(ideaId);
   // B0: een als echt aangegeven gesprek met woorden als "fictief" of "test": opgeslagen, maar controleer de keuze.
-  const warning = p.data.is_practice ? null : fictionWarning(fictionSignals(p.data.transcript));
+  const warning = p.data.is_practice ? null : fictionWarning(fictionSignals(`${p.data.participant_label}\n${p.data.transcript}`));
   return {
     error: null,
     ok: p.data.is_practice ? "Oefengesprek opgeslagen. Het telt niet als bewijs." : "Interview opgeslagen. Codeer nu de uitspraken.",
@@ -476,7 +476,7 @@ export async function analyzeInterviewWithAi(ideaId: string, expId: string, inte
   if (!aiConfigured()) return { error: "AI is niet verbonden; codeer het interview handmatig." };
   const supabase = await supabaseServer();
   const [{ data: iv }, { data: exp }] = await Promise.all([
-    supabase.from("interviews").select("transcript, is_practice").eq("id", interviewId).eq("idea_id", ideaId).single(),
+    supabase.from("interviews").select("transcript, is_practice, participant_label").eq("id", interviewId).eq("idea_id", ideaId).single(),
     supabase.from("experiments").select("hypotheses(we_believe)").eq("id", expId).eq("idea_id", ideaId).single(),
   ]);
   if (!iv) return { error: "Interview niet gevonden." };
@@ -495,7 +495,7 @@ export async function analyzeInterviewWithAi(ideaId: string, expId: string, inte
     // B0: lijkt het transcript fictief (volgens de AI of door woorden als "fictief" of "test")? Bij een als echt
     // aangegeven gesprek: controleer de keuze.
     const real = iv.is_practice === false;
-    const signals = real ? fictionSignals(iv.transcript) : [];
+    const signals = real ? fictionSignals(`${iv.participant_label ?? ""}\n${iv.transcript ?? ""}`) : [];
     const aiNote = res.data.looks_fictional ? `De AI vindt dat dit transcript fictief lijkt${res.data.reason ? `: ${res.data.reason}` : ""}.` : null;
     const warning = [aiNote, fictionWarning(signals), aiNote && real && !signals.length ? "Controleer de keuze echt gesprek." : null].filter(Boolean).join(" ") || null;
     return {

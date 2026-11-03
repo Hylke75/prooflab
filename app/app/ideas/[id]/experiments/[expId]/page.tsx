@@ -375,7 +375,8 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
             // B0: echt gesprek, oefening of nog niet aangegeven. Alleen een echt gesprek telt als bewijs.
             const practice = practiceStatus(iv.is_practice);
             const practiceLabel = PRACTICE_LABELS[practice];
-            const fiction = practice === "real" ? fictionWarning(fictionSignals(iv.transcript)) : null;
+            // Ook de naam van de deelnemer telt mee ("TEST Makelaar A (fictief)"), en ook bij nog niet aangegeven gesprekken.
+            const fiction = practice !== "practice" ? fictionWarning(fictionSignals(`${iv.participant_label ?? ""}\n${iv.transcript ?? ""}`)) : null;
             return (
               <div className="card mt-18" key={iv.id}>
                 <div className="section-title">
