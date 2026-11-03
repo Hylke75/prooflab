@@ -2,6 +2,7 @@ import "server-only";
 import { supabaseServer } from "@/lib/supabase/server";
 import { AiBudgetError, AiNotConfiguredError, AiRefusedError, type AiUsage } from "./client";
 import { logAiRun } from "./log";
+import { log } from "@/lib/log";
 
 // Every AI call goes through here: the organisation's monthly cap is checked against the ai_runs
 // ledger (which users cannot edit or delete), and the call is always logged, including refusals
@@ -13,10 +14,14 @@ export async function runAi<T extends { usage: AiUsage }>(ideaId: string, purpos
     await logAiRun({ ideaId, purpose, outcome: "ok", usage: result.usage });
     return result;
   } catch (e) {
+    const outcome = e instanceof AiRefusedError ? "refused" : "error";
+    // Refusals and a missing API key are expected states (warn); anything else is an incident (error).
+    const expected = outcome === "refused" || e instanceof AiNotConfiguredError;
+    await log[expected ? "warn" : "error"]("ai_call_failed", { ideaId, purpose, outcome, notConfigured: e instanceof AiNotConfiguredError }, e);
     await logAiRun({
       ideaId,
       purpose,
-      outcome: e instanceof AiRefusedError ? "refused" : "error",
+      outcome,
       usage: e instanceof AiRefusedError ? e.usage : undefined,
       detail: String(e),
     });
@@ -28,6 +33,7 @@ export async function assertAiBudget(ideaId: string): Promise<void> {
   const supabase = await supabaseServer();
   const { data, error } = await supabase.rpc("org_ai_spend", { p_idea: ideaId });
   const row = data?.[0];
+  if (error) await log.error("ai_budget_check_failed", { ideaId, code: error.code });
   if (error || !row) throw new AiBudgetError("Geen toegang tot het AI-budget van dit dossier.");
   if (Number(row.spent) >= Number(row.cap)) {
     throw new AiBudgetError(

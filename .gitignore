@@ -47,3 +47,7 @@ next-env.d.ts
 
 # Agent worktrees
 .claude/worktrees/
+
+# Supabase CLI state
+/supabase/.temp
+/supabase/.branches

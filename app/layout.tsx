@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { connection } from "next/server";
 import { DM_Sans, Space_Grotesk } from "next/font/google";
 import { IconSprite } from "@/components/Icon";
 import "./globals.css";
@@ -15,7 +16,10 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { themeColor: "#151b28" };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+// Every page renders per request: the Content-Security-Policy nonce (proxy.ts) can only be applied to the
+// framework's scripts at request time, never to a page prerendered at build time.
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  await connection();
   return (
     <html lang="nl" className={`${dmSans.variable} ${spaceGrotesk.variable}`}>
       <body>

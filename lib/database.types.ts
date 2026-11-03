@@ -2376,6 +2376,28 @@ export type Database = {
       }
       add_research_cost: { Args: { p_cost: number; p_task: string }; Returns: number }
       org_ai_spend: { Args: { p_idea: string }; Returns: { spent: number; cap: number }[] }
+      system_status: {
+        Args: { p_org?: string | null }
+        Returns: {
+          org_id: string
+          migration_version: string | null
+          has_core: boolean
+          has_forecasts: boolean
+          has_coach: boolean
+          has_surveys: boolean
+          has_survey_key_answers: boolean
+          has_ops: boolean
+          ingest_key_registered: boolean
+          auth_hook_function: boolean
+          cron_available: boolean
+          purge_job_scheduled: boolean | null
+          purge_last_run_at: string | null
+          purge_last_status: string | null
+          ai_spent_usd: number
+          ai_cap_usd: number
+          checked_at: string
+        }[]
+      }
       experiment_event_counts: {
         Args: { p_experiment: string }
         Returns: { channel: string; variant: string; viewers: number; clickers: number; submitters: number }[]

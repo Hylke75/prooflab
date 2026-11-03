@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { runCoachReview } from "@/lib/coach/review";
+import { log } from "@/lib/log";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -18,7 +19,7 @@ export async function autoReview(ideaId: string): Promise<void> {
     try {
       await runCoachReview(ideaId);
     } catch (e) {
-      console.error("coach review failed", e instanceof Error ? e.message : e);
+      await log.error("coach_review_failed", { ideaId }, e);
     }
   });
 }

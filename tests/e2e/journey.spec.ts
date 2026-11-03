@@ -131,12 +131,14 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   // The decision needs a base rate and the consultant's own forecast at the decision moment.
   await page.goto(`${ideaUrl}/outcome`);
   await page.getByRole("button", { name: "Leg het basispercentage vast" }).click();
-  await expect(page.getByText("Basispercentage vastgelegd.")).toBeVisible();
+  // Once saved, the picker folds away (its own confirmation with it) and the chosen base rate is shown.
+  await expect(page.locator("summary", { hasText: "Andere referentie kiezen" })).toBeVisible();
   await page.goto(`${ideaUrl}/evidence`);
   await expect(page.getByRole("button", { name: "Bewaar mijn keuze" })).toBeDisabled();
   await page.getByLabel("Waarom? (één zin)", { exact: true }).fill("Weinig gedragsbewijs, dus dicht bij het basispercentage.");
   await page.getByRole("button", { name: "Leg mijn voorspelling vast" }).click();
-  await expect(page.getByText(/Voorspelling vastgelegd/)).toBeVisible();
+  // The form makes way for the recorded forecast (and the others for this moment).
+  await expect(page.getByRole("heading", { name: "Jouw voorspelling" })).toBeVisible();
   await page.getByRole("radio", { name: /Verder testen/ }).click();
   await page.getByLabel("Waarom? (komt in het rapport)", { exact: true }).fill("De steekproef was klein en betaalbereidheid is nog niet getest.");
   await page.getByRole("button", { name: "Bewaar mijn keuze" }).click();
@@ -150,6 +152,21 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await expect(page.locator(".report-paper")).toContainText("2 van 5");
   await page.emulateMedia({ media: "print" });
   await expect(page.locator(".sidebar")).toBeHidden();
+});
+
+test("beheer: systeemstatus voor de eigenaar, zonder CSP-schendingen", async ({ page }) => {
+  const violations: string[] = [];
+  page.on("console", (m) => {
+    if (/Content Security Policy|Refused to (load|execute|apply|connect)/i.test(m.text())) violations.push(m.text());
+  });
+  await login(page);
+  await page.getByRole("link", { name: "Systeemstatus" }).click();
+  await page.waitForURL(/\/app\/status/);
+  await expect(page.getByRole("heading", { name: "Systeemstatus", level: 1 })).toBeVisible();
+  await expect(page.getByRole("row", { name: /Statusfunctie/ })).toContainText("Aanwezig");
+  await expect(page.getByRole("row", { name: /Kernvraag klant/ })).toContainText("Aanwezig");
+  await expect(page.getByText("AI-uitgaven deze maand")).toBeVisible();
+  expect(violations).toEqual([]);
 });
 
 test("mobiel: navigatie als drawer en coach als slide-over @mobile", async ({ page }) => {

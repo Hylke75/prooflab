@@ -42,6 +42,9 @@ npm run dev                  # http://localhost:3000
 | `TRACKING_SALT` | voor live tests | Geheim voor de cookieloze, per test verschillende bezoekerscode (HMAC) |
 | `ANTHROPIC_API_KEY` | nee | Zet AI-onderzoek, AI-aannames, interviewcodering en AI-vragen in de Reality Check aan |
 | `RESEARCH_BUDGET_USD` | nee | Maximum per diepe onderzoeksrun (standaard 3) |
+| `RESEND_API_KEY`, `EMAIL_FROM` | nee | Persoonlijke enquête-uitnodigingen via Resend |
+| `SENTRY_DSN` | nee | Serverfouten naar een Sentry-compatibele dienst (Sentry, GlitchTip, Bugsink); zonder: alleen JSON-logregels |
+| `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` | nee | Labels bij gemelde fouten (standaard `VERCEL_ENV` / `VERCEL_GIT_COMMIT_SHA`) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | nee | Verstuurt persoonlijke enquête-uitnodigingen via Resend (afzender op een geverifieerd domein); zonder deze twee download je de persoonlijke links als CSV |
 
 Zonder `ANTHROPIC_API_KEY` toont de app overal "AI niet verbonden" en werkt alles handmatig: bronnen en citaten
@@ -76,12 +79,16 @@ Toegang op uitnodiging, eenmalig in het Supabase-dashboard:
 
 Het AI-maandbudget per werkruimte staat in `organizations.ai_monthly_cap_usd` (standaard $50).
 
+Beheer (staging, migratiegeschiedenis, back-ups, geheimen roteren, auth-hook, opschoontaak, monitoring, CSP):
+[`docs/OPERATIONS.md`](docs/OPERATIONS.md). Eigenaren van een werkruimte zien de stand op **Systeemstatus** (`/app/status`).
+
 ## Tests
 
 ```bash
 npm run check            # lint + typecheck + unit + eval (deterministisch); CI draait dit plus test:db en build
 npm run test:db          # RLS- en integriteitstests tegen een lokale Postgres (PGHOST/PGPORT)
 npm run test:e2e         # Playwright; E2E_EMAIL/E2E_PASSWORD van een bevestigde testgebruiker
+                         # (CI draait dit tegen een lokale Supabase-stack, zie docs/OPERATIONS.md §9)
 npm run dogfood          # zet het dossier "ProofLab op ProofLab" via de UI in de werkruimte van DOGFOOD_EMAIL
 EVAL_LIVE=1 npm test     # 30 praktijkcases, live tegen het model (kost geld; vereist ANTHROPIC_API_KEY)
 ```
