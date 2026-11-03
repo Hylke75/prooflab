@@ -1,3 +1,4 @@
+import { SUPPORT_LABEL, isLiveMissing, isSupportCheck, parseOverrideNote, parseRecheckNote } from "@/lib/domain/support";
 import { CLAIM_STATUS, EVIDENCE_TYPES, SOURCE_TYPES, type ClaimStatus, type EvidenceType, type SourceType } from "@/lib/domain/labels";
 
 export type ClaimView = {
@@ -14,10 +15,15 @@ export type ClaimView = {
   limitations: string | null;
   origin: string;
   evidence: {
+    id?: string;
+    source_id?: string;
+    support_check?: string;
+    support_checked_by?: string | null;
+    support_note?: string | null;
     quote: string;
     stance: string;
     quote_check: string;
-    source: { title: string; url: string | null; publisher: string | null; published_on: string | null; source_type: SourceType; domain: string | null } | null;
+    source: { title: string; url: string | null; publisher: string | null; published_on: string | null; source_type: SourceType; domain: string | null; access_note?: string | null } | null;
   }[];
 };
 
@@ -29,7 +35,15 @@ const CHECK_LABEL: Record<string, string> = {
 };
 
 // Every conclusion shows what it supports, what it does not prove yet, and its sources.
-export function InsightCard({ claim, actions }: { claim: ClaimView; actions?: React.ReactNode }) {
+export function InsightCard({
+  claim,
+  actions,
+  evidenceActions,
+}: {
+  claim: ClaimView;
+  actions?: React.ReactNode;
+  evidenceActions?: (evidenceId: string) => React.ReactNode;
+}) {
   const st = CLAIM_STATUS[claim.status];
   const first = claim.evidence.find((e) => e.source)?.source;
   const meta = [
@@ -80,6 +94,8 @@ export function InsightCard({ claim, actions }: { claim: ClaimView; actions?: Re
                 "bron verwijderd"
               )}
             </div>
+            <SupportLine e={e} />
+            {e.id && evidenceActions?.(e.id)}
           </div>
         ))}
         {claim.definition && <p className="tiny mt-8">Definitie: {claim.definition}</p>}
@@ -87,5 +103,28 @@ export function InsightCard({ claim, actions }: { claim: ClaimView; actions?: Re
         {actions && <div className="row mt-12">{actions}</div>}
       </details>
     </article>
+  );
+}
+
+// Second check: does the literal quote carry the claim? AI verdicts are labelled as proposals.
+export function SupportLine({ e }: { e: ClaimView["evidence"][number] }) {
+  const recheck = parseRecheckNote(e.source?.access_note);
+  if (!e.support_check && !recheck) return null;
+  const sc = isSupportCheck(e.support_check) ? e.support_check : "unchecked";
+  const s = SUPPORT_LABEL[sc];
+  const { note } = parseOverrideNote(e.support_note);
+  return (
+    <div className="tiny" style={{ marginTop: 4, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+      <span className={`pill ${s.pill}`} title={s.explain}>{s.label}</span>
+      {e.support_checked_by === "ai" && <span>AI-voorstel, nog niet door een consultant bevestigd</span>}
+      {e.support_checked_by === "consultant" && <span>Beoordeeld door consultant</span>}
+      {note && <span>· {note}</span>}
+      {recheck && (
+        <span>
+          · Hercontrole {new Date(recheck.date).toLocaleDateString("nl-NL")}:{" "}
+          {isLiveMissing(e.source?.access_note, e.quote) ? <strong>citaat niet meer gevonden op de pagina</strong> : recheck.text}
+        </span>
+      )}
+    </div>
   );
 }

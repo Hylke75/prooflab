@@ -9,7 +9,8 @@ import { loadAssumptions, loadProgress, rankAssumptions } from "@/lib/progress";
 import { stepsDone } from "@/lib/steps";
 import { recommend } from "@/lib/domain/recommend";
 import { EXPERIMENT_STATES, EXPERIMENT_TYPES, type AssumptionCategory, type ExperimentState, type ExperimentType } from "@/lib/domain/labels";
-import { createExperiment } from "./actions";
+import { createExperiment, proposeCopyVariants } from "./actions";
+import { aiConfigured } from "@/lib/env";
 
 export const metadata: Metadata = { title: "Experimenten" };
 
@@ -79,6 +80,9 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           warning={rec.warning}
           audience={[idea.target_audience, idea.audience_detail, idea.region].filter(Boolean).join(", ")}
           action={createExperiment.bind(null, id)}
+          ideaTitle={idea.title}
+          aiConnected={aiConfigured()}
+          variantsAction={proposeCopyVariants.bind(null, id)}
         />
       ) : (
         <p className="sub">Je kijkt mee als opdrachtgever. Experimenten worden opgezet door het onderzoeksteam.</p>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { Icon } from "@/components/Icon";
 import { EXPERIMENT_TYPES, HONEST_REVEAL, NEUTRAL_INTERVIEW_GUIDE, type ExperimentType } from "@/lib/domain/labels";
@@ -8,6 +8,12 @@ import { checkHypothesis } from "@/lib/domain/hypothesis";
 import { testCardDefaults, type Option } from "@/lib/domain/recommend";
 import { wilson } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
+import { auditGuide, guideSummary } from "@/lib/domain/interview-audit";
+import { honestyWarnings, type PreparedVariant } from "@/lib/domain/copy-honesty";
+import { GuideAuditList } from "@/components/experiments/InterviewAudit";
+
+type VariantsResult = { error: string | null; variants: PreparedVariant[]; draftNotes: string[]; draftWarnings: string[] };
+type VariantsAction = (input: { assumption_id: string; type: "landing" | "pricing"; headline: string; subline: string; offer: string }) => Promise<VariantsResult>;
 
 type Assumption = { id: string; statement: string };
 type Action = (s: FormState, f: FormData) => Promise<FormState>;
@@ -24,7 +30,13 @@ export function ExperimentBuilder({
   warning,
   audience,
   action,
+  ideaTitle = "",
+  aiConnected = false,
+  variantsAction,
 }: {
+  ideaTitle?: string;
+  aiConnected?: boolean;
+  variantsAction?: VariantsAction;
   assumptions: Assumption[];
   initialAssumption: string;
   options: Option[];
@@ -57,6 +69,18 @@ export function ExperimentBuilder({
   ]);
   const [channels, setChannels] = useState<string[]>(["linkedin", "network"]);
   const [reach, setReach] = useState("");
+  const [guide, setGuide] = useState(NEUTRAL_INTERVIEW_GUIDE.join("\n"));
+  const audit = useMemo(() => auditGuide(guide.split("\n"), { productNames: [ideaTitle, page.product_name] }), [guide, ideaTitle, page.product_name]);
+  const auditSum = guideSummary(audit);
+  const [variants, setVariants] = useState<VariantsResult | null>(null);
+  const [variantsPending, startVariants] = useTransition();
+  const draftWarnings = honestyWarnings(page.headline, page.subline, page.offer);
+  const askVariants = () => {
+    if (!variantsAction || type === "interview") return;
+    startVariants(async () => {
+      setVariants(await variantsAction({ assumption_id: assumption.id, type, headline: page.headline, subline: page.subline, offer: page.offer }));
+    });
+  };
 
   const coach = checkHypothesis({
     ...card,
@@ -171,8 +195,18 @@ export function ExperimentBuilder({
             <>
               <div className="form-line">
                 <label htmlFor="tc-guide">Gespreksleidraad (één vraag per regel)</label>
-                <textarea className="field" id="tc-guide" name="guide" rows={9} defaultValue={NEUTRAL_INTERVIEW_GUIDE.join("\n")} />
+                <textarea className="field" id="tc-guide" name="guide" rows={9} value={guide} onChange={(e) => setGuide(e.target.value)} aria-describedby="tc-guide-audit" />
                 <p className="field-hint">Vragen over gedrag in het verleden. Geen pitch en geen &quot;zou je dit kopen?&quot;.</p>
+              </div>
+              <div id="tc-guide-audit" aria-live="polite">
+                {auditSum.flagged === 0 ? (
+                  <div className="form-ok" style={{ marginTop: 0 }}>Leidraadcontrole: geen hypothetische, sturende of verkopende vragen gevonden.</div>
+                ) : (
+                  <div className="note" style={{ marginTop: 0 }}>
+                    <strong>Leidraadcontrole: {auditSum.flagged} van {auditSum.total} vragen verdienen aandacht.</strong> Dit zijn waarschuwingen; je beslist zelf.
+                    <GuideAuditList audit={audit} />
+                  </div>
+                )}
               </div>
               <div className="form-line">
                 <label htmlFor="tc-screen">Selectiecriteria en uitsluitingen</label>
@@ -193,6 +227,51 @@ export function ExperimentBuilder({
                   </div>
                 )}
                 <span className="btn dark sm">{page.cta_label} →</span>
+              </div>
+              <div className="mt-12">
+                {draftWarnings.length > 0 && (
+                  <div className="note" style={{ marginTop: 0 }} role="status">
+                    <strong>Eerlijkheidscontrole:</strong>
+                    <ul style={{ margin: "6px 0 0 16px", padding: 0 }}>{draftWarnings.map((w) => <li key={w}>{w}</li>)}</ul>
+                  </div>
+                )}
+                {variantsAction && (
+                  aiConnected ? (
+                    <button type="button" className="btn soft sm mt-8" onClick={askVariants} disabled={variantsPending}>
+                      {variantsPending ? "Varianten bedenken…" : "Stel varianten voor (AI)"}
+                    </button>
+                  ) : (
+                    <p className="field-hint">AI niet verbonden: schrijf zelf twee of drie varianten en kies er één. De eerlijkheidscontrole werkt wel.</p>
+                  )
+                )}
+                {variants?.error && <div className="form-error" role="alert">{variants.error}</div>}
+                {variants && variants.draftNotes.length > 0 && (
+                  <div className="note">
+                    <strong>AI over je huidige concept (voorstel):</strong>
+                    <ul style={{ margin: "6px 0 0 16px", padding: 0 }}>{variants.draftNotes.map((w) => <li key={w}>{w}</li>)}</ul>
+                  </div>
+                )}
+                {variants && variants.variants.length > 0 && (
+                  <div className="stack mt-12" aria-label="Voorgestelde varianten">
+                    <div className="tiny"><span className="pill blue">AI-voorstel</span> Kies er één om in je concept over te nemen. Na goedkeuring verandert er niets meer.</div>
+                    {variants.variants.map((v, i) => (
+                      <div key={i} className="card tight">
+                        <div className="tiny">Variant {i + 1} · {v.angle}</div>
+                        <strong style={{ display: "block", marginTop: 6 }}>{v.headline}</strong>
+                        <p className="sub" style={{ fontSize: 13 }}>{v.subline}</p>
+                        <p className="tiny mt-8">{v.offer}</p>
+                        {[...v.ai_honesty_notes, ...v.warnings].length > 0 && (
+                          <ul className="tiny" style={{ margin: "6px 0 0 16px", padding: 0, color: "#976022" }}>
+                            {[...v.ai_honesty_notes, ...v.warnings].map((w) => <li key={w}>Let op: {w}</li>)}
+                          </ul>
+                        )}
+                        <button type="button" className="btn white sm mt-8" onClick={() => setPage({ ...page, headline: v.headline, subline: v.subline, offer: v.offer })}>
+                          Neem variant {i + 1} over
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="form-line mt-12"><label htmlFor="pg-name">Naam van het aanbod (merkneutraal)</label><input className="field" id="pg-name" name="product_name" value={page.product_name} onChange={(e) => setPage({ ...page, product_name: e.target.value })} /></div>
               <div className="form-line"><label htmlFor="pg-head">Kop</label><input className="field" id="pg-head" name="headline" value={page.headline} onChange={(e) => setPage({ ...page, headline: e.target.value })} /></div>

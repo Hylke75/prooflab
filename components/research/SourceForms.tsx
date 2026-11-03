@@ -22,6 +22,7 @@ export function AddSourceForm({ action }: { action: Action }) {
               <option key={k} value={k}>{v}</option>
             ))}
           </select>
+          <p className="field-hint">Reviews, forumdraden en reacties van klanten: kies Reviewsite of Forum. Ze verschijnen dan bij Doelgroepen → Klantsignalen.</p>
         </div>
       </div>
       <div className="form-line">
@@ -102,6 +103,10 @@ export function AddClaimForm({ action, excerpts, questions }: { action: Action; 
                 : "Dit citaat staat niet letterlijk in het fragment."}
           </div>
         )}
+        <p className="field-hint">
+          Letterlijk is nog niet genoeg: na opslaan beoordeel je bij de bevinding of het citaat de bewering ook inhoudelijk draagt (zelf, of met een
+          AI-voorstel). Een citaat dat de bewering niet draagt, telt niet als bewijs.
+        </p>
       </div>
       <div className="double-field">
         <div className="form-line">

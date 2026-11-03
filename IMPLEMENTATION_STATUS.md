@@ -128,3 +128,18 @@ opgelost in code; de databasekant wordt live zodra migratie `integrity` is toege
 - ⬜ Betalingen/aanbetalingen (na juridische check), Stripe
 - ⬜ Server-side PDF-rendering (nu printstylesheet)
 - ⬜ Gebruiksniveaus (begeleid / verdiepend / expert)
+
+## Onderzoeksmethodes en AI (Voorspelkracht v1, hoofdstuk 7)
+
+Alle AI-functies werken alleen met `ANTHROPIC_API_KEY`; zonder sleutel tonen ze "AI niet verbonden" met het handmatige alternatief.
+AI-uitkomsten zijn gelabeld als AI-voorstel tot een consultant ze accepteert.
+
+- [x] 7.1 Steuncontrole: draagt het letterlijke citaat de bewering? Automatisch in de onderzoeksrun (na de letterlijke controle; "draagt niet" wordt niet opgeslagen, "deels" wel met label), op verzoek per citaat, en een consultantoordeel dat altijd wint. "Draagt niet" telt als mislukte citaatcontrole in de claimstatus (`lib/domain/support.ts`, `lib/claims.ts`)
+- [x] 7.9 AI-kwaliteit: overeenstemming steuncontrole (≥ 90%) en acceptatie AI-codering (≥ 70% over ≥ 10 beoordelingen), kaart op Bronnen en bij het experiment (`lib/domain/ai-quality.ts`)
+- [x] 7.4 Leidraadcontrole (hypothetisch, sturend, pitch, gesloten, dubbel) met herschrijfpatroon, in de Test Card en bij het experiment; transcriptcontrole op interviewerbeurten (`lib/domain/interview-audit.ts`)
+- [x] 7.4 Accepteren/afwijzen van AI-codering; afgewezen codering telt niet meer mee voor de aanname
+- [x] 7.3 Klantsignalen (reviewsite, forum, outreach; blog/nieuws/overig als handmatig toegevoegd): AI-groepering, alleen letterlijke citaten, handmatig toevoegen/verwijderen, pijnpunt → aanname
+- [x] 7.2 Concurrentiecheck per aanbieder en "alles opnieuw controleren" (handmatig te starten; nog geen automatische maandplanning). Verdwenen citaten maken de bevinding "verouderd"; niets wordt verwijderd
+- [x] 7.6 AI-varianten voor landing- en prijstests plus deterministische eerlijkheidscontrole
+- [x] 7.8 Rode team per kritieke aanname (zoekt alleen tegenbewijs, zelfde citaat- en steuncontrole, koppeling "spreekt tegen")
+- ⚠️ Tijdelijke opslag zonder schemawijziging: het AI-oordeel bij een consultantoverride staat als `[ai:…]`-voorvoegsel in `claim_sources.support_note`; de hercontrole staat als regel `Hercontrole JJJJ-MM-DD: …` in `sources.access_note`. Gewenst: eigen kolommen (`ai_support_check`, `live_check`, `live_checked_at`)

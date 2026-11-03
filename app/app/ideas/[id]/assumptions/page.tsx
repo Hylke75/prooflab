@@ -5,6 +5,7 @@ import { PageFrame } from "@/components/shell/PageFrame";
 import { Stepper } from "@/components/ui/Stepper";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { RiskBoard, type BoardAssumption } from "@/components/assumptions/RiskBoard";
+import { RedTeamButton } from "@/components/assumptions/RedTeamButton";
 import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadAssumptions, loadProgress, rankAssumptions } from "@/lib/progress";
@@ -82,6 +83,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
         </div>
       )}
 
+      <RedTeamButton ideaId={id} assumptions={board} canWrite={canWrite} />
       {canWrite && (
         <div className="card mt-18">
           <h2 className="as-h3" id="nieuwe-aanname">Aanname toevoegen</h2>

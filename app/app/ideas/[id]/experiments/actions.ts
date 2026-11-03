@@ -13,7 +13,9 @@ import { experimentMetrics, type LandingConfig, type PricingConfig } from "@/lib
 import { pct } from "@/lib/domain/stats";
 import { recommend } from "@/lib/domain/recommend";
 import { aiConfigured } from "@/lib/env";
-import { analyzeInterview } from "@/lib/ai/research";
+import { analyzeInterview, suggestCopyVariants } from "@/lib/ai/research";
+import { ideaContext } from "@/lib/idea-context";
+import { honestyWarnings, prepareVariants, type PreparedVariant } from "@/lib/domain/copy-honesty";
 import { aiErrorMessage, runAi } from "@/lib/ai/guard";
 import type { Json } from "@/lib/database.types";
 import type { AssumptionCategory, ObservationKind } from "@/lib/domain/labels";
@@ -380,4 +382,64 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
   if (error) return { error: "De Learning Card kon niet worden gemaakt." };
   refresh(ideaId);
   redirect(`/app/ideas/${ideaId}/evidence`);
+}
+
+// ---------------------------------------------------------------------------
+// Review of AI-coded observations (research 7.4): accept or reject, once
+// ---------------------------------------------------------------------------
+
+export async function reviewObservation(ideaId: string, observationId: string, status: "accepted" | "rejected") {
+  await requireWritableIdea(ideaId);
+  if (status !== "accepted" && status !== "rejected") return;
+  const supabase = await supabaseServer();
+  // The database stamps reviewer and time and forbids any other change to the observation.
+  const { data } = await supabase
+    .from("observations")
+    .update({ review_status: status })
+    .eq("id", observationId)
+    .eq("idea_id", ideaId)
+    .eq("origin", "ai")
+    .is("review_status", null)
+    .select("id");
+  // A rejected AI coding no longer counts for or against the assumption; the observation itself stays on record.
+  if (status === "rejected" && data?.length) {
+    await supabase.from("assumption_observations").delete().eq("observation_id", observationId).eq("idea_id", ideaId);
+  }
+  refresh(ideaId);
+}
+
+// ---------------------------------------------------------------------------
+// AI copy variants for landing and pricing tests (research 7.6), proposals only
+// ---------------------------------------------------------------------------
+
+export type VariantsResult = { error: string | null; variants: PreparedVariant[]; draftNotes: string[]; draftWarnings: string[] };
+
+const VariantInput = z.object({
+  assumption_id: z.string().uuid(),
+  type: z.enum(["landing", "pricing"]),
+  headline: text(200),
+  subline: text(400),
+  offer: text(800),
+});
+
+export async function proposeCopyVariants(ideaId: string, input: z.input<typeof VariantInput>): Promise<VariantsResult> {
+  const { idea } = await requireWritableIdea(ideaId);
+  const p = VariantInput.safeParse(input);
+  if (!p.success) return { error: "Kies eerst een aanname en het testtype.", variants: [], draftNotes: [], draftWarnings: [] };
+  const draftWarnings = honestyWarnings(p.data.headline, p.data.subline, p.data.offer);
+  if (!aiConfigured()) return { error: "AI is niet verbonden. Schrijf de varianten zelf; de eerlijkheidscontrole hieronder werkt wel.", variants: [], draftNotes: [], draftWarnings };
+  const supabase = await supabaseServer();
+  const { data: a } = await supabase.from("assumptions").select("statement").eq("id", p.data.assumption_id).eq("idea_id", ideaId).single();
+  if (!a) return { error: "Aanname niet gevonden.", variants: [], draftNotes: [], draftWarnings };
+  try {
+    const res = await runAi(ideaId, "copy_variants", () => suggestCopyVariants(ideaContext(idea), { assumption: a.statement, ...p.data }));
+    return {
+      error: null,
+      variants: prepareVariants(res.data.variants),
+      draftNotes: res.data.draft_honesty_notes.map((n) => n.slice(0, 300)).slice(0, 5),
+      draftWarnings,
+    };
+  } catch (e) {
+    return { error: aiErrorMessage(e, "Er konden geen varianten worden voorgesteld. Schrijf ze zelf."), variants: [], draftNotes: [], draftWarnings };
+  }
 }
