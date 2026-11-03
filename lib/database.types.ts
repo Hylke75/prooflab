@@ -15,20 +15,59 @@ export type Database = {
   }
   public: {
     Tables: {
+      expandi_campaign_hooks: {
+        Row: {
+          experiment_id: string
+          idea_id: string
+          url: string
+          label: string | null
+          pushed_count: number
+          last_push_at: string | null
+          created_by: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          experiment_id: string
+          idea_id: string
+          url: string
+          label?: string | null
+          pushed_count?: number
+          last_push_at?: string | null
+          created_by?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          experiment_id?: string
+          idea_id?: string
+          url?: string
+          label?: string | null
+          pushed_count?: number
+          last_push_at?: string | null
+          created_by?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       email_suppressions: {
         Row: {
           org_id: string
           email_hash: string
+          reason: string
           created_at: string
         }
         Insert: {
           org_id: string
           email_hash: string
+          reason?: string
           created_at?: string
         }
         Update: {
           org_id?: string
           email_hash?: string
+          reason?: string
           created_at?: string
         }
         Relationships: []
@@ -41,6 +80,7 @@ export type Database = {
           platform: string
           body: string
           origin: string
+          code: string
           created_by: string
           created_at: string
         }
@@ -51,6 +91,7 @@ export type Database = {
           platform: string
           body: string
           origin?: string
+          code?: string
           created_by?: string
           created_at?: string
         }
@@ -61,6 +102,7 @@ export type Database = {
           platform?: string
           body?: string
           origin?: string
+          code?: string
           created_by?: string
           created_at?: string
         }
@@ -78,6 +120,10 @@ export type Database = {
           sent_at: string | null
           reminded_at: string | null
           email_hash: string | null
+          provider_message_id: string | null
+          reminder_message_id: string | null
+          salt_version: string
+          delivery_issue: string | null
           responded_at: string | null
           created_by: string
           created_at: string
@@ -94,6 +140,10 @@ export type Database = {
           sent_at?: string | null
           reminded_at?: string | null
           email_hash?: string | null
+          provider_message_id?: string | null
+          reminder_message_id?: string | null
+          salt_version?: string
+          delivery_issue?: string | null
           responded_at?: string | null
           created_by?: string
           created_at?: string
@@ -110,6 +160,10 @@ export type Database = {
           sent_at?: string | null
           reminded_at?: string | null
           email_hash?: string | null
+          provider_message_id?: string | null
+          reminder_message_id?: string | null
+          salt_version?: string
+          delivery_issue?: string | null
           responded_at?: string | null
           created_by?: string
           created_at?: string
@@ -129,6 +183,7 @@ export type Database = {
           answers: Json
           consent_given: boolean
           duration_ms: number | null
+          content: string | null
           created_at: string
           retention_until: string
         }
@@ -143,6 +198,7 @@ export type Database = {
           answers: Json
           consent_given: boolean
           duration_ms?: number | null
+          content?: string | null
           created_at?: string
           retention_until?: string
         }
@@ -157,6 +213,7 @@ export type Database = {
           answers?: Json
           consent_given?: boolean
           duration_ms?: number | null
+          content?: string | null
           created_at?: string
           retention_until?: string
         }
@@ -2202,6 +2259,7 @@ export type Database = {
       test_events: {
         Row: {
           channel: string
+          content: string | null
           created_at: string
           day: string
           event_type: string
@@ -2213,6 +2271,7 @@ export type Database = {
         }
         Insert: {
           channel?: string
+          content?: string | null
           created_at?: string
           day?: string
           event_type: string
@@ -2224,6 +2283,7 @@ export type Database = {
         }
         Update: {
           channel?: string
+          content?: string | null
           created_at?: string
           day?: string
           event_type?: string
@@ -2368,7 +2428,7 @@ export type Database = {
       is_org_member: { Args: { p_org: string }; Returns: boolean }
       is_org_owner: { Args: { p_org: string }; Returns: boolean }
       record_test_event: {
-        Args: { p_channel: string; p_event: string; p_key: string; p_rate_bucket: string; p_slug: string; p_variant: string; p_visitor: string }
+        Args: { p_channel: string; p_content?: string | null; p_event: string; p_key: string; p_rate_bucket: string; p_slug: string; p_variant: string; p_visitor: string }
         Returns: boolean
       }
       submit_test_form: {
@@ -2377,6 +2437,7 @@ export type Database = {
           p_channel: string
           p_consent: boolean
           p_consent_text: string
+          p_content?: string | null
           p_email: string | null
           p_key: string
           p_rate_bucket: string
@@ -2397,13 +2458,14 @@ export type Database = {
       get_public_survey: { Args: { p_slug: string; p_token_hash: string | null }; Returns: Json }
       survey_key_answers: {
         Args: { p_experiment: string }
-        Returns: { id: string; source: string; channel: string; duration_ms: number | null; created_at: string; key_answer: Json | null }[]
+        Returns: { id: string; source: string; channel: string; duration_ms: number | null; created_at: string; key_answer: Json | null; content: string | null }[]
       }
       submit_survey: {
         Args: {
           p_answers: Json
           p_channel: string
           p_consent: boolean
+          p_content?: string | null
           p_duration_ms: number
           p_key: string
           p_rate_bucket: string
@@ -2413,6 +2475,16 @@ export type Database = {
         }
         Returns: string
       }
+      experiment_content_counts: {
+        Args: { p_experiment: string }
+        Returns: { content: string | null; viewers: number; clickers: number; submitters: number }[]
+      }
+      record_email_event: {
+        Args: { p_event: string; p_key: string; p_message_id: string | null; p_permanent: boolean; p_subtype: string | null; p_webhook_id: string }
+        Returns: string
+      }
+      dsr_search: { Args: { p_email: string; p_hashes: string[]; p_org: string }; Returns: Json }
+      dsr_erase: { Args: { p_email: string; p_hashes: string[]; p_org: string; p_suppress: boolean }; Returns: Json }
       unsubscribe_invitation: { Args: { p_email_hash: string; p_key: string; p_token_hash: string }; Returns: boolean }
       record_outreach_event: {
         Args: { p_campaign: string | null; p_contact_hash: string; p_dedupe: string; p_event: string; p_key: string; p_message: string | null; p_token_hash: string }

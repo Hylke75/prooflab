@@ -60,6 +60,7 @@ export function Sidebar({
         {link("/app", "Overzicht", "home", pathname === "/app")}
         {isConsultant && link("/app/clients", "Klanten", "users", pathname.startsWith("/app/clients"))}
         {isConsultant && link("/app/forecasts", "Voorspelkwaliteit", "trend", pathname.startsWith("/app/forecasts"))}
+        {isConsultant && link("/app/privacy", "Privacyverzoeken", "settings", pathname.startsWith("/app/privacy"))}
       </nav>
       {currentId && (
         <>

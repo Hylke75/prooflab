@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { CopyButton } from "./CopyButton";
-import { PROMO_MIN, PROMO_PLATFORMS, PROMO_PLATFORM_KEYS, promoWarnings, type PromoPlatform } from "@/lib/domain/promo";
+import { PROMO_MIN, PROMO_PLATFORMS, PROMO_PLATFORM_KEYS, postLink, promoWarnings, type PromoPlatform } from "@/lib/domain/promo";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { deletePromoPost, generatePromo, savePromoPost } from "@/app/app/ideas/[id]/experiments/[expId]/survey-actions";
+import { ExpandiPush, type ExpandiHook } from "./ExpandiPush";
 
-export type PromoPostRow = { id: string; platform: string; body: string; origin: string };
+export type PromoPostRow = { id: string; platform: string; body: string; origin: string; code: string };
 
 type Props = {
   ideaId: string;
@@ -14,7 +15,8 @@ type Props = {
   kind: "survey" | "landing" | "pricing";
   aiReady: boolean;
   posts: PromoPostRow[];
-  links: Record<PromoPlatform, string>;
+  links: Record<PromoPlatform, string>; // channel link per platform; each post adds its own utm_content
+  expandi: ExpandiHook | null;
 };
 
 const ORIGIN = { ai: { label: "AI-concept", pill: "blue" }, template: { label: "Sjabloon", pill: "gray" }, manual: { label: "Aangepast", pill: "green" } } as const;
@@ -47,7 +49,10 @@ function PostCard({ p, platform, post, incentive, dmIncludesLink, busy, run }: {
         <h4 style={{ fontSize: 14, margin: 0 }} id={`${id}-h`}>{meta.label}</h4>
         {origin && <span className={`pill ${origin.pill}`}>{origin.label}</span>}
       </div>
-      <p className="tiny">{meta.hint} Kanaal: {CHANNELS[meta.channel as keyof typeof CHANNELS] ?? meta.channel} (utm_source={meta.channel}).</p>
+      <p className="tiny">
+        {meta.hint} Kanaal: {CHANNELS[meta.channel as keyof typeof CHANNELS] ?? meta.channel} (utm_source={meta.channel}
+        {post ? <>, postcode <span className="mono">{post.code}</span> als utm_content</> : null}).
+      </p>
       {post ? (
         <>
           <label className="sr-only" htmlFor={id}>Tekst voor {meta.label}</label>
@@ -70,7 +75,7 @@ function PostCard({ p, platform, post, incentive, dmIncludesLink, busy, run }: {
           )}
           <div className="row mt-8">
             <CopyButton text={draft} label="Kopieer" className="btn dark sm" describedBy={`${id}-h`} />
-            <CopyButton text={p.links[platform]} label="Alleen de link" className="btn white sm" describedBy={`${id}-h`} />
+            <CopyButton text={postLink(p.links[platform], post.code)} label="Alleen de link" className="btn white sm" describedBy={`${id}-h`} />
             {changed && (
               <button type="button" className="btn white sm" disabled={busy || draft.trim().length < PROMO_MIN || draft.length > meta.max} onClick={() => run(() => savePromoPost(p.ideaId, p.expId, post.id, draft))}>
                 Opslaan
@@ -79,6 +84,9 @@ function PostCard({ p, platform, post, incentive, dmIncludesLink, busy, run }: {
             <button type="button" className="btn soft sm" disabled={busy} onClick={() => regen(p.aiReady ? "ai" : "template")}>Opnieuw genereren</button>
             <button type="button" className="text-link" style={{ minHeight: 36 }} disabled={busy} onClick={() => run(() => deletePromoPost(p.ideaId, p.expId, post.id))}>Verwijder</button>
           </div>
+          {platform === "linkedin_dm" && (
+            <ExpandiPush ideaId={p.ideaId} expId={p.expId} postId={post.id} hook={p.expandi} link={postLink(p.links[platform], post.code)} unsaved={changed} />
+          )}
         </>
       ) : (
         <div className="row mt-8">

@@ -282,14 +282,26 @@ export function canRemind(r: InvitationRow, now = new Date()): boolean {
   return now.getTime() - new Date(r.sent_at).getTime() >= REMINDER_AFTER_DAYS * DAY;
 }
 
-export type InvitationCounts = { invited: number; sent: number; pending: number; failed: number; responded: number; unsubscribed: number; remindable: number };
+export type InvitationCounts = {
+  invited: number;
+  sent: number;
+  pending: number;
+  failed: number; // failed to send, can be retried (bounces and complaints are counted separately)
+  responded: number;
+  unsubscribed: number;
+  remindable: number;
+  bounced: number; // hard bounce reported by the e-mail provider
+  complained: number; // marked as spam by the recipient
+};
 
-export function invitationCounts(rows: InvitationRow[], now = new Date()): InvitationCounts {
-  const c: InvitationCounts = { invited: rows.length, sent: 0, pending: 0, failed: 0, responded: 0, unsubscribed: 0, remindable: 0 };
+export function invitationCounts(rows: (InvitationRow & { delivery_issue?: string | null })[], now = new Date()): InvitationCounts {
+  const c: InvitationCounts = { invited: rows.length, sent: 0, pending: 0, failed: 0, responded: 0, unsubscribed: 0, remindable: 0, bounced: 0, complained: 0 };
   for (const r of rows) {
     if (r.sent_at) c.sent++;
+    if (r.delivery_issue === "bounced") c.bounced++;
+    else if (r.delivery_issue === "complained") c.complained++;
     if (r.status === "pending") c.pending++;
-    if (r.status === "failed") c.failed++;
+    if (r.status === "failed" && !r.delivery_issue) c.failed++;
     if (r.status === "responded") c.responded++;
     if (r.status === "unsubscribed") c.unsubscribed++;
     if (canRemind(r, now)) c.remindable++;
@@ -319,6 +331,7 @@ export const SurveySubmitSchema = z.object({
   duration_ms: z.number().int().min(0).max(86_400_000).optional(),
   token: z.string().max(64).optional(),
   utm_source: z.string().max(40).optional(),
+  utm_content: z.string().max(40).optional(), // post code of the invitation post the link came from
   website: z.string().max(200).optional(), // honeypot: real people leave it empty; filled = bot, nothing stored
 });
 export type SurveySubmit = z.infer<typeof SurveySubmitSchema>;
