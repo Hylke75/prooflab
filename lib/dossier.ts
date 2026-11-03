@@ -8,6 +8,7 @@ import { dossierLabel } from "@/lib/domain/dossier-label";
 import type { DossierFacts } from "@/lib/domain/reality-check";
 import type { ClaimStatus } from "@/lib/domain/labels";
 import type { Idea } from "@/lib/data";
+import { loadIdeaWeights } from "@/lib/learning-data";
 
 // Collects everything about one idea in a single pass. Used by the Reality Check and as the
 // immutable snapshot behind every report version.
@@ -40,6 +41,8 @@ export async function loadDossier(idea: Idea) {
     ]);
 
   const assumptions = rankAssumptions(await loadAssumptions(id));
+  // Which evidence factors those probabilities used (default or learned), for the report.
+  const weights = (await loadIdeaWeights(id)).inUse;
   const expList = experiments.data ?? [];
   const metrics = await Promise.all(expList.map((e) => (e.hypotheses ? experimentMetrics(e, e.hypotheses) : null)));
 
@@ -173,6 +176,7 @@ export async function loadDossier(idea: Idea) {
     research: { runs: runs.data ?? [], ai: ai.data ?? [] },
     label,
     probabilities,
+    weights,
     simulation: simulations.find((s) => s.kind === "realistic") ?? simulations[0] ?? null,
     simulations,
     prediction,

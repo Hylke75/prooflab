@@ -1,7 +1,7 @@
 # ProofLab: hoe voorspellen we de uitkomst zo goed mogelijk?
 
 Onderzoek naar methodes die de voorspelkracht van ProofLab kunnen verbeteren, en hoe we ze toepassen.
-Versie 1.1, 3 november 2026 (hoofdstuk 7 toegevoegd: onderzoeksmethodes en AI).
+Versie 1.2, 4 november 2026 (hoofdstuk 7: onderzoeksmethodes en AI; hoofdstuk 8: leren van uitkomsten).
 
 ## 1. Waar we nu staan
 
@@ -352,3 +352,63 @@ Zo blijft zichtbaar waar AI tijd bespaart zonder de voorspelling slechter te mak
 5. Welke bronnen voor klantsignalen zijn toegestaan (reviews van concurrenten, fora, LinkedIn)? Sommige platforms
    verbieden automatisch ophalen in hun voorwaarden.
 6. Wanneer wil je AI-gemodereerde interviews toevoegen: na de eerste sprints, of pas als de handmatige route bewezen is?
+
+## 8. Leren van uitkomsten (4 november 2026)
+
+Drie mechanismen sluiten de lus "uitkomst meten → leren" uit 3.4. Ze staan op de pagina Voorspelkwaliteit; het
+rekenwerk zit in `lib/domain/calibration.ts`, de tellingen in de database. Alles is beschrijvend en wordt pas met
+tientallen afgeronde dossiers betrouwbaar.
+
+### 8.1 Geleerde bewijsfactoren (bij 3.5 en 3.7)
+
+- **Wat:** per soort observatie (enquête-uitkomst, demo-aanvraag, aanbetaling, bezwaar, …) en per testtype kijken we
+  in afgeronde dossiers of een dossier met een ondersteunende uitkomst van die soort vaker zijn doel haalde dan een
+  dossier zonder. De factor is `P(uitkomst | gehaald) / P(uitkomst | niet gehaald)`; voor tegenbewijs andersom.
+  "Deels gehaald" telt half in beide groepen.
+- **Krimp:** de schatting begint bij de vaste standaardfactor, met per uitkomstgroep twee denkbeeldige dossiers
+  (Beta(1,1)-achtig) die precies die factor opleveren. Zonder data is het resultaat de standaardfactor; met meer
+  dossiers schuift het naar wat de data laten zien.
+- **Drempel:** pas vanaf 8 afgeronde dossiers met een uitkomst van die soort tonen we een geleerde factor; daaronder
+  "nog te weinig dossiers: x/8". Als alle afgeronde dossiers dezelfde uitkomst hebben, valt er niets te leren.
+- **Alleen in gebruik als de werkruimte het aanzet** (standaard uit; elke consultant kan het omzetten, de database
+  legt vast wie en wanneer). Factoren in gebruik zijn minimaal 1 (bewijs keert nooit om) en maximaal 20. Het rapport
+  en de aannamepagina vermelden welke factoren zijn gebruikt, zodat elke kans te reproduceren is.
+- **Enquête tegenover gedrag:** per aanname met zowel een enquête als een landing- of prijstest vergelijken we de
+  oordelen. Zegt de enquête vaak "ja" waar gedrag "nee" zegt, dan overschat zelfrapportage bij onze doelgroepen het
+  gedrag.
+- **Grenzen:** het is samenhang, geen oorzaak; dossiers verschillen in meer dan alleen dit bewijs. Synthetische data
+  en niet-geaccepteerde AI-codering tellen niet mee. Testtypes worden getoond maar nog niet gebruikt bij de keuze van
+  de volgende test. Met geleerde factoren aan kan de kans van een aanname veranderen zodra elders een dossier wordt
+  afgerond; daarom staat het standaard uit.
+
+### 8.2 Werken de coachtips?
+
+- Per coachregel: hoe vaak geplaatst, gedaan of niet relevant, de mediaan van het aantal dagen tot afhandeling, en
+  de stemmen op "Was deze tip nuttig?".
+- Voor afgeronde dossiers de Brier-score van de voorspellingen van mensen bij het besluit, apart voor dossiers waar
+  de tip werd opgevolgd en waar hij werd genegeerd.
+- **Grenzen:** correlatie, geen effect. Teams die tips opvolgen kunnen om andere redenen beter voorspellen, en
+  "gedaan" omvat ook notities die de coach zelf sloot omdat het punt was opgelost.
+
+### 8.3 Startkalibratie vóór tien eigen dossiers (bij 3.2 en 3.3)
+
+- **Te zeker?** Zolang de werkruimte minder dan 10 afgeronde dossiers heeft, vergelijken we elke voorspelling met
+  het midden van het basispercentage. Ligt die er meer dan 25 procentpunt vanaf terwijl er nog geen landingpage- of
+  prijstest is afgerond, dan stelt de coach een vraag (regel `forecast_overconfident`) en markeert de ijkhulp op de
+  uitkomstpagina de eigen voorspelling. De coachnotitie noemt geen waarde, persoon of richting, zodat niemand via de
+  coach een blinde voorspelling ziet. Wel verraadt ze dat er een verre voorspelling is; dat nemen we bewust voor lief.
+- **Gemengde schatting (krimp naar het buitenperspectief):** naast de voorspellingen tonen we als suggestie een
+  gewogen gemiddelde van het gemiddelde van de mensen, de AI-voorspelling en het midden van het basispercentage:
+
+  | Situatie | Mensen | AI | Basispercentage |
+  |---|---|---|---|
+  | Nog geen afgeronde gedragstest | 50% | 20% | 30% |
+  | Wel een afgeronde landingpage- of prijstest | 60% | 20% | 20% |
+
+  Ontbreekt een onderdeel, dan worden de gewichten over de rest herverdeeld. De schatting verschijnt alleen voor een
+  moment waarop je zelf al hebt voorspeld (of na de uitkomst) en gebruikt alleen voorspellingen die je mag zien. Ze
+  vervangt geen voorspelling en telt nergens mee.
+- **Bewust geen extremiseren:** samenvoegen en daarna "extremiseren" (verder van 50% duwen) werkt bij goed
+  gekalibreerde groepen, maar zonder eigen uitkomstdata zou het de bekende overmoed versterken. We krimpen daarom
+  alleen richting het basispercentage. De gewichten zijn startaannames; zodra er genoeg eigen dossiers zijn, ijken we
+  ze op de Brier-scores per voorspeller (fase D).

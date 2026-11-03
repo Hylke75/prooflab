@@ -194,3 +194,16 @@ AI-uitkomsten zijn gelabeld als AI-voorstel tot een consultant ze accepteert.
 - 🟡 Versturen via Resend vraagt `RESEND_API_KEY` en `EMAIL_FROM`; zonder koppeling "e-mail niet gekoppeld" en een CSV met persoonlijke links en afmeldlinks
 - ✅ Uitnodigingsberichten per platform (LinkedIn, LinkedIn-DM via Expandi, Instagram, Facebook, X, WhatsApp, nieuwsbrief) voor enquêtes, landing- en prijstests: sjablonen met lengtelimieten en kanaallink, AI-concepten (`promo_posts`) met eerlijkheidscontrole, bewerken, kopiëren, opnieuw genereren
 - ✅ Eén herinnering vastgelegd in `survey_invitations.reminded_at`; afmelden zet de opgeslagen adres-hash op de afmeldlijst (`email_hash`); de publieke enquête geeft kernvraag en succescriteria niet prijs
+
+## Leren van uitkomsten (4 november)
+
+Migratie `20261104130000_learning.sql`, rekenwerk in `lib/domain/calibration.ts`, getoond op Voorspelkwaliteit (`/app/forecasts`).
+
+- ✅ Geleerde bewijsfactoren per soort observatie en testtype: per afgerond dossier de netto richting (ondersteunend/tegen), vergeleken tussen dossiers die het doel wel en niet haalden, met een prior die naar de standaardfactor krimpt; pas vanaf 8 dossiers met zo'n uitkomst ("nog te weinig dossiers: x/8"). In gebruik geklemd op 1–20
+- ✅ Instelling `organizations.use_learned_weights` (standaard uit); elke consultant schakelt via `set_learned_weights`, de database stempelt wie en wanneer. Aan: `assumptionProbability` gebruikt de geleerde factoren (aparte factor voor tegenbewijs); klant en consultant rekenen met dezelfde factoren (`idea_uses_learned_weights`, `idea_learning_counts`). Rapport en aannamepagina vermelden welke factoren zijn gebruikt
+- ✅ Enquête tegenover gedrag: overeenstemming van de kernvraag met een landing- of prijstest op dezelfde aanname (`survey_behaviour_agreement`)
+- ✅ Coachtips: per regel geplaatst, gedaan, niet relevant, mediaan dagen, nuttig-stemmen en (beschrijvend, samenhang) de Brier-score van het besluit bij gevolgd versus genegeerd (`coach_note_stats`); "Was deze tip nuttig? ja/nee" bij open notities (`coach_notes.helpful`, de vergrendeltrigger laat alleen status en deze stem toe)
+- ✅ Startkalibratie: coachregel `forecast_overconfident` (meer dan 25 procentpunt van het basispercentage zonder afgeronde gedragstest, zolang de werkruimte < 10 afgeronde dossiers heeft; noemt geen waarde, persoon of richting) en een ijkhulp op de uitkomstpagina met de eigen voorspellingen naast het basispercentage en een gemengde schatting (mensen, AI, basispercentage) als suggestie, alleen na de eigen voorspelling
+- ⬜ Geleerde testfactoren ook gebruiken in de keuze van de volgende test (informatiewaarde); nu alleen ter informatie
+- ⬜ "Gedaan" onderscheidt nog niet tussen zelf afgevinkt en door de coach gesloten omdat het punt was opgelost
+- ⬜ Visuele controle van de nieuwe secties tegen een database met deze migratie
