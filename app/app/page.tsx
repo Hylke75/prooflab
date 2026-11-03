@@ -373,7 +373,7 @@ async function ClientHome({ ws, list, progresses }: { ws: Workspace; list: IdeaR
                 <span>Besluit</span>
                 <strong>
                   {decision
-                    ? `${DECISIONS[decision.action as DecisionAction]?.label ?? decision.action}${decision.client_confirmed_at ? " · bevestigd" : " · nog niet bevestigd"}`
+                    ? `${DECISIONS[decision.action as DecisionAction]?.label ?? decision.action}${decision.client_confirmed_at ? " · bevestigd" : idea.clients ? " · nog niet bevestigd" : ""}`
                     : "Nog geen besluit"}
                 </strong>
               </div>

@@ -44,6 +44,7 @@ export type IdeaProgress = {
   latestDecisionAt: string | null;
   // Actie van het laatste besluit (decisions.action): alleen doorgaan of stoppen rondt stap Besluit af.
   latestDecisionAction: string | null;
+  // Bevestigd door de opdrachtgever, of geen bevestiging nodig (dossier zonder opdrachtgever, zie decision-confirmation.ts).
   latestDecisionConfirmed: boolean;
   reports: number;
   latestReportAt: string | null;

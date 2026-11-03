@@ -346,7 +346,9 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                   <p>
                     {dec.client_confirmed_at
                       ? `Bevestigd door de opdrachtgever op ${new Date(dec.client_confirmed_at).toLocaleDateString("nl-NL")}${dec.client_comment ? `: “${dec.client_comment}”` : ""}`
-                      : "Nog niet bevestigd door de opdrachtgever."}
+                      : idea.client_id
+                        ? "Nog niet bevestigd door de opdrachtgever."
+                        : "Geen opdrachtgever: dit besluit is direct definitief."}
                   </p>
                   {isClientDecider && !dec.client_confirmed_at && <ConfirmDecision summary={againstFor(d, dec)} action={confirmDecision.bind(null, id, dec.id)} />}
                   {dec.reviewed_against_summary && <p className="tiny">De opdrachtgever zag bij het bevestigen de samenvatting &ldquo;Wat ging tegen&rdquo;.</p>}

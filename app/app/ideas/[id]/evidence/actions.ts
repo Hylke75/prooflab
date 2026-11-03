@@ -249,6 +249,8 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
           ? "Besluit vastgelegd: pauzeren. Het definitieve besluit (doorgaan of stoppen) volgt als het dossier terugkomt."
           : `Besluit vastgelegd: ${DECISIONS[p.data.action].label.toLowerCase()}. Ontwerp de volgende test; het definitieve besluit volgt daarna.`,
     };
+  // B1: zonder opdrachtgever is het besluit direct definitief; er wacht geen bevestiging.
+  if (!idea.client_id) return { error: null, ok: "Besluit vastgelegd. Dit dossier heeft geen opdrachtgever: het besluit is direct definitief. Werk nu het rapport bij." };
   return { error: null, ok: "Besluit vastgelegd. De opdrachtgever kan het nu bevestigen; werk daarna het rapport bij." };
 }
 

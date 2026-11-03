@@ -12,6 +12,7 @@ import { PROVIDER_LABELS, providerOfModel } from "@/lib/ai/providers/config";
 import { buildReportCounts } from "@/lib/domain/report-counts";
 import { evidenceLadder, type EvidenceLadder } from "@/lib/domain/dossier-label";
 import { ladderObservation, type Dossier } from "@/lib/dossier";
+import { decisionConfirmation } from "@/lib/domain/decision-confirmation";
 
 // "AI · Gemini" for an AI forecast whose provider is known; null otherwise.
 function aiName(kind: string, model: string | null): string | null {
@@ -282,6 +283,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
           nextStep: lastDecision.next_step,
           at: lastDecision.decided_at,
           confirmedAt: lastDecision.client_confirmed_at,
+          // B1: zonder opdrachtgever is het besluit direct definitief; oudere rapporten hebben dit veld niet.
+          confirmation: decisionConfirmation(lastDecision.client_confirmed_at, !!d.idea.client_id),
           comment: lastDecision.client_comment,
           // Golf B, punt 6: de toets aan de beslisregel en, bij afwijken, de motivering.
           rule: ruleSummary(lastDecision),
