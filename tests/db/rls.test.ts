@@ -494,7 +494,7 @@ d("row level security and integrity rules", () => {
     expect(ids.slug).toMatch(/^[a-f0-9]{14}$/);
     const submit = (visitor: string, token: string | null, consent = true) =>
       as("anon", async (c) =>
-        (await c.query("select public.submit_survey($1, $2, $3, 'linkedin', '{\"gezocht\":\"nee\"}', $4, 30000, $5, 'net9') as r", [ingestKey, ids.slug, visitor, consent, token])).rows[0].r,
+        (await c.query("select public.submit_survey($1, $2, $3, 'linkedin', '{\"gezocht\":\"nee\"}', $4, 30000, $5, 'net9', true, 'ok') as r", [ingestKey, ids.slug, visitor, consent, token])).rows[0].r,
       );
     expect(await submit("v1", null, false)).toBe("consent");
     expect(await submit("v1", null)).toBe("ok");

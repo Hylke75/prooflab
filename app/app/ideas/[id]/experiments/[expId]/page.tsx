@@ -227,7 +227,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
 
       {canWrite && type !== "interview" && <PerPostResults expId={expId} type={type} rows={m.byContent} metricLabel={h.metric_label} />}
 
-      <Distribution ideaId={id} exp={exp} canWrite={canWrite} />
+      <Distribution ideaId={id} exp={exp} canWrite={canWrite} plan={h} />
 
       {type === "interview" && canWrite && (
         <>

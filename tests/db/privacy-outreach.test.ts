@@ -143,7 +143,7 @@ d("privacy and outreach", () => {
     const inv = invite("klacht@voorbeeld.nl");
     const rem = `re_${randomUUID()}`;
     await addInvitation(alice, S, inv, { reminder: rem });
-    await as("anon", (c) => c.query("select public.submit_survey($1, $2, 'v-klacht', '', '{\"gezocht\":\"ja\"}', true, 30000, $3, 'k1')", [ingestKey, S.slug, inv.hash]));
+    await as("anon", (c) => c.query("select public.submit_survey($1, $2, 'v-klacht', '', '{\"gezocht\":\"ja\"}', true, 30000, $3, 'k1', true, 'ok')", [ingestKey, S.slug, inv.hash]));
     expect(await emailEvent(`msg_${randomUUID()}`, "email.complained", rem, false)).toBe("ok");
     const row = await as(alice, async (c) => (await c.query("select status, delivery_issue from public.survey_invitations where id = $1", [inv.id])).rows[0]);
     expect(row).toEqual({ status: "responded", delivery_issue: "complained" });
@@ -152,11 +152,11 @@ d("privacy and outreach", () => {
 
   it("stores the post code of surveys and test events, and counts per post", async () => {
     const submit = (visitor: string, content: string | null, bucket: string) =>
-      as("anon", async (c) => (await c.query("select public.submit_survey($1, $2, $3, 'linkedin', '{\"gezocht\":\"ja\"}', true, 30000, null, $4, $5) as r", [ingestKey, S.slug, visitor, bucket, content])).rows[0].r);
+      as("anon", async (c) => (await c.query("select public.submit_survey($1, $2, $3, 'linkedin', '{\"gezocht\":\"ja\"}', true, 30000, null, $4, true, 'ok', $5) as r", [ingestKey, S.slug, visitor, bucket, content])).rows[0].r);
     expect(await submit("v-c1", "li-ABC", "c1")).toBe("ok");
     expect(await submit("v-c2", "<b>evil</b>" + "x".repeat(60), "c2")).toBe("ok");
     // The old call without p_content still works.
-    expect(await as("anon", async (c) => (await c.query("select public.submit_survey($1, $2, 'v-c3', 'x', '{\"gezocht\":\"nee\"}', true, 30000, null, 'c3') as r", [ingestKey, S.slug])).rows[0].r)).toBe("ok");
+    expect(await as("anon", async (c) => (await c.query("select public.submit_survey($1, $2, 'v-c3', 'x', '{\"gezocht\":\"nee\"}', true, 30000, null, 'c3', true, 'ok') as r", [ingestKey, S.slug])).rows[0].r)).toBe("ok");
     const rows = await as(alice, async (c) => (await c.query("select visitor_hash, content from public.survey_responses where experiment_id = $1 and visitor_hash like 'v-c%' order by visitor_hash", [S.e])).rows);
     expect(rows[0]).toEqual({ visitor_hash: "v-c1", content: "li-abc" });
     expect(rows[1].content).toMatch(/^bevil[a-z]*$/);
@@ -213,7 +213,7 @@ d("privacy and outreach", () => {
     const theirs = invite(subject);
     await addInvitation(alice, S, mine);
     await addInvitation(bob, B, theirs);
-    await as("anon", (c) => c.query("select public.submit_survey($1, $2, 'v-dsr', '', '{\"gezocht\":\"ja\",\"toelichting\":\"Ik ben Piet\"}', true, 30000, $3, 'd1')", [ingestKey, S.slug, mine.hash]));
+    await as("anon", (c) => c.query("select public.submit_survey($1, $2, 'v-dsr', '', '{\"gezocht\":\"ja\",\"toelichting\":\"Ik ben Piet\"}', true, 30000, $3, 'd1', true, 'ok')", [ingestKey, S.slug, mine.hash]));
     // A landing-page sign-up with the same address.
     await as("anon", (c) => c.query("select public.record_test_event($1, $2, 'lv-dsr', 'view', 'a', 'x', 'd2')", [ingestKey, L.slug]));
     await as("anon", (c) => c.query("select public.record_test_event($1, $2, 'lv-dsr', 'cta_click', 'a', 'x', 'd3')", [ingestKey, L.slug]));

@@ -3,7 +3,7 @@
 // dropped, the list is capped, ids are generated, and the result must pass SurveyConfigSchema. If the key
 // question does not survive, the template's key question about a concrete recent action takes its place.
 
-import { SurveyConfigSchema, templateSurvey, type SurveyConfig, type SurveyQuestion } from "./survey";
+import { looksFixed, SurveyConfigSchema, templateSurvey, type SurveyConfig, type SurveyQuestion } from "./survey";
 import { auditQuestion } from "./interview-audit";
 
 export const MAX_DRAFT_QUESTIONS = 12;
@@ -17,6 +17,8 @@ export type DraftQuestion = {
   scale: { min: number; max: number; min_label: string; max_label: string } | null;
   show_if: { question_index: number; option_labels: string[] } | null;
   past_behaviour_version: string | null;
+  // Choice questions: true when the options have a natural order (never shuffled), false when they may be shuffled.
+  ordered_options?: boolean;
 };
 
 export type RawDraft = {
@@ -27,6 +29,8 @@ export type RawDraft = {
   questions: DraftQuestion[];
   key_question_index: number;
   success_option_labels: string[];
+  // A first question that separates the target group from everyone else, with the answers that qualify.
+  screening?: { question_index: number; qualifying_option_labels: string[] } | null;
   why: string[];
 };
 
@@ -49,11 +53,11 @@ type Ctx = { assumption: string; audience: string; researcher: string; product: 
 
 export function templateDraft(ctx: Ctx, reason: string): DraftResult {
   return {
-    config: templateSurvey({ assumption: ctx.assumption, audience: ctx.audience || "de doelgroep", researcher: ctx.researcher, product: ctx.product }),
+    config: templateSurvey({ assumption: ctx.assumption, audience: ctx.audience || "de doelgroep", researcher: ctx.researcher, product: ctx.product, screen: true }),
     origin: "template",
     why: [
       reason,
-      "Dit is een sjabloon: vragen over recent gedrag, de huidige aanpak en uitgaven, met één kernvraag over een concrete handeling. Pas de woorden aan op jouw doelgroep.",
+      "Dit is een sjabloon: vragen over recent gedrag, de huidige aanpak en uitgaven, met één kernvraag over een concrete handeling. De eerste vraag screent: wie de situatie nooit meemaakte, telt niet mee. Pas de woorden aan op jouw doelgroep.",
     ],
     changes: [],
   };
@@ -90,7 +94,10 @@ export function sanitiseDraft(raw: RawDraft, ctx: Ctx): DraftResult {
         changes.push(`Vraag "${text}" weggelaten: minder dan twee antwoordopties.`);
         return;
       }
-      q.options = labels.map((label, i) => ({ id: `o${i + 1}`, label }));
+      // Nominal options are shuffled per respondent; "Anders" / "Weet ik niet" keep their place at the end.
+      const shuffle = d.ordered_options === false;
+      q.options = labels.map((label, i) => (shuffle && looksFixed(label) ? { id: `o${i + 1}`, label, fixed: true } : { id: `o${i + 1}`, label }));
+      if (shuffle) q.shuffle = true;
       optionMap.set(id, new Map(q.options.map((o) => [o.label.toLowerCase(), o.id])));
     }
     if (d.type === "scale") {
@@ -145,6 +152,24 @@ export function sanitiseDraft(raw: RawDraft, ctx: Ctx): DraftResult {
     questions = questions.map((q) => (q.id === key!.id ? withoutCondition(q) : q));
   }
 
+  // Screening: the proposed question moves to the top; it must be a choice question other than the key question,
+  // and some (not all) of its answers must qualify.
+  let screening: SurveyConfig["screening"];
+  if (raw.screening) {
+    const sid = indexMap.get(raw.screening.question_index);
+    const sq = questions.find((q) => q.id === sid);
+    const map = sid ? optionMap.get(sid) : undefined;
+    const qualifying = map ? [...new Set((raw.screening.qualifying_option_labels ?? []).map((l) => map.get(clean(l, 160).toLowerCase())).filter((x): x is string => !!x))] : [];
+    if (!sq || !map || sq.id === key.id) {
+      changes.push("De voorgestelde screeningsvraag was niet bruikbaar en is niet als screening ingesteld.");
+    } else if (qualifying.length === 0 || qualifying.length >= (sq.options ?? []).length) {
+      changes.push(`Vraag "${sq.text}" is niet als screening ingesteld: de doelgroepantwoorden waren niet duidelijk.`);
+    } else {
+      questions = [{ ...withoutCondition(sq), required: true }, ...questions.filter((q) => q.id !== sq.id)];
+      screening = { question: sq.id, qualifying: (sq.options ?? []).map((o) => o.id).filter((id) => qualifying.includes(id)) };
+    }
+  }
+
   const config = {
     title: clean(raw.title, 120),
     intro: clean(raw.intro, 800),
@@ -152,6 +177,7 @@ export function sanitiseDraft(raw: RawDraft, ctx: Ctx): DraftResult {
     questions,
     key_question: key.id,
     success_options: success,
+    ...(screening ? { screening } : {}),
     thank_you: clean(raw.thank_you, 400) || "Dank u wel voor het invullen.",
     estimated_minutes: Math.min(20, Math.max(1, Math.round(Number(raw.estimated_minutes) || Math.ceil(questions.length / 2)))),
   };

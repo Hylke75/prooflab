@@ -1,9 +1,11 @@
 import { ActionForm } from "@/components/ui/ActionForm";
 import { loadSurveyResponses, surveyConfigOf, type ExperimentMetrics } from "@/lib/experiment-metrics";
-import { summarise, type KeyMetric, type QuestionSummary, type SurveyConfig } from "@/lib/domain/survey";
-import { openAnswers, redactContact } from "@/lib/domain/survey-results";
+import { supabaseServer } from "@/lib/supabase/server";
+import { notBelievable, notBelievableText, QUESTION_TYPES, summarise, type KeyMetric, type QuestionSummary, type SurveyConfig } from "@/lib/domain/survey";
+import { openAnswers, redactContact, SHARE_MIN_N, shareableQuestions, sharedSummaries } from "@/lib/domain/survey-results";
 import { pct } from "@/lib/domain/stats";
 import { importSurveyOpenAnswers } from "@/app/app/ideas/[id]/experiments/actions";
+import { saveSurveyShare } from "@/app/app/ideas/[id]/experiments/[expId]/survey-actions";
 
 type Exp = { id: string; config: unknown; state: string };
 type Hyp = { min_sample: number; success_threshold_pct: number };
@@ -14,13 +16,20 @@ const MAX_OPEN_SHOWN = 100;
 // Results of a survey for the research team: the pre-registered key metric with its 95% interval and the split
 // per source, a summary per question, CSV export and open answers as customer signals. Self-reported answers,
 // never observed behaviour. Full responses are only readable for the research team (row level security); readers
-// see the key metric, computed from survey_key_answers.
+// see the key metric (counted in the database by survey_key_counts) and the closed questions the team chose to
+// share (survey_shared_summaries: aggregates only, never open answers).
 export async function SurveyResults({ ideaId, exp, h, m, canWrite }: { ideaId: string; exp: Exp; h: Hyp; m: ExperimentMetrics; canWrite: boolean }) {
   const config = surveyConfigOf(exp.config);
   if (!config) {
     return <div className="note mt-18">De opzet van deze enquête is ongeldig; er kunnen geen resultaten worden getoond.</div>;
   }
+  const supabase = await supabaseServer();
+  const { data: shareRow } = await supabase.from("survey_shares").select("questions").eq("experiment_id", exp.id).maybeSingle();
+  const shared = shareRow?.questions ?? [];
+
   if (!canWrite) {
+    const { data: sharedRows, error: sharedError } = shared.length ? await supabase.rpc("survey_shared_summaries", { p_experiment: exp.id }) : { data: [], error: null };
+    const view = sharedSummaries(config, (sharedRows ?? []).map((r) => ({ ...r, answers: Number(r.answers), count: Number(r.count) })), shared);
     return (
       <div className="card mt-18">
         <h2 className="as-h3">Enquête</h2>
@@ -35,12 +44,27 @@ export async function SurveyResults({ ideaId, exp, h, m, canWrite }: { ideaId: s
                 <SplitRow label="Totaal" k={m.survey.all} strong />
               </tbody>
             </table>
+            <Excluded k={m.survey.all} />
             {!m.endConditionReached && <p className="tiny mt-8">De test loopt nog; het oordeel volgt na de afgesproken eindconditie.</p>}
           </>
         ) : (
           <p className="sub mt-8">Er zijn nog geen antwoorden op de kernvraag.</p>
         )}
-        <p className="tiny mt-8">Alleen de vooraf vastgelegde kernvraag is zichtbaar; de overige antwoorden blijven bij het onderzoeksteam. Zelfrapportage, geen waargenomen gedrag.</p>
+        {sharedError && <div className="form-error" role="alert">De gedeelde samenvattingen konden niet worden opgehaald.</div>}
+        {view.summaries.map((q) => (
+          <QuestionBlock key={q.id} q={q} index={config.questions.findIndex((x) => x.id === q.id)} config={config} />
+        ))}
+        {view.hidden.length > 0 && (
+          <p className="tiny mt-8">
+            {view.hidden.length} gedeelde {view.hidden.length === 1 ? "vraag heeft" : "vragen hebben"} nog minder dan {SHARE_MIN_N} geloofwaardige antwoorden en {view.hidden.length === 1 ? "wordt" : "worden"} nog niet getoond.
+          </p>
+        )}
+        <p className="tiny mt-8">
+          {shared.length
+            ? "Je ziet de kernvraag en de samenvattingen die het onderzoeksteam deelt; open antwoorden blijven bij het onderzoeksteam."
+            : "Alleen de vooraf vastgelegde kernvraag is zichtbaar; de overige antwoorden blijven bij het onderzoeksteam."}{" "}
+          Zelfrapportage, geen waargenomen gedrag.
+        </p>
       </div>
     );
   }
@@ -94,9 +118,10 @@ export async function SurveyResults({ ideaId, exp, h, m, canWrite }: { ideaId: s
                 </tbody>
               </table>
               <p className="tiny mt-8">
-                {s.responses} {s.responses === 1 ? "antwoord" : "antwoorden"} ontvangen · {s.all.tooFast} te snel ingevuld en niet meegeteld. Uitgenodigde respondenten zijn bekende mensen; via een open
-                link kunnen ook bots of mensen buiten de doelgroep meedoen.
+                {s.responses} {s.responses === 1 ? "antwoord" : "antwoorden"} ontvangen. Uitgenodigde respondenten zijn bekende mensen; via een open link kunnen ook bots of mensen
+                buiten de doelgroep meedoen.
               </p>
+              <Excluded k={s.all} />
             </>
           ) : (
             <p className="sub">Nog geen gegevens.</p>
@@ -117,13 +142,15 @@ export async function SurveyResults({ ideaId, exp, h, m, canWrite }: { ideaId: s
           <p className="sub">{exp.state === "draft" || exp.state === "ready_for_review" || exp.state === "approved" ? "Na de start verschijnen hier de antwoorden per vraag." : "Er zijn nog geen antwoorden binnen."}</p>
         ) : (
           <>
-            <p className="tiny" style={{ marginTop: -8 }}>Alle geloofwaardige antwoorden (uitnodiging en open link samen). De CSV bevat geen e-mailadressen; contactgegevens in open antwoorden zijn verwijderd.</p>
-            {summaries.map((q, i) => (
-              <QuestionBlock key={q.id} q={q} index={i} config={config} />
+            <p className="tiny" style={{ marginTop: -8 }}>Alle geloofwaardige antwoorden uit de doelgroep (uitnodiging en open link samen); controlevragen staan niet in dit overzicht. De CSV bevat geen e-mailadressen; contactgegevens in open antwoorden zijn verwijderd.</p>
+            {summaries.map((q) => (
+              <QuestionBlock key={q.id} q={q} index={config.questions.findIndex((x) => x.id === q.id)} config={config} />
             ))}
           </>
         )}
       </div>
+
+      <ShareCard ideaId={ideaId} expId={exp.id} config={config} shared={shared} />
 
       {open.length > 0 && (
         <div className="card mt-18">
@@ -138,6 +165,54 @@ export async function SurveyResults({ ideaId, exp, h, m, canWrite }: { ideaId: s
         </div>
       )}
     </>
+  );
+}
+
+// What did not count, and why: outside the target group (screening) and not believable (by reason).
+function Excluded({ k }: { k: KeyMetric }) {
+  const x = notBelievable(k);
+  return (
+    <dl className="mt-8" style={{ margin: "8px 0 0", fontSize: 12 }}>
+      <div className="data-row">
+        <dt>Buiten doelgroep</dt>
+        <dd className="num" style={{ margin: 0, fontWeight: 800 }}>{k.screenedOut}</dd>
+      </div>
+      <div className="data-row">
+        <dt>Niet geloofwaardig{x > 0 ? `: ${notBelievableText(k)}` : ""}</dt>
+        <dd className="num" style={{ margin: 0, fontWeight: 800 }}>{x}</dd>
+      </div>
+    </dl>
+  );
+}
+
+// Consultants choose which closed questions clients see as a summary.
+function ShareCard({ ideaId, expId, config, shared }: { ideaId: string; expId: string; config: SurveyConfig; shared: string[] }) {
+  const options = shareableQuestions(config);
+  return (
+    <div className="card mt-18">
+      <h2 className="as-h3">Delen met de opdrachtgever</h2>
+      <p className="sub mt-8">
+        Opdrachtgevers zien altijd de kernvraag. Kies welke gesloten vragen ze daarnaast als samenvatting zien (aantallen per antwoord, gemiddelde en mediaan). Open
+        antwoorden worden nooit gedeeld, en een vraag verschijnt pas vanaf {SHARE_MIN_N} geloofwaardige antwoorden.
+      </p>
+      {options.length === 0 ? (
+        <p className="tiny">Deze enquête heeft naast open vragen geen vragen die gedeeld kunnen worden.</p>
+      ) : (
+        <ActionForm action={saveSurveyShare.bind(null, ideaId, expId)} submitLabel="Deelinstelling opslaan" submitClass="btn soft sm">
+          <fieldset style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+            <legend className="sr-only">Vragen die opdrachtgevers als samenvatting zien</legend>
+            {options.map((q) => (
+              <label key={q.id} className="check-row">
+                <input type="checkbox" name="share" value={q.id} defaultChecked={shared.includes(q.id)} />
+                <span>
+                  Vraag {config.questions.indexOf(q) + 1}: {q.text} <span className="tiny">({QUESTION_TYPES[q.type].toLowerCase()}{q.id === config.key_question ? ", kernvraag" : ""})</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        </ActionForm>
+      )}
+    </div>
   );
 }
 
