@@ -144,7 +144,9 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   // Once saved, the picker folds away (its own confirmation with it) and the chosen base rate is shown.
   await expect(page.locator("summary", { hasText: "Andere referentie kiezen" })).toBeVisible();
   await page.goto(`${ideaUrl}/evidence`);
-  await expect(page.getByRole("button", { name: "Bewaar mijn keuze" })).toBeDisabled();
+  // Eerst voorspellen (golf B, punt 15): de bewijspagina blijft vergrendeld tot de eigen voorspelling er is.
+  await expect(page.getByRole("link", { name: /Geef eerst je voorspelling/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Bewaar mijn keuze" })).toHaveCount(0);
   await page.getByLabel("Waarom? (één zin)", { exact: true }).fill("Weinig gedragsbewijs, dus dicht bij het basispercentage.");
   await page.getByRole("button", { name: "Leg mijn voorspelling vast" }).click();
   // The form makes way for the recorded forecast (and the others for this moment).

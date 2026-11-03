@@ -237,7 +237,7 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
   refresh(ideaId);
   const msg: Record<string, string> = {
     ready_for_review: "Klaar voor review. Controleer de Test Card en keur goed.",
-    approved: "Goedgekeurd. De hypothese en drempels zijn nu vergrendeld.",
+    approved: "Goedgekeurd. De hypothese en drempels zijn nu vergrendeld, net als de beslisregel van het dossier (als die er is).",
     live: "De test is live. Metingen lopen; een uitspraak volgt na de eindconditie.",
     paused: "Gepauzeerd. Bezoeken worden nu niet geteld.",
     ended: "Afgerond. Maak nu de Learning Card.",

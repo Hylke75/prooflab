@@ -462,7 +462,21 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 {r.decision.rationale}
                 {r.decision.nextStep ? ` Volgende stap: ${r.decision.nextStep}.` : ""} Vastgelegd op {date(r.decision.at)}.{" "}
                 {r.decision.confirmedAt ? `Bevestigd door de opdrachtgever op ${date(r.decision.confirmedAt)}${r.decision.comment ? ` (“${r.decision.comment}”)` : ""}.` : "Nog niet bevestigd door de opdrachtgever."}
+                {r.decision.extendWeeks ? ` Na de sprint volgde een verlengde testfase van ${r.decision.extendWeeks} weken; het definitieve besluit en de uitkomstklok kwamen daarna.` : ""}
+                {r.decision.confirmedAt && r.decision.reviewedAgainst ? " De opdrachtgever zag daarbij de samenvatting “Wat ging tegen” (mislukte tests, tegenbewijs, begrensde aannames en afwijkingen van de beslisregel)." : ""}
               </p>
+            )}
+            {r.decision?.rule && (
+              <div className="mt-12">
+                <p>
+                  <strong>Beslisregel: {r.decision.rule.met ? "gehaald" : "niet gehaald"}.</strong> {r.decision.rule.lines.join("; ")}.
+                </p>
+                {r.decision.rule.deviation && (
+                  <p className="mt-8">
+                    <strong>Afwijking van de beslisregel:</strong> {r.decision.rule.deviation.label.toLowerCase()}. Motivering: {r.decision.rule.deviation.reason}
+                  </p>
+                )}
+              </div>
             )}
           </section>
 
@@ -490,14 +504,14 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               </p>
               {r.prediction.moments.length > 0 && !("revealed" in r.prediction && r.prediction.revealed === false) && (
                 <table className="table mt-12">
-                  <thead><tr><th>Moment</th><th>Mensen (gemiddeld, spreiding)</th><th>AI</th>{r.prediction.result ? <th>Brier per voorspelling</th> : null}</tr></thead>
+                  <thead><tr><th>Moment</th><th>Mensen (gemiddeld, spreiding)</th><th>AI</th>{r.prediction.result && !r.prediction.stop ? <th>Brier per voorspelling</th> : null}</tr></thead>
                   <tbody>
                     {r.prediction.moments.map((m) => (
                       <tr key={m.moment}>
                         <td>{m.moment}</td>
                         <td className="num">{m.people ? `${pct0(m.people.mean)} (${pct0(m.people.min)}–${pct0(m.people.max)}, n=${m.people.n})` : "—"}</td>
                         <td className="num">{m.ai != null ? pct0(m.ai) : "—"}</td>
-                        {r.prediction.result ? <td className="num">{m.forecasts.map((f) => `${f.who} ${f.brier?.toFixed(2)}`).join(" · ")}</td> : null}
+                        {r.prediction.result && !r.prediction.stop ? <td className="num">{m.forecasts.map((f) => `${f.who} ${f.brier?.toFixed(2)}`).join(" · ")}</td> : null}
                       </tr>
                     ))}
                   </tbody>
@@ -510,9 +524,18 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 </p>
               )}
               <p className="explain">
-                Iedereen geeft zijn kans zonder de anderen te zien. Een AI-voorspelling telt niet mee in het gemiddelde en is geen bewijs. De Brier-score
+                Iedereen geeft zijn kans zonder de anderen te zien. De AI telt als één stem (het gemiddelde van de modellen), niet mee in het gemiddelde van de mensen, en is geen bewijs. De Brier-score
                 meet achteraf hoe goed een kans was: 0 is perfect, 0,25 is wat je haalt met steeds 50%.
               </p>
+              {r.prediction.stop && (
+                <p className="mt-8">
+                  Dit dossier is gestopt of gepauzeerd. De oorspronkelijke uitkomstvraag is daarmee vervallen en de voorspellingen worden niet gescoord als
+                  slagingskans. Zes maanden na het besluit volgt de vraag: was stoppen achteraf terecht?{" "}
+                  {r.prediction.stop.review
+                    ? `Vastgelegd op ${date(r.prediction.stop.review.at)}: ${r.prediction.stop.review.justified.toLowerCase()}. ${r.prediction.stop.review.evidence}`
+                    : "Nog niet beantwoord."}
+                </p>
+              )}
               {r.prediction.checkins.map((c, i) => (
                 <p className="mt-8" key={i}>Tussenstand {date(c.at)}: {c.onTrack.toLowerCase()}{c.value != null ? ` (stand: ${c.value})` : ""}. {c.note}</p>
               ))}
@@ -520,6 +543,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 <p className="mt-8">
                   Vastgelegd op {date(r.prediction.result.at)}: {r.prediction.result.achieved.toLowerCase()}
                   {r.prediction.result.value != null ? ` (werkelijk: ${r.prediction.result.value})` : ""}. {r.prediction.result.evidence}
+                  {r.prediction.result.effort ? ` Inzet: ${r.prediction.result.effort.toLowerCase()}.` : ""}
+                  {r.prediction.result.insufficient ? " Onvoldoende uitgevoerd: de uitkomst zegt vooral iets over de uitvoering." : ""}
                 </p>
               )}
             </section>

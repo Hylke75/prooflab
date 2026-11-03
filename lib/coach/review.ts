@@ -32,7 +32,7 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
   const id = ideaId;
   const exact = { count: "exact" as const };
   const head = { count: "exact" as const, head: true };
-  const [claims, sources, competitors, assumptions, experiments, testEvents, interviews, observations, cards, checks, decisions, forecasts, outcome, checkins, replies, ideaRow] =
+  const [claims, sources, competitors, assumptions, experiments, testEvents, interviews, observations, cards, checks, decisions, forecasts, outcome, checkins, replies, ideaRow, stopReview] =
     await Promise.all([
       db.from("claims").select("updated_at", exact).eq("idea_id", id).order("updated_at", { ascending: false }).limit(1),
       db.from("sources").select("created_at", exact).eq("idea_id", id).order("created_at", { ascending: false }).limit(1),
@@ -51,6 +51,8 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
       db.from("outreach_events").select("received_at", exact).eq("idea_id", id).eq("event_type", "reply").order("received_at", { ascending: false }).limit(1),
       // Uitkomstdefinitie en basispercentage: daarop reageren de regels outcome_undefined en forecast_missing.
       db.from("ideas").select("outcome_statement, reference_class").eq("id", id).maybeSingle(),
+      // Het antwoord op de stopvraag (golf B) telt als vastgelegde uitkomst; zonder tabel is het er niet.
+      db.from("stop_reviews").select("idea_id", head).eq("idea_id", id),
     ]);
   const tally = (rows: { [k: string]: unknown }[] | null, key: string) => {
     const m = new Map<string, number>();
@@ -84,7 +86,7 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
     decisions_at: maxIso(decisionRows.map((d) => d.decided_at)),
     decisions_confirmed: decisionRows.filter((d) => d.client_confirmed_at).length,
     forecasts: forecasts.count ?? 0,
-    outcome: (outcome.count ?? 0) > 0,
+    outcome: (outcome.count ?? 0) > 0 || (!stopReview.error && (stopReview.count ?? 0) > 0),
     checkins: checkins.count ?? 0,
     outreach_replies: replies.count ?? 0,
     outreach_replies_at: replies.data?.[0]?.received_at ?? null,
@@ -97,7 +99,8 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
 // Everything the rules need, from the full dossier plus the prediction and signal tables.
 async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today: string): Promise<CoachFacts> {
   const id = d.idea.id;
-  const [sources, forecasts, outcome, checkins, replies, imports, orgResolved] = await Promise.all([
+  const stopped = d.idea.outcome_question === "stop_review";
+  const [sources, forecasts, outcome, checkins, replies, imports, orgResolved, stopReview, rule] = await Promise.all([
     db.from("sources").select("source_type").eq("idea_id", id),
     // Row level security returns only the forecasts this consultant may see (blind rule).
     db.from("forecasts").select("moment, forecaster_kind, probability").eq("idea_id", id),
@@ -106,6 +109,8 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
     db.from("outreach_events").select("received_at", { count: "exact" }).eq("idea_id", id).eq("event_type", "reply").order("received_at", { ascending: false }).limit(1),
     db.from("sources").select("created_at").eq("idea_id", id).eq("source_type", "outreach").order("created_at", { ascending: false }).limit(1),
     db.rpc("own_base_rate", { p_org: d.idea.org_id, p_project_type: null, p_min: 0 }),
+    stopped ? db.from("stop_reviews").select("idea_id").eq("idea_id", id).maybeSingle() : Promise.resolve({ data: null }),
+    db.from("decision_rules").select("locked_at").eq("idea_id", id).maybeSingle(),
   ]);
   const idea = d.idea;
   return {
@@ -146,14 +151,15 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
     observations: d.observations.map((o) => ({ kind: o.kind, isBehaviour: o.is_behaviour, isSynthetic: o.is_synthetic, createdAt: o.created_at })),
     learningCards: d.learningCards.map((c) => ({ id: c.id, status: c.status, approvedAt: c.approved_at })),
     realityCheck: d.realityCheck ? { id: d.realityCheck.id, createdAt: d.realityCheck.created_at } : null,
-    decisions: d.decisions.map((x) => ({ id: x.id, decidedAt: x.decided_at, confirmed: !!x.client_confirmed_at })),
+    decisions: d.decisions.map((x) => ({ id: x.id, decidedAt: x.decided_at, confirmed: !!x.client_confirmed_at, action: x.action, extendWeeks: x.extend_weeks ?? null })),
     decisionDeadline: idea.decision_deadline,
     clientDeciderInvited: d.members.some((m) => m.role === "client_decider"),
     outcome: {
       defined: !!idea.outcome_statement,
       due: idea.outcome_due,
       clockStart: idea.outcome_clock_start,
-      resolved: !!outcome.data,
+      resolved: stopped ? !!stopReview.data : !!outcome.data,
+      question: stopped ? "stop_review" : "success",
       checkins: (checkins.data ?? []).map((c) => c.created_at),
     },
     forecasts: (forecasts.data ?? []).map((f) => ({ moment: f.moment, kind: f.forecaster_kind, probability: Number(f.probability) })),
@@ -162,6 +168,7 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
     baseRate: idea.base_rate_low != null && idea.base_rate_high != null ? { low: Number(idea.base_rate_low), high: Number(idea.base_rate_high) } : null,
     // Unknown (schema missing) counts as "enough": then the starting-calibration rule stays quiet.
     orgResolved: orgResolved.error ? Number.POSITIVE_INFINITY : Number(orgResolved.data?.[0]?.resolved ?? 0),
+    decisionRule: rule.error ? undefined : { defined: !!rule.data, locked: !!rule.data?.locked_at },
     outreach: { replies: replies.count ?? 0, latestReplyAt: replies.data?.[0]?.received_at ?? null, latestImportAt: imports.data?.[0]?.created_at ?? null },
   };
 }

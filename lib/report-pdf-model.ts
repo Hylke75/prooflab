@@ -300,13 +300,19 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
       rows: [
         ["Besluit", r.decision.action],
         ["Vastgelegd op", nlDate(r.decision.at)],
-        ["Bevestiging opdrachtgever", r.decision.confirmedAt ? `Bevestigd op ${nlDate(r.decision.confirmedAt)}` : "Nog niet bevestigd"],
+        ...(r.decision.extendWeeks ? [["Verlengde testfase", `${r.decision.extendWeeks} weken na de sprint`]] : []),
+        ["Bevestiging opdrachtgever", r.decision.confirmedAt ? `Bevestigd op ${nlDate(r.decision.confirmedAt)}${r.decision.reviewedAgainst ? ", na de samenvatting “Wat ging tegen”" : ""}` : "Nog niet bevestigd"],
         ...(r.decision.comment ? [["Opmerking opdrachtgever", `“${r.decision.comment}”`]] : []),
         ["Rapportversie", `Versie ${meta.version}, momentopname van ${nlDate(r.generatedAt)}`],
         ["Opgesteld door", `${r.preparedBy}${r.createdBy ? ` (${r.createdBy})` : ""}`],
         ["Status rapport", meta.shared ? "Gedeeld met opdrachtgever" : "Concept, niet gedeeld"],
       ],
     });
+    // Golf B, punt 6: toets aan de beslisregel en de motivering bij afwijken.
+    if (r.decision.rule) {
+      decision.push({ t: "p", text: `Beslisregel: ${r.decision.rule.met ? "gehaald" : "niet gehaald"}. ${r.decision.rule.lines.join("; ")}.` });
+      if (r.decision.rule.deviation) decision.push({ t: "p", text: `Afwijking van de beslisregel: ${r.decision.rule.deviation.label.toLowerCase()}. Motivering: ${r.decision.rule.deviation.reason}` });
+    }
   } else {
     decision.push({ t: "p", text: "Er is nog geen besluit vastgelegd. Een besluit wordt altijd door een mens genomen en met datum en auteur bewaard.", muted: true });
   }
@@ -329,7 +335,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
   // 11 Prediction (blind until the outcome is known)
   if (r.prediction) {
     const p = r.prediction;
-    const revealed = p.result != null && (p as { revealed?: boolean }).revealed !== false;
+    const revealed = (p.result != null || !!p.stop?.review) && (p as { revealed?: boolean }).revealed !== false;
     const blocks: Block[] = [];
     blocks.push(
       p.outcome.statement
@@ -356,7 +362,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
           m.moment,
           m.people ? `${pct0(m.people.mean)} (${pct0(m.people.min)}–${pct0(m.people.max)}, n=${m.people.n})` : "—",
           m.ai != null ? pct0(m.ai) : "—",
-          m.forecasts.map((f) => `${f.who} ${f.brier?.toFixed(2) ?? "—"}`).join(" · "),
+          p.stop ? "Niet gescoord (gestopt)" : m.forecasts.map((f) => `${f.who} ${f.brier?.toFixed(2) ?? "—"}`).join(" · "),
         ]),
       });
     } else if (p.moments.length) {
@@ -365,9 +371,19 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
         text: `Voorspellingen vastgelegd: ${p.moments.map((m) => `${m.moment.toLowerCase()} (${m.count})`).join(", ")}. De kansen zelf blijven verborgen tot de uitkomst bekend is, zodat niemand op een ander kan afgaan.`,
       });
     }
-    blocks.push({ t: "p", small: true, muted: true, text: "Iedereen geeft zijn kans zonder de anderen te zien. Een AI-voorspelling telt niet mee in het gemiddelde en is geen bewijs." });
+    blocks.push({ t: "p", small: true, muted: true, text: "Iedereen geeft zijn kans zonder de anderen te zien. De AI telt als één stem (het gemiddelde van de modellen), niet mee in het gemiddelde van de mensen, en is geen bewijs." });
     for (const c of p.checkins) blocks.push({ t: "p", text: `Tussenstand ${nlDate(c.at)}: ${c.onTrack.toLowerCase()}${c.value != null ? ` (stand: ${c.value})` : ""}. ${c.note ?? ""}` });
-    if (p.result) blocks.push({ t: "p", text: `Vastgelegd op ${nlDate(p.result.at)}: ${p.result.achieved.toLowerCase()}${p.result.value != null ? ` (werkelijk: ${p.result.value})` : ""}. ${p.result.evidence}` });
+    // Golf B, punt 1: na een stop of pauze de stopvraag; voorspellingen worden niet gescoord als slagingskans.
+    if (p.stop)
+      blocks.push({
+        t: "p",
+        text: `Dit dossier is gestopt of gepauzeerd. De oorspronkelijke uitkomstvraag is daarmee vervallen en de voorspellingen worden niet gescoord als slagingskans. Zes maanden na het besluit volgt de vraag: was stoppen achteraf terecht? ${p.stop.review ? `Vastgelegd op ${nlDate(p.stop.review.at)}: ${p.stop.review.justified.toLowerCase()}. ${p.stop.review.evidence}` : "Nog niet beantwoord."}`,
+      });
+    if (p.result)
+      blocks.push({
+        t: "p",
+        text: `Vastgelegd op ${nlDate(p.result.at)}: ${p.result.achieved.toLowerCase()}${p.result.value != null ? ` (werkelijk: ${p.result.value})` : ""}. ${p.result.evidence}${p.result.effort ? ` Inzet: ${p.result.effort.toLowerCase()}.` : ""}${p.result.insufficient ? " Onvoldoende uitgevoerd: de uitkomst zegt vooral iets over de uitvoering." : ""}`,
+      });
     chapters.push({ id: "prediction", eyebrow: "11 / VOORSPELLING EN UITKOMST", title: p.result ? `Uitkomst: ${p.result.achieved.toLowerCase()}.` : "Wat verwachten we, en hoe toetsen we dat?", blocks });
   }
 

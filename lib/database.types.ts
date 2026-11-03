@@ -547,6 +547,10 @@ export type Database = {
           evidence: string
           resolved_by: string
           resolved_at: string
+          started: boolean | null
+          effort_hours: number | null
+          budget_pct_of_plan: number | null
+          execution_insufficient: boolean | null
         }
         Insert: {
           idea_id: string
@@ -555,6 +559,10 @@ export type Database = {
           evidence: string
           resolved_by?: string
           resolved_at?: string
+          started?: boolean | null
+          effort_hours?: number | null
+          budget_pct_of_plan?: number | null
+          execution_insufficient?: boolean | null
         }
         Update: {
           idea_id?: string
@@ -563,7 +571,38 @@ export type Database = {
           evidence?: string
           resolved_by?: string
           resolved_at?: string
+          started?: boolean | null
+          effort_hours?: number | null
+          budget_pct_of_plan?: number | null
+          execution_insufficient?: boolean | null
         }
+        Relationships: []
+      }
+      // Golf B (punt 6): beslisregel per dossier en de aannames met hun minimale kans.
+      decision_rules: {
+        Row: { idea_id: string; primary_experiment_id: string | null; note: string | null; created_by: string | null; created_at: string; updated_at: string; locked_at: string | null; recorded_late: boolean }
+        Insert: { idea_id: string; primary_experiment_id?: string | null; note?: string | null; created_by?: string | null; created_at?: string; updated_at?: string; locked_at?: string | null; recorded_late?: boolean }
+        Update: { idea_id?: string; primary_experiment_id?: string | null; note?: string | null; created_by?: string | null; created_at?: string; updated_at?: string; locked_at?: string | null; recorded_late?: boolean }
+        Relationships: []
+      }
+      decision_rule_assumptions: {
+        Row: { idea_id: string; assumption_id: string; min_probability: number }
+        Insert: { idea_id: string; assumption_id: string; min_probability: number }
+        Update: { idea_id?: string; assumption_id?: string; min_probability?: number }
+        Relationships: []
+      }
+      // Golf B (punt 2): dossier met onvoldoende uitvoering uit de kalibratie gehaald, met reden.
+      calibration_exclusions: {
+        Row: { idea_id: string; reason: string; excluded_by: string; excluded_at: string }
+        Insert: { idea_id: string; reason: string; excluded_by?: string; excluded_at?: string }
+        Update: { idea_id?: string; reason?: string; excluded_by?: string; excluded_at?: string }
+        Relationships: []
+      }
+      // Golf B (punt 1): "Was stoppen achteraf terecht?"
+      stop_reviews: {
+        Row: { idea_id: string; justified: string; evidence: string; reviewed_by: string; reviewed_at: string }
+        Insert: { idea_id: string; justified: string; evidence: string; reviewed_by?: string; reviewed_at?: string }
+        Update: { idea_id?: string; justified?: string; evidence?: string; reviewed_by?: string; reviewed_at?: string }
         Relationships: []
       }
       outcome_checkins: {
@@ -1222,6 +1261,11 @@ export type Database = {
           next_step: string | null
           rationale: string
           reality_check_id: string
+          rule_met: boolean | null
+          rule_evaluation: Json | null
+          rule_deviation_reason: string | null
+          reviewed_against_summary: Json | null
+          extend_weeks: number | null
         }
         Insert: {
           action: string
@@ -1236,6 +1280,11 @@ export type Database = {
           next_step?: string | null
           rationale: string
           reality_check_id: string
+          rule_met?: boolean | null
+          rule_evaluation?: Json | null
+          rule_deviation_reason?: string | null
+          reviewed_against_summary?: Json | null
+          extend_weeks?: number | null
         }
         Update: {
           action?: string
@@ -1250,6 +1299,11 @@ export type Database = {
           next_step?: string | null
           rationale?: string
           reality_check_id?: string
+          rule_met?: boolean | null
+          rule_evaluation?: Json | null
+          rule_deviation_reason?: string | null
+          reviewed_against_summary?: Json | null
+          extend_weeks?: number | null
         }
         Relationships: [
           {
@@ -1500,6 +1554,7 @@ export type Database = {
       ideas: {
         Row: {
           outcome_clock_start: string | null
+          outcome_question: string
           outcome_min_value_per_customer: number | null
           outcome_revenue_target: number | null
           outcome_measure_date: string | null
@@ -1541,6 +1596,7 @@ export type Database = {
         }
         Insert: {
           outcome_clock_start?: string | null
+          outcome_question?: string
           outcome_min_value_per_customer?: number | null
           outcome_revenue_target?: number | null
           outcome_measure_date?: string | null
@@ -1582,6 +1638,7 @@ export type Database = {
         }
         Update: {
           outcome_clock_start?: string | null
+          outcome_question?: string
           outcome_min_value_per_customer?: number | null
           outcome_revenue_target?: number | null
           outcome_measure_date?: string | null
@@ -2821,7 +2878,7 @@ export type Database = {
       job_suppressed_hashes: { Args: { p_key: string; p_job: string; p_hashes: string[] }; Returns: string[] }
       job_survey_sent: { Args: { p_key: string; p_job: string; p_invitation: string; p_message_id: string }; Returns: boolean }
       claim_invitations: { Args: never; Returns: number }
-      confirm_decision: { Args: { p_comment: string; p_decision: string }; Returns: boolean }
+      confirm_decision: { Args: { p_comment: string; p_decision: string; p_reviewed_against_summary: Json }; Returns: boolean }
       create_organization: { Args: { p_name: string }; Returns: string }
       get_public_test: { Args: { p_slug: string }; Returns: Json }
       is_org_member: { Args: { p_org: string }; Returns: boolean }
@@ -2954,6 +3011,12 @@ export type Database = {
       own_base_rate: {
         Args: { p_org: string; p_project_type: string | null; p_min?: number }
         Returns: { resolved: number; achieved: number }[]
+      }
+      extended_phase_end: { Args: { p_idea: string }; Returns: string | null }
+      save_decision_rule: { Args: { p_idea: string; p_primary: string | null; p_note: string; p_conditions: Json }; Returns: string }
+      stop_review_counts: {
+        Args: { p_org: string }
+        Returns: { stopped: number; justified: number; not_justified: number; unknown: number; open: number }[]
       }
       set_learned_weights: { Args: { p_org: string; p_on: boolean }; Returns: boolean }
       learning_evidence_counts: {

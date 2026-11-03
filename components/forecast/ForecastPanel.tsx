@@ -4,17 +4,19 @@ import { ProbabilityField } from "./ProbabilityField";
 import { BaseRateSummary, baseRateStart } from "./BaseRate";
 import { requestAiForecast, submitForecast } from "@/app/app/ideas/[id]/outcome/actions";
 import type { ForecastRow, ForecastView } from "@/lib/forecast-data";
-import { aggregate, FORECAST_MOMENTS, MOMENT_LABELS, pct, type ForecastMoment } from "@/lib/domain/forecast";
+import { aggregate, aiAsOneVote, FORECAST_MOMENTS, MOMENT_LABELS, pct, type ForecastMoment } from "@/lib/domain/forecast";
 import { PROVIDER_LABELS } from "@/lib/ai/providers/config";
 import { ensembleMean } from "@/lib/ai/providers/select";
 
 const KIND_PILL = { consultant: "blue", client: "orange", ai: "gray" } as const;
 
+// Golf B, punt 15: de AI telt als één stem, het gemiddelde van de modellen. De losse modellen staan eronder ter info.
 function ForecastList({ rows }: { rows: ForecastRow[] }) {
-  const agg = aggregate(rows.filter((r) => r.kind !== "ai").map((r) => r.probability));
+  const people = rows.filter((r) => r.kind !== "ai");
+  const agg = aggregate(people.map((r) => r.probability));
   const aiRows = rows.filter((r) => r.kind === "ai");
-  const ai = aiRows[0];
   const aiMean = ensembleMean(aiRows.map((r) => r.probability));
+  const all = aggregate(aiAsOneVote(rows).map((v) => v.probability));
   return (
     <>
       {agg && (
@@ -29,37 +31,47 @@ function ForecastList({ rows }: { rows: ForecastRow[] }) {
           </div>
           <div>
             <div className="tiny">Voorspellers</div>
-            <div className="mini-kpi num" style={{ fontSize: 24 }}>{agg.n}</div>
+            <div className="mini-kpi num" style={{ fontSize: 24 }}>{agg.n}{aiMean != null ? " + AI" : ""}</div>
           </div>
         </div>
       )}
       {agg && agg.n > 1 && (
         <p className="tiny">Standaardafwijking {Math.round(agg.sd * 100)} procentpunt. Een grote spreiding betekent dat de inschattingen uiteenlopen: bespreek waarom.</p>
       )}
-      {rows.map((r) => (
+      {people.map((r) => (
         <div className="evidence-event" key={r.id}>
           <div className="icon-circle num" style={{ width: 46, fontSize: 14, fontWeight: 700, borderRadius: "var(--radius-pill)" }}>{pct(r.probability)}</div>
           <div>
-            <strong>{r.name}</strong>{" "}
-            <span className={`pill ${KIND_PILL[r.kind]}`}>{r.kind === "ai" ? "AI-voorspelling · geen bewijs" : r.kind === "consultant" ? "Consultant" : "Opdrachtgever"}</span>
+            <strong>{r.name}</strong> <span className={`pill ${KIND_PILL[r.kind]}`}>{r.kind === "consultant" ? "Consultant" : "Opdrachtgever"}</span>
             <p>{r.rationale}</p>
-            <p className="tiny">
-              {new Date(r.createdAt).toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" })}
-              {r.model ? ` · model ${r.model}` : ""}
-            </p>
+            <p className="tiny">{new Date(r.createdAt).toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" })}</p>
           </div>
         </div>
       ))}
-      {aiRows.length > 1 && aiMean != null && (
-        <div className="note">
-          <strong>AI-voorspellingen: gemiddeld {pct(aiMean)}</strong> ({aiRows.map((r) => `${r.name.replace(/^AI · /, "")} ${pct(r.probability)}`).join(", ")}).
-          Elk model voorspelde los van de andere, met hetzelfde dossier. Overeenstemming tussen modellen is geen bewijs: ze lezen dezelfde tekst.
+      {aiMean != null && (
+        <div className="evidence-event">
+          <div className="icon-circle num" style={{ width: 46, fontSize: 14, fontWeight: 700, borderRadius: "var(--radius-pill)" }}>{pct(aiMean)}</div>
+          <div>
+            <strong>AI{aiRows.length > 1 ? ` (gemiddelde van ${aiRows.length} modellen)` : ""}</strong> <span className={`pill ${KIND_PILL.ai}`}>AI-voorspelling · één stem · geen bewijs</span>
+            {aiRows.length === 1 && <p>{aiRows[0].rationale}</p>}
+            {aiRows.length > 1 && (
+              <details className="mt-8">
+                <summary className="text-link">Per model</summary>
+                {aiRows.map((r) => (
+                  <p key={r.id}>
+                    <strong>{r.name.replace(/^AI · /, "")} {pct(r.probability)}</strong>: {r.rationale}
+                  </p>
+                ))}
+              </details>
+            )}
+            <p className="tiny">{aiRows.map((r) => r.model).filter(Boolean).map((m) => `model ${m}`).join(" · ")}</p>
+          </div>
         </div>
       )}
-      {ai && (
+      {aiMean != null && (
         <p className="tiny">
-          Het gemiddelde bovenaan is alleen over mensen. {aiRows.length > 1 ? "De AI-voorspellingen krijgen elk een eigen score" : "De AI-voorspelling krijgt een eigen score"} en
-          tellen nooit als bewijs.
+          De AI telt als één stem: het gemiddelde van de modellen{all ? `; met de AI als één stem erbij is het gemiddelde ${pct(all.mean)}` : ""}. Modellen lezen hetzelfde dossier, dus
+          hun overeenstemming is geen onafhankelijk oordeel en nooit bewijs. In de kalibratie telt de AI ook als één voorspeller.
         </p>
       )}
     </>
@@ -133,7 +145,7 @@ export function ForecastPanel({ view, compact = false }: { view: ForecastView; c
               {view.aiPending.length > 1
                 ? `${view.aiPending.map((p) => PROVIDER_LABELS[p].name).join(", ")} voorspellen elk los van elkaar, met de uitkomstdefinitie, het basispercentage en een samenvatting van het dossier. Je ziet daarna elk getal en het gemiddelde.`
                 : `${PROVIDER_LABELS[view.aiPending[0]].name} krijgt de uitkomstdefinitie, het basispercentage en een samenvatting van het dossier.`}{" "}
-              Een AI-voorspelling telt als aparte voorspeller, nooit als bewijs.
+              De AI telt als één stem (het gemiddelde van de modellen), nooit als bewijs.
             </p>
           </ActionForm>
         )}

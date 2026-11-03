@@ -679,3 +679,91 @@ kans verandert niet.
   prijstest = prijskeuze, interviews = probleem in eigen gedrag (met de aantalregel: aanbetaling).
 - **Brier-scores (16).** Onder 30 uitkomsten staat bij elke Brier-score op de pagina Voorspelkwaliteit: "te weinig
   dossiers voor een betrouwbaar oordeel".
+
+## 12. Besluit en voorspelling (golf B, 7 november 2026)
+
+Uit de kritische controle van de werkwijze (`docs/VERBETERPLAN_WERKWIJZE.md`, golf B). Zes aanpassingen aan de brug
+van bewijs naar besluit en aan de voorspellus. Migratie `20261107100000_golf_b.sql`.
+
+### 12.1 Uitkomst na stop of pauze (punt 1)
+
+- Na een stop- of pauzebesluit is de oorspronkelijke uitkomst ("is het doel na zes maanden gehaald?") niet meer te
+  meten. Op het moment dat de uitkomstklok start, legt de database daarom de uitkomstvraag vast
+  (`ideas.outcome_question`): `success` na doorgaan, `stop_review` na stoppen of pauzeren. De vraag verandert daarna
+  nooit meer.
+- Bij de stopvraag ligt de vraagdatum altijd zes maanden na het besluit (de geplande meetdatum hoort bij de vervallen
+  succesvraag). Er is geen tussenstand na drie maanden.
+- Zes maanden later volgt "Was stoppen achteraf terecht?": ja, nee of onbekend, met bewijs (`stop_reviews`, eenmalig,
+  daarna een vast feit). Herinnering op het overzicht en coachregel `stop_review_due`.
+- Stopdossiers tellen **niet** mee in de kalibratie van slagingskansen (`forecast_scores`, `forecast_calibration`) en
+  niet in de eigen basisrate (`own_base_rate`). Hun voorspellingen worden niet gescoord als slagingskans; uitkomst-
+  pagina en rapport zeggen dat expliciet. Na de stop sluit het voorspelmoment.
+- Eigen telling **terechte stops** op Voorspelkwaliteit (`stop_review_counts`): terecht, onterecht, onbekend en nog
+  open. Het percentage terecht rekent alleen met ja en nee.
+- Bestaande dossiers: is de klok gestart door een stop- of pauzebesluit, dan krijgen ze bij de migratie de stopvraag.
+  Een al vastgelegde uitkomst blijft bewaard, maar telt niet meer mee in de kalibratie.
+
+### 12.2 Inzet bij de uitkomst (punt 2)
+
+- De uitkomst meet ook uitvoering. Bij elke nieuwe uitkomst legt de consultant de inzet vast: gestart ja/nee
+  (verplicht), bestede uren en besteed budget als percentage van het plan (optioneel, leeg = onbekend).
+- **Onvoldoende uitvoering** (`execution_insufficient`, berekend door de database, zelfde regel als
+  `lib/domain/effort.ts`): niet gestart, minder dan 50% van het geplande budget, of (als de inzet in de intake in uren
+  is opgegeven) minder dan de helft van die uren.
+- Zo'n dossier wordt gemarkeerd. Een consultant kan het met een reden uit de kalibratie halen
+  (`calibration_exclusions`); dat kan alleen bij onvoldoende uitvoering. Uitsluiten en weer meetellen komen met de
+  reden in het auditspoor. Uitgesloten dossiers tellen niet mee in scores, kalibratie en eigen basisrate.
+
+### 12.3 Beslisregel van bewijs naar besluit (punt 6)
+
+- Vóór de eerste goedgekeurde test legt het team op de aannamepagina vast wanneer het doorgaat: welke aannames boven
+  welke kans (5–95%) moeten uitkomen, en welke hoofdtest moet slagen (`decision_rules`, `decision_rule_assumptions`).
+  De hoofdtest is een experiment-id. Golf A voegt per aanname een hoofdtest toe (`is_primary`); de beslisregel kiest
+  daar los van het experiment dat voor het besluit de doorslag geeft. Na het samenvoegen hoort dat een hoofdtest te
+  zijn.
+- De regel gaat op slot bij de eerste goedgekeurde test (trigger op `experiments`), en uiterlijk bij het eerste
+  definitieve besluit. Wie de regel pas na de eerste goedgekeurde test vastlegt, krijgt een regel die meteen op slot
+  zit en in het rapport "achteraf vastgelegd" heet. Vastleggen kan alleen via `save_decision_rule` (regel en
+  voorwaarden in één keer).
+- Bij het besluit toont de bewijspagina per voorwaarde of die is gehaald (kans nu tegen de minimale kans; de hoofdtest
+  is geslaagd als de laatste goedgekeurde Learning Card "geslaagd" zegt). Het besluit bewaart die toets
+  (`rule_met`, `rule_evaluation`).
+- **Afwijken** is doorgaan terwijl de regel niet is gehaald, of stoppen/pauzeren terwijl hij wel is gehaald.
+  Bijsturen, verder testen en de verlengde testfase zijn geen definitief besluit en wijken dus niet af. Wie afwijkt,
+  motiveert dat in minstens één zin; de database dwingt dat af en zet de motivering in het auditspoor
+  (`rule_deviation`). Het rapport vermeldt toets en motivering. De database controleert ook wat ze zelf kan zien: een
+  hoofdtest zonder goedgekeurde geslaagde Learning Card kan de regel niet "gehaald" maken.
+
+### 12.4 Eerst voorspellen (punt 15)
+
+- Op elk voorspelmoment geeft iedereen (consultant én opdrachtgever) eerst de eigen voorspelling. Zolang het open
+  moment niet door deze gebruiker is voorspeld, zijn op de bewijspagina de sterkte van het bewijs, de kansen per
+  aanname, de Reality Check en andermans voorspellingen vergrendeld, en op de aannamepagina de risicokaart met de
+  berekende kansen. Een knop "Geef eerst je voorspelling" leidt naar het formulier. De vergrendeling geldt alleen als
+  voorspellen kan (uitkomstdefinitie en basispercentage liggen vast). De voorspellingen van anderen bleven al
+  verborgen in de database (`forecast_visible`).
+- De AI-voorspellingen (één per model) gelden als **één stem**: het gemiddelde van de modellen per dossier en moment.
+  Zo tellen ze in de kalibratie (`calibration_votes_internal` onder `forecast_scores` en `forecast_calibration`), in de
+  Brier-tabel van de uitkomst, op Voorspelkwaliteit en in het rapport. Modellen lezen hetzelfde dossier; hun
+  overeenstemming is geen onafhankelijk oordeel.
+
+### 12.5 Opdrachtgever bevestigt na "Wat ging tegen" (punt 18)
+
+- Bij het bevestigen van een besluit ziet de opdrachtgever verplicht de samenvatting "Wat ging tegen": mislukte tests
+  (laatste goedgekeurde Learning Card "niet geslaagd"), tegenbewijs (bevindingen met een tegensprekende, letterlijk
+  gecontroleerde bron; bezwaren, "probleem niet herkend" en tegenvoorbeelden), begrensde aannames (plafond actief) en
+  afwijkingen van de beslisregel. Pas na het openen of aanvinken kan hij bevestigen.
+- `confirm_decision(p_decision, p_comment, p_reviewed_against_summary)` eist een gelezen, complete samenvatting en
+  telt zelf na of alle mislukte tests en de afwijking erin staan. De samenvatting wordt met tijdstempel bij het besluit
+  bewaard (`decisions.reviewed_against_summary`) en verandert daarna niet. De oude variant zonder samenvatting bestaat
+  niet meer.
+
+### 12.6 Verlengde testfase (punt 20)
+
+- Gedragsbewijs past niet altijd in de sprint. Na de sprint kan het team één keer een verlengde testfase van 2 tot 8
+  weken nemen, met het tussenbesluit "doorgaan met testen" (`decisions.action = 'extend'`, `extend_weeks`).
+- Zolang de fase loopt, weigert de database een definitief besluit en het starten van de uitkomstklok. Na de fase volgt
+  het definitieve besluit (met de Reality Check van dat moment) en start de klok. Na een definitief besluit is er geen
+  verlengde fase meer. Coachregel `extension_ending` meldt het einde.
+- Bekende beperking: het voorspelmoment "bij het besluit" is één moment. Wie al vóór het tussenbesluit voorspelde,
+  voorspelt na de verlengde fase niet opnieuw.

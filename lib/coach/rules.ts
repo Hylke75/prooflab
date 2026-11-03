@@ -4,6 +4,7 @@
 
 import { OWN_BASE_RATE_MIN, openMoment } from "@/lib/domain/forecast";
 import { OVERCONFIDENT_GAP, overconfidence } from "@/lib/domain/calibration";
+import { extendedPhase } from "@/lib/domain/extension";
 
 export type NoteKind = "tip" | "warning" | "question" | "praise";
 export type NoteAudience = "consultant" | "everyone";
@@ -64,10 +65,12 @@ export type CoachFacts = {
   observations: { kind: string; isBehaviour: boolean; isSynthetic: boolean; createdAt: string }[];
   learningCards: { id: string; status: string; approvedAt: string | null }[];
   realityCheck: { id: string; createdAt: string } | null;
-  decisions: { id: string; decidedAt: string; confirmed: boolean }[]; // oldest first
+  // oldest first; action en extendWeeks voor de verlengde testfase (golf B, punt 20; optioneel voor oudere aanroepers)
+  decisions: { id: string; decidedAt: string; confirmed: boolean; action?: string; extendWeeks?: number | null }[];
   decisionDeadline: string | null;
   clientDeciderInvited: boolean;
-  outcome: { defined: boolean; due: string | null; resolved: boolean; checkins: string[]; clockStart?: string | null };
+  // question: "stop_review" na een stop of pauze (golf B, punt 1); resolved geldt dan voor de stopvraag.
+  outcome: { defined: boolean; due: string | null; resolved: boolean; checkins: string[]; clockStart?: string | null; question?: "success" | "stop_review" };
   // Probabilities only for forecasts the reviewing consultant may see (blind rule, enforced by the database).
   forecasts: { moment: string; kind: string; probability?: number }[];
   // Base rate chosen for this dossier (null: none or "no good reference") and the number of resolved dossiers
@@ -79,6 +82,8 @@ export type CoachFacts = {
   // Beslisvraag en grootste onzekerheid uit de intake (optioneel voor aanroepers die ze niet kennen).
   idea?: { decisionQuestion: string; keyUncertainty: string | null };
   orgResolved?: number;
+  // Golf B, punt 6: of het dossier een beslisregel heeft (undefined = onbekend; dan blijft de regel stil).
+  decisionRule?: { defined: boolean; locked: boolean };
   outreach: { replies: number; latestReplyAt: string | null; latestImportAt: string | null };
 };
 
@@ -123,6 +128,7 @@ export function openForecastMoment(f: CoachFacts): ForecastMoment | null {
     realityCheckDone: !!f.realityCheck,
     outcomeDue: f.outcome.due,
     clockStart: f.outcome.clockStart ?? null,
+    stopped: f.outcome.question === "stop_review",
     today: f.today,
   });
 }
@@ -421,6 +427,15 @@ export const RULES: Record<string, Rule> = {
   outcome_due: (f, base) => {
     if (f.outcome.resolved || !f.outcome.due || f.decisions.length === 0) return null;
     if (daysBetween(f.today, f.outcome.due) > 0) return null;
+    if (f.outcome.question === "stop_review")
+      return {
+        code: "stop_review_due",
+        kind: "warning",
+        title: "Was stoppen achteraf terecht?",
+        body: "Zes maanden na het stop- of pauzebesluit: leg met bewijs vast of stoppen terecht was. Het telt mee bij de terechte stops, niet in de kalibratie van slagingskansen.",
+        href: `${base}/outcome#uitkomst`,
+        audience: "consultant",
+      };
     return {
       code: "outcome_due",
       kind: "warning",
@@ -433,7 +448,7 @@ export const RULES: Record<string, Rule> = {
 
   outcome_checkin: (f, base) => {
     const last = f.decisions[f.decisions.length - 1];
-    if (f.outcome.resolved || !last || !f.outcome.defined) return null;
+    if (f.outcome.resolved || !last || !f.outcome.defined || f.outcome.question === "stop_review") return null;
     if (f.outcome.due && daysBetween(f.today, f.outcome.due) <= 0) return null; // outcome_due takes over
     const decided = last.decidedAt.slice(0, 10);
     if (daysBetween(decided, f.today) < 90) return null;
@@ -444,6 +459,41 @@ export const RULES: Record<string, Rule> = {
       title: "De check-in na drie maanden is aan de beurt",
       body: "Het besluit is drie maanden oud. Noteer kort of de uitkomst op koers ligt; zo zie je vroeg of bijsturen nodig is.",
       href: `${base}/outcome`,
+      audience: "consultant",
+    };
+  },
+
+  decision_rule_missing: (f, base) => {
+    if (!f.decisionRule || f.decisionRule.defined || f.decisions.length > 0 || f.experiments.length === 0) return null;
+    const approved = f.experiments.some((e) => !["draft", "ready_for_review"].includes(e.state));
+    return {
+      code: approved ? "decision_rule_missing:late" : "decision_rule_missing",
+      kind: approved ? "warning" : "tip",
+      title: approved ? "De beslisregel ontbreekt, terwijl er al getest wordt" : "Leg de beslisregel vast vóór de eerste test",
+      body: approved
+        ? "Er is al een test goedgekeurd zonder vooraf vastgelegde beslisregel. Leg hem alsnog vast: hij staat dan als 'achteraf vastgelegd' in het rapport."
+        : "Welke aannames moeten boven welke kans uitkomen, en welke hoofdtest moet slagen, om door te gaan? Leg dat nu vast; bij de eerste goedgekeurde test gaat de regel op slot.",
+      href: `${base}/assumptions#beslisregel`,
+      audience: "consultant",
+    };
+  },
+
+  extension_ending: (f, base) => {
+    const phase = extendedPhase(
+      f.decisions.filter((d) => d.action).map((d) => ({ action: d.action!, decidedOn: d.decidedAt.slice(0, 10), extendWeeks: d.extendWeeks ?? null })),
+      f.today,
+    );
+    if (!phase) return null;
+    const left = daysBetween(f.today, phase.end);
+    if (phase.active && left > 7) return null;
+    return {
+      code: `extension_ending:${phase.end}`,
+      kind: phase.active ? "tip" : "warning",
+      title: phase.active ? "De verlengde testfase loopt bijna af" : "De verlengde testfase is voorbij: tijd voor het definitieve besluit",
+      body: phase.active
+        ? `De verlengde testfase eindigt op ${phase.end}. Zorg dat de Learning Cards dan klaar zijn en voer de Reality Check opnieuw uit; daarna volgt het definitieve besluit en start de uitkomstklok.`
+        : `De verlengde testfase eindigde op ${phase.end}. Neem nu het definitieve besluit (doorgaan, stoppen of pauzeren); daarmee start de uitkomstklok.`,
+      href: `${base}/evidence`,
       audience: "consultant",
     };
   },
@@ -535,7 +585,10 @@ export const RULE_LABELS: Record<string, string> = {
   base_rate_missing: "Basispercentage ontbreekt",
   forecast_overconfident: "Voorspelling ver van basispercentage",
   outcome_due: "Uitkomst vastleggen",
+  stop_review_due: "Was stoppen terecht?",
   outcome_checkin: "Check-in na drie maanden",
+  decision_rule_missing: "Beslisregel ontbreekt",
+  extension_ending: "Verlengde testfase loopt af",
   sprint_behind: "Sprint loopt achter",
   no_customer_voice: "Stem van de klant ontbreekt",
   outreach_unimported: "LinkedIn-antwoorden niet opgenomen",
@@ -580,7 +633,10 @@ export const NOT_DONE: Record<string, string> = {
   forecast: "We zien nog geen voorspelling van het team bij dit moment.",
   forecast_overconfident: "We zien nog geen afgeronde landingpage- of prijstest die de afwijking onderbouwt.",
   outcome_due: "We zien nog geen vastgelegde uitkomst.",
+  stop_review_due: "We zien nog geen antwoord op de vraag of stoppen terecht was.",
   outcome_checkin: "We zien nog geen tussenstand na drie maanden.",
+  decision_rule_missing: "We zien nog geen vastgelegde beslisregel.",
+  extension_ending: "We zien nog geen definitief besluit na de verlengde testfase.",
   sprint_behind: "We zien nog niet dat het dossier de sprintweek heeft ingehaald.",
   no_customer_voice: "We zien nog geen bron met de stem van de klant (review, forum, interview of enquête).",
   outreach_unimported: "We zien nog geen opgenomen LinkedIn-antwoorden bij de bronnen.",

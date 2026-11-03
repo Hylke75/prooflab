@@ -10,7 +10,7 @@ const STEPS = [
   ["Markt", "Bevindingen tellen alleen met een letterlijk citaat uit een bron. ProofLab controleert het citaat zelf en berekent de status: geverifieerd, onderbouwde schatting, onvoldoende bewijs, tegenstrijdig of verouderd."],
   ["Aannames", "Wat moet waar zijn? De risicokaart zet belangrijkheid af tegen bewijs. De bewijsas wordt berekend, niet geschat."],
   ["Testen", "Je legt vóór de test vast wat je meet en wanneer het klopt. Na goedkeuring is dat vergrendeld. Testpagina's meten zonder cookies en zijn eerlijk over wat er (nog) niet bestaat."],
-  ["Besluiten", "Een uitspraak volgt pas na de eindconditie, met een 95%-interval. De Reality Check zoekt tegenbewijs en valkuilen; daarna besluit je: doorgaan, bijsturen, verder testen, pauzeren of stoppen."],
+  ["Besluiten", "Een uitspraak volgt pas na de eindconditie, met een 95%-interval. De Reality Check zoekt tegenbewijs en valkuilen; daarna besluit je: doorgaan, bijsturen, verder testen, een verlengde testfase, pauzeren of stoppen. ProofLab toetst het besluit aan de vooraf vastgelegde beslisregel; de opdrachtgever bevestigt na de samenvatting \"Wat ging tegen\"."],
 ];
 
 const GLOSSARY: [string, string][] = [
@@ -33,7 +33,13 @@ const GLOSSARY: [string, string][] = [
   ["Brier-score", "Hoe dicht voorspelde kansen bij de echte uitkomsten lagen: 0 is perfect, 0,25 is wat altijd 50% zeggen oplevert. Onder 30 uitkomsten staat erbij: te weinig dossiers voor een betrouwbaar oordeel."],
   ["AI-concept", "Onderzoeksvragen, enquêtes en promoberichten kan AI voorstellen. ProofLab bewaart het AI-origineel en toont of een mens het heeft aangepast, met het aantal gewijzigde regels. AI-codering van interviews telt in methode 2026-11-c pas mee na jouw beoordeling."],
   ["Reality Check", "Een verplichte controle vóór elk besluit en rapport. Hij zoekt naar tegenbewijs, zwakke data, valkuilen en conclusies die het bewijs niet draagt, en geeft een advies."],
-  ["Besluit", "Doorgaan, bijsturen, verder testen, pauzeren of stoppen. De consultant legt het vast, de opdrachtgever bevestigt het in ProofLab."],
+  ["Besluit", "Doorgaan, bijsturen, verder testen, doorgaan met testen (verlengde testfase), pauzeren of stoppen. De consultant legt het vast, de opdrachtgever bevestigt het in ProofLab."],
+  ["Beslisregel", "Vóór de eerste goedgekeurde test leg je vast wanneer je doorgaat: welke aannames boven welke kans moeten uitkomen en welke hoofdtest moet slagen. Bij de eerste goedgekeurde test gaat de regel op slot. Bij het besluit toont ProofLab per voorwaarde of die is gehaald. Doorgaan zonder gehaalde regel, of stoppen terwijl hij wel is gehaald, kan alleen met een motivering; die staat in het auditspoor en in het rapport."],
+  ["Wat ging tegen", "De samenvatting die de opdrachtgever ziet voordat hij een besluit bevestigt: mislukte tests, tegenbewijs, aannames die door hun bewijsniveau zijn begrensd en afwijkingen van de beslisregel. Bevestigen kan pas na het openen of aanvinken ervan."],
+  ["Verlengde testfase", "Een optionele periode van 2 tot 8 weken na de sprint om meer gedragsbewijs te verzamelen, met het tussenbesluit \"doorgaan met testen\". Eén keer per dossier. Het definitieve besluit en de uitkomstklok starten pas daarna."],
+  ["Eerst voorspellen", "Op elk voorspelmoment geef je eerst je eigen kans dat het doel wordt gehaald. Tot dan blijven de berekende kansen op de aanname- en bewijspagina en de voorspellingen van anderen vergrendeld, zodat niemand ankert. Dat geldt ook voor de opdrachtgever. De AI-modellen tellen samen als één stem: hun gemiddelde."],
+  ["Uitkomst en inzet", "Zes maanden na het definitieve besluit leg je vast of het doel is gehaald, met bewijs en de inzet: gestart ja/nee, uren en budget ten opzichte van het plan. Is er niet gestart of minder dan de helft van het plan uitgevoerd, dan kan een consultant het dossier met een reden uit de kalibratie halen."],
+  ["Terechte stop", "Na een stop- of pauzebesluit vervalt de uitkomstvraag. Zes maanden later volgt de vraag \"Was stoppen achteraf terecht?\" (ja, nee of onbekend, met bewijs). Gestopte dossiers tellen niet mee in de kalibratie van slagingskansen; ze krijgen een eigen telling op Voorspelkwaliteit."],
   ["Rapportversie", "Een vaste momentopname van het dossier. Een gedeelde versie verandert nooit meer; de opdrachtgever ziet alleen gedeelde versies."],
 ];
 

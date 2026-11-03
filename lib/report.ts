@@ -5,8 +5,10 @@ import type { Finding } from "@/lib/domain/reality-check";
 import { asEvidenceLevel, testEvidenceLevel } from "@/lib/domain/evidence";
 import { buildAllTests } from "@/lib/domain/all-tests";
 import { testRole } from "@/lib/domain/primary-test";
-import { ACHIEVED_LABELS, FORECAST_MOMENTS, FORECASTER_LABELS, MOMENT_LABELS, ON_TRACK_LABELS, aggregate, brier, type Achieved, type ForecasterKind, type OnTrack } from "@/lib/domain/forecast";
+import { ACHIEVED_LABELS, FORECAST_MOMENTS, FORECASTER_LABELS, JUSTIFIED_LABELS, MOMENT_LABELS, ON_TRACK_LABELS, aggregate, aiAsOneVote, brier, type Achieved, type ForecasterKind, type Justified, type OnTrack } from "@/lib/domain/forecast";
 import { ensembleMean } from "@/lib/ai/providers/select";
+import { effortSummary } from "@/lib/domain/effort";
+import { deviationLabel, type RuleEvaluation } from "@/lib/domain/decision-rule";
 import { PROVIDER_LABELS, providerOfModel } from "@/lib/ai/providers/config";
 import { buildReportCounts } from "@/lib/domain/report-counts";
 
@@ -127,10 +129,10 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       baseRate: d.prediction.baseRate,
       // Blind rule: before the outcome is known a report (also a shared one) only says how many forecasts
       // exist per moment; probabilities and reasons appear once the outcome is recorded.
-      revealed: d.prediction.result != null,
+      revealed: d.prediction.result != null || d.prediction.stopReview != null,
       moments: FORECAST_MOMENTS.map((m) => {
         const rows = d.prediction.forecasts.filter((f) => f.moment === m);
-        if (d.prediction.result == null) {
+        if (d.prediction.result == null && d.prediction.stopReview == null) {
           return { moment: MOMENT_LABELS[m].label, count: rows.length, people: null, ai: null, forecasts: [] as { who: string; probability: number; rationale: string; brier: number | null }[] };
         }
         const people = rows.filter((f) => f.forecaster_kind !== "ai").map((f) => Number(f.probability));
@@ -140,18 +142,41 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
           count: rows.length,
           people: aggregate(people),
           ai,
-          forecasts: rows.map((f) => ({
-            who: aiName(f.forecaster_kind, f.model) ?? FORECASTER_LABELS[f.forecaster_kind as ForecasterKind],
-            probability: Number(f.probability),
-            rationale: f.rationale,
-            brier: d.prediction.result ? brier(Number(f.probability), d.prediction.result.achieved as Achieved) : null,
+          // Golf B, punt 15: de AI telt als één stem, het gemiddelde van de modellen (ook in de Brier-score).
+          forecasts: aiAsOneVote(rows.map((f) => ({ ...f, kind: f.forecaster_kind as ForecasterKind, probability: Number(f.probability) }))).map((v) => ({
+            who: v.kind === "ai" ? (v.models > 1 ? `AI (gemiddelde van ${v.models} modellen)` : (aiName("ai", v.rows[0].model) ?? "AI")) : FORECASTER_LABELS[v.kind],
+            probability: v.probability,
+            rationale: v.kind === "ai" ? v.rows.map((r) => r.rationale).join(" / ") : v.rows[0].rationale,
+            // Bij een gestopt dossier wordt een voorspelling niet gescoord als slagingskans.
+            brier: d.prediction.result && d.prediction.question === "success" ? brier(v.probability, d.prediction.result.achieved as Achieved) : null,
           })),
         };
       }).filter((m) => m.count > 0),
       checkins: d.prediction.checkins.map((c) => ({ at: c.created_at, onTrack: ON_TRACK_LABELS[c.on_track as OnTrack], value: c.current_value, note: c.note })),
       result: d.prediction.result
-        ? { achieved: ACHIEVED_LABELS[d.prediction.result.achieved as Achieved], value: d.prediction.result.actual_value, evidence: d.prediction.result.evidence, at: d.prediction.result.resolved_at }
+        ? {
+            achieved: ACHIEVED_LABELS[d.prediction.result.achieved as Achieved],
+            value: d.prediction.result.actual_value,
+            evidence: d.prediction.result.evidence,
+            at: d.prediction.result.resolved_at,
+            // Golf B, punt 2: de inzet bij de uitkomst.
+            effort: d.prediction.result.started == null ? null : effortSummary({
+              started: d.prediction.result.started ?? null,
+              hours: d.prediction.result.effort_hours == null ? null : Number(d.prediction.result.effort_hours),
+              budgetPctOfPlan: d.prediction.result.budget_pct_of_plan == null ? null : Number(d.prediction.result.budget_pct_of_plan),
+            }),
+            insufficient: d.prediction.result.execution_insufficient === true,
+          }
         : null,
+      // Na een stop of pauze: "Was stoppen achteraf terecht?" (null bij de succesvraag en in oudere rapporten).
+      stop:
+        d.prediction.question === "stop_review"
+          ? {
+              review: d.prediction.stopReview
+                ? { justified: JUSTIFIED_LABELS[d.prediction.stopReview.justified as Justified], evidence: d.prediction.stopReview.evidence, at: d.prediction.stopReview.reviewed_at }
+                : null,
+            }
+          : null,
     },
     experiments: d.experiments
       .filter((e) => !["draft", "ready_for_review"].includes(e.state))
@@ -246,7 +271,20 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       }),
     realityCheck: check ? { at: check.created_at, advice: DECISIONS[check.advice as DecisionAction].label, reason: check.advice_reason, findings: checkFindings, aiUsed: check.ai_used } : null,
     decision: lastDecision
-      ? { action: DECISIONS[lastDecision.action as DecisionAction].label, rationale: lastDecision.rationale, nextStep: lastDecision.next_step, at: lastDecision.decided_at, confirmedAt: lastDecision.client_confirmed_at, comment: lastDecision.client_comment }
+      ? {
+          action: DECISIONS[lastDecision.action as DecisionAction].label,
+          rationale: lastDecision.rationale,
+          nextStep: lastDecision.next_step,
+          at: lastDecision.decided_at,
+          confirmedAt: lastDecision.client_confirmed_at,
+          comment: lastDecision.client_comment,
+          // Golf B, punt 6: de toets aan de beslisregel en, bij afwijken, de motivering.
+          rule: ruleSummary(lastDecision),
+          // Golf B, punt 18: bevestigd na de samenvatting "Wat ging tegen".
+          reviewedAgainst: lastDecision.reviewed_against_summary != null,
+          // Golf B, punt 20: de verlengde testfase (aantal weken), als dit besluit er een is of erop volgde.
+          extendWeeks: d.decisions.find((x) => x.action === "extend")?.extend_weeks ?? null,
+        }
       : null,
     sources: [...sources.values()].sort((a, b) => a.n - b.n),
     method: {
@@ -254,5 +292,20 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       aiCostUsd: Number(aiCost.toFixed(2)),
       models: [...new Set(d.research.ai.map((r) => `${r.model} (prompt ${r.prompt_version})`))],
     },
+  };
+}
+
+// De toets aan de beslisregel bij een besluit, leesbaar voor het rapport (null zonder regel of bij een tussenbesluit).
+function ruleSummary(d: { action: string; rule_met?: boolean | null; rule_evaluation?: unknown; rule_deviation_reason?: string | null }) {
+  if (d.rule_met == null) return null;
+  const ev = d.rule_evaluation as RuleEvaluation | null;
+  const lines = [
+    ...(ev?.conditions ?? []).map((c) => `${c.statement}: ${c.probability != null ? `${Math.round(c.probability * 100)}%` : "onbekend"} (minstens ${Math.round(c.minProbability * 100)}%) · ${c.met ? "gehaald" : "niet gehaald"}`),
+    ...(ev?.primary ? [`Hoofdtest ${ev.primary.title}: ${ev.primary.met ? "geslaagd" : "niet geslaagd"}`] : []),
+  ];
+  return {
+    met: d.rule_met,
+    lines,
+    deviation: d.rule_deviation_reason ? { label: deviationLabel(d.action, d.rule_met), reason: d.rule_deviation_reason } : null,
   };
 }

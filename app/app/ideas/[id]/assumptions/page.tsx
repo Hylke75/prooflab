@@ -20,6 +20,10 @@ import { asMethodVersion, CURRENT_METHOD, METHODS, type MethodVersion } from "@/
 import { EVIDENCE_LEVELS, type EvidenceCaps } from "@/lib/domain/evidence";
 import { loadCalibration, loadIdeaCaps } from "@/lib/method-data";
 import { addAssumption, deleteAssumption, linkClaim, seedAssumptions, setImportance, setPrior, unlinkClaim } from "./actions";
+import { DecisionRuleCard } from "@/components/decision/DecisionRule";
+import { loadDecisionRule } from "@/lib/decision-rule-data";
+import { forecastFirstLock } from "@/lib/domain/forecast";
+import { ForecastFirstLock } from "@/components/forecast/ForecastFirstLock";
 
 export const metadata: Metadata = { title: "Aannames" };
 
@@ -85,7 +89,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
   const { idea, canWrite } = await getIdea(id);
   const supabase = await supabaseServer();
   const method = asMethodVersion(idea.method_version);
-  const [ranked, progress, { data: claims }, { data: links }, weights, caps, calibration] = await Promise.all([
+  const [ranked, progress, { data: claims }, { data: links }, weights, caps, calibration, rule, { data: experiments }] = await Promise.all([
     loadInformationValue(id),
     loadProgress(id),
     supabase.from("claims").select("id, statement, status").eq("idea_id", id).order("created_at"),
@@ -93,6 +97,8 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
     loadIdeaWeights(id),
     loadIdeaCaps(id),
     loadCalibration(id),
+    loadDecisionRule(id),
+    supabase.from("experiments").select("id, title").eq("idea_id", id).order("created_at"),
   ]);
   const board: BoardAssumption[] = ranked.map((a) => ({
     ...a,
@@ -100,6 +106,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
     status: a.status as AssumptionStatus,
     claims: (links ?? []).filter((l) => l.assumption_id === a.id).map((l) => ({ id: l.claim_id, relation: l.relation, statement: l.claims?.statement ?? "", status: l.claims?.status ?? "" })),
   }));
+  const lock = forecastFirstLock(progress);
   const missing = (Object.keys(ASSUMPTION_CATEGORIES) as AssumptionCategory[]).filter((c) => !board.some((a) => a.category === c));
   const usable = (claims ?? []).filter((c) => c.status !== "insufficient");
 
@@ -122,7 +129,10 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
         </div>
       )}
 
-      {board.length === 0 ? (
+      {lock ? (
+        // Golf B, punt 15: eerst de eigen voorspelling, dan de berekende kansen op de risicokaart.
+        <ForecastFirstLock ideaId={id} moment={lock} what="de risicokaart met de berekende kans per aanname" client={!canWrite} />
+      ) : board.length === 0 ? (
         <div className="empty-state">
           <h2 className="as-h3">Nog geen aannames</h2>
           <p>
@@ -158,8 +168,17 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
         </div>
       )}
 
-      <RedTeamButton ideaId={id} assumptions={board} canWrite={canWrite} />
-      {board.length > 0 && <HowWeCalculate weights={weights.inUse} method={method} caps={caps.caps} />}
+      {!lock && <RedTeamButton ideaId={id} assumptions={board} canWrite={canWrite} />}
+      {rule !== undefined && (
+        <DecisionRuleCard
+          ideaId={id}
+          rule={rule}
+          assumptions={board.map((a) => ({ id: a.id, statement: a.statement, importance: a.importance }))}
+          experiments={experiments ?? []}
+          canWrite={canWrite}
+        />
+      )}
+      {board.length > 0 && !lock && <HowWeCalculate weights={weights.inUse} method={method} caps={caps.caps} />}
 
       {canWrite && (
         <div className="card mt-18">

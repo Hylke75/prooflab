@@ -103,22 +103,28 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
     <PageFrame crumbs={["Werkruimte", "Overzicht"]} coach="dashboard" ideaId={list[0]?.id}>
       <Hero client={false} />
 
-      {reminders.map(({ ideaId, title, kind, date }) => (
-        <div className="action-card" key={`${kind}-${ideaId}`} role="region" aria-label={`${kind === "outcome" ? "Uitkomst vastleggen" : "Tussenstand geven"}: ${title}`}>
-          <div>
-            <span className="pill orange">{kind === "outcome" ? "Uitkomst vastleggen" : "Tussenstand geven"}</span>
-            <h2 style={{ marginTop: 8 }}>{title}</h2>
-            <p>
-              {kind === "outcome"
-                ? `De uitkomstdatum (${calendarDate(date, { day: "numeric", month: "long", year: "numeric" })}) is bereikt. Leg vast of het doel is gehaald, met bewijs; dan worden de voorspellingen gescoord.`
-                : `Drie maanden na het besluit (sinds ${calendarDate(date, { day: "numeric", month: "long" })}): ligt het doel op koers?`}
-            </p>
+      {reminders.map(({ ideaId, title, kind, date }) => {
+        const label = kind === "outcome" ? "Uitkomst vastleggen" : kind === "stop_review" ? "Was stoppen terecht?" : "Tussenstand geven";
+        const long = calendarDate(date, { day: "numeric", month: "long", year: "numeric" });
+        return (
+          <div className="action-card" key={`${kind}-${ideaId}`} role="region" aria-label={`${label}: ${title}`}>
+            <div>
+              <span className="pill orange">{label}</span>
+              <h2 style={{ marginTop: 8 }}>{title}</h2>
+              <p>
+                {kind === "outcome"
+                  ? `De uitkomstdatum (${long}) is bereikt. Leg vast of het doel is gehaald, met bewijs; dan worden de voorspellingen gescoord.`
+                  : kind === "stop_review"
+                    ? `Zes maanden na het stop- of pauzebesluit (${long}): was stoppen achteraf terecht? Leg het vast met bewijs.`
+                    : `Drie maanden na het besluit (sinds ${calendarDate(date, { day: "numeric", month: "long" })}): ligt het doel op koers?`}
+              </p>
+            </div>
+            <Link className="btn primary" href={`/app/ideas/${ideaId}/outcome#${kind === "checkin" ? "tussenstand" : "uitkomst"}`}>
+              {label} <Icon name="arrow" size="sm" />
+            </Link>
           </div>
-          <Link className="btn primary" href={`/app/ideas/${ideaId}/outcome#${kind === "outcome" ? "uitkomst" : "tussenstand"}`}>
-            {kind === "outcome" ? "Uitkomst vastleggen" : "Tussenstand geven"} <Icon name="arrow" size="sm" />
-          </Link>
-        </div>
-      ))}
+        );
+      })}
 
       <div className="grid-3" style={{ marginBottom: 31 }}>
         <div className="card tight">
