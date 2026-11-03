@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Client } from "pg";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 // Golf B (besluit en voorspelling) aan de databasekant: kalibratie zonder stopdossiers, inzet bij de uitkomst,
 // vergrendeling van de beslisregel, bevestigen met de samenvatting "Wat ging tegen", eerst voorspellen en de
 // verlengde testfase met de uitkomstklok. Draait tegen een lokale Postgres met shim en migraties (scripts/test-db.sh).
 const url = process.env.TEST_DATABASE_URL;
+const ingestKey = "golf-b-test-key";
 const d = url ? describe : describe.skip;
 
 let db: Client;
@@ -76,6 +77,7 @@ d("golf B: besluit en voorspelling", () => {
   beforeAll(async () => {
     db = new Client({ connectionString: url });
     await db.connect();
+    await db.query("insert into public.ingest_keys (key_hash) values ($1) on conflict do nothing", [createHash("sha256").update(ingestKey).digest("hex")]);
     alice = await user(`alice-${randomUUID()}@example.com`);
     org = await newOrg(alice);
   });
@@ -192,6 +194,38 @@ d("golf B: besluit en voorspelling", () => {
       await as(client, (c) => c.query("select public.claim_invitations()"));
       await expect(as(client, (c) => c.query("insert into public.calibration_exclusions (idea_id, reason) values ($1, 'De opdrachtgever wil dit niet meetellen')", [idea]))).rejects.toThrow(/row-level security/);
       await expect(as(alice, (c) => c.query("insert into public.calibration_exclusions (idea_id, reason) values ($1, 'Een buitenstaander probeert het ook')", [idea]))).rejects.toThrow(/row-level security/);
+    });
+  });
+
+  describe("punt 15: de AI telt als één stem", () => {
+    it("middelt de AI-voorspellingen per dossier en moment in scores en kalibratie", async () => {
+      const owner = await user(`owner-${randomUUID()}@example.com`);
+      const o = await newOrg(owner);
+      const idea = await newIdea(owner, o);
+      await realityCheck(owner, idea);
+      await as(owner, (c) => forecast(c, idea, "decision", owner.id, 0.6));
+      for (const [p, model] of [
+        [0.2, "claude-model"],
+        [0.4, "gpt-model"],
+        [0.9, "gemini-model"],
+      ] as const)
+        await as(owner, (c) => c.query("select public.record_ai_forecast($1, $2, 'decision', $3, 'Eén zin waarom', $4)", [ingestKey, idea, p, model]));
+      await decide(owner, idea, "continue");
+      await startClock(owner, idea);
+      await as(owner, (c) => c.query("insert into public.idea_outcomes (idea_id, achieved, evidence, started) values ($1, 'yes', 'Vijftien klanten in de boekhouding', true)", [idea]));
+      const scores = await as(owner, async (c) => (await c.query("select forecaster_kind, forecasts::int, round(mean_probability, 2)::float as mean from public.forecast_scores($1) order by forecaster_kind", [o])).rows);
+      expect(scores).toEqual([
+        { forecaster_kind: "ai", forecasts: 1, mean: 0.5 },
+        { forecaster_kind: "consultant", forecasts: 1, mean: 0.6 },
+      ]);
+      // Kalibratie: één stem van 50% en één van 60%, niet vier losse voorspellingen.
+      const cal = await as(owner, async (c) => (await c.query("select bucket, forecasts::int from public.forecast_calibration($1)", [o])).rows);
+      expect(cal).toEqual([
+        { bucket: 5, forecasts: 1 },
+        { bucket: 6, forecasts: 1 },
+      ]);
+      // De interne functie is niet rechtstreeks aan te roepen.
+      await expect(as(owner, (c) => c.query("select * from public.calibration_votes_internal($1)", [o]))).rejects.toThrow(/permission denied/);
     });
   });
 

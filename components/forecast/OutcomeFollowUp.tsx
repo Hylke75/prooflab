@@ -3,7 +3,7 @@ import { calendarDate } from "@/components/sprint/SprintCard";
 import { excludeFromCalibration, includeInCalibration, resolveOutcome, resolveStopReview, saveCheckin } from "@/app/app/ideas/[id]/outcome/actions";
 import { effortSummary, insufficientReason } from "@/lib/domain/effort";
 import type { ForecastView } from "@/lib/forecast-data";
-import { ACHIEVED_LABELS, JUSTIFIED_LABELS, ON_TRACK_LABELS, STOP_REVIEW_QUESTION, brier, explainBrier, MOMENT_LABELS, pct, type Achieved, type Justified, type OnTrack } from "@/lib/domain/forecast";
+import { ACHIEVED_LABELS, aiAsOneVote, FORECAST_MOMENTS, JUSTIFIED_LABELS, ON_TRACK_LABELS, STOP_REVIEW_QUESTION, brier, explainBrier, MOMENT_LABELS, pct, type Achieved, type Justified, type OnTrack } from "@/lib/domain/forecast";
 
 const long = (d: string) => calendarDate(d, { day: "numeric", month: "long", year: "numeric" });
 const fmt = (n: number) => n.toLocaleString("nl-NL");
@@ -196,7 +196,16 @@ function ExecutionCard({ view }: { view: ForecastView }) {
 
 // After resolution: every forecast with its Brier contribution and a short, honest explanation.
 function ForecastScores({ view, achieved }: { view: ForecastView; achieved: Achieved }) {
-  const rows = [...view.forecasts].sort((a, b) => ["intake", "research", "experiment", "decision"].indexOf(a.moment) - ["intake", "research", "experiment", "decision"].indexOf(b.moment));
+  // Golf B, punt 15: per moment telt de AI als één stem (het gemiddelde van de modellen), net als in de kalibratie.
+  const rows = FORECAST_MOMENTS.flatMap((m) =>
+    aiAsOneVote(view.forecasts.filter((f) => f.moment === m)).map((v) => ({
+      id: v.kind === "ai" ? `ai-${m}` : v.rows[0].id,
+      moment: m,
+      kind: v.kind,
+      name: v.kind === "ai" ? (v.models > 1 ? `AI (gemiddelde van ${v.models} modellen)` : "AI") : v.rows[0].name,
+      probability: v.probability,
+    })),
+  );
   return (
     <div className="card" style={{ gridColumn: "1 / -1" }}>
       <div className="section-title">
@@ -221,7 +230,7 @@ function ForecastScores({ view, achieved }: { view: ForecastView; achieved: Achi
             {rows.map((r) => (
               <tr key={r.id}>
                 <td>{MOMENT_LABELS[r.moment].label}</td>
-                <td>{r.name}{r.kind === "ai" ? " (AI)" : ""}</td>
+                <td>{r.name}</td>
                 <td className="num">{pct(r.probability)}</td>
                 <td className="num">{brier(r.probability, achieved).toFixed(2).replace(".", ",")}</td>
                 <td>{explainBrier(r.probability, achieved)}</td>

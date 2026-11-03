@@ -2,7 +2,7 @@ import "server-only";
 import type { Dossier } from "@/lib/dossier";
 import { CLAIM_STATUS, COMPETITOR_KINDS, DECISIONS, EVIDENCE_TYPES, EXPERIMENT_TYPES, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type DecisionAction, type EvidenceType, type ExperimentType, type SourceType } from "@/lib/domain/labels";
 import type { Finding } from "@/lib/domain/reality-check";
-import { ACHIEVED_LABELS, FORECAST_MOMENTS, FORECASTER_LABELS, JUSTIFIED_LABELS, MOMENT_LABELS, ON_TRACK_LABELS, aggregate, brier, type Achieved, type ForecasterKind, type Justified, type OnTrack } from "@/lib/domain/forecast";
+import { ACHIEVED_LABELS, FORECAST_MOMENTS, FORECASTER_LABELS, JUSTIFIED_LABELS, MOMENT_LABELS, ON_TRACK_LABELS, aggregate, aiAsOneVote, brier, type Achieved, type ForecasterKind, type Justified, type OnTrack } from "@/lib/domain/forecast";
 import { ensembleMean } from "@/lib/ai/providers/select";
 import { effortSummary } from "@/lib/domain/effort";
 import { deviationLabel, type RuleEvaluation } from "@/lib/domain/decision-rule";
@@ -129,12 +129,13 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
           count: rows.length,
           people: aggregate(people),
           ai,
-          forecasts: rows.map((f) => ({
-            who: aiName(f.forecaster_kind, f.model) ?? FORECASTER_LABELS[f.forecaster_kind as ForecasterKind],
-            probability: Number(f.probability),
-            rationale: f.rationale,
+          // Golf B, punt 15: de AI telt als één stem, het gemiddelde van de modellen (ook in de Brier-score).
+          forecasts: aiAsOneVote(rows.map((f) => ({ ...f, kind: f.forecaster_kind as ForecasterKind, probability: Number(f.probability) }))).map((v) => ({
+            who: v.kind === "ai" ? (v.models > 1 ? `AI (gemiddelde van ${v.models} modellen)` : (aiName("ai", v.rows[0].model) ?? "AI")) : FORECASTER_LABELS[v.kind],
+            probability: v.probability,
+            rationale: v.kind === "ai" ? v.rows.map((r) => r.rationale).join(" / ") : v.rows[0].rationale,
             // Bij een gestopt dossier wordt een voorspelling niet gescoord als slagingskans.
-            brier: d.prediction.result && d.prediction.question === "success" ? brier(Number(f.probability), d.prediction.result.achieved as Achieved) : null,
+            brier: d.prediction.result && d.prediction.question === "success" ? brier(v.probability, d.prediction.result.achieved as Achieved) : null,
           })),
         };
       }).filter((m) => m.count > 0),

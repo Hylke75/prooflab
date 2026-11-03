@@ -326,7 +326,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
         text: `Voorspellingen vastgelegd: ${p.moments.map((m) => `${m.moment.toLowerCase()} (${m.count})`).join(", ")}. De kansen zelf blijven verborgen tot de uitkomst bekend is, zodat niemand op een ander kan afgaan.`,
       });
     }
-    blocks.push({ t: "p", small: true, muted: true, text: "Iedereen geeft zijn kans zonder de anderen te zien. Een AI-voorspelling telt niet mee in het gemiddelde en is geen bewijs." });
+    blocks.push({ t: "p", small: true, muted: true, text: "Iedereen geeft zijn kans zonder de anderen te zien. De AI telt als één stem (het gemiddelde van de modellen), niet mee in het gemiddelde van de mensen, en is geen bewijs." });
     for (const c of p.checkins) blocks.push({ t: "p", text: `Tussenstand ${nlDate(c.at)}: ${c.onTrack.toLowerCase()}${c.value != null ? ` (stand: ${c.value})` : ""}. ${c.note ?? ""}` });
     // Golf B, punt 1: na een stop of pauze de stopvraag; voorspellingen worden niet gescoord als slagingskans.
     if (p.stop)

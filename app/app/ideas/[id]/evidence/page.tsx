@@ -8,7 +8,8 @@ import { LABEL_PILL, RuleSummary, outcomeFromCard, ruleLine } from "@/components
 import { asMethodVersion, METHODS } from "@/lib/domain/method";
 import { verdictInput } from "@/lib/method-preview";
 import { DecisionForecast } from "@/components/forecast/DecisionForecast";
-import { decisionBlocker } from "@/lib/domain/forecast";
+import { decisionBlocker, forecastFirstLock } from "@/lib/domain/forecast";
+import { ForecastFirstLock } from "@/components/forecast/ForecastFirstLock";
 import { getIdea } from "@/lib/data";
 import { loadDossier } from "@/lib/dossier";
 import { loadProgress } from "@/lib/progress";
@@ -36,7 +37,29 @@ const SEV = { blocker: ["Blokkerend", "coral"], warning: ["Let op", "orange"], i
 export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id]/evidence">) {
   const { id } = await params;
   const { idea, canWrite, isClientDecider } = await getIdea(id);
-  const [d, progress, ruleCheck] = await Promise.all([loadDossier(idea), loadProgress(id), loadRuleCheck(id)]);
+  const progress = await loadProgress(id);
+  // Golf B, punt 15: zolang het open voorspelmoment niet door deze gebruiker is voorspeld, blijven de berekende kansen,
+  // de sterkte van het bewijs en andermans voorspellingen vergrendeld.
+  const lock = forecastFirstLock(progress);
+  if (lock) {
+    return (
+      <PageFrame crumbs={["Werkruimte", idea.title, "Bewijs & besluit"]} coach="evidence" ideaId={id}>
+        <div className="section-row">
+          <div>
+            <div className="eyebrow">Stap 5 van 5 · Leren en beslissen</div>
+            <h1>Wat weten we nu echt?</h1>
+            <p className="sub">Eerst je eigen voorspelling; daarna alle signalen op één plek, inclusief tegenbewijs.</p>
+          </div>
+        </div>
+        <Stepper current="decide" ideaId={id} done={stepsDone(progress)} />
+        <div className="grid-2">
+          <ForecastFirstLock ideaId={id} moment={lock} what="de bewijspagina met de sterkte van het bewijs, de kansen per aanname en de Reality Check" client={!canWrite} />
+          {lock === "decision" && <DecisionForecast ideaId={id} />}
+        </div>
+      </PageFrame>
+    );
+  }
+  const [d, ruleCheck] = await Promise.all([loadDossier(idea), loadRuleCheck(id)]);
   const obs = d.observations.filter((o) => !o.is_synthetic).sort((a, b) => strength({ isFact: b.is_fact, isBehaviour: b.is_behaviour, isRealContext: b.is_real_context, isCostly: b.is_costly, isSynthetic: false }) - strength({ isFact: a.is_fact, isBehaviour: a.is_behaviour, isRealContext: a.is_real_context, isCostly: a.is_costly, isSynthetic: false }));
   const reached = LADDER.map((r) => ({ ...r, count: obs.filter((o) => r.kinds.includes(o.kind as ObservationKind)).length }));
   const highest = [...reached].reverse().find((r) => r.count > 0);

@@ -17,6 +17,7 @@ import {
   FORECASTER_LABELS,
   MOMENT_LABELS,
   OWN_BASE_RATE_MIN,
+  aiAsOneVotePerKey,
   pct,
   scoreSet,
   type Achieved,
@@ -65,9 +66,15 @@ export default async function ForecastsPage() {
     ? await supabase.from("forecasts").select("idea_id, moment, forecaster_kind, probability").in("idea_id", [...resolvedIds])
     : { data: [] };
   const achievedOf = new Map(resolved.map((o) => [o.idea_id, o.achieved as Achieved]));
+  // Golf B, punt 15: per dossier en moment telt de AI als één stem (het gemiddelde van de modellen).
   const perMoment = FORECAST_MOMENTS.map((m: ForecastMoment) => ({
     moment: m,
-    score: scoreSet((resolvedForecasts ?? []).filter((f) => f.moment === m).map((f) => ({ probability: Number(f.probability), achieved: achievedOf.get(f.idea_id)! }))),
+    score: scoreSet(
+      aiAsOneVotePerKey(
+        (resolvedForecasts ?? []).filter((f) => f.moment === m).map((f) => ({ ideaId: f.idea_id, kind: f.forecaster_kind as ForecasterKind, probability: Number(f.probability) })),
+        (f) => f.ideaId,
+      ).map((v) => ({ probability: v.probability, achieved: achievedOf.get(v.rows[0].ideaId)! })),
+    ),
   })).filter((r) => r.score);
 
   const scoreRows = scores.data ?? [];
@@ -179,7 +186,7 @@ export default async function ForecastsPage() {
               </table>
               <div className="note">
                 Brier-score: het gemiddelde kwadraat van het verschil tussen de gegeven kans en de uitkomst (gehaald = 1, deels = 0,5, niet = 0). Altijd 50% zeggen
-                levert 0,25 op. Ligt de gemiddelde kans ver boven het percentage gehaald, dan is de voorspeller te optimistisch. AI-voorspellingen tellen nooit als bewijs.
+                levert 0,25 op. Ligt de gemiddelde kans ver boven het percentage gehaald, dan is de voorspeller te optimistisch. De AI telt per voorspelmoment als één stem (het gemiddelde van de modellen) en nooit als bewijs. Gestopte dossiers en dossiers die wegens onvoldoende uitvoering zijn uitgesloten, tellen niet mee.
               </div>
               {perMoment.length > 0 && (
                 <>

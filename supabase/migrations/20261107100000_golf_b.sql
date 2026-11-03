@@ -6,6 +6,8 @@
 --      gemarkeerd; een consultant kan zo'n dossier met reden uit de kalibratie halen (calibration_exclusions, geaudit).
 --   6. Beslisregel van bewijs naar besluit (decision_rules): welke aannames boven welke kans moeten uitkomen en welke
 --      hoofdtest moet slagen. Vergrendeld bij de eerste goedgekeurde test; afwijken bij het besluit vraagt een motivering.
+--  15. Eerst voorspellen: de vergrendeling van kansen zit in de app; hier telt de AI in de kalibratie als één stem
+--      (het gemiddelde van de modellen per dossier en moment).
 --
 -- De kalibratiefuncties staan onderaan (laatste sectie), omdat ze naar tabellen uit meerdere punten verwijzen.
 
@@ -519,33 +521,46 @@ grant execute on function public.save_decision_rule(uuid, uuid, text, jsonb) to 
 -- niet mee in de eigen basisrate. Hetzelfde geldt voor dossiers die een consultant wegens onvoldoende uitvoering uit
 -- de kalibratie heeft gehaald. Bestaande grants blijven staan (create or replace behoudt ze).
 
+-- Punt 15: de AI telt als één stem. Per dossier en moment worden de AI-voorspellingen (één per model) gemiddeld tot één
+-- voorspelling; mensen blijven elk een eigen stem. Intern, zonder toegangscontrole: alleen via de functies hieronder.
+create or replace function public.calibration_votes_internal(p_org uuid)
+returns table (idea_id uuid, moment text, forecaster_kind text, forecaster_id uuid, probability numeric, outcome numeric)
+language sql stable security definer set search_path = '' as $$
+  with scored as (
+    select i.id as idea_id, case o.achieved when 'yes' then 1 when 'partial' then 0.5 else 0 end::numeric as outcome
+    from public.ideas i join public.idea_outcomes o on o.idea_id = i.id
+    where i.org_id = p_org and i.outcome_question = 'success'
+      and not exists (select 1 from public.calibration_exclusions x where x.idea_id = i.id)
+  )
+  select f.idea_id, f.moment, f.forecaster_kind, f.forecaster_id, f.probability, s.outcome
+  from public.forecasts f join scored s on s.idea_id = f.idea_id
+  where f.forecaster_kind <> 'ai'
+  union all
+  select f.idea_id, f.moment, 'ai', null::uuid, avg(f.probability), s.outcome
+  from public.forecasts f join scored s on s.idea_id = f.idea_id
+  where f.forecaster_kind = 'ai'
+  group by f.idea_id, f.moment, s.outcome;
+$$;
+
 create or replace function public.forecast_scores(p_org uuid)
 returns table (forecaster_kind text, forecaster_id uuid, forecasts bigint, brier numeric, mean_probability numeric, hit_rate numeric)
 language sql stable security definer set search_path = '' as $$
-  select f.forecaster_kind, f.forecaster_id, count(*),
-         avg(power(f.probability - case o.achieved when 'yes' then 1 when 'partial' then 0.5 else 0 end, 2)),
-         avg(f.probability),
-         avg(case o.achieved when 'yes' then 1 when 'partial' then 0.5 else 0 end)
-  from public.forecasts f
-  join public.idea_outcomes o on o.idea_id = f.idea_id
-  join public.ideas i on i.id = f.idea_id
-  where i.org_id = p_org and public.is_org_member(p_org) and i.outcome_question = 'success'
-    and not exists (select 1 from public.calibration_exclusions x where x.idea_id = i.id)
-  group by f.forecaster_kind, f.forecaster_id;
+  select v.forecaster_kind, v.forecaster_id, count(*), avg(power(v.probability - v.outcome, 2)), avg(v.probability), avg(v.outcome)
+  from public.calibration_votes_internal(p_org) v
+  where public.is_org_member(p_org)
+  group by v.forecaster_kind, v.forecaster_id;
 $$;
 
 create or replace function public.forecast_calibration(p_org uuid)
 returns table (bucket int, forecasts bigint, mean_probability numeric, observed numeric)
 language sql stable security definer set search_path = '' as $$
-  select least(9, floor(f.probability * 10))::int, count(*), avg(f.probability),
-         avg(case o.achieved when 'yes' then 1 when 'partial' then 0.5 else 0 end)
-  from public.forecasts f
-  join public.idea_outcomes o on o.idea_id = f.idea_id
-  join public.ideas i on i.id = f.idea_id
-  where i.org_id = p_org and public.is_org_member(p_org) and i.outcome_question = 'success'
-    and not exists (select 1 from public.calibration_exclusions x where x.idea_id = i.id)
+  select least(9, floor(v.probability * 10))::int, count(*), avg(v.probability), avg(v.outcome)
+  from public.calibration_votes_internal(p_org) v
+  where public.is_org_member(p_org)
   group by 1 order by 1;
 $$;
+
+revoke execute on function public.calibration_votes_internal(uuid) from public, anon, authenticated;
 
 create or replace function public.own_base_rate(p_org uuid, p_project_type text, p_min int default 10)
 returns table (resolved bigint, achieved numeric)

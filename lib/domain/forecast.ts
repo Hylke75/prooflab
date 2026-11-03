@@ -223,6 +223,35 @@ export function decisionBlocker(p: IdeaProgress): string | null {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Eerst voorspellen (golf B, punt 15)
+// ---------------------------------------------------------------------------
+
+// Het open voorspelmoment waarop de huidige gebruiker nog moet voorspellen, en dat ook kan (er is een uitkomstdefinitie
+// en een basispercentage). Zolang dit niet null is, blijven berekende kansen (aannamekansen, sterkte van het bewijs) en
+// andermans voorspellingen op de bewijs- en aannamepagina vergrendeld. Geldt voor consultants én opdrachtgevers.
+export function forecastFirstLock(p: IdeaProgress): ForecastMoment | null {
+  if (!p.forecast?.outcomeDefined || !p.forecast.baseRateChosen) return null;
+  return forecastDue(p);
+}
+
+// AI-voorspellingen tellen als één stem: per groep (bijv. dossier en moment) het gemiddelde van de modellen. Mensen
+// blijven elk een eigen stem. Zelfde regel als de kalibratie in de database (forecast_scores, forecast_calibration).
+export type Vote<T> = { kind: ForecasterKind; probability: number; models: number; rows: T[] };
+export function aiAsOneVote<T extends { kind: ForecasterKind; probability: number }>(rows: T[]): Vote<T>[] {
+  const out: Vote<T>[] = rows.filter((r) => r.kind !== "ai").map((r) => ({ kind: r.kind, probability: r.probability, models: 0, rows: [r] }));
+  const ai = rows.filter((r) => r.kind === "ai" && Number.isFinite(r.probability));
+  if (ai.length) out.push({ kind: "ai", probability: ai.reduce((s, r) => s + r.probability, 0) / ai.length, models: ai.length, rows: ai });
+  return out;
+}
+
+// Hetzelfde over meerdere dossiers en momenten: AI per sleutel (dossier + moment) samengevoegd.
+export function aiAsOneVotePerKey<T extends { kind: ForecasterKind; probability: number }>(rows: T[], key: (r: T) => string): Vote<T>[] {
+  const groups = new Map<string, T[]>();
+  for (const r of rows) groups.set(key(r), [...(groups.get(key(r)) ?? []), r]);
+  return [...groups.values()].flatMap((g) => aiAsOneVote(g));
+}
+
 export type FollowUp = {
   checkinDate: string | null;
   outcomeDate: string | null;

@@ -431,7 +431,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 </p>
               )}
               <p className="explain">
-                Iedereen geeft zijn kans zonder de anderen te zien. Een AI-voorspelling telt niet mee in het gemiddelde en is geen bewijs. De Brier-score
+                Iedereen geeft zijn kans zonder de anderen te zien. De AI telt als één stem (het gemiddelde van de modellen), niet mee in het gemiddelde van de mensen, en is geen bewijs. De Brier-score
                 meet achteraf hoe goed een kans was: 0 is perfect, 0,25 is wat je haalt met steeds 50%.
               </p>
               {r.prediction.stop && (
