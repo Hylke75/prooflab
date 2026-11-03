@@ -15,6 +15,41 @@ export type Database = {
   }
   public: {
     Tables: {
+      jobs: {
+        Row: {
+          id: string
+          org_id: string
+          idea_id: string
+          kind: string
+          payload: Json
+          dedupe_key: string | null
+          status: string
+          attempts: number
+          max_attempts: number
+          run_after: string
+          locked_until: string | null
+          last_error: string | null
+          progress: Json
+          created_by: string | null
+          created_at: string
+          started_at: string | null
+          finished_at: string | null
+          cancelled_by: string | null
+        }
+        // No insert/update grants: written only through enqueue_job, cancel_job and the worker functions.
+        Insert: {
+          id?: string
+          org_id: string
+          idea_id: string
+          kind: string
+          payload?: Json
+          dedupe_key?: string | null
+        }
+        Update: {
+          status?: string
+        }
+        Relationships: []
+      }
       email_suppressions: {
         Row: {
           org_id: string
@@ -2349,6 +2384,19 @@ export type Database = {
     Functions: {
       can_read_idea: { Args: { p_idea: string }; Returns: boolean }
       can_write_idea: { Args: { p_idea: string }; Returns: boolean }
+      enqueue_job: { Args: { p_idea: string; p_kind: string; p_payload: Json; p_dedupe: string | null }; Returns: Json }
+      cancel_job: { Args: { p_job: string }; Returns: boolean }
+      claim_jobs: {
+        Args: { p_key: string; p_limit: number; p_lease_seconds: number }
+        Returns: Database["public"]["Tables"]["jobs"]["Row"][]
+      }
+      job_heartbeat: { Args: { p_key: string; p_job: string; p_progress: Json; p_lease_seconds: number }; Returns: string | null }
+      complete_job: {
+        Args: { p_key: string; p_job: string; p_outcome: string; p_error: string | null; p_progress: Json; p_delay_seconds: number }
+        Returns: string | null
+      }
+      job_survey_batch: { Args: { p_key: string; p_job: string; p_ids: string[] }; Returns: Json }
+      job_survey_mark: { Args: { p_key: string; p_job: string; p_invitation: string; p_action: string; p_error: string | null }; Returns: string | null }
       claim_invitations: { Args: never; Returns: number }
       confirm_decision: { Args: { p_comment: string; p_decision: string }; Returns: boolean }
       create_organization: { Args: { p_name: string }; Returns: string }

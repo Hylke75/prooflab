@@ -43,6 +43,7 @@ npm run dev                  # http://localhost:3000
 | `ANTHROPIC_API_KEY` | nee | Zet AI-onderzoek, AI-aannames, interviewcodering en AI-vragen in de Reality Check aan |
 | `RESEARCH_BUDGET_USD` | nee | Maximum per diepe onderzoeksrun (standaard 3) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | nee | Verstuurt persoonlijke enquête-uitnodigingen via Resend (afzender op een geverifieerd domein); zonder deze twee download je de persoonlijke links als CSV |
+| `CRON_SECRET` | voor achtergrondtaken via cron | Geheim (minstens 16 tekens) waarmee Vercel Cron of een externe planner `/api/jobs/run` aanroept (`Authorization: Bearer <CRON_SECRET>`) |
 
 Zonder `ANTHROPIC_API_KEY` toont de app overal "AI niet verbonden" en werkt alles handmatig: bronnen en citaten
 toevoegen, interviews coderen, aannames vanuit een sjabloon. Er worden nooit gesimuleerde resultaten getoond als echt.
@@ -51,6 +52,29 @@ Enquêtes verspreiden: persoonlijke links (`/s/<slug>?u=<token>`) en afmeldlinks
 afgeleid van `TRACKING_SALT` (token = HMAC van het willekeurige uitnodigings-id, alleen de sha256 wordt opgeslagen; e = HMAC
 van het e-mailadres voor de afmeldlijst per organisatie). Wissel `TRACKING_SALT` daarom niet terwijl er uitnodigingen lopen:
 herinneringen en de afmeldlijst werken dan niet meer voor eerder gemailde adressen. Zet in Resend open- en kliktracking uit.
+
+### Achtergrondtaken
+
+Het versturen van enquête-uitnodigingen en herinneringen loopt als taak in de Postgres-wachtrij `public.jobs`
+(migratie `20261104120000_jobs.sql`), niet meer in het browsertabblad. De worker `/api/jobs/run` pakt taken met
+`FOR UPDATE SKIP LOCKED`, werkt maximaal ~50 seconden, probeert tijdelijke fouten opnieuw met oplopende wachttijd
+(30 s, 1 min, 2 min, … max. 1 uur; standaard 5 pogingen) en praat met de database via de publishable key plus
+`INGEST_SECRET` (er is geen service-role-sleutel). Elke uitnodiging wordt vóór het mailen geclaimd, dus een herhaalde
+of dubbele run mailt niemand twee keer.
+
+- `vercel.json` plant de worker elke minuut (`* * * * *`). Dat schema vraagt Vercel Pro; Vercel stuurt dan zelf
+  `Authorization: Bearer $CRON_SECRET` mee.
+- Zonder minutencron (Vercel Hobby staat één run per dag toe): de app start de worker ook direct na het inplannen
+  (`after()` in de server action) en elke keer dat het Verspreiden-paneel de voortgang opvraagt (elke 3 seconden zolang
+  er een taak loopt). Sluit de gebruiker het tabblad, dan gaat een taak verder bij de volgende cronrun of het volgende
+  bezoek. Alternatief: laat een externe planner (bijv. GitHub Actions of cron-job.org) elke minuut
+  `curl -H "Authorization: Bearer $CRON_SECRET" https://<app>/api/jobs/run` aanroepen.
+- Zonder `RESEND_API_KEY`/`EMAIL_FROM` wordt niets ingepland (eerlijke status "e-mail niet gekoppeld").
+
+### Rapport als PDF
+
+`/app/ideas/<id>/report/pdf?v=<versie>` maakt de PDF op de server met `@react-pdf/renderer` (geen headless browser).
+Zelfde zichtbaarheid als de rapportpagina: opdrachtgevers alleen gedeelde versies.
 
 ### Database
 
