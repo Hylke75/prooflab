@@ -9,9 +9,9 @@ import { loadDossier } from "@/lib/dossier";
 import { loadProgress } from "@/lib/progress";
 import { stepsDone } from "@/lib/steps";
 import { explainStrength, strength, strengthLabel } from "@/lib/domain/evidence";
-import { DECISIONS, OBSERVATION_KINDS, type DecisionAction, type ObservationKind } from "@/lib/domain/labels";
+import { ASSUMPTION_CATEGORIES, DECISIONS, OBSERVATION_KINDS, type DecisionAction, type ObservationKind } from "@/lib/domain/labels";
 import type { Finding } from "@/lib/domain/reality-check";
-import { approveLearningCard, confirmDecision, runCheck, saveDecision, updateLearningCard } from "./actions";
+import { addPremortem, approveLearningCard, confirmDecision, runCheck, saveDecision, updateLearningCard } from "./actions";
 
 export const metadata: Metadata = { title: "Bewijs & besluit" };
 
@@ -40,6 +40,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
   const stale = !!(check && lastApproved && lastApproved > check.created_at);
   const drafts = d.learningCards.filter((c) => c.status === "draft");
   const approved = d.learningCards.filter((c) => c.status === "approved");
+  const premortem = d.assumptions.filter((a) => a.origin === "premortem");
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Bewijs & besluit"]} coach="evidence" ideaId={id}>
@@ -116,6 +117,50 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                   </details>
                 )}
               </>
+            )}
+            <div className="divider" />
+            <h4 id="premortem" style={{ fontSize: 13 }}>Pre-mortem</h4>
+            <p className="sub" style={{ fontSize: 13 }}>
+              Het is zes maanden na het besluit en dit is mislukt. Wat is de meest waarschijnlijke reden?
+            </p>
+            {premortem.length > 0 ? (
+              <ul style={{ margin: "8px 0 0 18px", fontSize: 12, lineHeight: 1.7 }}>
+                {premortem.map((a) => (
+                  <li key={a.id}>
+                    {a.statement}{" "}
+                    <span className="tiny">
+                      · belang {a.importance}/5 · geschatte kans dat dit klopt {Math.round(a.probability.probability * 100)}%{a.probability.counted === 0 ? " (nog geen bewijs)" : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="tiny mt-8">Nog niet gedaan. De Reality Check waarschuwt tot er minstens één reden is vastgelegd.</p>
+            )}
+            {canWrite && (
+              <details className="mt-8" open={premortem.length === 0}>
+                <summary className="text-link">{premortem.length ? "Nog een reden toevoegen" : "Doe de pre-mortem (1 tot 3 redenen)"}</summary>
+                <ActionForm action={addPremortem.bind(null, id)} submitLabel="Zet op de risicokaart" submitClass="btn white sm" resetOnSuccess>
+                  <p className="explain">
+                    Schrijf elke reden op als wat waar moet zijn om die mislukking te voorkomen. Reden &quot;overstappen was te veel gedoe&quot; wordt bijvoorbeeld: &quot;Eventmanagers stappen zonder veel moeite over van hun vaste bureau.&quot;
+                  </p>
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="mt-12">
+                      <label className="field-label" htmlFor={`pm-r-${i}`} style={{ marginTop: 0 }}>Reden {i}{i > 1 ? " (optioneel)" : ""}</label>
+                      <input className="field" id={`pm-r-${i}`} name={`reason_${i}`} maxLength={400} placeholder={i === 1 ? "Bijv. Eventmanagers stappen zonder veel moeite over van hun vaste bureau." : ""} />
+                      <div className="double-field mt-8">
+                        <select className="field" name={`category_${i}`} defaultValue="desirability" aria-label={`Soort risico bij reden ${i}`}>
+                          {Object.entries(ASSUMPTION_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                        </select>
+                        <select className="field" name={`importance_${i}`} defaultValue="4" aria-label={`Belangrijkheid van reden ${i} (5 = idee valt om)`}>
+                          {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>Belang {n}{n === 5 ? " (kritiek)" : ""}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                  <p className="explain">Elke reden wordt een aanname op de risicokaart. Kritieke redenen zonder bewijs tellen mee als ongeteste kritieke aannames.</p>
+                </ActionForm>
+              </details>
             )}
             {canWrite && (
               <ActionForm action={runCheck.bind(null, id)} submitLabel={check ? "Voer de check opnieuw uit" : "Voer de Reality Check uit"} submitClass="btn white sm" pendingLabel="Controleren…"><span /></ActionForm>

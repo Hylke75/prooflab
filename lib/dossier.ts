@@ -2,7 +2,8 @@ import "server-only";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadAssumptions, rankAssumptions } from "@/lib/progress";
 import { experimentMetrics } from "@/lib/experiment-metrics";
-import { computeSizing, computeUnitEconomics, SCENARIO_LABELS, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
+import { breakEvenRevenue, computeSizing, computeUnitEconomics, SCENARIO_LABELS, simulateSizing, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
+import { explainContribution } from "@/lib/domain/evidence";
 import { dossierLabel } from "@/lib/domain/dossier-label";
 import type { DossierFacts } from "@/lib/domain/reality-check";
 import type { ClaimStatus } from "@/lib/domain/labels";
@@ -75,6 +76,36 @@ export async function loadDossier(idea: Idea) {
       })
     : null;
 
+  // Research 3.8: Monte Carlo summary per scenario that has at least one factor with a 90% range.
+  const breakEven = ue.data ? breakEvenRevenue({ grossMarginPct: ue.data.gross_margin_pct, fixedCostsYear: ue.data.fixed_costs_year }) : null;
+  const simulations = (scenarios.data ?? [])
+    .map((s) => {
+      const sim = simulateSizing(
+        s.model as SizingModel,
+        (s.sizing_factors ?? []).map((f) => ({
+          key: f.key,
+          value: Number(f.value),
+          low: f.low_value == null ? null : Number(f.low_value),
+          high: f.high_value == null ? null : Number(f.high_value),
+        })),
+        { threshold: breakEven },
+      );
+      return sim ? { kind: s.kind as ScenarioKind, label: SCENARIO_LABELS[s.kind as ScenarioKind].label, thresholdIsBreakEven: breakEven != null, ...sim } : null;
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x);
+
+  // Research 3.5: estimated probability per assumption, with band and largest contributions.
+  const probabilities = assumptions.map((a) => ({
+    id: a.id,
+    statement: a.statement,
+    importance: a.importance,
+    origin: a.origin,
+    prior: a.probability.prior,
+    probability: a.probability.probability,
+    band: a.probability.band,
+    top: a.probability.top.map((c) => ({ label: c.label, direction: c.direction, count: c.count, lr: c.lr, weight: c.weight, explanation: explainContribution(c) })),
+  }));
+
   const approvedCards = (cards.data ?? []).filter((c) => c.status === "approved");
   const label = dossierLabel({
     claims: (claims.data ?? []).map((c) => ({ status: c.status, domain: c.claim_sources?.[0]?.sources?.domain ?? null, sourceType: c.claim_sources?.[0]?.sources?.source_type ?? null })),
@@ -109,6 +140,9 @@ export async function loadDossier(idea: Idea) {
     members: members.data ?? [],
     research: { runs: runs.data ?? [], ai: ai.data ?? [] },
     label,
+    probabilities,
+    simulation: simulations.find((s) => s.kind === "realistic") ?? simulations[0] ?? null,
+    simulations,
   };
 }
 
@@ -136,7 +170,8 @@ export function factsFrom(d: Dossier): DossierFacts {
           revenueFactorSourced: realistic.factors.some((f) => /omzet|besteding/i.test(f.label) && (f.status === "verified" || f.status === "estimate")),
         }
       : null,
-    assumptions: d.assumptions.map((a) => ({ statement: a.statement, importance: a.importance, category: a.category, status: a.status, evidence: a.evidence, contradicting: a.contradicting })),
+    assumptions: d.assumptions.map((a) => ({ statement: a.statement, importance: a.importance, category: a.category, status: a.status, evidence: a.evidence, contradicting: a.contradicting, origin: a.origin })),
+    premortemDone: d.assumptions.some((a) => a.origin === "premortem"),
     experiments: d.experiments.map((e) => ({
       type: e.type as "landing" | "interview" | "pricing",
       state: e.state,

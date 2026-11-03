@@ -92,6 +92,37 @@ export async function runCheck(ideaId: string, _: ActionState): Promise<ActionSt
   return { error: null, ok: "Reality Check uitgevoerd." };
 }
 
+// Pre-mortem (research 3.10): "Het is zes maanden na het besluit en dit is mislukt. Wat is de meest
+// waarschijnlijke reden?" Each reason becomes an assumption on the map (origin 'premortem'), so it is
+// tested like any other. Empty rows are skipped; at least one reason is required.
+const PremortemReason = z.object({
+  statement: z.string().trim().min(10, "Beschrijf elke reden in minstens één korte zin.").max(400),
+  category: z.enum(["desirability", "feasibility", "viability", "context"]),
+  importance: z.coerce.number().int().min(1).max(5),
+});
+
+export async function addPremortem(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const reasons: z.infer<typeof PremortemReason>[] = [];
+  for (const i of [1, 2, 3]) {
+    const statement = String(form.get(`reason_${i}`) ?? "").trim();
+    if (!statement) continue;
+    const p = PremortemReason.safeParse({
+      statement,
+      category: form.get(`category_${i}`) ?? "desirability",
+      importance: form.get(`importance_${i}`) ?? 4,
+    });
+    if (!p.success) return { error: p.error.issues[0].message };
+    reasons.push(p.data);
+  }
+  if (reasons.length === 0) return { error: "Vul minstens één reden in." };
+  const supabase = await supabaseServer();
+  const { error } = await supabase.from("assumptions").insert(reasons.map((r) => ({ ...r, idea_id: ideaId, origin: "premortem" })));
+  if (error) return { error: "De pre-mortem kon niet worden opgeslagen." };
+  refresh(ideaId);
+  return { error: null, ok: `${reasons.length} reden(en) staan nu als aanname op de risicokaart. Voer de Reality Check opnieuw uit.` };
+}
+
 const DecisionSchema = z.object({
   action: z.enum(["continue", "adjust", "test_more", "pause", "stop"]),
   rationale: z.string().trim().min(15, "Leg in minstens één zin uit waarom.").max(2000),

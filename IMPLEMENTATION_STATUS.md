@@ -110,6 +110,18 @@ opgelost in code; de databasekant wordt live zodra migratie `integrity` is toege
 - `npm run build` — geslaagd
 - E2E tegen het live project: opnieuw te draaien na migratie `integrity` (laatste geslaagde run: 28-10, 5/5)
 
+## Voorspelkracht: bewijs kwantificeren (3 november, ontwerp `ProofLab_Voorspelkracht_v1` 3.5–3.10)
+
+Alles deterministisch (geen LLM), met unit-tests in `tests/unit/quantify.test.ts` en databasetests in `tests/db/quantify.test.ts`.
+
+- ✅ 3.5 + 3.7 Kans per aanname: Bayes in odds met een zichtbare factor per bewijssoort (`lib/domain/evidence.ts`), afnemende meeweging, tegenbewijs, intentiecorrectie (mening × 1,1), AI-codering half tot beoordeeld. Bandbreedte (factoren ±50%) en top 3 bijdragen op de risicokaart; x-as = geschatte kans dat het klopt.
+- ✅ 3.9 Informatiewaarde: rangschikking op aannamepagina en in de experimentaanbeveler, met een uitleg per aanname (`lib/domain/recommend.ts`).
+- ✅ 3.6 Bayesiaanse schatting naast het Wilson-interval, prior uit eerdere afgeronde tests van hetzelfde type in de organisatie (max. 20 pseudo-waarnemingen), pas na de eindconditie. Het vooraf vastgelegde oordeel is ongewijzigd.
+- ✅ 3.10 Pre-mortem in de Reality Check: redenen worden aannames (`origin = 'premortem'`); waarschuwing zonder pre-mortem.
+- ✅ 3.8 Monte Carlo marktomvang: 90%-bandbreedte per factor, 5.000 trekkingen met vaste startwaarde, P10/P50/P90, kans op break-evenomzet, grootste onzekerheidsbron.
+- ⬜ Beginwaarde per aanname opslaan (nu alleen verkennen op het scherm): vraagt een kolom `assumptions.prior`.
+- ⬜ Factoren ijken op afgeronde dossiers (fase D).
+
 ## Gevonden en opgelost tijdens de live E2E
 
 - Formulieren werden na verzenden door React leeggemaakt, waardoor de intake bij een fout invoer verloor (`keepValuesOnSubmit`)

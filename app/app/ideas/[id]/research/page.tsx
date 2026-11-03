@@ -16,7 +16,7 @@ import { loadProgress } from "@/lib/progress";
 import { stepsDone } from "@/lib/steps";
 import { aiConfigured } from "@/lib/env";
 import { CLAIM_STATUS, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type EvidenceType, type SourceType } from "@/lib/domain/labels";
-import type { ScenarioKind, SizingModel } from "@/lib/domain/sizing";
+import { breakEvenRevenue, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import {
   addClaim, addSource, aiPlan, deleteClaim, deleteCompetitor, deleteQuestion, deleteSegment, deleteSource,
   saveCompetitor, saveQuestion, saveScenario, saveSegment, saveUnitEconomics,
@@ -372,8 +372,9 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               id: s.id,
               kind: s.kind as ScenarioKind,
               model: s.model as SizingModel,
-              factors: (s.sizing_factors ?? []).sort((a, b) => a.position - b.position).map((f) => ({ key: f.key, label: f.label, unit: f.unit, value: Number(f.value), claim_id: f.claim_id, note: f.note })),
+              factors: (s.sizing_factors ?? []).sort((a, b) => a.position - b.position).map((f) => ({ key: f.key, label: f.label, unit: f.unit, value: Number(f.value), claim_id: f.claim_id, note: f.note, low: f.low_value, high: f.high_value })),
             }))}
+            breakEvenRevenue={breakEvenRevenue({ grossMarginPct: ue?.gross_margin_pct ?? null, fixedCostsYear: ue?.fixed_costs_year ?? null })}
             actions={Object.fromEntries((scenRes.data ?? []).map((s) => [s.id, saveScenario.bind(null, id, s.id)]))}
           />
           <UnitEconomicsPanel

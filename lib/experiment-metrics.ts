@@ -1,6 +1,6 @@
 import "server-only";
 import { supabaseServer } from "@/lib/supabase/server";
-import { verdict, type Verdict } from "@/lib/domain/stats";
+import { betaBinomial, empiricalPrior, FLAT_PRIOR, verdict, type BayesEstimate, type BetaPrior, type Verdict } from "@/lib/domain/stats";
 
 export type LandingConfig = {
   headline: string;
@@ -34,6 +34,9 @@ export type ExperimentMetrics = {
   byVariant: VariantRow[];
   endConditionReached: boolean;
   verdict: Verdict;
+  // Bayesian estimate with a prior from earlier tests (research 3.6). Null until the end condition
+  // is reached: no peeking, same as the verdict.
+  bayes: BayesEstimate | null;
   warnings: string[];
 };
 
@@ -44,7 +47,43 @@ type Exp = {
   config: unknown;
   ends_at: string | null;
   started_at: string | null;
+  idea_id?: string;
+  ended_at?: string | null;
 };
+
+// Earlier ended tests of the same type in the same organisation, as far as this user can see them
+// (row level security): the measured n and successes on their approved Learning Cards.
+async function earlierTests(exp: Exp): Promise<{ n: number; successes: number }[]> {
+  if (!exp.idea_id) return [];
+  const supabase = await supabaseServer();
+  const { data: idea } = await supabase.from("ideas").select("org_id").eq("id", exp.idea_id).maybeSingle();
+  if (!idea?.org_id) return [];
+  const before = exp.ended_at ?? new Date().toISOString();
+  const { data } = await supabase
+    .from("learning_cards")
+    .select("metrics, experiments!inner(id, type, state, ended_at, ideas!inner(org_id))")
+    .eq("status", "approved")
+    .eq("experiments.type", exp.type)
+    .eq("experiments.ideas.org_id", idea.org_id)
+    .in("experiments.state", ["ended", "analyzed", "decided"])
+    .lt("experiments.ended_at", before)
+    .neq("experiment_id", exp.id)
+    .limit(500);
+  return (data ?? [])
+    .map((c) => {
+      const m = c.metrics as { n?: unknown; successes?: unknown } | null;
+      return { n: Number(m?.n), successes: Number(m?.successes) };
+    })
+    .filter((t) => Number.isInteger(t.n) && Number.isInteger(t.successes) && t.n > 0);
+}
+
+export async function priorFor(exp: Exp): Promise<BetaPrior> {
+  try {
+    return empiricalPrior(await earlierTests(exp));
+  } catch {
+    return FLAT_PRIOR;
+  }
+}
 type Hyp = { success_threshold_pct: number; fail_threshold_pct: number | null; min_sample: number; metric_label: string };
 
 // Computes the pre-registered metric from raw, deduplicated events (or coded interviews).
@@ -121,5 +160,6 @@ export async function experimentMetrics(exp: Exp, h: Hyp): Promise<ExperimentMet
     minSample: h.min_sample,
     endConditionReached,
   });
-  return { n, successes, label: h.metric_label, byChannel, byVariant, endConditionReached, verdict: v, warnings };
+  const bayes = endConditionReached ? betaBinomial(await priorFor(exp), successes, n, Number(h.success_threshold_pct)) : null;
+  return { n, successes, label: h.metric_label, byChannel, byVariant, endConditionReached, verdict: v, bayes, warnings };
 }

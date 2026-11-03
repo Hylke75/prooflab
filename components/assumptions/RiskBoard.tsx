@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import { layoutRiskPoints } from "@/lib/domain/risk-layout";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { ASSUMPTION_CATEGORIES, ASSUMPTION_STATUS, type AssumptionCategory, type AssumptionStatus } from "@/lib/domain/labels";
+import { bandFromShift, explainContribution, probabilityFromShift, type AssumptionProbability } from "@/lib/domain/evidence";
+import type { VoiResult } from "@/lib/domain/recommend";
 
 export type BoardAssumption = {
   id: string;
@@ -12,21 +14,25 @@ export type BoardAssumption = {
   category: AssumptionCategory;
   importance: number;
   status: AssumptionStatus;
+  origin: string;
   evidence: number;
   supporting: number;
   contradicting: number;
+  probability: AssumptionProbability;
+  voi: VoiResult;
   claims: { id: string; statement: string; relation: string; status: string }[];
 };
 
 type Action = (s: FormState, f: FormData) => Promise<FormState>;
 
-function riskLabel(a: BoardAssumption) {
-  const score = a.importance * (1 - a.evidence);
-  return score >= 3.2 ? "Hoog risico" : score >= 2 ? "Middel" : "Lager";
-}
+const pctR = (p: number) => `${Math.round(p * 100)}%`;
+const PRIORS = [0.2, 0.35, 0.5, 0.65, 0.8];
+// Critical and not yet likely true: the red dots on the map.
+const isHot = (a: BoardAssumption) => a.importance >= 4 && a.probability.probability < 0.7;
 
-// Importance × evidence map (the method's assumption map). The evidence axis is computed from
-// linked findings and observations; only importance is a human estimate.
+// Importance × probability map (the method's assumption map). The probability that an assumption
+// holds is computed from linked findings and observations (Bayes with fixed factors per kind of
+// evidence); only importance is a human estimate. The list is ordered by information value.
 export function RiskBoard({
   ideaId,
   assumptions,
@@ -48,10 +54,17 @@ export function RiskBoard({
 }) {
   const [sel, setSel] = useState(assumptions[0]?.id ?? null);
   const [cluster, setCluster] = useState<string | null>(null);
+  // What-if starting value for the selected assumption; not stored.
+  const [prior, setPrior] = useState(0.5);
   const popRef = useRef<HTMLDivElement>(null);
   const clusterBtn = useRef<HTMLButtonElement | null>(null);
   const current = assumptions.find((a) => a.id === sel) ?? assumptions[0];
-  const placed = layoutRiskPoints(assumptions.map((a) => ({ id: a.id, importance: a.importance, evidence: a.evidence })));
+  const select = (id: string) => {
+    setSel(id);
+    setPrior(0.5);
+  };
+  // The horizontal axis is the estimated probability: more likely true = further left.
+  const placed = layoutRiskPoints(assumptions.map((a) => ({ id: a.id, importance: a.importance, evidence: a.probability.probability })));
   const openCluster = placed.find((p) => p.kind === "cluster" && p.key === cluster);
 
   useEffect(() => {
@@ -82,14 +95,14 @@ export function RiskBoard({
           <span className="pill gray">{assumptions.length} aannames</span>
         </div>
         <p className="sub">Hoe hoger en verder naar rechts, hoe eerder je een aanname wilt onderzoeken.</p>
-        <div className="risk-grid" role="group" aria-label="Risicokaart: belangrijkheid tegen bewijs">
+        <div className="risk-grid" role="group" aria-label="Risicokaart: belangrijkheid tegen de geschatte kans dat de aanname klopt">
           <span className="axis-label top" aria-hidden="true">Belangrijk ↑</span>
           <span className="axis-label left" aria-hidden="true">Minder belangrijk</span>
           {placed.map((p) => {
             if (p.kind === "cluster") {
               const hot = p.ids.some((id) => {
                 const a = assumptions.find((x) => x.id === id)!;
-                return a.importance >= 4 && a.evidence < 0.35;
+                return isHot(a);
               });
               const containsCurrent = p.ids.includes(current.id);
               return (
@@ -110,15 +123,15 @@ export function RiskBoard({
               );
             }
             const a = assumptions.find((x) => x.id === p.id)!;
-            const hot = a.importance >= 4 && a.evidence < 0.35;
+            const hot = isHot(a);
             return (
               <button
                 key={a.id}
                 type="button"
                 className={`risk-dot${hot ? " hot" : ""}`}
                 style={{ ...pos(p.x, p.y, p.dx, p.dy), outline: a.id === current.id ? "3px solid var(--ink)" : undefined }}
-                onClick={() => setSel(a.id)}
-                aria-label={`Aanname ${p.index + 1}: ${a.statement}`}
+                onClick={() => select(a.id)}
+                aria-label={`Aanname ${p.index + 1}: ${a.statement}. Geschatte kans dat dit klopt: ${pctR(a.probability.probability)}.`}
                 aria-pressed={a.id === current.id}
               >
                 {p.index + 1}
@@ -135,7 +148,7 @@ export function RiskBoard({
                     type="button"
                     aria-pressed={id === current.id}
                     onClick={() => {
-                      setSel(id);
+                      select(id);
                       setCluster(null);
                     }}
                   >
@@ -148,21 +161,28 @@ export function RiskBoard({
           )}
         </div>
         <div className="risk-axis" aria-hidden="true">
-          <span>← Veel bewijs</span>
-          <span>Weinig bewijs →</span>
+          <span>← Kans groot dat het klopt</span>
+          <span>Kans klein →</span>
         </div>
-        <p className="tiny">Bewijs wordt berekend uit gekoppelde bevindingen (max. 45%) en waargenomen klantgedrag. Tik op een punt om de aanname te bekijken.</p>
+        <p className="tiny">
+          Horizontaal staat de geschatte kans dat de aanname klopt: start op 50% en bijgewerkt met een vaste factor per soort bewijs. Tik op een punt om de aanname te bekijken.
+        </p>
       </div>
       <div className="card">
         <div className="section-title">
           <h2 className="as-h3">Prioriteiten</h2>
-          <span className="pill gray">Belangrijk × weinig bewijs</span>
+          <span className="pill gray">Op informatiewaarde</span>
         </div>
+        <p className="tiny" style={{ marginTop: -8, marginBottom: 8 }}>
+          Bovenaan staat wat een test het meest kan laten veranderen aan het besluit, per euro en week. Score 100 = de hoogste in dit dossier.
+        </p>
         {assumptions.map((a, i) => (
-          <button key={a.id} type="button" className={`assumption-item${a.id === current.id ? " active" : ""}`} onClick={() => setSel(a.id)} aria-pressed={a.id === current.id}>
+          <button key={a.id} type="button" className={`assumption-item${a.id === current.id ? " active" : ""}`} onClick={() => select(a.id)} aria-pressed={a.id === current.id}>
             <span className="count">{i + 1}</span>
             <span>{a.statement}</span>
-            <small>{riskLabel(a)}</small>
+            <small aria-label={`Informatiewaarde ${a.voi.index} van 100, geschatte kans ${pctR(a.probability.probability)}`}>
+              {pctR(a.probability.probability)} · IW {a.voi.index}
+            </small>
           </button>
         ))}
         <div className="divider" />
@@ -171,11 +191,16 @@ export function RiskBoard({
         <div className="row">
           <span className="pill blue">{ASSUMPTION_CATEGORIES[current.category]}</span>
           <span className={`pill ${ASSUMPTION_STATUS[current.status].pill}`}>{ASSUMPTION_STATUS[current.status].label}</span>
-          <span className="pill gray">Bewijs {Math.round(current.evidence * 100)}%</span>
+          {current.origin === "premortem" && <span className="pill coral">Uit de pre-mortem</span>}
+          <span className="pill gray">Bewijsscore {Math.round(current.evidence * 100)} van 100</span>
         </div>
+        <ProbabilityDetail a={current} prior={prior} setPrior={setPrior} />
+        <p className="sub mt-12">
+          <strong>Waarom nu testen (informatiewaarde {current.voi.index} van 100):</strong> {current.voi.why}
+        </p>
         <p className="sub mt-12">
           {current.supporting} ondersteunend en {current.contradicting} tegensprekend bewijs gekoppeld.
-          {current.evidence < 0.2 ? " We weten hier nog weinig van." : ""}
+          {current.probability.counted === 0 ? " We weten hier nog weinig van." : ""}
         </p>
         {current.claims.length > 0 && (
           <div className="mt-12">
@@ -217,6 +242,55 @@ export function RiskBoard({
           Kies een passende test →
         </Link>
       </div>
+    </div>
+  );
+}
+
+// Probability with its band, the three largest contributions and a what-if starting value.
+function ProbabilityDetail({ a, prior, setPrior }: { a: BoardAssumption; prior: number; setPrior: (p: number) => void }) {
+  const p = probabilityFromShift(prior, a.probability.shift);
+  const band = bandFromShift(prior, a.probability.shift);
+  const ignored = a.probability.ignored.synthetic + a.probability.ignored.rejected;
+  return (
+    <div className="mt-12" style={{ background: "var(--soft)", borderRadius: 14, padding: "12px 14px" }}>
+      <div className="row between">
+        <strong style={{ font: "700 24px var(--font-space-grotesk),sans-serif", letterSpacing: "-.04em" }} className="num">{pctR(p)}</strong>
+        <span className="pill gray">Geschat · bandbreedte {pctR(band.low)}–{pctR(band.high)}</span>
+      </div>
+      <p className="explain" style={{ marginTop: 2 }}>
+        Geschatte kans dat deze aanname klopt. De bandbreedte laat zien wat er gebeurt als de factoren per bewijssoort 50% zwakker of sterker zijn.
+      </p>
+      {a.probability.top.length > 0 ? (
+        <ul style={{ margin: "8px 0 0 18px", fontSize: 12, lineHeight: 1.7 }} aria-label="Grootste bijdragen aan de kans">
+          {a.probability.top.map((c) => (
+            <li key={c.key}>
+              <span style={{ color: c.direction === "supports" ? "var(--green)" : "#a43c42", fontWeight: 800 }}>{c.direction === "supports" ? "↑" : "↓"}</span> {explainContribution(c)}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="tiny mt-8">Nog geen bewijs dat meetelt: de kans staat op de beginwaarde.</p>
+      )}
+      {ignored > 0 && (
+        <p className="tiny mt-8">
+          Niet meegeteld: {a.probability.ignored.synthetic ? `${a.probability.ignored.synthetic} synthetische observatie(s)` : ""}
+          {a.probability.ignored.synthetic && a.probability.ignored.rejected ? " en " : ""}
+          {a.probability.ignored.rejected ? `${a.probability.ignored.rejected} afgekeurde AI-codering(en)` : ""}.
+        </p>
+      )}
+      <div className="row mt-8">
+        <label className="tiny" htmlFor={`prior-${a.id}`}>Beginwaarde (verkennen)</label>
+        <select
+          className="field"
+          id={`prior-${a.id}`}
+          value={prior}
+          onChange={(e) => setPrior(Number(e.target.value))}
+          style={{ width: 110, padding: "8px 30px 8px 10px" }}
+        >
+          {PRIORS.map((x) => <option key={x} value={x}>{pctR(x)}</option>)}
+        </select>
+      </div>
+      <p className="explain">Probeer een andere beginwaarde om te zien hoe gevoelig de kans daarvoor is. Dit wordt niet opgeslagen; de kaart rekent met 50%.</p>
     </div>
   );
 }

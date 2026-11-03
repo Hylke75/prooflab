@@ -5,7 +5,7 @@ import { Stepper } from "@/components/ui/Stepper";
 import { ExperimentBuilder } from "@/components/experiments/ExperimentBuilder";
 import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
-import { loadAssumptions, loadProgress, rankAssumptions } from "@/lib/progress";
+import { loadInformationValue, loadProgress } from "@/lib/progress";
 import { stepsDone } from "@/lib/steps";
 import { recommend } from "@/lib/domain/recommend";
 import { EXPERIMENT_STATES, EXPERIMENT_TYPES, type AssumptionCategory, type ExperimentState, type ExperimentType } from "@/lib/domain/labels";
@@ -25,8 +25,9 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
   const sp = await searchParams;
   const { idea, canWrite } = await getIdea(id);
   const supabase = await supabaseServer();
+  // Ordered by information value (research 3.9): the default suggestion is the test that can change the decision most per euro and week.
   const [assumptions, progress, { data: experiments }, { count: interviewObs }] = await Promise.all([
-    loadAssumptions(id).then(rankAssumptions),
+    loadInformationValue(id),
     loadProgress(id),
     supabase.from("experiments").select("id, title, type, state, ends_at, hypotheses(assumptions(statement))").eq("idea_id", id).order("created_at", { ascending: false }),
     supabase.from("observations").select("id", { count: "exact", head: true }).eq("idea_id", id).not("interview_id", "is", null),
@@ -61,6 +62,34 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
                 </Link>
               ))}
             </div>
+          ))}
+        </div>
+      )}
+
+      {assumptions.length > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="section-title">
+            <h2 className="as-h3">Wat test je eerst?</h2>
+            <span className="pill gray">Op informatiewaarde</span>
+          </div>
+          <p className="tiny" style={{ marginTop: -8 }}>
+            Belang × onzekerheid × hoeveel de goedkoopste geschikte test het besluit kan veranderen, gedeeld door kosten en duur. Score 100 = de hoogste in dit dossier; de kansen zijn schattingen.
+          </p>
+          {assumptions.slice(0, 3).map((a, i) => (
+            <Link
+              key={a.id}
+              href={`/app/ideas/${id}/experiments?assumption=${a.id}`}
+              className={`assumption-item${a.id === selected?.id ? " active" : ""}`}
+              style={{ textDecoration: "none", marginTop: 10 }}
+              aria-current={a.id === selected?.id ? "true" : undefined}
+            >
+              <span className="count">{i + 1}</span>
+              <span>
+                {a.statement}
+                <small style={{ display: "block", fontWeight: 500, marginTop: 3 }}>{a.voi.why}</small>
+              </span>
+              <small>IW {a.voi.index}</small>
+            </Link>
           ))}
         </div>
       )}

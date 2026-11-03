@@ -1,8 +1,9 @@
 import "server-only";
 import { cache } from "react";
 import { supabaseServer } from "@/lib/supabase/server";
-import { assumptionEvidence, type ObservationDims } from "@/lib/domain/evidence";
-import type { ClaimStatus } from "@/lib/domain/labels";
+import { assumptionEvidence, assumptionProbability, type AssumptionProbability, type ObservationDims } from "@/lib/domain/evidence";
+import type { AssumptionCategory, ClaimStatus } from "@/lib/domain/labels";
+import { rankByInformationValue, type VoiResult } from "@/lib/domain/recommend";
 import type { IdeaProgress } from "@/lib/domain/coach";
 
 export type AssumptionWithEvidence = {
@@ -15,18 +16,47 @@ export type AssumptionWithEvidence = {
   evidence: number;
   supporting: number;
   contradicting: number;
+  // Estimated probability that the assumption holds (research 3.5), from a 50% prior.
+  probability: AssumptionProbability;
 };
 
-// Computes the evidence axis of every assumption from linked claims and observations.
+type ObsLink = {
+  assumption_id: string;
+  relation: string;
+  observations: {
+    is_fact: boolean;
+    is_behaviour: boolean;
+    is_real_context: boolean;
+    is_costly: boolean;
+    is_synthetic: boolean;
+    kind: string;
+    origin: string;
+    review_status?: string | null;
+  } | null;
+};
+
+// The review columns arrive with the prediction migration; without them AI coding counts as unreviewed.
+async function loadObservationLinks(ideaId: string): Promise<ObsLink[]> {
+  const supabase = await supabaseServer();
+  const full = await supabase
+    .from("assumption_observations")
+    .select("assumption_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin, review_status)")
+    .eq("idea_id", ideaId);
+  if (!full.error) return full.data ?? [];
+  const plain = await supabase
+    .from("assumption_observations")
+    .select("assumption_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic, kind, origin)")
+    .eq("idea_id", ideaId);
+  return plain.data ?? [];
+}
+
+// Computes the evidence axis and the probability of every assumption from linked claims and observations.
 export const loadAssumptions = cache(async (ideaId: string): Promise<AssumptionWithEvidence[]> => {
   const supabase = await supabaseServer();
-  const [{ data: assumptions }, { data: links }, { data: obsLinks }] = await Promise.all([
+  const [{ data: assumptions }, { data: links }, obsLinks] = await Promise.all([
     supabase.from("assumptions").select("*").eq("idea_id", ideaId).order("created_at"),
     supabase.from("assumption_claims").select("assumption_id, relation, claims(status)").eq("idea_id", ideaId),
-    supabase
-      .from("assumption_observations")
-      .select("assumption_id, relation, observations(is_fact, is_behaviour, is_real_context, is_costly, is_synthetic)")
-      .eq("idea_id", ideaId),
+    loadObservationLinks(ideaId),
   ]);
   return (assumptions ?? []).map((a) => {
     const claims = (links ?? [])
@@ -46,7 +76,20 @@ export const loadAssumptions = cache(async (ideaId: string): Promise<AssumptionW
         return { ...dims, relation: l.relation as "supports" | "contradicts" };
       });
     const e = assumptionEvidence(claims, observations);
+    const probability = assumptionProbability(
+      claims,
+      (obsLinks ?? [])
+        .filter((l) => l.assumption_id === a.id && l.observations)
+        .map((l) => ({
+          kind: l.observations!.kind,
+          relation: l.relation as "supports" | "contradicts",
+          isSynthetic: l.observations!.is_synthetic,
+          origin: l.observations!.origin,
+          reviewStatus: l.observations!.review_status ?? null,
+        })),
+    );
     return {
+      probability,
       id: a.id,
       statement: a.statement,
       category: a.category,
@@ -63,6 +106,33 @@ export const loadAssumptions = cache(async (ideaId: string): Promise<AssumptionW
 // Risk priority: most important first, then least evidence.
 export function rankAssumptions(list: AssumptionWithEvidence[]): AssumptionWithEvidence[] {
   return [...list].sort((a, b) => b.importance * (1 - b.evidence) - a.importance * (1 - a.evidence));
+}
+
+export type AssumptionWithVoi = AssumptionWithEvidence & { voi: VoiResult };
+
+// Research 3.9: assumptions in order of information value (what to test next and why).
+export const loadInformationValue = cache(async (ideaId: string): Promise<AssumptionWithVoi[]> => {
+  const supabase = await supabaseServer();
+  const [list, { count: interviewObs }] = await Promise.all([
+    loadAssumptions(ideaId),
+    supabase.from("observations").select("id", { count: "exact", head: true }).eq("idea_id", ideaId).not("interview_id", "is", null),
+  ]);
+  return orderByInformationValue(list, (interviewObs ?? 0) > 0);
+});
+
+export function orderByInformationValue(list: AssumptionWithEvidence[], hasDiscoveryEvidence: boolean): AssumptionWithVoi[] {
+  const ranked = rankByInformationValue(
+    list.map((a) => ({
+      id: a.id,
+      statement: a.statement,
+      importance: a.importance,
+      probability: a.probability.probability,
+      category: a.category as AssumptionCategory,
+      evidence: a.evidence,
+      hasDiscoveryEvidence,
+    })),
+  );
+  return ranked.map((voi) => ({ ...list.find((a) => a.id === voi.id)!, voi }));
 }
 
 // Reports: the sharing columns arrive with the integrity migration; fall back when they are missing.
