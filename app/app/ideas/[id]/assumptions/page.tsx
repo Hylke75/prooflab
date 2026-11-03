@@ -173,7 +173,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
         <DecisionRuleCard
           ideaId={id}
           rule={rule}
-          assumptions={board.map((a) => ({ id: a.id, statement: a.statement, importance: a.importance }))}
+          assumptions={ranked.map((a) => ({ id: a.id, statement: a.statement, importance: a.importance, primaryExperimentId: a.primaryExperimentId }))}
           experiments={experiments ?? []}
           canWrite={canWrite}
         />

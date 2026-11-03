@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assumptionStatusFromCards, canDesignatePrimary, chanceOfLuck, primaryTestFor, testRole } from "@/lib/domain/primary-test";
+import { assumptionStatusFromCards, canDesignatePrimary, chanceOfLuck, primaryTestFor, rulePrimaryOptions, rulePrimaryProblem, testRole } from "@/lib/domain/primary-test";
 import { METHODS } from "@/lib/domain/method";
 
 // Golf A, punt 11: per aanname één hoofdtest; de rest is verkennend.
@@ -51,5 +51,46 @@ describe("hoofdtest per aanname", () => {
     expect(chanceOfLuck({ rule: "probability", label: "onbeslist", probability: 0.6 })).toBeNull();
     expect(chanceOfLuck({ rule: "absolute", label: "geslaagd", probability: null })).toBeNull();
     expect(chanceOfLuck({ rule: "interval", label: "geslaagd", probability: null })).toBeNull();
+  });
+});
+
+// Golf B tegenover golf A: de hoofdtest van de beslisregel moet de hoofdtest van een gekozen aanname zijn.
+describe("hoofdtest in de beslisregel", () => {
+  const list = [
+    { id: "a1", primary_experiment_id: "e1" },
+    { id: "a2", primary_experiment_id: null },
+    { id: "a3", primary_experiment_id: "e3" },
+    { id: "a4", primary_experiment_id: "e1" },
+  ];
+
+  it("biedt alleen de hoofdtests van de gekozen aannames aan, zonder dubbelen", () => {
+    expect(rulePrimaryOptions(["a1", "a2"], list)).toEqual([{ experimentId: "e1", assumptionId: "a1" }]);
+    expect(rulePrimaryOptions(["a1", "a3", "a4"], list)).toEqual([
+      { experimentId: "e1", assumptionId: "a1" },
+      { experimentId: "e3", assumptionId: "a3" },
+    ]);
+    expect(rulePrimaryOptions(["a2"], list)).toEqual([]);
+    expect(rulePrimaryOptions([], list)).toEqual([]);
+  });
+
+  it("de server-controle: in orde zonder hoofdtest of met de hoofdtest van een gekozen aanname", () => {
+    expect(rulePrimaryProblem(null, [], list)).toBeNull();
+    expect(rulePrimaryProblem(null, ["a2"], list)).toBeNull();
+    expect(rulePrimaryProblem("e1", ["a1"], list)).toBeNull();
+    expect(rulePrimaryProblem("e3", ["a2", "a3"], list)).toBeNull();
+  });
+
+  it("weigert een verkennende test en de hoofdtest van een aanname die niet in de regel staat", () => {
+    expect(rulePrimaryProblem("e9", ["a1"], list)).toMatch(/als hoofdtest is aangewezen/);
+    expect(rulePrimaryProblem("e3", ["a1"], list)).toMatch(/niet in de beslisregel staat/);
+    expect(rulePrimaryProblem("e1", [], list)).toMatch(/niet in de beslisregel staat/);
+    expect(rulePrimaryProblem("e1", ["a1"], [{ id: "a1", primary_experiment_id: null }])).toMatch(/als hoofdtest is aangewezen/);
+  });
+
+  it("gebruikt dezelfde aanwijzing als primaryTestFor", () => {
+    for (const a of list) {
+      const p = primaryTestFor(a.id, list);
+      expect(rulePrimaryOptions([a.id], list).map((o) => o.experimentId)).toEqual(p ? [p] : []);
+    }
   });
 });

@@ -738,9 +738,11 @@ van bewijs naar besluit en aan de voorspellus. Migratie `20261107100000_golf_b.s
 
 - Vóór de eerste goedgekeurde test legt het team op de aannamepagina vast wanneer het doorgaat: welke aannames boven
   welke kans (5–95%) moeten uitkomen, en welke hoofdtest moet slagen (`decision_rules`, `decision_rule_assumptions`).
-  De hoofdtest is een experiment-id. Golf A voegt per aanname een hoofdtest toe (`is_primary`); de beslisregel kiest
-  daar los van het experiment dat voor het besluit de doorslag geeft. Na het samenvoegen hoort dat een hoofdtest te
-  zijn.
+  De hoofdtest is een experiment-id. Sinds het samenvoegen met golf A kun je daar alleen een test kiezen die bij een
+  gekozen aanname van de regel als hoofdtest is aangewezen (`assumptions.primary_experiment_id`, `primaryTestFor` en
+  `rulePrimaryProblem` in `lib/domain/primary-test.ts`); een verkennende test kan het besluit niet beslissen. Is er nog
+  geen hoofdtest aangewezen, dan verwijst het formulier naar de experimentenpagina. De keuzelijst en de server-actie
+  controleren dit; de database niet.
 - De regel gaat op slot bij de eerste goedgekeurde test (trigger op `experiments`), en uiterlijk bij het eerste
   definitieve besluit. Wie de regel pas na de eerste goedgekeurde test vastlegt, krijgt een regel die meteen op slot
   zit en in het rapport "achteraf vastgelegd" heet. Vastleggen kan alleen via `save_decision_rule` (regel en

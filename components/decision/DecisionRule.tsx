@@ -2,6 +2,7 @@ import { ActionForm } from "@/components/ui/ActionForm";
 import { saveDecisionRule } from "@/app/app/ideas/[id]/assumptions/rule-actions";
 import { describeRule, RULE_MAX, RULE_MIN, type DecisionRule, type RuleEvaluation } from "@/lib/domain/decision-rule";
 import { pct } from "@/lib/domain/forecast";
+import { RulePrimarySelect } from "./RulePrimarySelect";
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" });
 
@@ -22,7 +23,8 @@ export function DecisionRuleCard({
 }: {
   ideaId: string;
   rule: DecisionRule | null;
-  assumptions: { id: string; statement: string; importance: number }[];
+  // primaryExperimentId: de hoofdtest van de aanname (golf A); alleen die kan de hoofdtest van de regel zijn.
+  assumptions: { id: string; statement: string; importance: number; primaryExperimentId: string | null }[];
   experiments: { id: string; title: string }[];
   canWrite: boolean;
 }) {
@@ -82,11 +84,13 @@ export function DecisionRuleCard({
                 </div>
               ))}
             </fieldset>
-            <label className="field-label" htmlFor="dr-primary">Hoofdtest die moet slagen</label>
-            <select className="field" id="dr-primary" name="primary_experiment_id" defaultValue={rule?.primaryExperimentId ?? ""}>
-              <option value="">Geen hoofdtest</option>
-              {experiments.map((e) => <option key={e.id} value={e.id}>{e.title}</option>)}
-            </select>
+            <RulePrimarySelect
+              ideaId={ideaId}
+              assumptions={assumptions.map((a) => ({ id: a.id, statement: a.statement, primary_experiment_id: a.primaryExperimentId }))}
+              experiments={experiments}
+              defaultValue={rule?.primaryExperimentId ?? null}
+              initialChosen={assumptions.filter((a) => min(a.id) != null).map((a) => a.id)}
+            />
             <label className="field-label" htmlFor="dr-note">Toelichting (optioneel)</label>
             <input className="field" id="dr-note" name="note" maxLength={600} placeholder="Bijv. bij minder dan 70% kans op betaalbereidheid investeren we niet." />
             <p className="field-hint">
