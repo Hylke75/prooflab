@@ -131,7 +131,10 @@ export function ResearchRunPanel({
   canWrite,
   searchLog = [],
   cbsAction,
+  estimates,
 }: {
+  // Fase B2: schatting vóór de start per modus ("geschat: $x–$y van max $z") en wie er zoekt.
+  estimates?: Record<"quick" | "deep", { text: string; providers: string[] }>;
   ideaId: string;
   run: RunView;
   // "Haal CBS-cijfers op": officiële bedrijventellingen als bron, zonder AI.
@@ -224,14 +227,28 @@ export function ResearchRunPanel({
             in de bron staat, welke aanbieder de bron ook vond. Kosten worden per stap bijgehouden.
           </p>
           {canWrite && !active && (
-            <div className="row mt-12">
-              <button className="btn ai sm" onClick={() => begin("quick")} disabled={pending}>
-                <Icon name="spark" size="sm" /> Snelle marktcheck (3 vragen)
-              </button>
-              <button className="btn ai sm" onClick={() => begin("deep")} disabled={pending}>
-                Diep onderzoek (alle vragen + tegenbewijs)
-              </button>
-            </div>
+            <>
+              <div className="row mt-12" style={{ flexWrap: "wrap", gap: 8 }}>
+                <button className="btn ai sm" onClick={() => begin("quick")} disabled={pending}>
+                  <Icon name="spark" size="sm" /> Snelle marktcheck (beslissende vraag + tegenbewijs)
+                </button>
+                <button className="btn ai sm" onClick={() => begin("deep")} disabled={pending}>
+                  Diep onderzoek (alle vragen + tegenbewijs)
+                </button>
+              </div>
+              {estimates && (
+                <ul className="tiny num" style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }} aria-label="Kostenschatting vóór de start">
+                  <li>
+                    <strong>Snelle marktcheck</strong> {estimates.quick.text} · zoekt met {estimates.quick.providers.join(", ")}. Eerst de beslissende vraag
+                    met tegenbewijs, daarna de andere vragen zolang het budget het toelaat.
+                  </li>
+                  <li>
+                    <strong>Diep onderzoek</strong> {estimates.deep.text} · zoekt met {estimates.deep.providers.join(", ")}.
+                  </li>
+                  <li>Een stap die het maximum zou overschrijden, start niet. De schatting is een bovengrens per stap, geen belofte.</li>
+                </ul>
+              )}
+            </>
           )}
         </>
       )}

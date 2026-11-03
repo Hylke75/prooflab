@@ -17,7 +17,9 @@ import { isSignalSource, painAsAssumption, verifySignalGroups, type SignalExcerp
 import { ideaContext } from "@/lib/idea-context";
 import { aiErrorMessage, runAi } from "@/lib/ai/guard";
 import { EXPECTED_SOURCE_KEYS } from "@/lib/domain/research-plan";
-import { ensureDecisiveQuestion, markDecisive } from "@/lib/research-questions-data";
+import { ensureDecisiveQuestion, loadRunQuestions, markDecisive } from "@/lib/research-questions-data";
+import { decisiveFirst } from "@/lib/research-questions";
+import { planSteps, runBudgetUsd } from "@/lib/research-steps";
 import { isUnknown, normalizeReferenceDate, scopeValue, UNKNOWN } from "@/lib/domain/claim-scope";
 
 export type ActionState = { error: string | null; ok?: string | null };
@@ -495,27 +497,21 @@ export async function saveUnitEconomics(ideaId: string, _: ActionState, form: Fo
 // Research runs
 // ---------------------------------------------------------------------------
 
+// Fase B2, punten 2 en 3: de beslissende vraag gaat altijd eerst (zoeken, citaten, tegenbewijs); daarna de andere
+// vragen zolang het budget het toelaat. Elke stap start pas als hij binnen het plafond past (lib/research-runner.ts).
 export async function startResearchRun(ideaId: string, mode: "quick" | "deep"): Promise<{ runId?: string; error?: string }> {
-  await requireWritableIdea(ideaId);
+  const { idea } = await requireWritableIdea(ideaId);
   if (!aiConfigured()) return { error: "Live webonderzoek is niet verbonden. Voeg bronnen handmatig toe." };
   const supabase = await supabaseServer();
   const { data: running } = await supabase.from("research_runs").select("id").eq("idea_id", ideaId).in("status", ["queued", "running"]).limit(1);
   if (running?.length) return { runId: running[0].id };
-  const { data: questions } = await supabase.from("research_questions").select("id, question, position").eq("idea_id", ideaId).order("position");
-  const qs = (questions ?? []).slice(0, mode === "quick" ? 3 : 5);
+  await ensureDecisiveQuestion(ideaId, idea);
+  const qs = decisiveFirst(await loadRunQuestions(supabase, ideaId));
   if (qs.length === 0) return { error: "Maak eerst een onderzoekskaart." };
-  const budget = mode === "quick" ? Math.min(1.5, env.researchBudgetUsd) : env.researchBudgetUsd;
+  const budget = runBudgetUsd(mode, env.researchBudgetUsd);
   const { data: run, error } = await supabase.from("research_runs").insert({ idea_id: ideaId, mode, budget_usd: budget, status: "queued" }).select("id").single();
   if (error || !run) return { error: "De onderzoeksrun kon niet worden gestart." };
-  const tasks: { run_id: string; idea_id: string; position: number; kind: string; question_id: string | null; label: string }[] = [];
-  let pos = 1;
-  for (const q of qs) {
-    tasks.push({ run_id: run.id, idea_id: ideaId, position: pos++, kind: "search", question_id: q.id, label: `Bronnen zoeken: vraag ${q.position}` });
-    tasks.push({ run_id: run.id, idea_id: ideaId, position: pos++, kind: "extract", question_id: q.id, label: `Citaten controleren: vraag ${q.position}` });
-    // Golf C, punt 10: per vraag een verplichte, aparte zoekopdracht naar tegenbewijs.
-    tasks.push({ run_id: run.id, idea_id: ideaId, position: pos++, kind: "counter", question_id: q.id, label: `Tegenbewijs zoeken: vraag ${q.position}` });
-  }
-  if (mode === "deep") tasks.push({ run_id: run.id, idea_id: ideaId, position: pos++, kind: "reality_check", question_id: null, label: "Tegenbewijs en zwakke plekken zoeken" });
+  const tasks = planSteps(qs, mode).map((t, i) => ({ run_id: run.id, idea_id: ideaId, position: i + 1, kind: t.kind, question_id: t.questionId, label: t.label }));
   await supabase.from("research_tasks").insert(tasks);
   revalidatePath(`/app/ideas/${ideaId}/research`);
   return { runId: run.id };

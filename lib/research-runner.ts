@@ -3,7 +3,8 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { searchQuestion, extractClaims, challengeDossier, checkSupport, type ExcerptRef, type FoundSource, type IdeaContext, type QueryLog, type SearchFocus } from "@/lib/ai/research";
 import { mergeFoundSources } from "@/lib/ai/web-evidence";
 import { providersFor } from "@/lib/ai/settings";
-import { isProvider, PROVIDER_LABELS, type ProviderId } from "@/lib/ai/providers/config";
+import { isProvider, modelFor, PROVIDER_LABELS, PROVIDERS, type ProviderId } from "@/lib/ai/providers/config";
+import { fitsBudget, notStartedText, providersForRun, searchesFor, stepEstimateUsd, type ModelMap, type RunMode } from "@/lib/research-steps";
 import { assertAiBudget, runAi } from "@/lib/ai/guard";
 import { log } from "@/lib/log";
 import { env } from "@/lib/env";
@@ -57,7 +58,9 @@ export async function advanceRun(runId: string): Promise<RunState> {
 
   // The run budget is capped by the server setting, whatever is stored on the run.
   const budget = Math.min(Number(run.budget_usd), env.researchBudgetUsd);
-  let skipReason: string | null = Number(run.cost_usd) >= budget ? "Budget van deze run bereikt." : null;
+  const mode = run.mode as RunMode;
+  const spent = Number(run.cost_usd);
+  let skipReason: string | null = spent >= budget ? "Budget van deze run bereikt." : null;
   if (!skipReason) {
     try {
       await assertAiBudget(run.idea_id);
@@ -67,69 +70,127 @@ export async function advanceRun(runId: string): Promise<RunState> {
   }
   if (skipReason) {
     await supabase.from("research_tasks").update({ status: "skipped", detail: skipReason }).eq("run_id", runId).eq("status", "pending");
+    if (!run.error) await supabase.from("research_runs").update({ error: skipReason.slice(0, 500) }).eq("id", runId);
   }
-  const { data: next } = await supabase.from("research_tasks").select("*").eq("run_id", runId).eq("status", "pending").order("position").limit(1).maybeSingle();
-  // An extraction step only runs once the search for its question has finished.
-  if (next?.kind === "extract") {
-    const { data: search } = await supabase
-      .from("research_tasks")
-      .select("status")
-      .eq("run_id", runId)
-      .eq("kind", "search")
-      .eq("question_id", next.question_id!)
-      .maybeSingle();
-    if (search && !["done", "failed", "skipped"].includes(search.status)) return state();
+
+  // Fase B2, punt 3: het plafond is hard. De volgende stap start alleen als "uitgegeven + bovengrens van de stap ≤
+  // plafond"; een stap die niet past, wordt overgeslagen met de reden, en de run kijkt of een volgende (goedkopere)
+  // stap nog wel past. Een uitleesstap wacht op de zoekstap van zijn vraag en vervalt als die niet is uitgevoerd.
+  let next: TaskRow | null = null;
+  let estimate = 0;
+  let providers: ProviderId[] = [];
+  for (let guard = 0; guard < 50; guard++) {
+    const { data: candidate } = await supabase.from("research_tasks").select("*").eq("run_id", runId).eq("status", "pending").order("position").limit(1).maybeSingle();
+    if (!candidate) break;
+    if (candidate.kind === "extract") {
+      const search = await searchTaskBefore(runId, candidate);
+      if (search && !["done", "failed", "skipped"].includes(search.status)) return state();
+      if (search && search.status !== "done") {
+        await supabase
+          .from("research_tasks")
+          .update({ status: "skipped", detail: "Overgeslagen: de zoekstap van deze vraag is niet uitgevoerd, er is niets om uit te lezen." })
+          .eq("id", candidate.id)
+          .eq("status", "pending");
+        continue;
+      }
+    }
+    providers = await runProviders(run.idea_id, mode, budget, candidate.output);
+    estimate = stepEstimateUsd(candidate.kind, providers, mode, researchModels());
+    if (!fitsBudget(spent, estimate, budget)) {
+      const why = notStartedText(estimate, spent, budget);
+      await supabase.from("research_tasks").update({ status: "skipped", detail: why }).eq("id", candidate.id).eq("status", "pending");
+      if (!run.error) {
+        run.error = `Budget van deze run bereikt: niet elke stap paste binnen max $${budget.toFixed(2)}.`;
+        await supabase.from("research_runs").update({ error: run.error }).eq("id", runId);
+      }
+      continue;
+    }
+    next = candidate as TaskRow;
+    break;
   }
   if (!next) {
     await supabase.from("research_runs").update({ status: "done", finished_at: new Date().toISOString() }).eq("id", runId);
     await alertOnZeroSources(run);
     return state();
   }
+  const task = next;
   // Claim the task; a concurrent request that lost the race simply returns the state.
   const { data: claimed } = await supabase
     .from("research_tasks")
-    .update({ status: "running", attempts: next.attempts + 1, started_at: new Date().toISOString() })
-    .eq("id", next.id)
+    .update({ status: "running", attempts: task.attempts + 1, started_at: new Date().toISOString() })
+    .eq("id", task.id)
     .eq("status", "pending")
     .select("id");
   if (!claimed?.length) return state();
   await supabase.from("research_runs").update({ status: "running" }).eq("id", runId);
 
   const { data: idea } = await supabase.from("ideas").select("*").eq("id", run.idea_id).single();
-  // Every model call of this task reserves its estimated cost against what the run may still spend (lib/ai/budget.ts).
-  const runBudget = new RunBudget(budget, Number(run.cost_usd));
+  // Every model call of this task reserves its estimated cost against what this step may spend: its upper bound,
+  // and never more than the run has left (lib/ai/budget.ts).
+  const runBudget = new RunBudget(Math.min(budget, spent + estimate), spent);
   try {
-    const result = await withRunBudget(runBudget, () => runTask(next, idea as Idea, run.mode as "quick" | "deep"));
+    const result = await withRunBudget(runBudget, () => runTask(task, idea as Idea, mode, providers));
     const detail = runBudget.hit ? `${result.detail} ${runBudget.hit}` : result.detail;
-    await supabase.from("research_tasks").update({ status: "done", output: result.output, detail: detail.slice(0, 1000), finished_at: new Date().toISOString() }).eq("id", next.id);
+    await supabase.from("research_tasks").update({ status: "done", output: result.output, detail: detail.slice(0, 1000), finished_at: new Date().toISOString() }).eq("id", task.id);
     // What the calls really cost (the tracker sees every call, including refused and stopped ones).
     const cost = Math.max(result.cost, runBudget.spent);
-    if (cost > 0) await supabase.rpc("add_research_cost", { p_task: next.id, p_cost: cost });
+    if (cost > 0) await supabase.rpc("add_research_cost", { p_task: task.id, p_cost: cost });
   } catch (e) {
     const refused = e instanceof AiRefusedError;
-    const retry = !refused && !(e instanceof AiBudgetError) && next.attempts + 1 < 3;
+    const retry = !refused && !(e instanceof AiBudgetError) && task.attempts + 1 < 3;
     await log.error(
       "research_task_failed",
-      { runId, taskId: next.id, kind: next.kind, attempt: next.attempts + 1, willRetry: retry, refused, budget: e instanceof AiBudgetError },
+      { runId, taskId: task.id, kind: task.kind, attempt: task.attempts + 1, willRetry: retry, refused, budget: e instanceof AiBudgetError },
       e,
     );
     // Calls that were made still cost money (a refusal uses tokens too); book them on the run so the budget holds.
     const cost = Math.max(runBudget.spent, refused ? (e.usage?.cost ?? 0) : 0);
-    if (cost > 0) await supabase.rpc("add_research_cost", { p_task: next.id, p_cost: cost });
+    if (cost > 0) await supabase.rpc("add_research_cost", { p_task: task.id, p_cost: cost });
     await supabase
       .from("research_tasks")
       .update({
         status: retry ? "pending" : "failed",
         detail: refused ? "Het model weigerde deze stap." : e instanceof AiBudgetError ? e.message : `Fout: ${e instanceof Error ? e.message.slice(0, 200) : "onbekend"}`,
       })
-      .eq("id", next.id);
+      .eq("id", task.id);
   }
-  // Budget reached: no further task starts; the run records why.
-  if (runBudget.hit) {
-    await supabase.from("research_tasks").update({ status: "skipped", detail: "Budget van deze run bereikt." }).eq("run_id", runId).eq("status", "pending");
+  // A call inside the step did not fit: the run records why (the next step is checked against the cap again).
+  if (runBudget.hit && !run.error) {
     await supabase.from("research_runs").update({ error: runBudget.hit.slice(0, 500) }).eq("id", runId);
   }
   return state();
+}
+
+// De zoekstap waar een uitleesstap op wacht: de laatste zoekstap van dezelfde vraag vóór deze stap in deze run.
+async function searchTaskBefore(runId: string, task: { question_id: string | null; position: number }) {
+  if (!task.question_id) return null;
+  const supabase = await supabaseServer();
+  const { data } = await supabase
+    .from("research_tasks")
+    .select("id, status, output, position")
+    .eq("run_id", runId)
+    .eq("kind", "search")
+    .eq("question_id", task.question_id)
+    .order("position", { ascending: false });
+  return (data ?? []).find((t) => t.position < task.position) ?? null;
+}
+
+// Het onderzoeksmodel per aanbieder in deze omgeving (voor de bovengrens per stap).
+function researchModels(): ModelMap {
+  return Object.fromEntries(PROVIDERS.map((p) => [p, modelFor(p, process.env, "research")]));
+}
+
+// De aanbieders die in deze run zoeken: de verbonden aanbieders van de organisatie, bij de snelle check zoveel als
+// er passen met de kern binnen het plafond (lib/research-steps.ts). Een herhaalstap (punt 5) noemt zelf zijn
+// aanbieder in output.only_providers.
+export async function runProviders(ideaId: string, mode: RunMode, budget: number, taskOutput?: unknown): Promise<ProviderId[]> {
+  const all = await providersFor(ideaId, "research");
+  const only = (taskOutput as { only_providers?: unknown } | null)?.only_providers;
+  if (Array.isArray(only)) {
+    const pick = all.filter((p) => only.includes(p));
+    if (pick.length) return pick;
+  }
+  return providersForRun(all, mode, budget, researchModels());
 }
 
 // Two consecutive finished runs of the same idea without a single kept passage: an incident for operations
@@ -154,9 +215,9 @@ async function alertOnZeroSources(run: { id: string; idea_id: string; created_at
   }
 }
 
-type TaskRow = { id: string; kind: string; question_id: string | null; run_id: string; idea_id: string };
+type TaskRow = { id: string; kind: string; question_id: string | null; run_id: string; idea_id: string; position: number; attempts: number; output?: unknown };
 
-async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promise<{ output: Json; detail: string; cost: number }> {
+async function runTask(task: TaskRow, idea: Idea, mode: RunMode, runWith: ProviderId[]): Promise<{ output: Json; detail: string; cost: number }> {
   const supabase = await supabaseServer();
   const ctx = ideaContext(idea);
 
@@ -165,14 +226,14 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
     const question = q!.question;
     // Questions about market size that expect an official statistic: CBS company counts first (free, verbatim rows).
     const cbs = q!.expected_source === "official_statistic" && isSizeQuestion(question) ? await collectCbsFigures(idea, task.run_id, question) : null;
-    const providers = await providersFor(idea.id, "research");
+    const providers = runWith;
     // The same question for the same idea within 7 days: reuse what was found (and paid for) then.
     const cache = await cachedSearch(idea.id, question, providers);
     const fresh = providers.filter((p) => !cache.providers.has(p));
     let res: Awaited<ReturnType<typeof searchAcrossProviders>> | null = null;
     try {
       res = fresh.length
-        ? await searchAcrossProviders(idea.id, "research:search", ctx, question, mode === "quick" ? 3 : 6, { providers: fresh, avoidQueries: cache.recentQueries })
+        ? await searchAcrossProviders(idea.id, "research:search", ctx, question, searchesFor("search", mode), { providers: fresh, avoidQueries: cache.recentQueries })
         : null;
     } catch (e) {
       // Without CBS rows a failed web search fails the step (and is retried); with them the step keeps those.
@@ -200,7 +261,7 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
 
   if (task.kind === "extract") {
     const { data: q } = await supabase.from("research_questions").select("id, question").eq("id", task.question_id!).single();
-    const { data: searchTask } = await supabase.from("research_tasks").select("output").eq("run_id", task.run_id).eq("kind", "search").eq("question_id", task.question_id!).single();
+    const searchTask = await searchTaskBefore(task.run_id, task);
     const ids = ((searchTask?.output as { excerpt_ids?: string[] } | null)?.excerpt_ids ?? []).slice(0, 40);
     if (ids.length === 0) return { output: { claims: 0 }, detail: "Geen bruikbare passages gevonden; vraag blijft open.", cost: 0 };
     const { data: excerpts } = await supabase.from("source_excerpts").select("id, text, source_id, sources(title, url)").in("id", ids);
@@ -266,7 +327,7 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
     };
   }
 
-  if (task.kind === "counter") return runCounterTask(task, idea, mode);
+  if (task.kind === "counter") return runCounterTask(task, idea, mode, runWith);
 
   if (task.kind === "reality_check") {
     const { data: claims } = await supabase.from("claims").select("statement, status").eq("idea_id", idea.id).limit(60);
@@ -293,16 +354,16 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
 // research_search_log met kind 'counter'; gevonden passages worden fragmenten in de bronnenbibliotheek en elke
 // tegenbevinding krijgt een koppeling met relatie 'contradicts', met dezelfde citaat- en steuncontrole als
 // gewone bevindingen (storeExtractedClaims). Wat de bronnen niet tegenspreekt, wordt niet bewaard.
-async function runCounterTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promise<{ output: Json; detail: string; cost: number }> {
+async function runCounterTask(task: TaskRow, idea: Idea, mode: RunMode, runWith: ProviderId[]): Promise<{ output: Json; detail: string; cost: number }> {
   const supabase = await supabaseServer();
   const ctx = ideaContext(idea);
   const { data: q } = await supabase.from("research_questions").select("id, question").eq("id", task.question_id!).single();
   const question = q!.question;
-  const providers = await providersFor(idea.id, "research");
+  const providers = runWith;
   const cache = await cachedSearch(idea.id, question, providers, "counter");
   const fresh = providers.filter((p) => !cache.providers.has(p));
   const res = fresh.length
-    ? await searchAcrossProviders(idea.id, "research:counter", ctx, question, mode === "quick" ? 2 : 4, { providers: fresh, avoidQueries: cache.recentQueries, focus: "counter" })
+    ? await searchAcrossProviders(idea.id, "research:counter", ctx, question, searchesFor("counter", mode), { providers: fresh, avoidQueries: cache.recentQueries, focus: "counter" })
     : null;
   const newIds = res ? await storeFoundSources(idea.id, task.run_id, res.sources) : [];
   const excerptIds = [...new Set([...newIds, ...cache.excerptIds])];

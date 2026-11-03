@@ -22,8 +22,9 @@ import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadProgress } from "@/lib/progress";
 import { stepsDone } from "@/lib/steps";
-import { aiConfigured, configuredProviders } from "@/lib/env";
-import { isProvider, PROVIDER_KEY_ENV, PROVIDER_LABELS, PROVIDERS, providerLabel } from "@/lib/ai/providers/config";
+import { aiConfigured, configuredProviders, env } from "@/lib/env";
+import { isProvider, modelFor, PROVIDER_KEY_ENV, PROVIDER_LABELS, PROVIDERS, providerLabel } from "@/lib/ai/providers/config";
+import { estimateRun, estimateText, planSteps, runBudgetUsd } from "@/lib/research-steps";
 import { ensembleProviders } from "@/lib/ai/providers/select";
 import { aiSettingsForOrg } from "@/lib/ai/settings";
 import { CLAIM_STATUS, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type EvidenceType, type SourceType } from "@/lib/domain/labels";
@@ -35,7 +36,7 @@ import {
   overrideSupport, recheckCompetitors, refreshQuestionsFromIntake, saveCompetitor, saveQuestion, saveScenario, saveSegment, saveUnitEconomics,
   setDecisiveQuestion,
 } from "./actions";
-import { isGenericTemplate } from "@/lib/research-questions";
+import { decisiveFirst, isGenericTemplate } from "@/lib/research-questions";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export const metadata: Metadata = { title: "Marktverkenning" };
@@ -156,6 +157,21 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   const sizingClaims = claims
     .filter((c) => c.status !== "insufficient")
     .map((c) => ({ id: c.id, statement: c.statement, status: c.status, numeric_value: c.numeric_value, region: c.region, reference_date: c.scope?.referenceDate ?? null }));
+
+  // Fase B2, punt 3: de schatting vóór de start, per modus, met dezelfde bovengrenzen als de runner.
+  const searchProviders = canWrite && aiConfigured() ? await researchProviders(idea.org_id) : [];
+  const models = Object.fromEntries(PROVIDERS.map((p) => [p, modelFor(p, process.env, "research")]));
+  const runOrder = decisiveFirst(questions);
+  const runEstimates = searchProviders.length
+    ? (["quick", "deep"] as const).reduce(
+        (acc, mode) => {
+          const e = estimateRun(planSteps(runOrder, mode), searchProviders, mode, runBudgetUsd(mode, env.researchBudgetUsd), models);
+          acc[mode] = { text: estimateText(e), providers: e.providers.map((p) => PROVIDER_LABELS[p].name) };
+          return acc;
+        },
+        {} as Record<"quick" | "deep", { text: string; providers: string[] }>,
+      )
+    : undefined;
 
   const tab = typeof sp.tab === "string" ? sp.tab : "overview";
   const evidenceActions = (claim: (typeof claims)[number]) =>
@@ -346,7 +362,8 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               ideaId={id}
               canWrite={canWrite}
               providers={PROVIDERS.map((p) => ({ id: p, name: providerLabel(p), keyEnv: PROVIDER_KEY_ENV[p], connected: configuredProviders().includes(p) }))}
-              searchWith={canWrite && aiConfigured() ? (await researchProviders(idea.org_id)).map((p) => PROVIDER_LABELS[p].name) : []}
+              searchWith={searchProviders.map((p) => PROVIDER_LABELS[p].name)}
+              estimates={runEstimates}
               run={run ? { id: run.id, status: run.status, mode: run.mode, cost: Number(run.cost_usd), budget: Number(run.budget_usd), tasks: (tasks ?? []).map((t) => ({ label: t.label, status: t.status, detail: t.detail })) } : null}
               searchLog={groupSearchLog((logRows ?? []).filter((r) => r.kind !== "counter"), questions)}
               cbsAction={fetchCbsFigures.bind(null, id)}

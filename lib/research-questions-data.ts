@@ -90,3 +90,11 @@ export async function markDecisive(supabase: Db, ideaId: string, questionId: str
   const on = await supabase.from("research_questions").update({ is_decisive: true }).eq("id", questionId).eq("idea_id", ideaId);
   return !on.error;
 }
+
+// De vragen voor een onderzoeksrun, met de markering van de beslissende vraag (zonder migratie: zonder).
+export async function loadRunQuestions(supabase: Db, ideaId: string): Promise<{ id: string; position: number; question: string; is_decisive?: boolean }[]> {
+  const full = await supabase.from("research_questions").select("id, position, question, is_decisive").eq("idea_id", ideaId).order("position");
+  if (!full.error) return full.data ?? [];
+  const { data } = await supabase.from("research_questions").select("id, position, question").eq("idea_id", ideaId).order("position");
+  return data ?? [];
+}
