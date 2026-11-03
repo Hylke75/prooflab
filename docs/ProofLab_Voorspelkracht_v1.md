@@ -513,3 +513,91 @@ bandbreedte wordt op dezelfde manier begrensd.
   ter informatie naast.
 - Elk rapport (scherm en PDF) vermeldt de methodeversie, de beslisregels en de gebruikte plafonds (standaard of
   ingesteld door de werkruimte). Rapporten van vóór de methodeversie zijn met 2026-11-a gemaakt.
+
+## 10. Methode 2026-11-c en golf A: bewijs en testen (7 november 2026)
+
+Golf A van het verbeterplan (`docs/VERBETERPLAN_WERKWIJZE.md`) pakt zwakke plekken aan in hoe bewijs telt en hoe
+tests worden gekozen en getoond. Wat de berekening verandert, hoort bij een nieuwe methodeversie **2026-11-c**
+(`lib/domain/method/2026-11-c.ts`, `assumptionProbabilityV3` in `lib/domain/evidence.ts`); wat alleen de weergave
+verandert, geldt voor alle versies. Bestaande dossiers op 2026-11-a of 2026-11-b rekenen ongewijzigd; nieuwe
+dossiers starten op 2026-11-c. Overstappen kan alleen vooruit (a → b → c of a → c), via dezelfde overstappagina met
+vooraf per aanname de kans oud/nieuw en per test de uitkomst oud/nieuw, en met audit.
+
+### 10.1 Wervingsgroep (punten 4 en 13, rekenwijziging in 2026-11-c)
+
+Signalen uit dezelfde kring lijken op elkaar en op wie de test opzette. Drie enquêtes onder het eigen netwerk zijn
+geen drie onafhankelijke bewijzen. Daarom leggen we per test, per interview en (optioneel) per losse observatie de
+**wervingsgroep** vast (`lib/domain/recruitment.ts`):
+
+| Groep | Definitie |
+|---|---|
+| Eigen netwerk | Mensen die de onderzoeker of opdrachtgever persoonlijk kent: vrienden, collega's, bestaande klanten, volgers van het eigen account. Een interview met de vlag "bekende" is altijd eigen netwerk. |
+| Warm contact | Geen bekende, maar bereikt via een introductie, een gedeelde community of eerder contact. |
+| Koud | Zonder eerdere relatie bereikt: koude outreach, advertenties, een open oproep op een platform. |
+| Betaald panel | Een ingekocht onderzoekspanel of betaalde werving van deelnemers. |
+| Onbekend | Niet vastgelegd. Telt als één groep: zonder herkomst kunnen we niet aannemen dat signalen onafhankelijk zijn. |
+
+- **Verplicht** op de Test Card bij enquête-, landing- en prijstests (zonder voorkeuze). Bij interviews per gesprek;
+  de groep van de test is dan de standaard. Na goedkeuring is de groep van een test vergrendeld.
+- **Welke groep een signaal heeft** (`evidence_recruitment_refs`): de groep van het signaal zelf, dan die van het
+  interview (een bekende = eigen netwerk), dan die van de test; een signaal uit een test of interview zonder groep
+  is onbekend. Bevindingen uit open enquêteantwoorden krijgen de groep van die enquête. Bureauonderzoek is niet
+  geworven en valt erbuiten. Tests van vóór golf A hebben geen groep en tellen in 2026-11-c als onbekend.
+- **Rekenregel (2026-11-c).** Eerst wordt ondersteunend bewijs per bron samengevoegd (9.2). Daarna krijgen de
+  overgebleven signalen per wervingsgroep, het sterkste eerst, een afnemende factor met dezelfde functie als het
+  afnemend meetellen per soort: het k-de signaal (k = 0, 1, …) telt voor log₂(2 + k) − log₂(1 + k), dus 1; 0,58;
+  0,42; 0,32; … Samen tellen n bronnen uit één groep als log₂(1 + n) bronnen. Binnen een soort en richting wordt
+  het afnemend meetellen daarmee een gewogen som: Σ d(k) × (log₂(2 + k) − log₂(1 + k)), met de grootste factor d
+  eerst; zonder demping is dat precies log₂(1 + n) zoals in 9.2. Tegenbewijs wordt niet gedempt. Het plafond (9.3)
+  verandert niet.
+- **Weergave**: de risicokaart, de overstappagina en het rapport tonen "x signalen uit dezelfde wervingsgroep
+  (eigen netwerk): herhaling telt afnemend mee".
+
+### 10.2 AI-codering telt pas na beoordeling (punt 17, rekenwijziging in 2026-11-c)
+
+In 2026-11-a en 2026-11-b telt AI-codering van interviews die nog niemand beoordeelde voor de helft (in log-odds).
+In 2026-11-c telt onbeoordeelde AI-codering **niet**: pas na akkoord van een consultant volledig, na afkeuren nooit.
+De risicokaart toont hoeveel coderingen nog op beoordeling wachten.
+
+Bij AI-concepten (onderzoeksvragen, enquête-opzet, promoberichten) bewaart ProofLab het AI-origineel
+(`research_questions.ai_original`, `promo_posts.ai_original`, `ai_drafts` voor de enquête). Het origineel verandert
+daarna nooit. Het scherm toont "door mens aangepast: ja/nee" met het aantal gewijzigde regels
+(`lib/domain/ai-draft.ts`: regels zonder witruimteverschil vergeleken via de langste gemeenschappelijke reeks;
+gewijzigd = max(verwijderd, toegevoegd)). Dit is weergave en geldt voor alle versies.
+
+### 10.3 Hoofdtest per aanname (punt 11)
+
+Wie veel kleine tests doet, vindt er vroeg of laat één die toevallig slaagt. Per aanname wijst de consultant daarom
+**vóór de goedkeuring** één hoofdtest aan (`assumptions.primary_experiment_id`, met audit); de andere tests heten
+**verkennend**. Zodra de hoofdtest is goedgekeurd of gestart, ligt de keuze vast (database en app). In 2026-11-c
+beslist alleen de hoofdtest over de status van de aanname; zonder goedgekeurde hoofdtest blijft de aanname "wordt
+getest". In 2026-11-a en 2026-11-b telt elke goedgekeurde test zoals voorheen. Golf B bouwt de beslisregel voor het
+besluit; die gebruikt alleen hoofdtests als doorslag (`primaryTestFor` in `lib/domain/primary-test.ts`).
+
+Bij een geslaagde kansregel staat de **kans op toeval** erbij: 1 − P(echte waarde > drempel). Bij een kans van 89%
+is dat 11%: ongeveer één op de negen zulke "geslaagde" tests zit in werkelijkheid onder de drempel.
+
+### 10.4 Startkans (punt 5)
+
+Elke aanname begint op 50%. Een afwijking vraagt een **onderbouwing** van minimaal 10 tekens (bijvoorbeeld het
+basispercentage). Zodra het eerste bewijs aan de aanname wordt gekoppeld, is de startkans **blijvend vergrendeld**
+(`prior_locked_at`, ook als het bewijs later wordt ontkoppeld): wijzigen kan alleen met een reden
+(`change_assumption_prior`), en elke wijziging komt met oude en nieuwe waarde en de reden in het auditspoor. De
+database dwingt dit af (trigger), de app ook. Bestaande aannames met bewijs zijn bij de migratie vergrendeld; hun
+kans verandert niet.
+
+### 10.5 Weergave (punten 3, 12, 14 en 16, alle versies)
+
+- **Niet gekalibreerd (3).** Zolang de werkruimte minder dan 10 dossiers met een vastgelegde uitkomst heeft (dezelfde
+  grens als het eigen basispercentage), staan kansen per aanname in banden van 10 procentpunt ("40–50%") met het
+  label "niet gekalibreerd", op scherm, in het rapport en in de PDF. De bandbreedte wordt naar buiten afgerond. De
+  exacte waarde staat in de tooltip. Eén helper: `lib/domain/probability-display.ts`. Het rapport bewaart de
+  kalibratie in de momentopname; rapporten van daarvoor tonen ook banden.
+- **Alle tests (12).** Elk nieuw rapport bevat verplicht de lijst van alle vooraf vastgelegde tests (goedgekeurd of
+  verder, ook teruggezet naar concept), met rol, status (ook afgebroken), resultaat en uitkomst, en het aantal tests
+  per aanname (`lib/domain/all-tests.ts`).
+- **Bewijsniveau naast de uitkomst (14).** Learning Card, rapport en PDF tonen bijvoorbeeld "Geslaagd · niveau:
+  mening". Het niveau volgt de indeling van de plafonds: enquête = mening, landingpagina = kleine handeling,
+  prijstest = prijskeuze, interviews = probleem in eigen gedrag (met de aantalregel: aanbetaling).
+- **Brier-scores (16).** Onder 30 uitkomsten staat bij elke Brier-score op de pagina Voorspelkwaliteit: "te weinig
+  dossiers voor een betrouwbaar oordeel".

@@ -34,7 +34,10 @@ function HowWeCalculate({ weights, method, caps }: { weights: WeightsInUse; meth
       <p className="sub mt-12">
         Elke aanname begint op 50%. Elk stuk bewijs vermenigvuldigt de kansverhouding (odds) met een vaste factor; tegenbewijs deelt erdoor.
         Meer van hetzelfde telt afnemend mee: n stuks tellen als log₂(1 + n) stuks, dus 20 dezelfde meningen brengen 50% maar naar ongeveer 60%.
-        AI-gecodeerde observaties tellen voor {AI_UNREVIEWED_WEIGHT * 100}% zolang niemand ze heeft beoordeeld, volledig na akkoord en niet na afkeuren. Synthetische data telt nooit mee.
+        {METHODS[method].primaryDecides
+          ? "AI-gecodeerde observaties tellen pas mee na akkoord van een consultant, niet zolang niemand ze heeft beoordeeld en niet na afkeuren."
+          : `AI-gecodeerde observaties tellen voor ${AI_UNREVIEWED_WEIGHT * 100}% zolang niemand ze heeft beoordeeld, volledig na akkoord en niet na afkeuren.`}{" "}
+        Synthetische data telt nooit mee.
         De kans blijft altijd tussen 1% en 99%.
       </p>
       {METHODS[method].usesCaps ? (
@@ -45,6 +48,13 @@ function HowWeCalculate({ weights, method, caps }: { weights: WeightsInUse; meth
         </p>
       ) : (
         <p className="sub mt-12">{METHODS[method].label}: geen samenvoegen per bron en geen plafond per bewijsniveau.</p>
+      )}
+      {METHODS[method].primaryDecides && (
+        <p className="sub mt-12">
+          {METHODS[method].label}: ondersteunend bewijs uit dezelfde wervingsgroep (eigen netwerk, warm contact, koud, betaald panel of onbekend) telt over
+          verschillende bronnen heen afnemend mee: n bronnen uit één groep tellen als log₂(1 + n). Per aanname beslist alleen de vooraf aangewezen hoofdtest over de
+          status; andere tests zijn verkennend.
+        </p>
       )}
       <div style={{ overflowX: "auto" }}>
         <table className="table mt-12">
