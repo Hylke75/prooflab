@@ -517,7 +517,8 @@ bandbreedte wordt op dezelfde manier begrensd.
 ## 10. Onderzoek en herleidbaarheid (golf C, 7 november 2026)
 
 Golf C van het verbeterplan (`docs/VERBETERPLAN_WERKWIJZE.md`) maakt bureauonderzoek beter toetsbaar en houdt
-rapporten herleidbaar na de bewaartermijn. Geen van deze punten verandert de rekenwijze van 2026-11-a of 2026-11-b.
+rapporten herleidbaar na de bewaartermijn. Geen van deze punten verandert de rekenwijze van 2026-11-a of 2026-11-b; de weging van indirect bewijs
+(10.1) hoort bij methode 2026-11-c (11.6).
 
 ### 10.1 Populatie, regio en peildatum per bevinding (punt 7)
 
@@ -536,9 +537,9 @@ Een letterlijk citaat zegt nog niet dat een cijfer over de juiste groep, het jui
     1,5 jaar), gemeten op de beslisdatum, of op vandaag als die ontbreekt.
 - Wijkt een veld af, dan staat er een waarschuwing bij de bevinding en telt ze als **indirect** (`claims.relevance`).
   "Onbekend" is geen afwijking, maar ook geen bevestiging: het blijft zichtbaar als onbekend.
-- **Weging.** In de bewijsberekening telt een indirecte bevinding met halve sterkte (`relevanceWeight()`, factor
-  0,5). Dat geldt pas in een nieuwe methodeversie: bij het samenvoegen van golf A en C komt de weging in die versie
-  (2026-11-c). 2026-11-a en 2026-11-b lezen het veld niet en rekenen ongewijzigd.
+- **Weging.** In de bewijsberekening telt een indirecte bevinding met halve sterkte (`relevanceWeight()`, gewicht
+  0,5 in log-odds). Dat geldt alleen in methode 2026-11-c (zie 11.6); 2026-11-a en 2026-11-b lezen het veld niet en
+  rekenen ongewijzigd (vastgelegd in `tests/unit/evidence-v3.test.ts`).
 
 ### 10.2 Jaar en regio per sizing-factor (punt 8)
 
@@ -679,6 +680,25 @@ kans verandert niet.
   prijstest = prijskeuze, interviews = probleem in eigen gedrag (met de aantalregel: aanbetaling).
 - **Brier-scores (16).** Onder 30 uitkomsten staat bij elke Brier-score op de pagina Voorspelkwaliteit: "te weinig
   dossiers voor een betrouwbaar oordeel".
+
+### 11.6 Indirect bewijs telt half (golf C punt 7, rekenwijziging in 2026-11-c)
+
+Bij het samenvoegen van golf A en golf C is de relevantie per bevinding (10.1, `claims.relevance`) aan methode
+2026-11-c toegevoegd. Een bevinding die als **indirect** is gemarkeerd (andere populatie, andere regio of een te oude
+peildatum dan de intake) telt met **halve sterkte**: gewicht 0,5 in log-odds (`relevanceWeight()` in
+`lib/domain/claim-scope.ts`), net zoals niet beoordeelde AI-codering in 2026-11-a en 2026-11-b. Dat geldt voor
+ondersteunend bewijs en voor tegenbewijs. Een bevinding zonder relevantie (gegevens van vóór golf C) telt als direct.
+
+- Indirecte en directe bevindingen van dezelfde status vormen aparte groepen voor het afnemend meetellen (zoals bij
+  ander gewicht); bij het samenvoegen per bron (9.2) blijft het sterkste signaal over, dus een directe bevinding
+  wint van een indirecte uit dezelfde bron.
+- Het plafond (9.3) verandert niet: bevindingen uit bronnen staan al op het laagste niveau.
+- **Weergave**: de aannamepagina toont bij de aanname "Telt half: indirect bewijs" met het aantal bevindingen, en de
+  bijdrage heet "(indirect bewijs)" met "half gewicht". De overstappagina noemt de wijziging (`changesBetween`) en
+  toont vooraf de kans oud/nieuw. Het rapport vermeldt de regel bij de methode.
+- **Gegevens**: `lib/progress.ts` laadt `claims.relevance` mee bij de gekoppelde bevindingen; het dossier en het
+  rapport (`lib/dossier.ts`) rekenen via dezelfde functie. Opdrachtgevers lezen bevindingen via dezelfde RLS
+  (`can_read_idea`) en rekenen dus met dezelfde weging (gecontroleerd in `tests/db/golf-c.test.ts`).
 
 ## 12. Besluit en voorspelling (golf B, 7 november 2026)
 

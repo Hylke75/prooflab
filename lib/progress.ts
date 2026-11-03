@@ -88,7 +88,9 @@ export const loadAssumptionInputs = cache(async (ideaId: string) => {
   const supabase = await supabaseServer();
   const [{ data: assumptions }, { data: links }, obsLinks, weights, refs, caps, method] = await Promise.all([
     supabase.from("assumptions").select("*").eq("idea_id", ideaId).order("created_at"),
-    supabase.from("assumption_claims").select("assumption_id, claim_id, relation, claims(status)").eq("idea_id", ideaId),
+    // claims.relevance (golf C): indirect bewijs telt half in methode 2026-11-c. Opdrachtgevers lezen claims via
+    // dezelfde RLS (can_read_idea), dus ze rekenen met dezelfde weging.
+    supabase.from("assumption_claims").select("assumption_id, claim_id, relation, claims(status, relevance)").eq("idea_id", ideaId),
     loadObservationLinks(ideaId),
     // Default factors unless the organisation switched learned weights on (lib/domain/calibration.ts).
     loadIdeaWeights(ideaId),
@@ -116,6 +118,7 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
           sourceKey: ref?.key ?? null,
           sourceLabel: ref?.label ?? null,
           recruitmentGroup: ref?.recruitment ?? null,
+          relevance: l.claims!.relevance ?? null,
         };
       });
     const observations = obsLinks
