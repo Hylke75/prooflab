@@ -173,3 +173,12 @@ AI-uitkomsten zijn gelabeld als AI-voorstel tot een consultant ze accepteert.
 - [x] 7.6 AI-varianten voor landing- en prijstests plus deterministische eerlijkheidscontrole
 - [x] 7.8 Rode team per kritieke aanname (zoekt alleen tegenbewijs, zelfde citaat- en steuncontrole, koppeling "spreekt tegen")
 - [x] AI-oordeel en hercontrole in eigen kolommen (`claim_sources.ai_support_check`, `live_found`, `live_checked_at`; `sources.live_checked_at`, `live_error`); notities blijven wat mensen schreven
+
+## Enquêtes verspreiden en uitnodigingsberichten (3 november)
+
+- ✅ Publieke enquêtepagina `/s/<slug>` (cookieloos, merkneutraal, alle vragen op één pagina met foutoverzicht, voorwaardelijke vragen, toestemming, honeypot, invulduur); persoonlijke links `?u=<token>`, open links `?utm_source=<kanaal>`; gesloten/gepauzeerd/al ingevuld/afgemeld netjes afgevangen; `POST /api/s/<slug>` met dezelfde regels als `/api/t`
+- ✅ Afmelden `/s/afmelden` (bevestigingsknop, niets op GET) en one-click `List-Unsubscribe` (`/api/s/afmelden`); afmeldlijst per organisatie op HMAC van het adres
+- ✅ Verspreiden bij het experiment: open link per kanaal, bulkuitnodigingen (plakken of CSV, max. 2.000, ontdubbeld, afgemelde en al uitgenodigde adressen overgeslagen, verplichte grondslag, bewerkbare e-mail met voorbeeld), versturen in batches met voortgang, één herinnering na ≥ 3 dagen
+- 🟡 Versturen via Resend vraagt `RESEND_API_KEY` en `EMAIL_FROM`; zonder koppeling "e-mail niet gekoppeld" en een CSV met persoonlijke links en afmeldlinks
+- ✅ Uitnodigingsberichten per platform (LinkedIn, LinkedIn-DM via Expandi, Instagram, Facebook, X, WhatsApp, nieuwsbrief) voor enquêtes, landing- en prijstests: sjablonen met lengtelimieten en kanaallink, AI-concepten (`promo_posts`) met eerlijkheidscontrole, bewerken, kopiëren, opnieuw genereren
+- ⬜ Aparte kolom `survey_invitations.reminded_at` (nu afgeleid uit `sent_at` t.o.v. `created_at`)

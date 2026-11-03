@@ -6,6 +6,7 @@ import { ActionForm } from "@/components/ui/ActionForm";
 import { ResultMeter } from "@/components/experiments/ResultMeter";
 import { GuideAuditList, TranscriptAuditList } from "@/components/experiments/InterviewAudit";
 import { AiQualityCard } from "@/components/research/AiQualityCard";
+import { Distribution } from "@/components/survey/Distribution";
 import { getIdea, getWorkspace } from "@/lib/data";
 import { loadAiQuality } from "@/lib/ai-quality";
 import { auditGuide, auditTranscript, guideSummary } from "@/lib/domain/interview-audit";
@@ -215,6 +216,8 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           )}
         </div>
       )}
+
+      <Distribution ideaId={id} exp={exp} canWrite={canWrite} />
 
       {type === "interview" && canWrite && (
         <>
