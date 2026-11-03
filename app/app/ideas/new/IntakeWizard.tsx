@@ -12,11 +12,12 @@ import { SavingOverlay } from "@/components/ui/SavingOverlay";
 
 type Client = { id: string; name: string };
 
+// Voorbeelden van concrete beslissingen: een keuze, met inzet en moment, zodat de vaagheidscontrole niet afgaat.
 const DECISIONS = [
-  "Is dit idee interessant genoeg om in te investeren?",
-  "Is er voldoende markt voor dit aanbod?",
-  "Welke doelgroep biedt de grootste kans?",
-  "Moeten we iets nieuws bouwen of het bestaande verbeteren?",
+  "Investeren we € 25.000 in een eerste versie, ja of nee, vóór 1 maart?",
+  "Lanceren we dit aanbod in het eerste kwartaal met twee consultants, of stoppen we?",
+  "Kiezen we eventbureaus of hotels als eerste doelgroep voor de pilot?",
+  "Bouwen we een nieuw product of verbeteren we het bestaande, binnen het budget van dit jaar?",
 ];
 const AUDIENCES = ["Zakelijke klanten (B2B)", "Consumenten (B2C)", "Publieke organisaties of verenigingen", "Interne gebruikers"];
 const REGIONS = ["🇳🇱 Nederland", "Benelux", "🇪🇺 Europa", "◎ Wereldwijd"];

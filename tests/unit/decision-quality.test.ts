@@ -60,3 +60,13 @@ describe("inzet", () => {
     expect(isStakeKind("geld")).toBe(false);
   });
 });
+
+describe("voorbeeldvragen in de intake", () => {
+  it("zijn zelf concreet genoeg (geen vaagheidswaarschuwing)", async () => {
+    const src = (await import("node:fs")).readFileSync("app/app/ideas/new/IntakeWizard.tsx", "utf8");
+    const block = src.slice(src.indexOf("const DECISIONS = ["), src.indexOf("];", src.indexOf("const DECISIONS = [")));
+    const examples = [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    expect(examples.length).toBeGreaterThanOrEqual(3);
+    for (const q of examples) expect(assessDecisionQuestion(q).warnings, q).toEqual([]);
+  });
+});

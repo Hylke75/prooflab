@@ -123,7 +123,7 @@ test("dogfood: ProofLab op ProofLab", async ({ page }) => {
 
   // Intake: the decision first
   await page.goto("/app/ideas/new");
-  await page.getByRole("button", { name: "Is dit idee interessant genoeg om in te investeren?" }).click();
+  await page.getByRole("button", { name: "Investeren we € 25.000 in een eerste versie, ja of nee, vóór 1 maart?" }).click();
   await page.getByLabel("De beslisvraag, in je eigen woorden", { exact: true }).fill(
     "Maken we van ProofLab de vaste werkwijze voor validatiesprints van Link & Lead, en investeren we in een versie voor opdrachtgevers?",
   );
