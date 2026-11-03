@@ -93,6 +93,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         // Methode 2026-11-b: plafond en samengevoegde signalen.
         capReason: p?.capReason ?? null,
         merged: p?.merged ?? [],
+        // Methode 2026-11-c: herhaling binnen dezelfde wervingsgroep.
+        recruitment: p?.recruitment ?? [],
       };
     }),
     // Default or learned evidence factors (lib/domain/calibration.ts), so every probability can be reproduced.

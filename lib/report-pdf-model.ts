@@ -8,6 +8,7 @@ import { pct } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { describeMethodology, ruleLabelText } from "@/lib/domain/method/describe";
 import { CALIBRATION_MIN_RESOLVED, formatProbability, formatProbabilityRange } from "@/lib/domain/probability-display";
+import { explainRecruitment } from "@/lib/domain/recruitment";
 
 export type Tone = "blue" | "green" | "coral" | "lime" | "gray";
 export type Block =
@@ -190,7 +191,8 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
               `${a.statement}${a.premortem ? " (uit de pre-mortem)" : ""}`,
               `${a.importance}/5`,
               withProb && a.probability
-                ? `${formatProbability(a.probability.point, calibrated).text} (${formatProbabilityRange(a.probability.low, a.probability.high, calibrated).text})`
+                ? `${formatProbability(a.probability.point, calibrated).text} (${formatProbabilityRange(a.probability.low, a.probability.high, calibrated).text})` +
+                  ((a as { recruitment?: { group: string; sources: number }[] }).recruitment ?? []).map((x) => ` ${explainRecruitment(x)}`).join("")
                 : `${a.evidence}%`,
               ASSUMPTION_STATUS[a.status] ?? a.status,
             ]),

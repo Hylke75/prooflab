@@ -105,7 +105,13 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
       .filter((l) => l.assumption_id === a.id && l.claims)
       .map((l) => {
         const ref = refs.get(`claim:${l.claim_id}`);
-        return { status: l.claims!.status as ClaimStatus, relation: l.relation as "supports" | "contradicts", sourceKey: ref?.key ?? null, sourceLabel: ref?.label ?? null };
+        return {
+          status: l.claims!.status as ClaimStatus,
+          relation: l.relation as "supports" | "contradicts",
+          sourceKey: ref?.key ?? null,
+          sourceLabel: ref?.label ?? null,
+          recruitmentGroup: ref?.recruitment ?? null,
+        };
       });
     const observations = obsLinks
       .filter((l) => l.assumption_id === a.id && l.observations)
@@ -135,6 +141,7 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
             reviewStatus: l.observations!.review_status ?? null,
             sourceKey: ref?.key ?? null,
             sourceLabel: ref?.label ?? null,
+            recruitmentGroup: ref?.recruitment ?? null,
           };
         }),
       a.prior == null ? 0.5 : Number(a.prior),

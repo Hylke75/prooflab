@@ -117,6 +117,8 @@ export async function loadDossier(idea: Idea) {
     band: a.probability.band,
     capReason: a.probability.cap?.active ? a.probability.cap.reason : null,
     merged: (a.probability.merged ?? []).map((m) => ({ label: m.label, signals: m.signals })),
+    // Methode 2026-11-c: wervingsgroepen waaruit meer dan één bron kwam.
+    recruitment: a.probability.recruitment ?? [],
     top: a.probability.top.map((c) => ({ label: c.label, direction: c.direction, count: c.count, lr: c.lr, weight: c.weight, explanation: explainContribution(c) })),
   }));
 

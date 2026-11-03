@@ -13,6 +13,7 @@ import { createReportVersion, shareReportVersion } from "./actions";
 import { PrintButton } from "./PrintButton";
 import { Icon } from "@/components/Icon";
 import { Probability } from "@/components/ui/Probability";
+import { explainRecruitment } from "@/lib/domain/recruitment";
 import { CALIBRATION_MIN_RESOLVED } from "@/lib/domain/probability-display";
 
 export const metadata: Metadata = { title: "Rapportage" };
@@ -291,6 +292,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                         <span className="tiny">(<Probability p={a.probability.low} high={a.probability.high} calibrated={calibrated} showLabel={false} />)</span>
                         {"capReason" in a && a.capReason ? <span className="tiny" style={{ display: "block" }}>{a.capReason}</span> : null}
                         {"merged" in a && a.merged.length ? <span className="tiny" style={{ display: "block" }}>{a.merged.map((m) => `${m.signals} signalen uit ${m.label} samengevoegd`).join("; ")}</span> : null}
+                        {"recruitment" in a && a.recruitment?.length ? <span className="tiny" style={{ display: "block" }}>{a.recruitment.map((x) => explainRecruitment(x)).join(" ")}</span> : null}
                       </td>
                     ) : (
                       <td className="num">{a.evidence}%</td>

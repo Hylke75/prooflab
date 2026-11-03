@@ -10,6 +10,7 @@ import type { VoiResult } from "@/lib/domain/recommend";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 import { Probability } from "@/components/ui/Probability";
 import { formatProbability } from "@/lib/domain/probability-display";
+import { explainRecruitment } from "@/lib/domain/recruitment";
 
 export type BoardAssumption = {
   id: string;
@@ -313,6 +314,11 @@ function ProbabilityDetail({
       {(a.probability.merged ?? []).length > 0 && (
         <ul className="tiny" style={{ margin: "8px 0 0 18px", lineHeight: 1.6 }} aria-label="Samengevoegde signalen">
           {a.probability.merged!.map((m) => <li key={m.key}>{explainMerged(m)}</li>)}
+        </ul>
+      )}
+      {(a.probability.recruitment ?? []).length > 0 && (
+        <ul className="tiny" style={{ margin: "8px 0 0 18px", lineHeight: 1.6 }} aria-label="Signalen uit dezelfde wervingsgroep">
+          {a.probability.recruitment!.map((r) => <li key={r.group}>{explainRecruitment(r)}</li>)}
         </ul>
       )}
       {ignored > 0 && (

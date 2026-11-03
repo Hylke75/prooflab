@@ -11,6 +11,7 @@ import { methodPreview } from "@/lib/method-preview";
 import { switchMethod } from "./actions";
 import { loadCalibration } from "@/lib/method-data";
 import { Probability } from "@/components/ui/Probability";
+import { explainRecruitment } from "@/lib/domain/recruitment";
 
 export const metadata: Metadata = { title: "Methode" };
 
@@ -81,7 +82,7 @@ export default async function MethodPage({ params }: PageProps<"/app/ideas/[id]/
                         <td className="num"><Probability p={a.to} calibrated={calibration.calibrated} showLabel={false} /></td>
                         <td className="num">{diff(a.from, a.to)}</td>
                         <td className="tiny">
-                          {[a.capReason, ...a.merged.map((m) => `${m.signals} signalen uit ${m.label} samengevoegd`)].filter(Boolean).join("; ") || "—"}
+                          {[a.capReason, ...a.merged.map((m) => `${m.signals} signalen uit ${m.label} samengevoegd`), ...a.recruitment.map((r) => explainRecruitment(r))].filter(Boolean).join("; ") || "—"}
                         </td>
                       </tr>
                     ))}

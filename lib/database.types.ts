@@ -1243,6 +1243,7 @@ export type Database = {
           idea_id: string
           owner_id: string
           public_slug: string | null
+          recruitment_group: string | null
           started_at: string | null
           state: string
           title: string
@@ -1263,6 +1264,7 @@ export type Database = {
           idea_id: string
           owner_id?: string
           public_slug?: string | null
+          recruitment_group?: string | null
           started_at?: string | null
           state?: string
           title: string
@@ -1283,6 +1285,7 @@ export type Database = {
           idea_id?: string
           owner_id?: string
           public_slug?: string | null
+          recruitment_group?: string | null
           started_at?: string | null
           state?: string
           title?: string
@@ -1597,6 +1600,7 @@ export type Database = {
           participant_label: string
           record_type: string
           recruited_via: string
+          recruitment_group: string | null
           retention_until: string
           segment: string | null
           transcript: string
@@ -1613,6 +1617,7 @@ export type Database = {
           participant_label: string
           record_type: string
           recruited_via: string
+          recruitment_group?: string | null
           retention_until?: string
           segment?: string | null
           transcript: string
@@ -1629,6 +1634,7 @@ export type Database = {
           participant_label?: string
           record_type?: string
           recruited_via?: string
+          recruitment_group?: string | null
           retention_until?: string
           segment?: string | null
           transcript?: string
@@ -1738,6 +1744,7 @@ export type Database = {
           origin: string
           quote: string | null
           quote_check: string
+          recruitment_group: string | null
           summary: string
         }
         Insert: {
@@ -1758,6 +1765,7 @@ export type Database = {
           origin?: string
           quote?: string | null
           quote_check?: string
+          recruitment_group?: string | null
           summary: string
         }
         Update: {
@@ -1778,6 +1786,7 @@ export type Database = {
           origin?: string
           quote?: string | null
           quote_check?: string
+          recruitment_group?: string | null
           summary?: string
         }
         Relationships: [
@@ -2895,6 +2904,7 @@ export type Database = {
       }
       switch_method_version: { Args: { p_idea: string; p_to: string; p_preview: Json }; Returns: string }
       resolved_dossiers_for_idea: { Args: { p_idea: string }; Returns: number }
+      evidence_recruitment_refs: { Args: { p_idea: string }; Returns: { item_type: string; item_id: string; recruitment_group: string | null }[] }
       evidence_source_refs: {
         Args: { p_idea: string }
         Returns: {

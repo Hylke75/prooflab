@@ -52,6 +52,33 @@ async function forceVersion(idea: string, v: string) {
   await db.query("commit");
 }
 
+// Een aanname met een Test Card en een experiment (concept).
+async function testFor(owner: U, idea: string, type: string, extra: { assumption?: string; recruitment?: string | null } = {}) {
+  return as(owner, async (c) => {
+    const a =
+      extra.assumption ??
+      ((await c.query("insert into public.assumptions (idea_id, statement, category, importance) values ($1, 'Eventmanagers willen dit', 'desirability', 5) returning id", [idea])).rows[0].id as string);
+    const h = (
+      await c.query(
+        `insert into public.hypotheses (idea_id, assumption_id, we_believe, target_group, test_method, metric_label,
+           metric_numerator, metric_denominator, success_threshold_pct, fail_threshold_pct, min_sample, max_duration_days)
+         values ($1, $2, 'Eventmanagers vragen een demo aan', 'NL eventmanagers', 'landingpagina', 'aanvragen',
+           'bezoekers met aanvraag', 'bezoekers', 20, null, 20, 21) returning id`,
+        [idea, a],
+      )
+    ).rows[0].id as string;
+    const e = (
+      await c.query("insert into public.experiments (idea_id, hypothesis_id, type, title, recruitment_group) values ($1, $2, $3, 'Test', $4) returning id", [
+        idea,
+        h,
+        type,
+        extra.recruitment ?? null,
+      ])
+    ).rows[0].id as string;
+    return { assumption: a, hypothesis: h, experiment: e };
+  });
+}
+
 d("golf A", () => {
   let owner: U;
   let A: { org: string; idea: string };
@@ -105,5 +132,59 @@ d("golf A", () => {
     await as(client, (c) => c.query("select public.claim_invitations()"));
     expect(await count(client)).toBe(2);
     expect(await count(await user(`buiten-${randomUUID()}@example.com`))).toBe(0);
+  });
+
+  it("punten 4 en 13: wervingsgroep per test en signaal, vergrendeld na goedkeuring, bekende = eigen netwerk", async () => {
+    await expect(testFor(owner, A.idea, "landing", { recruitment: "vrienden" })).rejects.toThrow(/check/);
+    const t = await testFor(owner, A.idea, "landing", { recruitment: "own_network" });
+    // In concept nog aan te passen.
+    await as(owner, (c) => c.query("update public.experiments set recruitment_group = 'cold' where id = $1", [t.experiment]));
+    await as(owner, async (c) => {
+      for (const s of ["ready_for_review", "approved"]) await c.query("update public.experiments set state = $2 where id = $1", [t.experiment, s]);
+    });
+    await expect(as(owner, (c) => c.query("update public.experiments set recruitment_group = 'paid_panel' where id = $1", [t.experiment]))).rejects.toThrow(/EXPERIMENT_RECRUITMENT/);
+    expect((await db.query("select recruitment_group from public.experiments where id = $1", [t.experiment])).rows[0].recruitment_group).toBe("cold");
+
+    // Interviews: een bekende is altijd eigen netwerk; anders de vastgelegde groep, dan die van de test.
+    const iv = await testFor(owner, A.idea, "interview", { recruitment: "warm" });
+    const ids = await as(owner, async (c) => {
+      const interview = async (known: boolean, group: string | null) =>
+        (
+          await c.query(
+            `insert into public.interviews (experiment_id, idea_id, participant_label, dmu_role, recruited_via, held_on, record_type, transcript, consent_recorded, is_acquaintance, recruitment_group)
+             values ($1, $2, 'Eventmanager', 'user', 'network', current_date, 'notes', 'Notities van het gesprek', true, $3, $4) returning id, recruitment_group`,
+            [iv.experiment, A.idea, known, group],
+          )
+        ).rows[0];
+      const known = await interview(true, "cold");
+      const cold = await interview(false, "cold");
+      const plain = await interview(false, null);
+      const obs = async (interviewId: string | null, experimentId: string | null) =>
+        (await c.query("insert into public.observations (idea_id, experiment_id, interview_id, kind, summary) values ($1, $2, $3, 'problem_confirmed', 'x') returning id", [A.idea, experimentId, interviewId])).rows[0].id as string;
+      return {
+        knownGroup: known.recruitment_group as string,
+        o1: await obs(known.id, iv.experiment),
+        o2: await obs(cold.id, iv.experiment),
+        o3: await obs(plain.id, iv.experiment),
+        o4: await obs(null, t.experiment),
+        o5: await obs(null, null),
+      };
+    });
+    expect(ids.knownGroup).toBe("own_network");
+    const refs = async (who: U) =>
+      new Map((await as(who, async (c) => (await c.query("select * from public.evidence_recruitment_refs($1)", [A.idea])).rows)).map((r) => [r.item_id, r.recruitment_group]));
+    const mine = await refs(owner);
+    expect(mine.get(ids.o1)).toBe("own_network");
+    expect(mine.get(ids.o2)).toBe("cold");
+    expect(mine.get(ids.o3)).toBe("warm");
+    expect(mine.get(ids.o4)).toBe("cold");
+    expect(mine.get(ids.o5)).toBeNull();
+
+    // De opdrachtgever rekent met dezelfde groepen; een buitenstaander krijgt niets.
+    const client = await user(`klant4-${randomUUID()}@example.com`);
+    await as(owner, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_viewer')", [A.idea, client.email]));
+    await as(client, (c) => c.query("select public.claim_invitations()"));
+    expect([...(await refs(client)).entries()].sort()).toEqual([...mine.entries()].sort());
+    expect((await refs(await user(`buiten2-${randomUUID()}@example.com`))).size).toBe(0);
   });
 });

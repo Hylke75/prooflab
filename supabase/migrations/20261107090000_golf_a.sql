@@ -3,6 +3,8 @@
 --   0. Methodeversie 2026-11-c naast 2026-11-a en 2026-11-b; nieuwe dossiers starten op 2026-11-c. Overstappen
 --      kan alleen vooruit (a → b → c, of a → c) en met audit.
 --   3. Aantal opgeloste dossiers per werkruimte, voor de weergave "niet gekalibreerd".
+--   4/13. Wervingsgroep per test, interview en observatie (vergrendeld na goedkeuring; een bekende is eigen
+--      netwerk) en evidence_recruitment_refs voor de afnemende factor van methode 2026-11-c.
 --
 -- Bestaande dossiers houden hun methodeversie en rekenen dus niet anders.
 
@@ -53,3 +55,79 @@ returns bigint language sql stable security definer set search_path = '' as $$
 $$;
 revoke execute on function public.resolved_dossiers_for_idea(uuid) from public, anon;
 grant execute on function public.resolved_dossiers_for_idea(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 4 en 13. Wervingsgroep per test en per signaal
+-- ---------------------------------------------------------------------------
+
+-- Via welke weg zijn de deelnemers geworven (lib/domain/recruitment.ts): eigen netwerk, warm contact, koud,
+-- betaald panel of onbekend. Per test (experiments), per interview en per losse observatie. Leeg bij tests van
+-- vóór golf A: die tellen als onbekend. Verplicht op de Test Card bij enquête-, landing- en prijstests (de app);
+-- in de database alleen geldige waarden, en na goedkeuring vast.
+alter table public.experiments
+  add column if not exists recruitment_group text
+    check (recruitment_group in ('own_network', 'warm', 'cold', 'paid_panel', 'unknown'));
+alter table public.interviews
+  add column if not exists recruitment_group text
+    check (recruitment_group in ('own_network', 'warm', 'cold', 'paid_panel', 'unknown'));
+alter table public.observations
+  add column if not exists recruitment_group text
+    check (recruitment_group in ('own_network', 'warm', 'cold', 'paid_panel', 'unknown'));
+
+-- De wervingsgroep hoort bij de vooraf vastgelegde opzet: na goedkeuring kan hij niet meer veranderen.
+create or replace function public.guard_experiment_recruitment()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  if new.recruitment_group is distinct from old.recruitment_group and old.state not in ('draft', 'ready_for_review') then
+    raise exception 'EXPERIMENT_RECRUITMENT: de wervingsgroep is na goedkeuring vergrendeld' using errcode = 'P0001';
+  end if;
+  return new;
+end $$;
+drop trigger if exists experiments_recruitment_lock on public.experiments;
+create trigger experiments_recruitment_lock before update of recruitment_group on public.experiments
+  for each row execute function public.guard_experiment_recruitment();
+
+-- Een bekende (interviews.is_acquaintance) is altijd eigen netwerk.
+create or replace function public.stamp_interview_recruitment()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  if new.is_acquaintance then
+    new.recruitment_group := 'own_network';
+  end if;
+  return new;
+end $$;
+drop trigger if exists interviews_recruitment on public.interviews;
+create trigger interviews_recruitment before insert or update on public.interviews
+  for each row execute function public.stamp_interview_recruitment();
+
+-- Per gekoppelde bevinding en observatie van een dossier de wervingsgroep waarmee methode 2026-11-c herhaling
+-- binnen dezelfde groep afnemend laat meetellen. Volgorde: de groep van het signaal zelf, dan het interview
+-- (een bekende = eigen netwerk), dan de test; een signaal uit een test of interview zonder groep is onbekend.
+-- Bevindingen tellen alleen mee als ze uit open enquêteantwoorden komen (de groep van die enquête); bureau-
+-- onderzoek is niet geworven en heeft geen groep. Dezelfde uitkomst voor consultant en opdrachtgever.
+create or replace function public.evidence_recruitment_refs(p_idea uuid)
+returns table (item_type text, item_id uuid, recruitment_group text)
+language sql stable security definer set search_path = '' as $$
+  select r.item_type, r.item_id,
+         case
+           when r.item_type = 'claim' then
+             case when r.survey_experiment_id is not null then
+               coalesce((select e.recruitment_group from public.experiments e where e.id = r.survey_experiment_id), 'unknown')
+             end
+           else coalesce(
+             o.recruitment_group,
+             case when i.is_acquaintance then 'own_network' end,
+             i.recruitment_group,
+             e.recruitment_group,
+             case when o.experiment_id is not null or o.interview_id is not null then 'unknown' end)
+         end
+  from public.evidence_source_refs(p_idea) r
+  left join public.observations o on r.item_type = 'observation' and o.id = r.item_id
+  left join public.interviews i on i.id = o.interview_id
+  left join public.experiments e on e.id = o.experiment_id;
+$$;
+
+revoke execute on function public.guard_experiment_recruitment(), public.stamp_interview_recruitment(),
+  public.evidence_recruitment_refs(uuid) from public, anon;
+revoke execute on function public.guard_experiment_recruitment(), public.stamp_interview_recruitment() from authenticated;
+grant execute on function public.evidence_recruitment_refs(uuid) to authenticated;
