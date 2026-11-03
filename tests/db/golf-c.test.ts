@@ -143,7 +143,7 @@ d("punt 10: zoekopdracht naar tegenbewijs", () => {
 d("punt 19: momentopname van aantallen valt niet onder de bewaartermijn", () => {
   it("purge_expired_personal_data wist verlopen persoonsgegevens maar laat de momentopname in het rapport staan", async () => {
     const tallies = {
-      version: 1,
+      version: 2,
       note: "Geanonimiseerde aantallen op het moment van dit rapport.",
       tests: [
         {
@@ -154,7 +154,7 @@ d("punt 19: momentopname van aantallen valt niet onder de bewaartermijn", () => 
           successes: 1,
           byChannel: [{ channel: "network", n: 1, successes: 1 }],
           bySource: [{ source: "network", n: 1, successes: 1 }],
-          byGroup: [{ group: "bekenden", n: 1, successes: null }],
+          byGroup: [{ group: "own_network", label: "Eigen netwerk", n: 1, successes: 1 }],
           keyQuestion: null,
         },
       ],

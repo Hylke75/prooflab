@@ -582,9 +582,13 @@ transcripten, citaten en open antwoorden weg (`purge_expired_personal_data`).
 
 - Elk rapport bewaart daarom in zijn onveranderlijke momentopname (`reports.snapshot.tallies`,
   `lib/domain/report-counts.ts`) een **geanonimiseerde telling**: per test n en successen, uitgesplitst per bron
-  (bij enquêtes uitnodiging of open link, anders het kanaal), per kanaal en per wervingsgroep (bij interviews:
-  bekenden en onbekenden, alleen het aantal), en bij enquêtes de kernvraag per bron met het aantal opgeslagen
-  antwoorden. Afgebroken en lopende tests staan erin met hun aantallen.
+  (bij enquêtes uitnodiging of open link, anders het kanaal), per kanaal en per wervingsgroep, en bij enquêtes de
+  kernvraag per bron met het aantal opgeslagen antwoorden. Afgebroken en lopende tests staan erin met hun aantallen.
+- **Per wervingsgroep** (golf A, 11.1): n en successen per groep (eigen netwerk, warm contact, koud, betaald panel,
+  onbekend). Bij enquête-, landing- en prijstests geldt de groep van de test voor alle deelnemers; bij interviews de
+  groep per gesprek (een bekende is eigen netwerk, anders de groep van het gesprek of van de test). Een test zonder
+  groep telt als onbekend. Rapporten met de eerste versie van de momentopname (`tallies.version` 1) tellen bij
+  interviews alleen bekenden en onbekenden, zonder successen; die blijven zo zichtbaar.
 - Er staan geen persoonsgegevens in: geen namen, adressen, citaten, open antwoorden of tijdstippen per persoon.
 - De momentopname valt niet onder de bewaartermijn. Rapporten zijn na het maken niet te wijzigen of te verwijderen en
   de opruimtaak raakt ze niet (gecontroleerd in `tests/db/golf-c.test.ts`).
