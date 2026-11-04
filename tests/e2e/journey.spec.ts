@@ -200,7 +200,8 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await expect(page.getByText(/Besluit vastgelegd/)).toBeVisible();
   await page.reload();
   await expectMenuMatchesStepper(page);
-  await expect(page.locator("#sidebar a.nav-link[data-step=decide]")).toHaveAttribute("data-step-state", "done");
+  // B1-vervolg: "Verder testen" is geen definitief besluit; de stap Besluit krijgt dan geen vinkje.
+  await expect(page.locator("#sidebar a.nav-link[data-step=decide]")).not.toHaveAttribute("data-step-state", "done");
 
   // 7. Report snapshot with source footnote and decision
   await page.goto(`${ideaUrl}/report`);
