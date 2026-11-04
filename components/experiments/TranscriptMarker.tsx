@@ -94,8 +94,9 @@ export function TranscriptMarker({
         tabIndex={0}
         role="document"
         aria-label="Transcript (gepseudonimiseerd)"
-        onMouseUp={canMark ? take : undefined}
-        onKeyUp={canMark ? (e) => e.shiftKey && take() : undefined}
+        // Automatisch overnemen alleen als er echt iets geselecteerd is (een klik zonder selectie geeft geen melding).
+        onMouseUp={canMark ? () => !window.getSelection()?.isCollapsed && take() : undefined}
+        onKeyUp={canMark ? (e) => e.shiftKey && !window.getSelection()?.isCollapsed && take() : undefined}
       >
         {segments.map((s, i) => {
           const lineStart = i === 0 ? 0 : segments[i - 1].b + 1;
