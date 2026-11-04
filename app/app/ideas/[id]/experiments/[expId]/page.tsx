@@ -44,6 +44,7 @@ import { decisive, isExploratory } from "@/lib/domain/customer-research";
 import { StudyView } from "./StudyView";
 import { defaultedLabels } from "@/lib/view-mode";
 import { Detail } from "@/components/shell/ViewMode";
+import { InterviewImport } from "@/components/experiments/InterviewImport";
 
 export const metadata: Metadata = { title: "Experiment" };
 
@@ -508,7 +509,11 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                   <div className="quote" style={{ whiteSpace: "pre-wrap", maxHeight: 280, overflow: "auto" }}>{iv.transcript}</div>
                 </details>
                 {!quick && <TranscriptAuditList turns={auditTranscript(iv.transcript, { productNames, interviewerNames })} />}
-                {(iv.observations ?? []).map((o) => (
+                <p className="mt-8">
+                  <Link className="btn soft sm" href={`/app/ideas/${id}/experiments/${expId}/interviews/${iv.id}`}>Open transcript en markeer citaten →</Link>
+                </p>
+                {/* Thema-citaten (theme_only) staan bij de thema's, niet tussen de observaties: ze tellen nergens mee. */}
+                {(iv.observations ?? []).filter((o) => !(o as { theme_only?: boolean }).theme_only).map((o) => (
                   <div className="evidence-event" key={o.id}>
                     <div className="icon-circle">{o.kind === "problem_confirmed" ? "✓" : o.kind === "problem_absent" || o.kind === "counter_example" ? "✕" : "•"}</div>
                     <div style={{ flex: 1 }}>
@@ -564,8 +569,17 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
             );
           })}
           {running && (
+            <div className="card mt-18" id="importeren">
+              <h3>Transcript importeren</h3>
+              <p className="sub">Een bestand uit Teams, Zoom, Fathom of Otter (of geplakte tekst). ProofLab pseudonimiseert vóór opslag en vóór elke AI-stap; het bestand zelf wordt niet bewaard.</p>
+              <div className="mt-12">
+                <InterviewImport ideaId={id} expId={expId} testGroup={exp.recruitment_group ?? null} />
+              </div>
+            </div>
+          )}
+          {running && (
             <div className="card mt-18">
-              <h3>Interview toevoegen</h3>
+              <h3>Interview toevoegen (zelf plakken, zonder pseudonimisering)</h3>
               <ActionForm action={addInterview.bind(null, id, expId)} submitLabel="Interview opslaan" pendingLabel="Interview opslaan…" resetOnSuccess noValidate>
                 <div className="double-field mt-12">
                   <Field name="participant_label" id="iv-l" label="Pseudoniem" required><input className="field" placeholder="Bijv. Deelnemer A" maxLength={80} /></Field>

@@ -94,6 +94,15 @@ export function CustomerResearchPanel({
               {runningLive ? "Live interview vastleggen →" : "Live interview vastleggen: plan een interviewronde →"}
             </Link>
           )}
+          <div className="divider" />
+          <h4 style={{ fontSize: 15, margin: "0 0 6px" }}>Gesprek importeren en thema&apos;s</h4>
+          <p className="tiny">
+            Een transcript (Teams, Zoom, Fathom, Otter of notities) importeer je als verkennend interview: ProofLab pseudonimiseert vóór opslag, je
+            markeert citaten en ziet thema&apos;s over alle interviews heen. Verkennend: het beslist niet over een aanname.
+          </p>
+          <Link className="btn soft sm mt-8" href={`/app/ideas/${ideaId}/interviews${canWrite ? "#importeren" : ""}`}>
+            {canWrite ? "Interview importeren →" : "Interviews en thema's →"}
+          </Link>
         </section>
       </div>
       <p className="tiny mt-12">Antwoorden zijn zelfrapportage, geen waargenomen gedrag. Open antwoorden kun je opnemen als klantsignalen onder Doelgroepen.</p>

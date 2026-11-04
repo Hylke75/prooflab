@@ -18,6 +18,8 @@ export const STEPS: readonly StepDef[] = [
       { path: "/research", label: "Marktverkenning" },
       { path: "/integrations", label: "Bronnen & koppelingen", consultantOnly: true },
     ],
+    // Fase 1 · punt 3: interviews en thema's over alle gesprekken heen (Markt › Klantonderzoek).
+    also: ["/interviews"],
   },
   { key: "assumptions", number: 2, label: STEP_LABELS.assumptions, icon: "layers", path: "/assumptions", also: ["/method"] },
   { key: "test", number: 3, label: STEP_LABELS.test, icon: "flask", path: "/experiments" },
