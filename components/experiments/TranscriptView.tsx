@@ -15,6 +15,9 @@ import { EXPLORATORY_INTERVIEW_NOTE } from "@/lib/domain/interview-import";
 import { PSEUDONYMIZE_NOTICE } from "@/lib/domain/pseudonymize";
 import { addMarkedObservation, replaceNameInTranscript } from "@/app/app/ideas/[id]/experiments/transcript-actions";
 import { deleteObservation } from "@/app/app/ideas/[id]/experiments/actions";
+import { ThemePanel } from "@/components/experiments/ThemePanel";
+import { loadAiQuality } from "@/lib/ai-quality";
+import { aiConfigured } from "@/lib/env";
 
 // Fase 1 · punt 3: de transcriptpagina. Eén weergave voor een gesprek uit een interviewtest
 // (/experiments/[expId]/interviews/[ivId]) en een verkennend interview (/interviews/[ivId]). Alleen voor het
@@ -40,13 +43,11 @@ export async function TranscriptView({
   interviewId,
   expId,
   searchParams,
-  themes,
 }: {
   ideaId: string;
   interviewId: string;
   expId: string | null;
   searchParams: Record<string, string | string[] | undefined>;
-  themes?: (ctx: { codes: CodeOption[]; canMark: boolean; observationIds: string[] }) => React.ReactNode;
 }) {
   const { idea, canWrite } = await getIdea(ideaId);
   const supabase = await supabaseServer();
@@ -69,7 +70,8 @@ export async function TranscriptView({
       : Promise.resolve({ data: null }),
     expId ? supabase.from("assumptions").select("id, statement").eq("idea_id", ideaId).order("created_at") : Promise.resolve({ data: [] as { id: string; statement: string }[] }),
     supabase.from("observations").select("*, assumption_observations(assumption_id, relation)").eq("interview_id", interviewId).order("created_at"),
-    supabase.from("interview_codes").select("id, label, status").eq("idea_id", ideaId).eq("status", "accepted").order("label"),
+    // Zonder migratie: geen thema's (lege lijst).
+    supabase.from("interview_codes").select("id, label, description, origin, status").eq("idea_id", ideaId).order("label"),
   ]);
   if (expId && !exp) notFound();
   const purged = iv.transcript === PURGED_TRANSCRIPT;
@@ -86,6 +88,11 @@ export async function TranscriptView({
     theme_only?: boolean;
     assumption_observations: { assumption_id: string; relation: string }[];
   })[];
+  const { data: assignments } = obs.length
+    ? await supabase.from("observation_codes").select("observation_id, code_id, origin, review_status").eq("idea_id", ideaId).in("observation_id", obs.map((o) => o.id))
+    : { data: [] };
+  const quality = await loadAiQuality();
+  const accepted: CodeOption[] = (codes ?? []).filter((c) => c.status === "accepted").map((c) => ({ id: c.id, label: c.label }));
   const marks = obs.filter((o) => o.quote_start != null && o.quote_end != null).map((o) => ({ id: o.id, start: o.quote_start as number, end: o.quote_end as number }));
   const running = expId ? ["live", "paused"].includes(exp?.state ?? "") : true;
   const canMark = !purged && running;
@@ -136,7 +143,7 @@ export async function TranscriptView({
             isTest={!!expId}
             assumptions={assumptions ?? []}
             defaultAssumption={exp?.hypotheses?.assumption_id ?? null}
-            codes={(codes ?? []).map((c) => ({ id: c.id, label: c.label }))}
+            codes={accepted}
           />
         )}
       </div>
@@ -171,7 +178,17 @@ export async function TranscriptView({
         ))}
       </section>
 
-      {themes?.({ codes: (codes ?? []).map((c) => ({ id: c.id, label: c.label })), canMark, observationIds: obs.map((o) => o.id) })}
+      <ThemePanel
+        ideaId={ideaId}
+        interviewId={interviewId}
+        codes={codes ?? []}
+        observations={obs.map((o) => ({ id: o.id, quote: o.quote, summary: o.summary, themeOnly: !!o.theme_only }))}
+        assignments={assignments ?? []}
+        canEdit={!purged}
+        aiAllowed={aiConfigured() && !!iv.pseudonymized_at && !purged}
+        pseudonymized={!!iv.pseudonymized_at}
+        quality={quality.themes}
+      />
 
       {!purged && !!iv.pseudonymized_at && (
         <section className="card mt-18" aria-labelledby="rename-h">

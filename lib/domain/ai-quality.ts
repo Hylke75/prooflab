@@ -79,3 +79,20 @@ export function codingAcceptance(rows: { review_status: string | null }[]): Qual
 export function codingIsProposalOnly(m: QualityMeasure): boolean {
   return m.level !== "meets";
 }
+
+// Fase 1 · punt 3: AI-thema's over interviews. Een AI-toewijzing van een thema aan een citaat is een voorstel; de
+// consultant accepteert of wijst af. Zelfde drempels als de AI-codering (70% over minstens 10 beoordelingen).
+// Onbeoordeelde toewijzingen tellen niet mee in de maat (en niet in "X van N").
+export function themeAcceptance(rows: { review_status: string | null }[]): QualityMeasure {
+  const m = codingAcceptance(rows);
+  const p = m.rate === null ? "" : `${Math.round(m.rate * 100)}%`;
+  return {
+    ...m,
+    message:
+      m.level === "meets"
+        ? `${p} van de AI-thema's is geaccepteerd (${m.agreed} van ${m.reviewed}). Blijf steekproefsgewijs controleren.`
+        : m.level === "below"
+          ? `Maar ${p} van de AI-thema's is geaccepteerd (${m.agreed} van ${m.reviewed}). AI-thema's blijven een voorstel.`
+          : `Nog te weinig beoordelingen (${m.reviewed} van minimaal ${MIN_REVIEWS}). AI-thema's blijven een voorstel.`,
+  };
+}

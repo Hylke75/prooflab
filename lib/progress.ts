@@ -21,6 +21,7 @@ import { loadRealInterviewIds, realObservationFilter } from "@/lib/practice-data
 import { decisionConfirmation, decisionSettled } from "@/lib/domain/decision-confirmation";
 import { isExploratory } from "@/lib/domain/customer-research";
 import { loadDecisionRule } from "@/lib/decision-rule-data";
+import { withoutThemeOnly } from "@/lib/theme-filter";
 
 export type AssumptionWithEvidence = {
   id: string;
@@ -138,7 +139,11 @@ export const loadAssumptionInputs = cache(async (ideaId: string) => {
     // Experimenten, hypotheses, Learning Cards en observaties (zonder citaat) zijn ook voor opdrachtgevers leesbaar.
     supabase.from("experiments").select("id, title, type, state, hypotheses(assumption_id, min_sample)").eq("idea_id", ideaId),
     supabase.from("learning_cards").select("experiment_id, status, verdict, metrics").eq("idea_id", ideaId),
-    supabase.from("observations").select("experiment_id, interview_id, is_synthetic").eq("idea_id", ideaId).not("interview_id", "is", null),
+    // Fase 1 · punt 3: thema-citaten tellen niet als gecodeerd gesprek (en dus niet in n of als ontdekkingsbewijs).
+    withoutThemeOnly((f) => {
+      const q = supabase.from("observations").select("experiment_id, interview_id, is_synthetic").eq("idea_id", ideaId).not("interview_id", "is", null);
+      return f ? q.eq("theme_only", false) : q;
+    }),
   ]);
   // B0 punt 2: waarnemingen uit oefengesprekken of nog niet aangegeven gesprekken tellen ook niet als deelnemer of
   // ontdekkingsbewijs.
@@ -433,7 +438,10 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     decisive
       ? supabase.from("claims").select("id", count).eq("idea_id", ideaId).eq("question_id", decisive.id).eq("status", "verified")
       : Promise.resolve({ count: 0 }),
-    supabase.from("observations").select("id", count).eq("idea_id", ideaId).eq("is_synthetic", false).not("experiment_id", "is", null).or(realObs),
+    withoutThemeOnly((f) => {
+      const q = supabase.from("observations").select("id", count).eq("idea_id", ideaId).eq("is_synthetic", false).not("experiment_id", "is", null).or(realObs);
+      return f ? q.eq("theme_only", false) : q;
+    }),
   ]);
   const [forecast, rawAssumptions, rule] = await Promise.all([forecastState, assumptionList, decisionRule]);
   const assumptions = rankAssumptions(rawAssumptions);

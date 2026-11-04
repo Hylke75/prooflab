@@ -29,7 +29,7 @@ export function AiQualityCard({ measures }: { measures: { title: string; measure
       {/* Fase 1 · punt 1: de drempelnote één keer per pagina (in Snel); daarna alleen de term met tooltip. */}
       <Explain k="ai-drempel" as="div" className="note" term="Drempels voor AI-kwaliteit">
         Drempels: minimaal {Math.round(SUPPORT_AGREEMENT_THRESHOLD * 100)}% overeenstemming bij steuncontroles en minimaal{" "}
-        {Math.round(CODING_ACCEPTANCE_THRESHOLD * 100)}% acceptatie bij AI-codering, telkens over minstens {MIN_REVIEWS} beoordelingen. Daaronder
+        {Math.round(CODING_ACCEPTANCE_THRESHOLD * 100)}% acceptatie bij AI-codering en AI-thema&apos;s, telkens over minstens {MIN_REVIEWS} beoordelingen. Daaronder
         blijft elk AI-oordeel een voorstel.
       </Explain>
     </div>

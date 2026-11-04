@@ -95,6 +95,12 @@ export async function addMarkedObservation(ideaId: string, interviewId: string, 
   if (error && missingImportSchema(error)) ({ data: obs, error } = await supabase.from("observations").insert(base).select("id").single());
   if (error || !obs) return { error: "De observatie kon niet worden opgeslagen. Probeer het opnieuw." };
 
+  // Thema's (handmatig, tellen meteen mee in "X van N", nooit in de kans).
+  const codeIds = form.getAll("code_ids").map(String).filter((c) => UUID.test(c)).slice(0, 20);
+  if (codeIds.length) {
+    await supabase.from("observation_codes").insert(codeIds.map((code_id) => ({ observation_id: obs.id, code_id, idea_id: ideaId, origin: "manual" })));
+  }
+
   let linked = false;
   if (assumptionId && v.relation !== "neutral") {
     const { error: linkError } = await supabase.from("assumption_observations").insert({ assumption_id: assumptionId, observation_id: obs.id, idea_id: ideaId, relation: v.relation });

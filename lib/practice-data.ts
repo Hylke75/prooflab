@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { supabaseServer } from "@/lib/supabase/server";
 import { realInterviewIds } from "@/lib/domain/practice";
+import { withoutThemeOnly } from "@/lib/theme-filter";
 
 // B0, punt 2: de interviews van een idee die als echt gesprek zijn aangegeven. Alleen waarnemingen daaruit
 // (of zonder interview) tellen als bewijs; zie lib/domain/practice.ts. Bij het laden van waarnemingen, niet door
@@ -29,11 +30,10 @@ export const countRealInterviewObservations = cache(async (ideaId: string): Prom
   const realIds = await loadRealInterviewIds(ideaId);
   if (realIds.size === 0) return 0;
   const supabase = await supabaseServer();
-  const { count } = await supabase
-    .from("observations")
-    .select("id", { count: "exact", head: true })
-    .eq("idea_id", ideaId)
-    .eq("is_synthetic", false)
-    .in("interview_id", [...realIds]);
+  // Fase 1 · punt 3: thema-citaten zijn geen ontdekkingsbewijs.
+  const { count } = await withoutThemeOnly((f) => {
+    const q = supabase.from("observations").select("id", { count: "exact", head: true }).eq("idea_id", ideaId).eq("is_synthetic", false).in("interview_id", [...realIds]);
+    return f ? q.eq("theme_only", false) : q;
+  });
   return count ?? 0;
 });
