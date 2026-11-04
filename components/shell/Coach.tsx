@@ -9,6 +9,7 @@ import { CoachFeed, type FeedNote } from "@/components/coach/CoachFeed";
 import type { CoachData } from "@/lib/domain/coach";
 import { useShell } from "./ShellProvider";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
+import { Markdown } from "@/components/coach/Markdown";
 
 // collapsed: het paneel staat ingeklapt (ook op brede schermen) en opent als slide-over via de coachknop. Voor
 // pagina's die zelf al een coachblok tonen, zoals Nieuw idee, zodat er maar één coach zichtbaar is.
@@ -64,7 +65,8 @@ export function Coach({ data, aiConnected, notes, collapsed = false }: { data: C
               {state.answer && (
                 <div className="insight-card" style={{ marginTop: 0 }}>
                   <strong>Antwoord</strong>
-                  <p style={{ whiteSpace: "pre-wrap" }}>{state.answer}</p>
+                  {/* Fase B4/B6: het AI-antwoord als markdown, veilig gerenderd (geen HTML uit het antwoord). */}
+                  <Markdown text={state.answer} />
                 </div>
               )}
               {state.error && <div className="form-error" role="alert">{state.error}</div>}
