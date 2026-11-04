@@ -136,7 +136,7 @@ export function RiskBoard({
       <span className="count">{rank.get(a.id)}</span>
       <span>{a.statement}</span>
       <small>
-        {ASSUMPTION_KINDS[a.kind].label} · {a.voi.test.external ? "technische proef" : a.voi.test.label}
+        {ASSUMPTION_KINDS[a.kind].label} · {a.voi.test.external ? (a.voi.test.short ?? "proef buiten ProofLab") : a.voi.test.label}
       </small>
     </button>
   );

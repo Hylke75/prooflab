@@ -25,8 +25,8 @@ describe("assumptionKind (B0 punt 3)", () => {
   });
   it("valt anders terug op markt", () => {
     expect(k("Er zijn in Nederland genoeg zelfstandige makelaarskantoren")).toBe("market");
-    // Wervingskosten gaan over bereik, niet over wat de klant betaalt.
-    expect(k("We kunnen klanten bereiken tegen acceptabele wervingskosten.")).toBe("market");
+    // Wervingskosten gaan over bereik, niet over wat de klant betaalt; sinds gebruikerstest B3 is dat de soort kanaal.
+    expect(k("We kunnen klanten bereiken tegen acceptabele wervingskosten.")).toBe("channel");
   });
   it("prijs gaat voor techniek", () => {
     expect(k("Makelaars betalen € 49 per maand extra voor de koppeling met Realworks")).toBe("price");
@@ -98,6 +98,7 @@ describe("interviewleidraad bij een prijsaanname", () => {
   });
   it("de standaardaannames krijgen een soort", () => {
     // B4: "vaak genoeg om er iets aan te willen doen" gaat over het probleem (markt), niet over gedrag.
-    expect(TEMPLATE_ASSUMPTIONS.map((a) => assumptionKind(a))).toEqual(["market", "behaviour", "price", "market", "technical", "market"]);
+    // Gebruikerstest B3: bereik/wervingskosten is kanaal, "regels, partners of platforms" is regelgeving/context.
+    expect(TEMPLATE_ASSUMPTIONS.map((a) => assumptionKind(a))).toEqual(["market", "behaviour", "price", "channel", "technical", "regulation"]);
   });
 });

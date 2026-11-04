@@ -155,7 +155,8 @@ test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-reg
   await expect(steps).toContainText("Concept");
   await page.getByRole("button", { name: "Ter review aanbieden" }).click();
   await expect(steps).toContainText("Klaar voor goedkeuring");
-  for (const box of await page.locator("input[type=checkbox][name^=check_]").all()) await box.check();
+  // Gebruikerstest B4: wie zijn eigen test goedkeurt, vinkt ook de bevestiging bij de melding aan.
+  for (const box of await page.locator("input[type=checkbox][name^=check_], input[type=checkbox][name=confirm_self_approval]").all()) await box.check();
   await page.getByRole("button", { name: "Akkoord: keur goed en vergrendel" }).click();
 
   // B5: zonder vastgelegde go-regel start een hoofdtest niet; de reden staat bij de knop.

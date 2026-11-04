@@ -58,9 +58,13 @@ describe("fase B4: oorzaak van de gelijke scores", () => {
     const r = rankByInformationValue(TEMPLATE_ASSUMPTIONS.map((a, i) => input(`t${i}`, a.statement, { importance: a.importance, category: a.category })));
     const top = r.slice(0, 3).map((x) => x.score);
     expect(new Set(top).size).toBe(3);
-    // Probleem (belang 5) voor prijs (belang 5, interviews met betaalvragen: zwakker anker), dan wervingskosten (4).
-    expect(r.map((x) => x.id)).toEqual(["t0", "t2", "t3", "t5", "t1", "t4"]);
-    expect(r.map((x) => x.index)).toEqual([100, 90, 80, 60, 47, 42]);
+    // Probleem (belang 5) voor prijs (belang 5, interviews met betaalvragen: zwakker anker). Sinds gebruikerstest B3 krijgt
+    // "regels, partners of platforms" (regelgeving/context) een snelle juridische check en gaat daarmee voor
+    // wervingskosten (kanaal, outreach-proef).
+    expect(r.map((x) => x.id)).toEqual(["t0", "t2", "t5", "t3", "t1", "t4"]);
+    expect(r.map((x) => x.index)).toEqual([100, 90, 85, 75, 47, 42]);
+    expect(r.find((x) => x.id === "t5")!.test.type).toBe("desk_check");
+    expect(r.find((x) => x.id === "t3")!.test.type).toBe("outreach");
     expect(r.find((x) => x.id === "t4")!.test.type).toBe("prototype");
   });
 });

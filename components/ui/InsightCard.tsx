@@ -1,5 +1,6 @@
 import { SUPPORT_LABEL, isSupportCheck } from "@/lib/domain/support";
 import { CLAIM_STATUS, EVIDENCE_TYPES, SOURCE_TYPES, type ClaimStatus, type EvidenceType, type SourceType } from "@/lib/domain/labels";
+import { defaultsForSource, deviationHint, evidenceTypeDeviates } from "@/lib/domain/source-defaults";
 
 export type ClaimView = {
   id: string;
@@ -66,6 +67,15 @@ export function InsightCard({
       <div className="insight-meta">
         {meta.join(" · ")} · {EVIDENCE_TYPES[claim.evidence_type]}
         {claim.origin === "ai" ? " · gevonden door AI, citaat gecontroleerd" : ""}
+        {/* Gebruikerstest B2: afgeleid, niet opgeslagen. Wijkt de soort informatie af van de standaard voor de bron? */}
+        {first && evidenceTypeDeviates(first.source_type, claim.evidence_type) && (
+          <>
+            {" "}
+            <span className="pill gray" title={`Standaard voor ${SOURCE_TYPES[first.source_type]?.toLowerCase() ?? "deze bron"}: ${EVIDENCE_TYPES[defaultsForSource(first.source_type).evidenceType].toLowerCase()}`}>
+              {deviationHint(first.source_type)}
+            </span>
+          </>
+        )}
       </div>
       {claim.scope && (
         <div className="insight-meta" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>

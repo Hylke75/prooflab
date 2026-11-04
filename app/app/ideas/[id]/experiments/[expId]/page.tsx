@@ -32,7 +32,7 @@ import { isStarted } from "@/lib/domain/test-counts";
 import { loadTestExclusions } from "@/lib/progress";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 import { assumptionKind, assumptionKindLabel, metricFitsAssumption } from "@/lib/domain/assumption-kind";
-import { belowMinSample, END_BELOW_SAMPLE_CONFIRM, END_REASON_MAX, END_REASON_MIN, goRuleBlock, thresholdBlock } from "@/lib/domain/experiment-gates";
+import { belowMinSample, END_BELOW_SAMPLE_CONFIRM, END_REASON_MAX, END_REASON_MIN, goRuleBlock, SELF_APPROVAL_CONFIRM, selfApproval, selfApprovalText, thresholdBlock } from "@/lib/domain/experiment-gates";
 import { loadDecisionRule } from "@/lib/decision-rule-data";
 import { proposeGoRule } from "@/lib/domain/decision-rule-proposal";
 import { describeRule } from "@/lib/domain/decision-rule";
@@ -61,7 +61,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
   const type = exp.type as ExperimentType;
   const state = exp.state as ExperimentState;
   // Gebruikerstest A10: alle onafhankelijke ladingen tegelijk in plaats van na elkaar (was een waterval van ~10 stappen).
-  const [m, { data: cards }, { data: primaryOf }, surveyDraft, interviews, quality, interviewerNames, exclusions, rule] = await Promise.all([
+  const [m, { data: cards }, { data: primaryOf }, surveyDraft, interviews, quality, interviewerNames, exclusions, rule, { data: ideaAssumptions }, me] = await Promise.all([
     experimentMetrics(exp, h),
     supabase.from("learning_cards").select("id").eq("experiment_id", expId),
     // Hoofdtest of verkennend (golf A, punt 11).
@@ -89,7 +89,15 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
     isStarted(state) ? loadTestExclusions(id) : Promise.resolve(null),
     // B5: de go-regel van het dossier. Een hoofdtest start pas als die vastligt; zonder regel stelt ProofLab hem voor.
     loadDecisionRule(id),
+    // Gebruikerstest B1: de kritieke aannames voor het voorstel van de go-regel (select("*"): selected_for_test bestaat
+    // pas na de B4-migratie; zonder kolom is niets gekozen).
+    canWrite && ["draft", "ready_for_review", "approved"].includes(state)
+      ? supabase.from("assumptions").select("*").eq("idea_id", id)
+      : Promise.resolve({ data: [] as { id: string; statement: string; importance: number; selected_for_test?: boolean }[] }),
+    // Gebruikerstest B4: wie kijkt er, om zelfgoedkeuring vooraf te tonen.
+    canWrite && state === "ready_for_review" ? getWorkspace().then((ws) => ws.user.id) : Promise.resolve(null),
   ]);
+  const self = selfApproval({ ownerId: exp.owner_id, submittedBy: exp.submitted_by ?? null, approverId: me });
   const role = testRole(exp.id, h.assumption_id, primaryOf ? [primaryOf] : []);
   const { data: currentPrimary } =
     primaryOf?.primary_experiment_id && role !== "primary"
@@ -122,7 +130,13 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
   const goBlock = goRuleBlock({ isPrimary: role === "primary", rule: rule === undefined ? "unknown" : rule ? "saved" : "missing" });
   const goProposal =
     canWrite && h.assumptions && ["draft", "ready_for_review", "approved"].includes(state)
-      ? proposeGoRule({ rule, assumption: { id: h.assumption_id, statement: h.assumptions.statement }, experiment: exp, isPrimary: role === "primary" })
+      ? proposeGoRule({
+          rule,
+          assumption: { id: h.assumption_id, statement: h.assumptions.statement },
+          experiment: exp,
+          isPrimary: role === "primary",
+          assumptions: (ideaAssumptions ?? []).map((a) => ({ id: a.id, statement: a.statement, importance: a.importance, selectedForTest: a.selected_for_test === true })),
+        })
       : null;
   // B5: de deadline. Vóór de start geldt hij als de test vandaag start; daarna is het de vastgelegde einddatum.
   const deadline = exp.ends_at ? new Date(exp.ends_at) : new Date(`${deadlineFromDays(h.max_duration_days, isoDay(new Date()))}T12:00:00`);
@@ -287,6 +301,13 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
             <div id="goedkeuren" className="coach-target">
             <ActionForm action={transitionExperiment.bind(null, id, expId, "approved")} submitLabel="Akkoord: keur goed en vergrendel" disabled={blocked} describedBy={blocked ? "approval-block" : undefined}>
               {blockNote("Goedkeuren kan niet:")}
+              {self.self && (
+                <div className="note" role="note" id="zelf-goedkeuren" style={{ marginTop: 0 }}>
+                  <strong>{selfApprovalText(self)}</strong> Liefst keurt iemand anders de Test Card goed; kan dat niet, bevestig het dan hieronder. In het rapport
+                  staat deze test als &ldquo;zelf goedgekeurd&rdquo;.
+                  <label className="check-row mt-8"><input type="checkbox" name="confirm_self_approval" required /> {SELF_APPROVAL_CONFIRM}</label>
+                </div>
+              )}
               <p className="sub">Goedkeuren vergrendelt de hypothese en drempels. Bevestig:</p>
               {type === "survey" ? (
                 <>

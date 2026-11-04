@@ -12,13 +12,26 @@ export const ASSUMPTION_KINDS = {
   price: { label: "prijs" },
   behaviour: { label: "gedrag" },
   technical: { label: "technisch" },
+  // Gebruikerstest B3: bereik en distributie, en wet- en regelgeving of vertrouwen (context).
+  channel: { label: "kanaal" },
+  regulation: { label: "regelgeving/context" },
 } as const;
 export type AssumptionKind = keyof typeof ASSUMPTION_KINDS;
 
 const isKind = (k: unknown): k is AssumptionKind => typeof k === "string" && k in ASSUMPTION_KINDS;
 
-// Volgorde telt: prijs gaat voor techniek, techniek voor gedrag. "Makelaars betalen € 249 per maand voor een
-// koppeling" gaat dus over betalen. Woordgrenzen voorkomen dat "wervingskosten" als prijsaanname telt.
+// Volgorde (gebruikerstest B3): regelgeving → bouwen met termijn of budget → kanaal → prijs → overige techniek → gedrag
+// → markt, met de categorie als terugval.
+// - Regelgeving gaat voor alles: "AVG-conform en clubs vertrouwen ons met ledengegevens" gaat over wat mag en vertrouwen.
+// - Bouwen of ontwikkelen binnen een termijn of budget gaat voor prijs: "te bouwen binnen € 15.000 en 2 maanden" gaat
+//   over haalbaarheid, niet over wat de klant betaalt.
+// - Kanaal gaat voor prijs: "bereiken via bonden tegen acceptabele kosten per club" gaat over bereik.
+// - Prijs gaat voor overige techniek: "Makelaars betalen € 249 per maand voor een koppeling" gaat over betalen.
+// Woordgrenzen voorkomen dat "wervingskosten" als prijsaanname telt.
+const REGULATION = /\bregels\b|\bavg\b|\bgdpr\b|\bprivacy|\bwet(ten|geving|telijk|telijke)?\b|\bregelgeving|\bvergunning|\bcompliance|\bcompliant|\bvertrouw/;
+const BUILD = /\bbouwen\b|\bte bouwen\b|\bbouwt\b|\bontwikkel/;
+const TERM_OR_BUDGET = /\bbinnen\b|\b\d+\s*(dagen|weken|maanden|jaar)\b|\b(dag|week|maand)en?\b|€|\bbudget|\beuro\b/;
+const CHANNEL = /\bkanaal|\bkanalen\b|\bbereik|\bdistributie|\bpartner|\bbond(en)?\b|\bleverancier|\bdoorverwijz|\boutreach\b|\bwerving|\bwerven\b|\bmarketingkanaal/;
 const PRICE = /€|\bprijs|\bprijzen\b|\bbetal|\beuro|\bper (maand|jaar|stuk|gebruiker)\b|\babonnement|\bbudget|\bkosten\b|\bkost\b|\btarie(f|ven)\b|\baanbetal|willingness to pay|\bwtp\b/;
 const TECHNICAL = /\bkoppel|\bintegrat|\bapi('s)?\b|\brealworks\b|\bbouwen\b|\btechnisch|\btechniek|\bsysteem|\bsystemen\b/;
 // B4: "doen" telt niet meer: "vaak genoeg om er iets aan te willen doen" gaat over het probleem (markt).
@@ -29,9 +42,15 @@ const BEHAVIOUR = /\bgebruik|\bwekelijks|\bdagelijks|\boverstap|\bgedrag|\baanvr
 export function assumptionKind(a: { kind?: string | null; statement: string; category: string }): AssumptionKind {
   if (isKind(a.kind)) return a.kind;
   const t = a.statement.toLowerCase();
+  if (REGULATION.test(t)) return "regulation";
+  if (BUILD.test(t) && TERM_OR_BUDGET.test(t)) return "technical";
+  if (CHANNEL.test(t)) return "channel";
   if (PRICE.test(t)) return "price";
   if (TECHNICAL.test(t)) return "technical";
   if (BEHAVIOUR.test(t)) return "behaviour";
+  // Terugval op de categorie (gebruikerstest B3): haalbaarheid is technisch, context is regelgeving/context.
+  if (a.category === "feasibility") return "technical";
+  if (a.category === "context") return "regulation";
   return "market";
 }
 
@@ -66,6 +85,25 @@ export function metricFitsAssumption(
       ok: false,
       reason: `Deze aanname gaat over betalen; de maatstaf meet "${measured}" maar geen geld of toezegging. Meet een betaling, aanbetaling, getekende offerte of toezegging, of kies een prijs-/aanbodtest.`,
       suggestedType: "pricing",
+    };
+  }
+  // Gebruikerstest B3: een kanaalaanname toets je met bereik (landingpage per kanaal, outreach, interviews over hoe men
+  // nu leveranciers vindt), niet met een prijskeuze.
+  if (kind === "channel" && test.type === "pricing") {
+    return {
+      ok: false,
+      reason: "Deze aanname gaat over een kanaal: kun je de doelgroep bereiken, en tegen welke kosten? Een prijs-/aanbodtest meet betaalbereidheid, geen bereik. Meet per kanaal met een landingpage (een link per kanaal) of met een outreach-proef.",
+      suggestedType: "landing",
+    };
+  }
+  // Gebruikerstest B3: of iets mag (AVG, vergunning) toets je met bureauonderzoek of een juridische check buiten ProofLab.
+  // Vertrouwen kun je wel bij klanten uitvragen (interview of enquête), maar een klik of prijskeuze zegt daar niets over.
+  if (kind === "regulation" && (test.type === "landing" || test.type === "pricing")) {
+    const what = TYPE_LABEL[test.type as ExperimentType];
+    return {
+      ok: false,
+      reason: `Deze aanname gaat over regelgeving of vertrouwen. ${what.charAt(0).toUpperCase()}${what.slice(1)} meet klikken of keuzes, niet of iets mag. Toets dit met bureauonderzoek of een juridische check buiten ProofLab en leg de uitkomst vast als bron; vertrouwen kun je uitvragen in interviews.`,
+      suggestedType: "interview",
     };
   }
   if (kind === "technical") {

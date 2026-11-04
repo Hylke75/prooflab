@@ -3,6 +3,8 @@ import { saveDecisionRule } from "@/app/app/ideas/[id]/assumptions/rule-actions"
 import { describeRule, RULE_MAX, RULE_MIN, type DecisionRule, type RuleEvaluation } from "@/lib/domain/decision-rule";
 import { pct } from "@/lib/domain/forecast";
 import { RulePrimarySelect } from "./RulePrimarySelect";
+import { RuleConditionRow } from "./RuleConditionRow";
+import { GO_RULE_DEFAULT_PROBABILITY, isCriticalForRule } from "@/lib/domain/decision-rule-proposal";
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" });
 
@@ -24,12 +26,16 @@ export function DecisionRuleCard({
   ideaId: string;
   rule: DecisionRule | null;
   // primaryExperimentId: de hoofdtest van de aanname (golf A); alleen die kan de hoofdtest van de regel zijn.
-  assumptions: { id: string; statement: string; importance: number; primaryExperimentId: string | null }[];
+  // selectedForTest (fase B4): gekozen om nu te testen; met belang 5 is de aanname kritiek voor de regel (gebruikerstest B1).
+  assumptions: { id: string; statement: string; importance: number; primaryExperimentId: string | null; selectedForTest?: boolean }[];
   experiments: { id: string; title: string }[];
   canWrite: boolean;
 }) {
   const primaryTitle = rule?.primaryExperimentId ? (experiments.find((e) => e.id === rule.primaryExperimentId)?.title ?? null) : null;
   const min = (id: string) => rule?.conditions.find((c) => c.assumptionId === id)?.minProbability ?? null;
+  // Zonder regel staan de kritieke aannames standaard aan met 70%, zoals in het voorstel op de testpagina.
+  const critical = (a: { importance: number; selectedForTest?: boolean }) => isCriticalForRule(a);
+  const preset = (a: { id: string; importance: number; selectedForTest?: boolean }) => min(a.id) ?? (!rule && critical(a) ? GO_RULE_DEFAULT_PROBABILITY : null);
   return (
     <div className="card mt-18" id="beslisregel" style={{ scrollMarginTop: 100 }}>
       <div className="section-title">
@@ -69,20 +75,28 @@ export function DecisionRuleCard({
               <legend className="field-label">Welke aannames moeten boven welke kans uitkomen?</legend>
               {assumptions.length === 0 && <p className="tiny">Nog geen aannames. Voeg ze eerst toe.</p>}
               {assumptions.map((a) => (
-                <div key={a.id} className="double-field" style={{ alignItems: "center", gridTemplateColumns: "minmax(0, 1fr) 130px" }}>
-                  <label className="check-row" style={{ margin: "6px 0" }}>
-                    <input type="checkbox" name={`cond_${a.id}`} defaultChecked={min(a.id) != null} /> {a.statement} <span className="tiny">(belang {a.importance}/5)</span>
-                  </label>
-                  <input
-                    className="field"
-                    name={`min_${a.id}`}
-                    inputMode="decimal"
-                    aria-label={`Minimale kans voor: ${a.statement}`}
-                    placeholder="Bijv. 70%"
-                    defaultValue={min(a.id) != null ? String(Math.round(min(a.id)! * 100)) : ""}
-                  />
-                </div>
+                <RuleConditionRow
+                  key={a.id}
+                  id={a.id}
+                  statement={a.statement}
+                  importance={a.importance}
+                  critical={critical(a)}
+                  defaultChecked={preset(a) != null}
+                  minInput={
+                    <input
+                      className="field rule-cond-min"
+                      name={`min_${a.id}`}
+                      inputMode="decimal"
+                      aria-label={`Minimale kans voor: ${a.statement}`}
+                      placeholder="Bijv. 70%"
+                      defaultValue={preset(a) != null ? String(Math.round(preset(a)! * 100)) : ""}
+                    />
+                  }
+                />
               ))}
+              {assumptions.some(critical) && (
+                <p className="field-hint">Kritiek = gekozen om nu te testen en belang 5. Laat je een kritieke aanname weg, dan vraagt ProofLab waarom.</p>
+              )}
             </fieldset>
             <RulePrimarySelect
               ideaId={ideaId}

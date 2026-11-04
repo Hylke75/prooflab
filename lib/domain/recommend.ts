@@ -163,7 +163,9 @@ export function costIndex(o: Pick<Option, "days" | "costEur">): number {
 
 // Een test zoals de rangorde hem voorstelt. type "prototype": een technische proef buiten ProofLab (geen klanttest;
 // de uitkomst wordt als bron vastgelegd).
-export type VoiTestType = ExperimentType | "prototype";
+// Gebruikerstest B3: "outreach" (kanaalproef) en "desk_check" (bureauonderzoek of juridische check) zijn net als
+// "prototype" proeven buiten ProofLab: geen nieuwe testtypes (EXPERIMENT_TYPES blijft gelijk).
+export type VoiTestType = ExperimentType | "prototype" | "outreach" | "desk_check";
 export type VoiTest = {
   type: VoiTestType;
   label: string; // in een zin: "Met {label} (…)"
@@ -174,6 +176,7 @@ export type VoiTest = {
   lr: number; // factor van één duidelijke uitkomst, voor deze soort aanname
   external: boolean; // buiten ProofLab uit te voeren
   note?: string; // aanvulling, alleen in het uitklapdeel
+  short?: string; // korte naam voor de prioriteitenlijst (proeven buiten ProofLab)
 };
 
 const fromOption = (o: Pick<Option, "type" | "duration" | "cost" | "days" | "costEur">, label: string, lr = TEST_LR[o.type]): VoiTest => ({
@@ -202,6 +205,40 @@ export const PROTOTYPE_TEST: VoiTest = {
   costEur: 1000,
   lr: PROTOTYPE_LR,
   external: true,
+  short: "technische proef",
+};
+
+// Gebruikerstest B3: een kanaalaanname toets je door het kanaal echt te proberen: een kleine outreach-proef (bijv. 30
+// clubs via de bond benaderen en tellen wie reageert en wat het kost). Factor 3, zoals een landingpage: het is waargenomen
+// gedrag. Startaanname voor kosten: twee weken en € 250.
+export const OUTREACH_LR = 3;
+export const OUTREACH_TEST: VoiTest = {
+  type: "outreach",
+  label: "een kanaaltest of outreach-proef (bijv. een kleine groep via het kanaal benaderen en reacties en kosten tellen)",
+  duration: "1–2 weken",
+  cost: "€ 0–250 (tijd en eventueel advertenties)",
+  days: 14,
+  costEur: 250,
+  lr: OUTREACH_LR,
+  external: true,
+  short: "outreach-proef",
+  note: "Meet per kanaal: geef elk kanaal een eigen link op een landingpage, dan zie je bereik en conversie per kanaal.",
+};
+
+// Gebruikerstest B3: of iets mag (AVG, vergunning, regels) zoek je uit met bureauonderzoek of een juridische check, niet
+// met klanten. Factor 4: een duidelijk juridisch oordeel zegt veel. Startaanname: één week en € 500 (advies).
+export const DESK_CHECK_LR = 4;
+export const DESK_CHECK_TEST: VoiTest = {
+  type: "desk_check",
+  label: "bureauonderzoek of een juridische check buiten ProofLab",
+  duration: "1 week",
+  cost: "€ 0–500 (advies)",
+  days: 7,
+  costEur: 500,
+  lr: DESK_CHECK_LR,
+  external: true,
+  short: "juridische check",
+  note: "Leg de uitkomst vast als bron met een letterlijk citaat onder Marktverkenning. Vertrouwen van klanten kun je daarnaast uitvragen in interviews.",
 };
 
 // De tests die bij een soort aanname passen. Zonder ontdekkend bewijs (nog geen echte interviews) eerst begrijpen,
@@ -212,6 +249,10 @@ export function testsForKind(kind: AssumptionKind, hasDiscoveryEvidence: boolean
   switch (kind) {
     case "technical":
       return [PROTOTYPE_TEST];
+    case "channel":
+      return [OUTREACH_TEST, fromOption(landing, "een landingpage-test per kanaal")];
+    case "regulation":
+      return [DESK_CHECK_TEST];
     case "behaviour":
       return [fromOption(landing, "een landingpage-test"), fromOption(survey(hasDiscoveryEvidence), "een enquête")];
     case "price": {

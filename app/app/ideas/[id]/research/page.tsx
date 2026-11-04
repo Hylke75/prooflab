@@ -173,7 +173,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   // waar ProofLab zelf het blok bij het citaat zoekt. Het gewone formulier toont de overige fragmenten.
   const excerpts = sources
     .filter((s) => !isImportedReport(s.access_note))
-    .flatMap((s) => (s.source_excerpts ?? []).map((e) => ({ id: e.id, text: e.text, sourceTitle: s.title })));
+    .flatMap((s) => (s.source_excerpts ?? []).map((e) => ({ id: e.id, text: e.text, sourceTitle: s.title, sourceType: s.source_type })));
   const competitors: CompetitorView[] = (compRes.data ?? []).map((c) => ({
     ...c,
     kind: c.kind as CompetitorKind,
@@ -238,7 +238,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
 
   const importedReports: ImportedReport[] = sources
     .filter((s) => isImportedReport(s.access_note))
-    .map((s) => ({ id: s.id, title: s.title, blocks: s.excerptCount, findings: claims.filter((c) => c.evidence.some((e) => e.source_id === s.id)).length }));
+    .map((s) => ({ id: s.id, title: s.title, sourceType: s.source_type, blocks: s.excerptCount, findings: claims.filter((c) => c.evidence.some((e) => e.source_id === s.id)).length }));
 
   const tab = typeof sp.tab === "string" ? sp.tab : "overview";
   const evidenceActions = (claim: (typeof claims)[number]) =>

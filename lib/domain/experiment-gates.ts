@@ -11,6 +11,23 @@ export function thresholdBlock(h: { decision_rule: string | null; required_n: nu
   return h.decision_rule != null && h.required_n == null ? THRESHOLD_UNREACHABLE : null;
 }
 
+// Gebruikerstest B4: zelfgoedkeuring. Wie een test goedkeurt die hij zelf maakte (eigenaar) of zelf ter review
+// aanbood, ziet dat vooraf en bevestigt het met een verplicht vinkje; de database legt het vast (experiments.self_approved)
+// en het rapport vermeldt "zelf goedgekeurd". Een vier-ogenregel volgt in fase 3; nu is het alleen zichtbaar.
+export const SELF_APPROVAL_CONFIRM = "Ik keur mijn eigen test goed en weet dat dit als 'zelf goedgekeurd' in het rapport staat";
+export type SelfApproval = { self: boolean; owner: boolean; submitter: boolean };
+export function selfApproval(input: { ownerId: string | null | undefined; submittedBy: string | null | undefined; approverId: string | null | undefined }): SelfApproval {
+  const me = input.approverId ?? null;
+  const owner = !!me && input.ownerId === me;
+  const submitter = !!me && input.submittedBy === me;
+  return { self: owner || submitter, owner, submitter };
+}
+export function selfApprovalText(s: SelfApproval): string {
+  if (s.owner && s.submitter) return "Je keurt je eigen test goed: je maakte hem en bood hem zelf ter review aan.";
+  if (s.owner) return "Je keurt je eigen test goed: je maakte hem zelf.";
+  return "Je keurt je eigen test goed: je bood hem zelf ter review aan.";
+}
+
 export const END_BELOW_SAMPLE_CONFIRM = "Ik rond af onder de minimale steekproef; de uitkomst telt niet mee in kans en rangorde";
 export const END_REASON_MIN = 10;
 export const END_REASON_MAX = 600;

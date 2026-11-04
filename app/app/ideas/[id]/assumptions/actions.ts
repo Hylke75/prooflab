@@ -58,7 +58,7 @@ export async function setKind(ideaId: string, assumptionId: string, _: ActionSta
   await requireWritableIdea(ideaId);
   const raw = String(form.get("kind") ?? "");
   const kind = raw === "" ? null : raw in ASSUMPTION_KINDS ? raw : undefined;
-  if (kind === undefined) return { error: "Kies markt, prijs, gedrag of technisch." };
+  if (kind === undefined) return { error: "Kies markt, prijs, gedrag, technisch, kanaal of regelgeving/context." };
   const supabase = await supabaseServer();
   const { error } = await supabase.from("assumptions").update({ kind }).eq("id", assumptionId).eq("idea_id", ideaId);
   if (error) return { error: "De soort kon niet worden opgeslagen." };

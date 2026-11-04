@@ -529,6 +529,10 @@ details:not([open])>.sprint-pop{display:none}
 .coach-target:target{outline:2px solid var(--color-primary);outline-offset:6px}
 @media (prefers-reduced-motion:no-preference){.coach-target:target{animation:coach-flash 1.6s ease-out 1 both}}
 @keyframes coach-flash{0%{background:var(--color-surface-soft);outline-color:var(--color-primary)}100%{background:transparent;outline-color:transparent}}
+/* Gebruikerstest B1: aanname als voorwaarde van de beslisregel, met de minimale kans ernaast (smal: eronder). */
+.rule-cond-main{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center}
+.rule-cond-main .rule-cond-min{width:130px}
+@media (max-width:560px){.rule-cond-main{grid-template-columns:1fr}.rule-cond-main .rule-cond-min{width:100%}}
 /* Clusterpopup op de risicokaart: lange aannames breken tussen woorden, niet per letter. */
 .risk-pop button>span:not(.count){min-width:0;overflow-wrap:break-word;word-break:normal;hyphens:auto;line-height:1.4}
 

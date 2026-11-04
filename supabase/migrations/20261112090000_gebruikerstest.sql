@@ -77,3 +77,104 @@ end $$;
 revoke execute on function public.method_version_rank(text) from public, anon;
 grant execute on function public.method_version_rank(text) to authenticated;
 revoke execute on function public.guard_method_version() from public, anon, authenticated;
+
+-- ===========================================================================
+-- B3. Twee nieuwe soorten aannames: kanaal en regelgeving/context (lib/domain/assumption-kind.ts)
+-- ===========================================================================
+-- Zonder deze migratie weigert de database de nieuwe soorten bij "Soort opslaan"; afgeleid uit de tekst werken ze wel.
+alter table public.assumptions drop constraint if exists assumptions_kind_check;
+alter table public.assumptions add constraint assumptions_kind_check
+  check (kind is null or kind in ('market', 'price', 'behaviour', 'technical', 'channel', 'regulation'));
+comment on column public.assumptions.kind is 'B0/B4/gebruikerstest B3: markt, prijs, gedrag, technisch, kanaal of regelgeving/context. Null = afgeleid uit de tekst.';
+
+-- ===========================================================================
+-- B4. Zelfgoedkeuring zichtbaar maken (lib/domain/experiment-gates.ts selfApproval)
+-- ===========================================================================
+-- submitted_by: wie de Test Card ter review aanbood. self_approved: de goedkeurder is de eigenaar of de indiener.
+-- Beide worden alleen door de trigger gezet, nooit door de app. Geen vier-ogenregel (volgt in fase 3). Zonder deze
+-- migratie ontbreken de kolommen: de app kijkt dan alleen naar de eigenaar en het rapport vermeldt niets.
+alter table public.experiments add column if not exists submitted_by uuid references auth.users(id);
+alter table public.experiments add column if not exists self_approved boolean;
+comment on column public.experiments.submitted_by is 'Gebruikerstest B4: wie de Test Card ter review aanbood (gezet door guard_experiment).';
+comment on column public.experiments.self_approved is 'Gebruikerstest B4: goedgekeurd door de eigenaar of de indiener (gezet door guard_experiment).';
+
+-- Laatste definitie uit 20261103120000_surveys.sql, ongewijzigd overgenomen; alleen de regels met "B4" zijn nieuw.
+create or replace function public.guard_experiment()
+returns trigger language plpgsql set search_path = '' as $$
+declare
+  allowed boolean;
+  h public.hypotheses;
+begin
+  if tg_op = 'INSERT' then
+    if new.state <> 'draft' then
+      raise exception 'EXPERIMENT_STATE: nieuwe experimenten starten als concept' using errcode = 'P0001';
+    end if;
+    new.approved_by := null; new.approved_at := null; new.started_at := null;
+    new.ends_at := null; new.ended_at := null; new.ended_early := false; new.public_slug := null;
+    new.submitted_by := null; new.self_approved := null; -- B4
+    return new;
+  end if;
+
+  new.idea_id := old.idea_id;
+  new.approved_by := old.approved_by; new.approved_at := old.approved_at;
+  new.started_at := old.started_at; new.ends_at := old.ends_at; new.ended_at := old.ended_at;
+  new.ended_early := old.ended_early; new.public_slug := old.public_slug;
+  new.owner_id := old.owner_id; -- B4: de eigenaar verandert niet bij een update
+  new.submitted_by := old.submitted_by; new.self_approved := old.self_approved; -- B4
+
+  if new.state is distinct from old.state then
+    allowed := (old.state, new.state) in (
+      ('draft', 'ready_for_review'), ('ready_for_review', 'draft'), ('ready_for_review', 'approved'),
+      ('approved', 'live'), ('live', 'paused'), ('paused', 'live'), ('live', 'ended'), ('paused', 'ended'),
+      ('ended', 'analyzed'), ('analyzed', 'decided'), ('approved', 'draft')
+    );
+    if not allowed then
+      raise exception 'EXPERIMENT_STATE: overgang % naar % is niet toegestaan', old.state, new.state
+        using errcode = 'P0001';
+    end if;
+
+    if new.state = 'ready_for_review' then
+      new.submitted_by := auth.uid(); -- B4
+    end if;
+
+    if new.state = 'approved' then
+      select * into h from public.hypotheses where id = new.hypothesis_id;
+      if h.superseded_by is not null then
+        raise exception 'EXPERIMENT_STATE: hypothese is vervangen door een nieuwere versie' using errcode = 'P0001';
+      end if;
+      update public.hypotheses set locked_at = coalesce(locked_at, now()) where id = new.hypothesis_id;
+      new.approved_by := auth.uid();
+      new.approved_at := now();
+      new.self_approved := coalesce(new.approved_by = new.owner_id or new.approved_by = new.submitted_by, false); -- B4
+      if new.type in ('landing', 'pricing', 'survey') and new.public_slug is null then
+        new.public_slug := lower(substr(replace(gen_random_uuid()::text, '-', ''), 1, 14));
+      end if;
+    end if;
+
+    if new.state = 'draft' and old.state = 'approved' then
+      new.approved_by := null;
+      new.approved_at := null;
+      new.self_approved := null; -- B4
+    end if;
+
+    if new.state = 'live' and old.state = 'approved' then
+      select * into h from public.hypotheses where id = new.hypothesis_id;
+      new.started_at := now();
+      new.ends_at := now() + make_interval(days => h.max_duration_days);
+    end if;
+
+    if new.state = 'ended' then
+      new.ended_at := now();
+      new.ended_early := new.ends_at is not null and now() < new.ends_at;
+    end if;
+  end if;
+
+  if old.state not in ('draft', 'ready_for_review') and (
+       new.config is distinct from old.config or new.hypothesis_id is distinct from old.hypothesis_id
+       or new.type is distinct from old.type or new.channels is distinct from old.channels) then
+    raise exception 'EXPERIMENT_LOCKED: een goedgekeurd experiment kan niet meer worden gewijzigd'
+      using errcode = 'P0001';
+  end if;
+  return new;
+end $$;
+revoke execute on function public.guard_experiment() from public, anon, authenticated;

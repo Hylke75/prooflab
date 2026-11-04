@@ -31,9 +31,9 @@ import { dedupeFragments } from "@/lib/signals/import";
 import type { Json } from "@/lib/database.types";
 import type { AssumptionCategory, ObservationKind } from "@/lib/domain/labels";
 import { assumptionKind, metricFitsAssumption } from "@/lib/domain/assumption-kind";
-import { checkEnd, goRuleBlock, thresholdBlock } from "@/lib/domain/experiment-gates";
+import { checkEnd, goRuleBlock, selfApproval, thresholdBlock } from "@/lib/domain/experiment-gates";
 import { loadDecisionRule } from "@/lib/decision-rule-data";
-import { GO_RULE_NOTE, proposeGoRule } from "@/lib/domain/decision-rule-proposal";
+import { excludedCriticalCheck, GO_RULE_NOTE, proposeGoRule } from "@/lib/domain/decision-rule-proposal";
 import { acceptAiLearning, ruleBasedLearning, type LearningInput } from "@/lib/domain/learning-proposal";
 import { proposeLearning } from "@/lib/ai/learning";
 import { fictionSignals, fictionWarning } from "@/lib/domain/practice";
@@ -303,6 +303,10 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
     // Voor tests uit stap 3 ongewijzigd; verkennend klantonderzoek vraagt geen pretest (lib/domain/customer-research.ts).
     const required = approvalChecks(exp.type, isExploratory(exp.hypotheses), studyFormatOf(exp.config as { format?: string } | null));
     if (required.some((k) => form.get(k) !== "on")) return { error: "Bevestig alle controlepunten voordat je goedkeurt." };
+    // Gebruikerstest B4: wie zijn eigen test goedkeurt, bevestigt dat expliciet (submitted_by bestaat pas na de migratie).
+    const ws = await getWorkspace();
+    const self = selfApproval({ ownerId: exp.owner_id, submittedBy: exp.submitted_by ?? null, approverId: ws.user.id });
+    if (self.self && form.get("confirm_self_approval") !== "on") return { error: "Je keurt je eigen test goed. Bevestig dat met het vinkje bij de melding." };
   }
   const { error } = await supabase
     .from("experiments")
@@ -348,22 +352,44 @@ export async function setPrimaryTest(ideaId: string, expId: string, _: ActionSta
 
 // Fase B5: het voorgestelde go-regel met één klik vastleggen. De server stelt het voorstel opnieuw op uit de database
 // (niet uit het formulier) en legt het vast via save_decision_rule, dat ook de vergrendeling bewaakt.
-export async function adoptProposedGoRule(ideaId: string, expId: string, _: ActionState): Promise<ActionState> {
+export async function adoptProposedGoRule(ideaId: string, expId: string, _: ActionState, form?: FormData): Promise<ActionState> {
   await requireWritableIdea(ideaId);
   const supabase = await supabaseServer();
-  const { data: exp } = await supabase.from("experiments").select("id, title, hypotheses(assumption_id, assumptions(id, statement, primary_experiment_id))").eq("id", expId).eq("idea_id", ideaId).maybeSingle();
+  const [{ data: exp }, rule, { data: all }] = await Promise.all([
+    supabase.from("experiments").select("id, title, hypotheses(assumption_id, assumptions(id, statement, primary_experiment_id))").eq("id", expId).eq("idea_id", ideaId).maybeSingle(),
+    loadDecisionRule(ideaId),
+    // select("*"): selected_for_test bestaat pas na de B4-migratie.
+    supabase.from("assumptions").select("*").eq("idea_id", ideaId),
+  ]);
   const a = exp?.hypotheses?.assumptions;
   if (!exp || !a) return { error: "Test niet gevonden." };
-  const rule = await loadDecisionRule(ideaId);
   if (rule === undefined) return { error: "De beslisregel kan nog niet worden vastgelegd: werk het databaseschema bij." };
   if (rule) return { error: null, ok: "Het dossier heeft al een go-regel." };
-  const proposal = proposeGoRule({ rule, assumption: a, experiment: exp, isPrimary: a.primary_experiment_id === expId });
+  const proposal = proposeGoRule({
+    rule,
+    assumption: a,
+    experiment: exp,
+    isPrimary: a.primary_experiment_id === expId,
+    assumptions: (all ?? []).map((x) => ({ id: x.id, statement: x.statement, importance: x.importance, selectedForTest: x.selected_for_test === true })),
+  });
   if (!proposal) return { error: "Alleen bij een hoofdtest stelt ProofLab de go-regel voor. Wijs deze test eerst aan als hoofdtest." };
+  // Gebruikerstest B1: het voorstel wordt op de server opnieuw opgesteld; uit het formulier komt alleen welke kritieke
+  // aannames zijn uitgevinkt (met motivering). De aanname van de hoofdtest blijft altijd in de regel. Een oud formulier
+  // zonder vinkjes neemt het hele voorstel over.
+  const hasChoices = !!form && proposal.conditions.some((c) => form.has(`cond_${c.assumptionId}`));
+  const chosen = proposal.conditions.filter((c) => c.main || !hasChoices || form?.get(`cond_${c.assumptionId}`) === "on");
+  const check = excludedCriticalCheck({
+    critical: proposal.conditions.filter((c) => !c.main).map((c) => ({ id: c.assumptionId, statement: c.statement })),
+    chosenIds: chosen.map((c) => c.assumptionId),
+    reasons: Object.fromEntries(proposal.conditions.map((c) => [c.assumptionId, form ? String(form.get(`reason_${c.assumptionId}`) ?? "") : ""])),
+    baseNote: GO_RULE_NOTE,
+  });
+  if (check.error !== null) return { error: check.error };
   const { data, error } = await supabase.rpc("save_decision_rule", {
     p_idea: ideaId,
     p_primary: proposal.experimentId,
-    p_note: GO_RULE_NOTE,
-    p_conditions: [{ assumption_id: proposal.assumptionId, min_probability: proposal.minProbability }] as unknown as Json,
+    p_note: check.note,
+    p_conditions: chosen.map((c) => ({ assumption_id: c.assumptionId, min_probability: c.minProbability })) as unknown as Json,
   });
   if (error) {
     if (error.message.includes("DECISION_RULE_LOCKED")) return { error: "De beslisregel ligt al vast." };

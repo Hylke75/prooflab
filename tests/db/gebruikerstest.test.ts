@@ -85,3 +85,33 @@ d("gebruikerstest: deel A in de database", () => {
     await expect(db.query("update public.ideas set method_version = '2026-11-d' where id = $1", [idea])).rejects.toThrow(/METHOD_VERSION/);
   });
 });
+
+d("gebruikerstest: deel B in de database", () => {
+  let owner: U;
+
+  beforeAll(async () => {
+    db = new Client({ connectionString: url });
+    await db.connect();
+    owner = await user(`eigenaar-b-${randomUUID()}@example.com`);
+  });
+
+  afterAll(async () => {
+    await db?.end();
+  });
+
+  it("B3: de soorten kanaal en regelgeving mogen; een onbekende soort niet", async () => {
+    const { idea } = await newIdea(owner);
+    const id = await as(owner, async (c) =>
+      (await c.query("insert into public.assumptions (idea_id, statement, category, importance) values ($1, 'Clubs zijn te bereiken via bonden', 'viability', 5) returning id", [idea])).rows[0].id as string,
+    );
+    for (const kind of ["channel", "regulation"]) {
+      await as(owner, (c) => c.query("update public.assumptions set kind = $2 where id = $1", [id, kind]));
+    }
+    await expect(as(owner, (c) => c.query("update public.assumptions set kind = 'onzin' where id = $1", [id]))).rejects.toThrow(/assumptions_kind_check/);
+  });
+
+  it("B4: de kolommen submitted_by en self_approved bestaan", async () => {
+    const cols = (await db.query("select column_name from information_schema.columns where table_name = 'experiments' and column_name in ('submitted_by', 'self_approved') order by 1")).rows;
+    expect(cols.map((r) => r.column_name)).toEqual(["self_approved", "submitted_by"]);
+  });
+});

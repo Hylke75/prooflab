@@ -26,6 +26,7 @@ import { kickResearchRun } from "@/lib/research-worker";
 import { proposeUncertainty } from "@/lib/research-uncertainty-data";
 import { isProvider, PROVIDER_LABELS, type ProviderId } from "@/lib/ai/providers/config";
 import { isUnknown } from "@/lib/domain/claim-scope";
+import { evidenceTypeError } from "@/lib/domain/source-defaults";
 
 export type ActionState = { error: string | null; ok?: string | null };
 
@@ -241,8 +242,11 @@ export async function addClaim(ideaId: string, _: ActionState, form: FormData): 
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const v = parsed.data;
   const supabase = await supabaseServer();
-  const { data: excerpt } = await supabase.from("source_excerpts").select("id, text, source_id").eq("id", v.excerpt_id).eq("idea_id", ideaId).single();
+  const { data: excerpt } = await supabase.from("source_excerpts").select("id, text, source_id, sources(source_type)").eq("id", v.excerpt_id).eq("idea_id", ideaId).single();
   if (!excerpt) return { error: "Bronfragment niet gevonden." };
+  // Gebruikerstest B2: een interview, outreach-antwoord of enquête is nooit een officiële statistiek.
+  const typeError = evidenceTypeError(excerpt.sources?.source_type, v.evidence_type);
+  if (typeError) return { error: typeError };
   const res = await insertClaimWithQuote(ideaId, v, excerpt);
   if (res.error !== null) return { error: res.error };
   // Gebruikerstest A10: alleen de Markt-pagina opnieuw opbouwen (daar staan bevinding, telling en stappenbalk); andere

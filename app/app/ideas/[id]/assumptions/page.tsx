@@ -213,7 +213,7 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
         <DecisionRuleCard
           ideaId={id}
           rule={rule}
-          assumptions={ranked.map((a) => ({ id: a.id, statement: a.statement, importance: a.importance, primaryExperimentId: a.primaryExperimentId }))}
+          assumptions={ranked.map((a) => ({ id: a.id, statement: a.statement, importance: a.importance, primaryExperimentId: a.primaryExperimentId, selectedForTest: !!a.selectedForTest }))}
           experiments={experiments ?? []}
           canWrite={canWrite}
         />

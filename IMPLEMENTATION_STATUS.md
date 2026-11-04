@@ -552,3 +552,20 @@ product owner. Drie commits (A bugs, B betrouwbaarheid besluit, C gebruiksvriend
   tekst); de tabs Concurrenten, Klantonderzoek en Marktpotentieel worden pas bij openen opgebouwd; de run-voortgang
   ververst niet opnieuw zolang de vorige verversing loopt en vertraagt tot 30 s zonder wijziging; parallelle queries in
   `recomputeClaim`, `loadProgress` en de testpagina (zie het rapport bij de commit voor de tellingen)
+
+### B. Betrouwbaarheid besluit
+- ✅ **B1** Go-regel: het voorstel neemt alle kritieke aannames (gekozen om nu te testen én belang 5) mee, plus altijd
+  de aanname van de hoofdtest, elk minstens 70%. Per aanname een vinkje (testpagina en aannamepagina); een kritieke
+  aanname uitvinken vraagt een motivering van minstens 15 tekens, bewaard als "Uitgesloten: <aanname> – <reden>" in de
+  toelichting. Zelfde controle op de server (`excludedCriticalCheck` in `lib/domain/decision-rule-proposal.ts`)
+- ✅ **B2** Standaard soort informatie en versheid per brontype (`lib/domain/source-defaults.ts`); het formulier volgt
+  het fragment tot je zelf kiest, met de hint "Afwijkend van de standaard voor …"; bij de bevinding een pill (afgeleid).
+  De server weigert "officiële statistiek" bij interview, outreach en enquête. Geen apart brontype voor prijspagina's:
+  bedrijfswebsite → productinformatie (12 maanden)
+- ✅ **B3** Nieuwe soorten aannames **kanaal** en **regelgeving/context** met eigen passende test (outreach-proef of
+  landingpage per kanaal; bureauonderzoek/juridische check buiten ProofLab), zonder nieuwe testtypes. Volgorde:
+  regelgeving → bouwen met termijn/budget → kanaal → prijs → overige techniek → gedrag → markt, met de categorie als
+  terugval. Migratie: `assumptions_kind_check` uitgebreid (zonder migratie werkt alleen het afleiden uit de tekst)
+- ✅ **B4** Zelfgoedkeuring: melding "Je keurt je eigen test goed" met verplicht vinkje (ook op de server); migratie
+  `experiments.submitted_by` en `experiments.self_approved`, gezet door `guard_experiment` (die ook `owner_id` bewaakt);
+  het rapport (web en PDF) zet "zelf goedgekeurd" in de status bij Alle tests. Geen vier-ogenregel (fase 3)

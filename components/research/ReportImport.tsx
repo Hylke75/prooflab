@@ -4,7 +4,8 @@ import "./report-import.css";
 import { useEffect, useId, useRef, useState } from "react";
 import { ActionForm, Field, type FormState } from "@/components/ui/ActionForm";
 import { SavingOverlay } from "@/components/ui/SavingOverlay";
-import { EVIDENCE_TYPES, SOURCE_TYPES } from "@/lib/domain/labels";
+import { EVIDENCE_TYPES, SOURCE_TYPES, type EvidenceType } from "@/lib/domain/labels";
+import { defaultsForSource, deviationHint } from "@/lib/domain/source-defaults";
 import { checkImportFile, defaultTitle, IMPORT_ACCEPT, IMPORT_LABEL, IMPORT_SOURCE_TYPES, MAX_IMPORT_BYTES, MAX_PDF_PAGES } from "@/lib/domain/report-import";
 import { formatBytes, NOTE_STEP_LABELS, validateFile, type NoteStep } from "@/lib/domain/step-files";
 import { prepareStepUpload, recordStepDocument } from "@/app/app/ideas/[id]/step-notes-actions";
@@ -16,7 +17,8 @@ import { REPORT_IMPORT_ANCHOR, REPORT_IMPORT_EVENT, REPORT_IMPORT_PARAM } from "
 // letterlijk citaat, zelf of uit AI-voorstellen die de consultant per stuk accepteert of verwerpt.
 
 export type ImportableDoc = { id: string; fileName: string; size: number; description: string | null; step: NoteStep };
-export type ImportedReport = { id: string; title: string; blocks: number; findings: number };
+// sourceType (gebruikerstest B2): bepaalt de standaard soort informatie en versheid van een bevinding uit het rapport.
+export type ImportedReport = { id: string; title: string; blocks: number; findings: number; sourceType?: string };
 type Question = { id: string; position: number; question: string };
 
 const stem = (name: string) => defaultTitle(name);
@@ -469,6 +471,7 @@ function ReportFindings({ ideaId, report, questions, aiAvailable }: { ideaId: st
                     <FindingForm
                       ideaId={ideaId}
                       sourceId={report.id}
+                      sourceType={report.sourceType}
                       questions={questions}
                       proposal={p}
                       onCancel={() => setOpenKey(null)}
@@ -501,7 +504,7 @@ function ReportFindings({ ideaId, report, questions, aiAvailable }: { ideaId: st
       <details className="mt-18 report-manual" open={!aiAvailable || undefined}>
         <summary className="btn white sm">Zelf een bevinding vastleggen</summary>
         <div className="mt-12">
-          <FindingForm ideaId={ideaId} sourceId={report.id} questions={questions} proposal={null} />
+          <FindingForm ideaId={ideaId} sourceId={report.id} sourceType={report.sourceType} questions={questions} proposal={null} />
         </div>
       </details>
     </>
@@ -529,6 +532,7 @@ const FRESHNESS = {
 function FindingForm({
   ideaId,
   sourceId,
+  sourceType,
   questions,
   proposal,
   onCancel,
@@ -536,6 +540,7 @@ function FindingForm({
 }: {
   ideaId: string;
   sourceId: string;
+  sourceType?: string;
   questions: Question[];
   proposal: ReportProposalView | null;
   onCancel?: () => void;
@@ -544,6 +549,11 @@ function FindingForm({
   const ids = useId();
   const id = (n: string) => `${ids}-${n}`;
   const p = proposal;
+  // Gebruikerstest B2: soort informatie en versheid volgen het brontype van het rapport (of het AI-voorstel), tot de
+  // gebruiker ze zelf wijzigt; een afwijking van de standaard staat bij het veld.
+  const defaults = defaultsForSource(sourceType);
+  const [evidenceType, setEvidenceType] = useState<string>(p?.evidenceType ?? defaults.evidenceType);
+  const [freshness, setFreshness] = useState<string>(p?.freshnessKind ?? defaults.freshness);
   const action = async (s: FormState, f: FormData): Promise<FormState> => {
     const r = await saveReportFinding(ideaId, sourceId, s, f);
     if (r.ok && !r.error && onSaved) onSaved(r.ok);
@@ -601,8 +611,13 @@ function FindingForm({
         </Field>
       </div>
       <div className="double-field">
-        <Field name="evidence_type" id={id("et")} label="Soort informatie">
-          <select className="field" defaultValue={p?.evidenceType ?? "third_party_estimate"}>
+        <Field
+          name="evidence_type"
+          id={id("et")}
+          label="Soort informatie"
+          hint={evidenceType !== defaults.evidenceType ? `${deviationHint(sourceType)} (${EVIDENCE_TYPES[defaults.evidenceType].toLowerCase()}).` : undefined}
+        >
+          <select className="field" value={evidenceType} onChange={(e) => setEvidenceType(e.target.value as EvidenceType)}>
             {Object.entries(EVIDENCE_TYPES)
               .filter(([k]) => !["ai_inference", "synthetic_simulation"].includes(k))
               .map(([k, v]) => (
@@ -641,8 +656,8 @@ function FindingForm({
           <input className="field" defaultValue={p?.unit ?? ""} maxLength={40} placeholder="Bijv. bedrijven, €, %" />
         </Field>
       </div>
-      <Field name="freshness_kind" id={id("fr")} label="Hoe snel veroudert dit?">
-        <select className="field" defaultValue={p?.freshnessKind ?? "statistic"}>
+      <Field name="freshness_kind" id={id("fr")} label="Hoe snel veroudert dit?" hint={freshness !== defaults.freshness ? `${deviationHint(sourceType)}.` : undefined}>
+        <select className="field" value={freshness} onChange={(e) => setFreshness(e.target.value)}>
           {Object.entries(FRESHNESS).map(([k, v]) => (
             <option key={k} value={k}>
               {v}

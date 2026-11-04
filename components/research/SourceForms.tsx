@@ -4,7 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { SOURCE_PREFILL_EVENT, SOURCE_TITLE_PARAM, type SourcePrefill } from "./source-prefill";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { checkQuote } from "@/lib/domain/verify";
-import { EVIDENCE_TYPES, SOURCE_TYPES } from "@/lib/domain/labels";
+import { EVIDENCE_TYPES, SOURCE_TYPES, type EvidenceType } from "@/lib/domain/labels";
+import { defaultsForSource, deviationHint, SELF_REPORTED_SOURCES } from "@/lib/domain/source-defaults";
+import type { FreshnessKind } from "@/lib/domain/verify";
 
 type Action = (s: FormState, f: FormData) => Promise<FormState>;
 
@@ -109,7 +111,8 @@ export function AddSourceForm({ action }: { action: Action }) {
   );
 }
 
-type Excerpt = { id: string; text: string; sourceTitle: string };
+// sourceType (gebruikerstest B2): het brontype bepaalt de standaard soort informatie en versheid.
+type Excerpt = { id: string; text: string; sourceTitle: string; sourceType?: string };
 type Question = { id: string; position: number; question: string };
 
 export function AddClaimForm({ action, excerpts, questions }: { action: Action; excerpts: Excerpt[]; questions: Question[] }) {
@@ -120,6 +123,14 @@ export function AddClaimForm({ action, excerpts, questions }: { action: Action; 
   const [statement, setStatement] = useState("");
   const [stance, setStance] = useState<"supports" | "contradicts">("supports");
   const excerpt = excerpts.find((e) => e.id === excerptId);
+  // Gebruikerstest B2: soort informatie en versheid volgen het brontype van het gekozen fragment, tot de gebruiker ze zelf
+  // wijzigt. Een afwijking van de standaard staat bij het veld.
+  const defaults = defaultsForSource(excerpt?.sourceType);
+  const [evidenceChoice, setEvidenceChoice] = useState<EvidenceType | null>(null);
+  const [freshnessChoice, setFreshnessChoice] = useState<FreshnessKind | null>(null);
+  const evidenceType = evidenceChoice ?? defaults.evidenceType;
+  const freshness = freshnessChoice ?? defaults.freshness;
+  const selfReported = !!excerpt?.sourceType && (SELF_REPORTED_SOURCES as readonly string[]).includes(excerpt.sourceType);
   const check = useMemo(() => {
     if (!excerpt || quote.trim().length < 8) return null;
     return checkQuote(quote, excerpt.text, stance === "supports" && statement ? statement : undefined);
@@ -163,13 +174,26 @@ export function AddClaimForm({ action, excerpts, questions }: { action: Action; 
       <div className="double-field">
         <div className="form-line">
           <label htmlFor="cl-et">Soort informatie</label>
-          <select className="field" id="cl-et" name="evidence_type" defaultValue="official_statistic">
+          <select
+            className="field"
+            id="cl-et"
+            name="evidence_type"
+            value={evidenceType}
+            onChange={(e) => setEvidenceChoice(e.target.value as EvidenceType)}
+            aria-describedby={evidenceType !== defaults.evidenceType ? "cl-et-hint" : undefined}
+          >
             {Object.entries(EVIDENCE_TYPES)
               .filter(([k]) => !["ai_inference", "synthetic_simulation"].includes(k))
+              .filter(([k]) => !(selfReported && k === "official_statistic"))
               .map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
               ))}
           </select>
+          {evidenceType !== defaults.evidenceType && (
+            <p className="field-hint" id="cl-et-hint">
+              {deviationHint(excerpt?.sourceType)} ({EVIDENCE_TYPES[defaults.evidenceType].toLowerCase()}).
+            </p>
+          )}
         </div>
         <div className="form-line">
           <label htmlFor="cl-stance">Richting</label>
@@ -235,13 +259,14 @@ export function AddClaimForm({ action, excerpts, questions }: { action: Action; 
       </div>
       <div className="form-line">
         <label htmlFor="cl-fr">Hoe snel veroudert dit?</label>
-        <select className="field" id="cl-fr" name="freshness_kind" defaultValue="statistic">
+        <select className="field" id="cl-fr" name="freshness_kind" value={freshness} onChange={(e) => setFreshnessChoice(e.target.value as FreshnessKind)} aria-describedby={freshness !== defaults.freshness ? "cl-fr-hint" : undefined}>
           <option value="statistic">Statistiek (3 jaar)</option>
           <option value="price">Prijs (1 jaar)</option>
           <option value="product">Productfuncties (1 jaar)</option>
           <option value="regulation">Wet- en regelgeving (1,5 jaar)</option>
           <option value="general">Algemeen (3 jaar)</option>
         </select>
+        {freshness !== defaults.freshness && <p className="field-hint" id="cl-fr-hint">{deviationHint(excerpt?.sourceType)}.</p>}
       </div>
       <div className="form-line">
         <label htmlFor="cl-sup">Wat ondersteunt dit?</label>
