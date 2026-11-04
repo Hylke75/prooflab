@@ -8,6 +8,8 @@ import { DMU_ROLES } from "@/lib/domain/labels";
 import { PRACTICE_LABELS, practiceStatus } from "@/lib/domain/practice";
 import { TRANSCRIPT_FORMATS, type TranscriptFormat } from "@/lib/domain/transcript-parse";
 import { EXPLORATORY_INTERVIEW_NOTE, IMPORT_SCHEMA_MISSING, missingImportSchema } from "@/lib/domain/interview-import";
+import { ThemeCrossTable } from "@/components/experiments/ThemeCrossTable";
+import { loadThemeCountsForClient, loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
 
 export const metadata: Metadata = { title: "Interviews" };
 
@@ -29,6 +31,9 @@ export default async function InterviewsPage({ params }: PageProps<"/app/ideas/[
       ])
     : [{ data: [], error: null }, { data: [] }];
   const schemaMissing = canWrite && missingImportSchema(error);
+  // Consultant: aantallen met citaten; opdrachtgever: alleen aantallen (interview_theme_counts).
+  const consultantCounts = canWrite && !schemaMissing ? await loadThemeCountsForConsultant(id) : null;
+  const counts = canWrite ? consultantCounts : await loadThemeCountsForClient(id);
   const title = new Map((experiments ?? []).map((e) => [e.id, e.title]));
   const list = schemaMissing ? [] : (interviews ?? []);
 
@@ -44,6 +49,12 @@ export default async function InterviewsPage({ params }: PageProps<"/app/ideas/[
       </div>
       {!canWrite && <p className="sub">Je kijkt mee. Transcripten en citaten ziet alleen het onderzoeksteam; de aantallen per thema staan in het rapport.</p>}
       {schemaMissing && <div className="form-error" role="status">{IMPORT_SCHEMA_MISSING}</div>}
+
+      {counts ? (
+        <ThemeCrossTable counts={counts} ideaId={id} quotes={consultantCounts?.quotes} />
+      ) : (
+        !schemaMissing && <div className="note">Thema&apos;s over interviews heen zijn beschikbaar na de database-update (migratie 20261115090000_interviews_import).</div>
+      )}
 
       {canWrite && (
         <section className="card mt-18" aria-labelledby="iv-lijst">

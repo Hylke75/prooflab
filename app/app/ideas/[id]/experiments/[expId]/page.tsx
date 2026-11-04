@@ -45,6 +45,8 @@ import { StudyView } from "./StudyView";
 import { defaultedLabels } from "@/lib/view-mode";
 import { Detail } from "@/components/shell/ViewMode";
 import { InterviewImport } from "@/components/experiments/InterviewImport";
+import { ThemeCrossTable } from "@/components/experiments/ThemeCrossTable";
+import { loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
 
 export const metadata: Metadata = { title: "Experiment" };
 
@@ -105,6 +107,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
     // Gebruikerstest B4: wie kijkt er, om zelfgoedkeuring vooraf te tonen.
     canWrite && state === "ready_for_review" ? getWorkspace().then((ws) => ws.user.id) : Promise.resolve(null),
   ]);
+  const themeCounts = type === "interview" && canWrite ? await loadThemeCountsForConsultant(id, expId) : null;
   const self = selfApproval({ ownerId: exp.owner_id, submittedBy: exp.submitted_by ?? null, approverId: me });
   const role = testRole(exp.id, h.assumption_id, primaryOf ? [primaryOf] : []);
   const { data: currentPrimary } =
@@ -468,9 +471,12 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
           </div>
           {quality && (
             <div className="mt-18">
-              <Detail><AiQualityCard measures={[{ title: "AI-codering van interviews: geaccepteerd", measure: quality.coding }]} /></Detail>
+              <Detail><AiQualityCard measures={[{ title: "AI-codering van interviews: geaccepteerd", measure: quality.coding }, { title: "AI-thema's: geaccepteerd", measure: quality.themes }]} /></Detail>
             </div>
           )}
+          {/* Fase 1 · punt 3: thema's in deze interviewronde (X van N). Tellen nooit mee in de kans. */}
+          {themeCounts && <ThemeCrossTable counts={themeCounts} ideaId={id} quotes={themeCounts.quotes} title="Thema's in deze interviewronde" scope="test" />}
+          <p className="tiny mt-8"><Link className="text-link" href={`/app/ideas/${id}/interviews`}>Alle interviews en thema&apos;s van het dossier →</Link></p>
           {interviews.map((iv) => {
             // B0: echt gesprek, oefening of nog niet aangegeven. Alleen een echt gesprek telt als bewijs.
             const practice = practiceStatus(iv.is_practice);
