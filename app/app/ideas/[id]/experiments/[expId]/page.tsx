@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageFrame } from "@/components/shell/PageFrame";
+import { Term } from "@/components/ui/Term";
 import { ActionForm, CheckField, Field } from "@/components/ui/ActionForm";
 import { RuleSummary, ruleName } from "@/components/experiments/RuleSummary";
 import { ResultMeter } from "@/components/experiments/ResultMeter";
@@ -32,7 +33,6 @@ import { loadTestExclusions } from "@/lib/progress";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 import { assumptionKind, assumptionKindLabel, metricFitsAssumption } from "@/lib/domain/assumption-kind";
 import { belowMinSample, END_BELOW_SAMPLE_CONFIRM, END_REASON_MAX, END_REASON_MIN, thresholdBlock } from "@/lib/domain/experiment-gates";
-import { Term } from "@/components/ui/Term";
 
 export const metadata: Metadata = { title: "Experiment" };
 
