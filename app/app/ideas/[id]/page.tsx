@@ -86,12 +86,12 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
         </div>
         <p style={{ fontSize: 16, fontWeight: 700 }}>{next.title}</p>
         <p className="sub">{next.detail}</p>
-        <Link className="btn primary mt-12" href={next.href}>
+        <Link className="btn primary mt-12" href={next.href} prefetch={false}>
           <Icon name={next.icon} /> {next.title} <Icon name="arrow" size="sm" />
         </Link>
         {tip && tip.href !== next.href && (
           <p className="tiny mt-12">
-            Ook nuttig: <Link className="text-link" href={tip.href}>{tip.title}</Link>. {tip.detail}
+            Ook nuttig: <Link className="text-link" href={tip.href} prefetch={false}>{tip.title}</Link>. {tip.detail}
           </p>
         )}
       </div>
@@ -110,7 +110,7 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
                 </span>
                 <div>
                   <strong>
-                    <Link href={step.href}>{step.label}</Link>
+                    <Link href={step.href} prefetch={false}>{step.label}</Link>
                   </strong>
                   <span>{step.counts}</span>
                   <span>{step.why}{step.hasEvidence ? "" : " Nog geen echt bewijs in deze stap."}</span>
@@ -138,7 +138,7 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
                     <strong>{n.title}</strong>
                     <span>{k.label}{n.source === "ai" ? " · AI-coach, advies" : ""}</span>
                   </div>
-                  {n.href && <Link className="text-link" href={n.href} aria-label={`Bekijken: ${n.title}`}>Bekijken →</Link>}
+                  {n.href && <Link className="text-link" href={n.href} prefetch={false} aria-label={`Bekijken: ${n.title}`}>Bekijken →</Link>}
                 </div>
               );
             })
@@ -150,7 +150,7 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
       <div className="section-title mt-24"><h2>Snelkoppelingen</h2></div>
       <div className="chat-suggestions" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
         {SHORTCUTS.map((sc) => (
-          <Link key={sc.suffix} className="suggestion card tight" href={`/app/ideas/${id}${sc.suffix}`}>
+          <Link key={sc.suffix} className="suggestion card tight" href={`/app/ideas/${id}${sc.suffix}`} prefetch={false}>
             <Icon name={sc.icon} /> {sc.label}
           </Link>
         ))}

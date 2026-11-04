@@ -30,6 +30,8 @@ export function Sidebar({
   const states = currentId && ideaSteps?.ideaId === currentId ? ideaSteps.states : null;
   const { idea, workspace } = menuItems({ ideaId: currentId, isConsultant });
 
+  // Geen prefetch (B1): op een ideepagina staan hier tot negen links naar zware, dynamische ideepagina's; Next
+  // prefetcht die bij zicht allemaal tegelijk, wat op Vercel 503's op _rsc-verzoeken gaf.
   const isActive = (item: MenuItem): boolean => {
     if (item.step) return activeStep === item.step;
     if (item.key === "overview") return sub === "";
@@ -46,6 +48,7 @@ export function Sidebar({
       <Link
         key={item.key}
         href={item.href}
+        prefetch={false}
         className={`nav-link${active ? " active" : ""}`}
         aria-current={active ? "page" : undefined}
         onClick={close}

@@ -178,7 +178,7 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
             const next = nextAction(p);
             const s = sprintStatus({ start: idea.sprint_start, weeks: idea.sprint_weeks, today, stage: sprintStage(p), testsStarted: p.experimentsLive + p.experimentsEnded > 0 });
             return (
-              <Link key={idea.id} href={next.href} className="card idea" style={{ textDecoration: "none" }} aria-label={`${idea.title}: ${next.title}`}>
+              <Link key={idea.id} href={next.href} prefetch={false} className="card idea" style={{ textDecoration: "none" }} aria-label={`${idea.title}: ${next.title}`}>
                 <div className="idea-top">
                   <span className="idea-symbol" style={idx % 2 ? { background: "var(--color-warning-soft)", color: "var(--color-warning-text)" } : undefined}>
                     {SYMBOLS[idx % SYMBOLS.length]}
@@ -245,7 +245,7 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
                   {a.idea}: {a.detail}
                 </span>
               </div>
-              <Link className="text-link" href={a.href} aria-label={`Open: ${a.title} (${a.idea})`}>
+              <Link className="text-link" href={a.href} prefetch={false} aria-label={`Open: ${a.title} (${a.idea})`}>
                 Open →
               </Link>
             </div>
@@ -373,17 +373,17 @@ async function ClientHome({ ws, list, progresses }: { ws: Workspace; list: IdeaR
                 <span>Besluit</span>
                 <strong>
                   {decision
-                    ? `${DECISIONS[decision.action as DecisionAction]?.label ?? decision.action}${decision.client_confirmed_at ? " · bevestigd" : " · nog niet bevestigd"}`
+                    ? `${DECISIONS[decision.action as DecisionAction]?.label ?? decision.action}${decision.client_confirmed_at ? " · bevestigd" : idea.clients ? " · nog niet bevestigd" : ""}`
                     : "Nog geen besluit"}
                 </strong>
               </div>
               <div className="row mt-12">
                 {report && (
-                  <Link className="btn primary sm" href={`/app/ideas/${idea.id}/report?v=${report.version}`}>
+                  <Link className="btn primary sm" href={`/app/ideas/${idea.id}/report?v=${report.version}`} prefetch={false}>
                     Lees het rapport
                   </Link>
                 )}
-                <Link className="btn white sm" href={`/app/ideas/${idea.id}/evidence`}>
+                <Link className="btn white sm" href={`/app/ideas/${idea.id}/evidence`} prefetch={false}>
                   Bekijk het bewijs
                 </Link>
               </div>

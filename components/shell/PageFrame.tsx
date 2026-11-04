@@ -72,7 +72,7 @@ export async function PageFrame({
               {tabs.map((t) => {
                 const active = section === t.path || !!section?.startsWith(`${t.path}/`);
                 return (
-                  <Link key={t.path} href={`/app/ideas/${ideaId}${t.path}`} className={active ? "active" : undefined} aria-current={active ? "page" : undefined}>
+                  <Link key={t.path} href={`/app/ideas/${ideaId}${t.path}`} prefetch={false} className={active ? "active" : undefined} aria-current={active ? "page" : undefined}>
                     {t.label}
                   </Link>
                 );

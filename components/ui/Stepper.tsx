@@ -4,6 +4,7 @@ import type { StepKey } from "@/lib/domain/dossier-status";
 
 // De stappenbalk: dezelfde vier stappen, namen en status als het menu (lib/steps.ts). `current` is de stap van de
 // pagina; de status (✓ klaar, • loopt) komt uit getDossierStatus().
+// Geen prefetch op de stappen (B1): vier zware ideepagina's tegelijk bij elk paginabezoek, zie Sidebar.
 export function Stepper({ current, ideaId, states }: { current?: StepKey | null; ideaId?: string; states?: Partial<StepStates> }) {
   return (
     <nav className="stepper" aria-label="Voortgang van het stappenplan">
@@ -29,7 +30,7 @@ export function Stepper({ current, ideaId, states }: { current?: StepKey | null;
           <span key={s.key} style={{ display: "contents" }}>
             {i > 0 && <span className="connector" />}
             {ideaId ? (
-              <Link href={`/app/ideas/${ideaId}${s.path}`} className={cls} aria-current={isCurrent ? "step" : undefined} data-step={s.key} data-step-state={state ?? "empty"}>
+              <Link href={`/app/ideas/${ideaId}${s.path}`} prefetch={false} className={cls} aria-current={isCurrent ? "step" : undefined} data-step={s.key} data-step-state={state ?? "empty"}>
                 {inner}
               </Link>
             ) : (

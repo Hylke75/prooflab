@@ -4,6 +4,23 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { useShell } from "./ShellProvider";
+import { truncateWords } from "@/lib/domain/truncate";
+
+// Lange titels in het kruimelpad (B1): afkappen op een woordgrens met "…", de volledige tekst als tooltip.
+const CRUMB_MAX = 32;
+const CURRENT_MAX = 48;
+
+function Crumb({ text, max, current = false }: { text: string; max: number; current?: boolean }) {
+  const short = truncateWords(text, max);
+  const title = short !== text.replace(/\s+/g, " ").trim() ? text : undefined;
+  return current ? (
+    <strong aria-current="page" title={title}>
+      {short}
+    </strong>
+  ) : (
+    <span title={title}>{short}</span>
+  );
+}
 
 export function Topbar({
   crumbs,
@@ -32,11 +49,11 @@ export function Topbar({
         <nav className="crumb" aria-label="Kruimelpad">
           {crumbs.slice(0, -1).map((c, i) => (
             <span key={i} style={{ display: "contents" }}>
-              <span>{c}</span>
+              <Crumb text={c} max={CRUMB_MAX} />
               <span aria-hidden="true">/</span>
             </span>
           ))}
-          <strong aria-current="page">{crumbs[crumbs.length - 1]}</strong>
+          <Crumb text={crumbs[crumbs.length - 1]} max={CURRENT_MAX} current />
         </nav>
       </div>
       <div className="top-actions">

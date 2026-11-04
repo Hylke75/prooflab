@@ -66,7 +66,7 @@ export function IdeaSwitcher({ ideas, currentId, canCreate, onNavigate }: { idea
           <ul aria-label="Andere ideeën">
             {others.map((i) => (
               <li key={i.id}>
-                <Link href={`/app/ideas/${i.id}`} onClick={pick}>
+                <Link href={`/app/ideas/${i.id}`} prefetch={false} onClick={pick}>
                   {i.title}
                 </Link>
               </li>

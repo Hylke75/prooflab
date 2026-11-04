@@ -108,7 +108,7 @@ export default async function StatusPage() {
             </div>
             <div className="card tight">
               <div className="tiny">Opschoontaak persoonsgegevens</div>
-              <div className="mini-kpi num">{s.purge_last_run_at ? when(s.purge_last_run_at) : "Onbekend"}</div>
+              <div className="mini-kpi num kpi-word">{s.purge_last_run_at ? when(s.purge_last_run_at) : "Onbekend"}</div>
               {!s.cron_available
                 ? pill("orange", "pg_cron niet beschikbaar: plan de taak elders")
                 : s.purge_job_scheduled === false
@@ -119,7 +119,7 @@ export default async function StatusPage() {
             </div>
             <div className="card tight">
               <div className="tiny">Gecontroleerd</div>
-              <div className="mini-kpi num">{when(s.checked_at)}</div>
+              <div className="mini-kpi num kpi-word">{when(s.checked_at)}</div>
               {pill("gray", "Bij elke paginalading")}
             </div>
           </div>

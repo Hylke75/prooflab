@@ -77,7 +77,7 @@ test("B1: Test Card van een prijstest opslaan, met drempels vóór het rekenwerk
   page.on("request", (r) => {
     if (r.method() === "POST") posts++;
   });
-  await card.getByLabel("Wij denken dat…", { exact: true }).fill("Zelfstandige NVM-makelaars kiezen op de testpagina een abonnement van € 249 per maand.");
+  await card.getByLabel("Wij denken dat… (verplicht)", { exact: true }).fill("Zelfstandige NVM-makelaars kiezen op de testpagina een abonnement van € 249 per maand.");
   await save.click();
   await expect(card.getByText(/Nog niet opgeslagen: \d+ punten moeten nog worden aangevuld/)).toBeVisible();
   for (const label of ["Drempels vastleggen", "Wervingsgroep", "Kop", "Prijspunten"]) {
@@ -90,7 +90,7 @@ test("B1: Test Card van een prijstest opslaan, met drempels vóór het rekenwerk
 
   // B1b, stap 1: drempels vastleggen. Daarna zijn ze alleen-lezen en volgt één getal.
   await card.getByRole("button", { name: "Leg drempels vast" }).click();
-  await expect(card.getByLabel("Het klopt als ≥ (%)", { exact: true })).toHaveAttribute("readonly", "");
+  await expect(card.getByLabel("Het klopt als ≥ (%) (verplicht)", { exact: true })).toHaveAttribute("readonly", "");
   await expect(card.getByText(/Je hebt ongeveer \d+ deelnemers nodig\./)).toBeVisible();
   await expect(card.getByText(/drempel (aan|verlagen)/i)).toHaveCount(0);
   await card.getByText("Hoe is dit berekend?").click();
@@ -98,7 +98,7 @@ test("B1: Test Card van een prijstest opslaan, met drempels vóór het rekenwerk
 
   // Wijzigen kan alleen met een motivering.
   await card.getByRole("button", { name: "Drempels wijzigen (met motivering)" }).click();
-  await card.getByLabel("Het klopt als ≥ (%)", { exact: true }).fill("10");
+  await card.getByLabel("Het klopt als ≥ (%) (verplicht)", { exact: true }).fill("10");
   await card.getByRole("button", { name: "Leg de drempels opnieuw vast" }).click();
   await expect(card.getByText(/Leg in een zin uit waarom je de drempels wijzigt/)).toBeVisible();
   await card.getByLabel("Waarom wijzig je de drempels?", { exact: true }).fill("De opdrachtgever legde vooraf een hogere minimale conversie vast.");
@@ -107,8 +107,8 @@ test("B1: Test Card van een prijstest opslaan, met drempels vóór het rekenwerk
 
   // De rest aanvullen en opslaan: bevestiging en het concept op het bord, ook na herladen.
   await card.getByRole("radio", { name: "Koud", exact: true }).check();
-  await card.getByLabel("Kop", { exact: true }).fill("Je woningteksten en klantmails in minuten klaar.");
-  await card.getByLabel("Prijspunt 1: naam", { exact: true }).fill("Kantoor");
+  await card.getByLabel("Kop (verplicht)", { exact: true }).fill("Je woningteksten en klantmails in minuten klaar.");
+  await card.getByLabel("Prijspunt 1: naam (verplicht)", { exact: true }).fill("Kantoor");
   await card.getByLabel("Bedrag (€) en periode", { exact: true }).first().fill("249");
   await save.click();
   await page.waitForURL(/\/experiments\?opgeslagen=[0-9a-f-]{36}/);

@@ -97,8 +97,11 @@ export function dossierInput(p: IdeaProgress): DossierInput {
       experiments: p.experiments.length,
       experimentsLive: p.experimentsLive,
       experimentsEnded: p.experimentsEnded,
+      // Zonder dossier-invoer is de uitslag van de tests onbekend, dus telt geen test als klaar.
+      testsWithVerdict: 0,
       realTestObservations: p.behaviourObservations,
       decisions: p.decisions,
+      latestDecisionAction: p.latestDecisionAction,
     }
   );
 }

@@ -12,6 +12,7 @@ import { RECRUITMENT_KEYS } from "@/lib/domain/recruitment";
 import { canDesignatePrimary } from "@/lib/domain/primary-test";
 import { earlierTestsOfType, experimentMetrics, loadSurveyResponses, surveyConfigOf, type LandingConfig, type PricingConfig } from "@/lib/experiment-metrics";
 import { errorSummary, sampleBand, validateTestCard } from "@/lib/domain/test-card";
+import { fieldErrorsFrom, savedNothing } from "@/lib/domain/form-errors";
 import { empiricalPrior, pct } from "@/lib/domain/stats";
 import { ideaMethodVersion } from "@/lib/method-data";
 import { METHODS } from "@/lib/domain/method";
@@ -358,19 +359,23 @@ const InterviewSchema = z.object({
   is_practice: z.enum(["real", "practice"], { error: "Geef aan of dit een echt gesprek of een oefening is." }).transform((v) => v === "practice"),
 });
 
+// Eigen teksten voor velden waarvan zod alleen een technische melding geeft.
+const INTERVIEW_MESSAGES: Partial<Record<string, string>> = {
+  dmu_role: "Kies de rol in het koopproces.",
+  recruited_via: "Kies via welk kanaal de deelnemer is geworven.",
+  record_type: "Kies het soort verslag.",
+  recruitment_group: "Kies een wervingsgroep.",
+};
+
 export async function addInterview(ideaId: string, expId: string, _: ActionState, form: FormData): Promise<ActionState> {
   await requireWritableIdea(ideaId);
   const p = InterviewSchema.safeParse(Object.fromEntries(form));
-  if (!p.success) {
-    const practiceIssue = p.error.issues.find((i) => i.path[0] === "is_practice");
-    const first = p.error.issues[0];
-    return {
-      error: first.path[0] === "is_practice" ? "Het interview is niet opgeslagen: kies of dit een echt gesprek of een oefening is." : first.message,
-      fieldErrors: practiceIssue ? { is_practice: practiceIssue.message } : undefined,
-    };
-  }
-  if (form.get("consent_recorded") !== "on") return { error: "Zonder vastgelegde toestemming mag het gesprek niet worden verwerkt." };
-  if (/@|\b\d{9,}\b|\b06[\s-]?\d{8}\b/.test(p.data.participant_label)) return { error: "Gebruik een pseudoniem, geen e-mailadres of telefoonnummer." };
+  // B1: alle ontbrekende velden tegelijk, elk bij het eigen veld, plus een samenvatting bij de knop.
+  const consentMissing = form.get("consent_recorded") !== "on";
+  const fieldErrors: Record<string, string> = p.success ? {} : fieldErrorsFrom(p.error.issues, INTERVIEW_MESSAGES);
+  if (p.success && /@|\b\d{9,}\b|\b06[\s-]?\d{8}\b/.test(p.data.participant_label)) fieldErrors.participant_label = "Gebruik een pseudoniem, geen e-mailadres of telefoonnummer.";
+  if (consentMissing) fieldErrors.consent_recorded = "Zonder vastgelegde toestemming mag het gesprek niet worden verwerkt.";
+  if (!p.success || Object.keys(fieldErrors).length) return { error: savedNothing("Het interview", fieldErrors), fieldErrors };
   const supabase = await supabaseServer();
   const { data: exp } = await supabase.from("experiments").select("state, type").eq("id", expId).eq("idea_id", ideaId).single();
   if (!exp || exp.type !== "interview" || !["live", "paused"].includes(exp.state)) return { error: "Interviews voeg je toe terwijl het experiment loopt." };
@@ -382,7 +387,7 @@ export async function addInterview(ideaId: string, expId: string, _: ActionState
     is_acquaintance: form.get("is_acquaintance") === "on",
     consent_recorded: true,
   });
-  if (error) return { error: "Opslaan mislukt." };
+  if (error) return { error: "Het interview is niet opgeslagen. Probeer het opnieuw." };
   refresh(ideaId);
   // B0: een als echt aangegeven gesprek met woorden als "fictief" of "test": opgeslagen, maar controleer de keuze.
   const warning = p.data.is_practice ? null : fictionWarning(fictionSignals(`${p.data.participant_label}\n${p.data.transcript}`));

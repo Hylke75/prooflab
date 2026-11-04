@@ -5,6 +5,7 @@ import { ActionForm } from "@/components/ui/ActionForm";
 import { ConfirmDialogForm } from "@/components/ui/ConfirmDialog";
 import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
+import { CONFIRMATION_LABELS, decisionConfirmation } from "@/lib/domain/decision-confirmation";
 import type { ReportSnapshot } from "@/lib/report";
 import { pct } from "@/lib/domain/stats";
 import { describeWeights } from "@/lib/domain/calibration";
@@ -69,6 +70,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
     supabase.from("decisions").select("decided_at, client_confirmed_at").eq("idea_id", id).order("decided_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const r = row?.snapshot as ReportSnapshot | undefined;
+  // B1: zonder opdrachtgever wacht het besluit niet op bevestiging.
+  const confirmation = lastDecision ? decisionConfirmation(lastDecision.client_confirmed_at, !!idea.client_id) : null;
   // Rapporten van vóór golf A hebben geen kalibratie: dan de voorzichtige weergave (banden).
   const calibrated = !!(r && "calibration" in r && r.calibration?.calibrated);
   // A client opening a shared version marks it as seen (once; the database keeps the first moment).
@@ -128,9 +131,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                   </span>
                 )}
                 {v.id === newest?.id && lastDecision && (
-                  <span className={`pill ${lastDecision.client_confirmed_at ? "green" : "orange"}`}>
-                    {lastDecision.client_confirmed_at ? "Besluit bevestigd" : "Besluit wacht op bevestiging"}
-                  </span>
+                  <span className={`pill ${confirmation === "awaiting" ? "orange" : "green"}`}>{CONFIRMATION_LABELS[confirmation!]}</span>
                 )}
                 <span className="version-links">
                   {!isCurrent && (
@@ -473,7 +474,11 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               <p>
                 {r.decision.rationale}
                 {r.decision.nextStep ? ` Volgende stap: ${r.decision.nextStep}.` : ""} Vastgelegd op {date(r.decision.at)}.{" "}
-                {r.decision.confirmedAt ? `Bevestigd door de opdrachtgever op ${date(r.decision.confirmedAt)}${r.decision.comment ? ` (“${r.decision.comment}”)` : ""}.` : "Nog niet bevestigd door de opdrachtgever."}
+                {r.decision.confirmedAt
+                  ? `Bevestigd door de opdrachtgever op ${date(r.decision.confirmedAt)}${r.decision.comment ? ` (“${r.decision.comment}”)` : ""}.`
+                  : r.decision.confirmation === "not_needed"
+                    ? "Dit dossier heeft geen opdrachtgever: het besluit is direct definitief."
+                    : "Nog niet bevestigd door de opdrachtgever."}
                 {r.decision.extendWeeks ? ` Na de sprint volgde een verlengde testfase van ${r.decision.extendWeeks} weken; het definitieve besluit en de uitkomstklok kwamen daarna.` : ""}
                 {r.decision.confirmedAt && r.decision.reviewedAgainst ? " De opdrachtgever zag daarbij de samenvatting “Wat ging tegen” (mislukte tests, tegenbewijs, begrensde aannames en afwijkingen van de beslisregel)." : ""}
               </p>

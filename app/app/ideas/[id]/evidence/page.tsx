@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PageFrame } from "@/components/shell/PageFrame";
-import { ActionForm } from "@/components/ui/ActionForm";
+import { ActionForm, Field } from "@/components/ui/ActionForm";
 import { DecisionSelector } from "@/components/evidence/DecisionSelector";
 import { LABEL_PILL, RuleSummary, outcomeFromCard, ruleLine } from "@/components/experiments/RuleSummary";
 import { asMethodVersion, METHODS } from "@/lib/domain/method";
@@ -267,15 +267,18 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
               <RuleSummary o={outcomeFromCard(c.metrics, c.verdict, exp?.hypotheses ?? null)} />
               {canWrite ? (
                 <>
-                  <ActionForm action={updateLearningCard.bind(null, id, c.id)} submitLabel="Opslaan" submitClass="btn white sm">
-                    <label className="field-label" htmlFor={`lc-l-${c.id}`}>Daaruit leren we</label>
-                    <textarea className="field" id={`lc-l-${c.id}`} name="we_learned" rows={3} defaultValue={c.we_learned} />
-                    <label className="field-label" htmlFor={`lc-t-${c.id}`}>Daarom gaan we</label>
-                    <textarea className="field" id={`lc-t-${c.id}`} name="therefore" rows={2} defaultValue={c.therefore} />
-                    <label className="field-label" htmlFor={`lc-r-${c.id}`}>Betrouwbaarheid van de data</label>
-                    <select className="field" id={`lc-r-${c.id}`} name="data_reliability" defaultValue={c.data_reliability}>
-                      <option value="low">Laag</option><option value="medium">Middel</option><option value="high">Hoog</option>
-                    </select>
+                  <ActionForm action={updateLearningCard.bind(null, id, c.id)} submitLabel="Learning Card opslaan" pendingLabel="Learning Card opslaan…" submitClass="btn white sm" noValidate>
+                    <Field className="" labelClassName="field-label" name="we_learned" id={`lc-l-${c.id}`} label="Daaruit leren we" required>
+                      <textarea className="field" rows={3} defaultValue={c.we_learned} minLength={10} maxLength={1500} />
+                    </Field>
+                    <Field className="" labelClassName="field-label" name="therefore" id={`lc-t-${c.id}`} label="Daarom gaan we" required>
+                      <textarea className="field" rows={2} defaultValue={c.therefore} minLength={5} maxLength={1500} />
+                    </Field>
+                    <Field className="" labelClassName="field-label" name="data_reliability" id={`lc-r-${c.id}`} label="Betrouwbaarheid van de data" required>
+                      <select className="field" defaultValue={c.data_reliability}>
+                        <option value="low">Laag</option><option value="medium">Middel</option><option value="high">Hoog</option>
+                      </select>
+                    </Field>
                   </ActionForm>
                   <ActionForm action={approveLearningCard.bind(null, id, c.id)} submitLabel="Keur goed: werk de aanname bij" submitClass="btn primary sm"><span /></ActionForm>
                 </>
@@ -339,7 +342,9 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                   <p>
                     {dec.client_confirmed_at
                       ? `Bevestigd door de opdrachtgever op ${new Date(dec.client_confirmed_at).toLocaleDateString("nl-NL")}${dec.client_comment ? `: “${dec.client_comment}”` : ""}`
-                      : "Nog niet bevestigd door de opdrachtgever."}
+                      : idea.client_id
+                        ? "Nog niet bevestigd door de opdrachtgever."
+                        : "Geen opdrachtgever: dit besluit is direct definitief."}
                   </p>
                   {isClientDecider && !dec.client_confirmed_at && <ConfirmDecision summary={againstFor(d, dec)} action={confirmDecision.bind(null, id, dec.id)} />}
                   {dec.reviewed_against_summary && <p className="tiny">De opdrachtgever zag bij het bevestigen de samenvatting &ldquo;Wat ging tegen&rdquo;.</p>}
