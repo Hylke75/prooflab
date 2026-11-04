@@ -281,7 +281,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
         </div>
       </div>
 
-      <DeskEvidence ideaId={id} assumptions={d.assumptions} links={deskLinks} refutedCounts={METHODS[method].refutedCounts} />
+      <DeskEvidence ideaId={id} assumptions={d.assumptions} links={deskLinks} />
 
       {(drafts.length > 0 || approved.length > 0) && <div className="section-title mt-24"><h2><Term k="learning-card">Learning Cards</Term></h2></div>}
       <div className="grid-2">

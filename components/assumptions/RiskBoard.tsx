@@ -5,7 +5,8 @@ import { useEffect, useOptimistic, useRef, useState } from "react";
 import { layoutRiskPoints } from "@/lib/domain/risk-layout";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { ASSUMPTION_CATEGORIES, ASSUMPTION_STATUS, CLAIM_STATUS, type AssumptionCategory, type AssumptionStatus, type ClaimStatus } from "@/lib/domain/labels";
-import { applyCap, bandFromShift, capReason, deskVerdict, DESK_SKIP_REASON, explainContribution, explainMerged, notCountedLine, probabilityFromShift, type AssumptionProbability } from "@/lib/domain/evidence";
+import { applyCap, bandFromShift, capReason, deskVerdict, DESK_SKIP_REASON, explainContribution, explainMerged, probabilityFromShift, type AssumptionProbability, type RegisterItem } from "@/lib/domain/evidence";
+import { EvidenceRegister } from "@/components/evidence/EvidenceRegister";
 import { MAX_SELECTED_FOR_TEST, splitBySelection, type VoiResult } from "@/lib/domain/recommend";
 import { ASSUMPTION_KINDS, type AssumptionKind } from "@/lib/domain/assumption-kind";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
@@ -38,8 +39,8 @@ export type BoardAssumption = {
   kind: AssumptionKind;
   kindStored: boolean;
   selectedForTest: boolean;
-  // Gebruikerstest A2: gekoppelde bevindingen die (nog) niet meetellen, met de reden.
-  deskNotCounted?: { claimId: string; reason: string }[];
+  // Fase 1, punt 2: het bewijsregister (wat meetelt in de kans en waarom niet); vervangt de A2-lijst.
+  register: RegisterItem[];
 };
 
 // Nederlands label van een bevindingstatus (gebruikerstest A4); onbekende waarden ongewijzigd.
@@ -326,25 +327,11 @@ export function RiskBoard({
             )}
           </ActionForm>
         )}
-        <p className="sub mt-12">
-          {current.supporting} ondersteunend en {current.contradicting} tegensprekend bewijs telt mee (waarnemingen per persoon geteld).
-          {current.probability.counted === 0 ? " We weten hier nog weinig van." : ""}
-        </p>
-        {(current.deskNotCounted ?? []).length > 0 && (
-          <div className="tiny mt-8" data-testid="niet-meetellend">
-            <p style={{ margin: 0 }}>{notCountedLine(current.deskNotCounted!.map((c) => c.reason))}.</p>
-            <ul style={{ margin: "4px 0 0 18px", lineHeight: 1.6 }} aria-label="Gekoppelde bevindingen die nog niet meetellen">
-              {current.deskNotCounted!.map((c) => {
-                const claim = current.claims.find((x) => x.id === c.claimId);
-                return (
-                  <li key={c.claimId}>
-                    <Link className="text-link" href={`/app/ideas/${ideaId}/research?tab=overview#claim-${c.claimId}`}>{claim ? truncate(claim.statement, 90) : "Bevinding"}</Link>: {c.reason}.
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
+        {/* Fase 1, punt 2: het bewijsregister uit de rekenmodule vervangt de losse telling en de A2-lijst (één bron van waarheid). */}
+        <div className="mt-12">
+          <EvidenceRegister items={current.register} ideaId={ideaId} claimText={Object.fromEntries(current.claims.map((c) => [c.id, c.statement]))} />
+          {current.probability.counted === 0 && <p className="tiny mt-8">We weten hier nog weinig van.</p>}
+        </div>
         {(current.excludedTests ?? []).length > 0 && (
           <ul className="tiny" style={{ margin: "6px 0 0 18px", lineHeight: 1.6 }} aria-label="Tests die niet meetellen in kans en rangorde">
             {current.excludedTests!.map((t) => (
@@ -521,7 +508,6 @@ function ProbabilityDetail({
   );
 }
 
-const truncate = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1).replace(/\s+\S*$/, "")}…`);
 
 // Bevinding koppelen (gebruikerstest A4/A5): statussen als Nederlands label, en vooraf in gewone taal wat de gekozen
 // bevinding met de aanname doet. Er zijn twee richtingen: of de bronnen de bevinding bevestigen (de status) en of de

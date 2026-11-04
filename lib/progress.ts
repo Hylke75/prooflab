@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { supabaseServer } from "@/lib/supabase/server";
-import { assumptionEvidence, deskTally, type AssumptionProbability, type ObservationDims } from "@/lib/domain/evidence";
+import { assumptionEvidence, excludedRegisterItem, type AssumptionProbability, type ObservationDims, type RegisterItem } from "@/lib/domain/evidence";
 import { METHODS, type MethodVersion } from "@/lib/domain/method";
 import { dedupeByPerson } from "@/lib/domain/per-person";
 import { excludedTests, experimentFromSourceKey, isStarted, testOutcomesFrom, withoutExcludedTests, type TestExclusion } from "@/lib/domain/test-counts";
@@ -45,8 +45,9 @@ export type AssumptionWithEvidence = {
   excludedTests: TestExclusion[];
   // Fase B4: door de consultant gekozen om nu te testen (maximaal 3 per idee); de rest staat op "later".
   selectedForTest?: boolean;
-  // Gebruikerstest A2: gekoppelde bevindingen die (nog) niet meetellen in bewijsas en kans, met de reden.
-  deskNotCounted?: { claimId: string; reason: string }[];
+  // Fase 1, punt 2: het bewijsregister. Elk gekoppeld item (bevinding of waarneming) met of het meetelt in de kans en
+  // waarom niet; ook items uit tests die niet meetellen. Vervangt de losse A2-lijst (deskNotCounted).
+  register: RegisterItem[];
 };
 
 type ObsLink = {
@@ -173,16 +174,44 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
   // Fase B0, punt 4: waarnemingen (en enquêtebevindingen) uit een onbesliste test of een test onder de minimale
   // steekproef blijven bestaan, maar tellen niet mee in de bewijsas, de kans en dus de rangorde.
   const excluded = excludedTests(inputs.tests);
-  const obsLinks = withoutExcludedTests(inputs.obsLinks, (l) => l.observations?.experiment_id, excluded);
+  const obsExperiment = (l: ObsLink) => l.observations?.experiment_id;
+  const claimExperiment = (l: { claim_id: string }) => experimentFromSourceKey(refs.get(`claim:${l.claim_id}`)?.key);
+  const obsLinks = withoutExcludedTests(inputs.obsLinks, obsExperiment, excluded);
   return inputs.assumptions.map((a) => {
+    // Fase 1, punt 2: wat uit een niet-meetellende test komt, staat wel in het register (met de reden).
+    const excludedItems: RegisterItem[] = [
+      ...links
+        .filter((l) => l.assumption_id === a.id && l.claims && excluded.has(claimExperiment(l) ?? ""))
+        .map((l) =>
+          excludedRegisterItem(
+            { itemType: "claim", id: l.claim_id, status: l.claims!.status as ClaimStatus, relation: l.relation as "supports" | "contradicts", sourceLabel: refs.get(`claim:${l.claim_id}`)?.label ?? null },
+            excluded.get(claimExperiment(l)!)!,
+          ),
+        ),
+      ...inputs.obsLinks
+        .filter((l) => l.assumption_id === a.id && l.observations && excluded.has(obsExperiment(l) ?? ""))
+        .map((l) =>
+          excludedRegisterItem(
+            {
+              itemType: "observation",
+              id: l.observation_id ?? null,
+              kind: l.observations!.kind,
+              relation: l.relation as "supports" | "contradicts",
+              sourceLabel: l.observation_id ? (refs.get(`observation:${l.observation_id}`)?.label ?? null) : null,
+            },
+            excluded.get(obsExperiment(l)!)!,
+          ),
+        ),
+    ];
     const claims = withoutExcludedTests(
       links.filter((l) => l.assumption_id === a.id && l.claims),
-      (l) => experimentFromSourceKey(refs.get(`claim:${l.claim_id}`)?.key),
+      claimExperiment,
       excluded,
     )
       .map((l) => {
         const ref = refs.get(`claim:${l.claim_id}`);
         return {
+          id: l.claim_id,
           claimId: l.claim_id,
           status: l.claims!.status as ClaimStatus,
           relation: l.relation as "supports" | "contradicts",
@@ -201,7 +230,6 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
     // Gebruikerstest A2/A5: welke gekoppelde bevindingen meetellen, volgt de methodeversie (weerlegd telt vanaf 2026-11-e).
     const deskOpts = { refutedCounts: method.refutedCounts };
     const e = assumptionEvidence(claims, observations, deskOpts);
-    const desk = deskTally(claims, deskOpts);
     const probability = method.probability(
       claims,
       obsLinks
@@ -209,6 +237,7 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
         .map((l) => {
           const ref = l.observation_id ? refs.get(`observation:${l.observation_id}`) : undefined;
           return {
+            id: l.observation_id ?? null,
             kind: l.observations!.kind,
             relation: l.relation as "supports" | "contradicts",
             isSynthetic: l.observations!.is_synthetic,
@@ -240,7 +269,7 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
       kind: a.kind ?? null,
       // Fase B4: de kolom bestaat pas na migratie 20261110100000; zonder kolom is niets gekozen.
       selectedForTest: a.selected_for_test === true,
-      deskNotCounted: desk.notCounted.map((c) => ({ claimId: c.claimId, reason: c.reasonText })),
+      register: [...probability.items, ...excludedItems],
       excludedTests: inputs.tests
         .filter((t) => t.assumptionId === a.id && isStarted(t.state))
         .map((t) => excluded.get(t.experimentId))
