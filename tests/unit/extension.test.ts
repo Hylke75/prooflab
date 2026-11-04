@@ -10,7 +10,9 @@ const extend = { action: "extend", decidedOn: "2026-11-07", extendWeeks: 4 };
 describe("verlengde testfase", () => {
   it("biedt 2 tot 8 weken en heeft een eigen besluittype", () => {
     expect(EXTEND_WEEK_OPTIONS).toEqual([2, 3, 4, 5, 6, 7, 8]);
-    expect(DECISIONS.extend.label).toMatch(/Doorgaan met testen/);
+    // B6: in het scherm samengevoegd met "Verder testen" (één keuze met een duur).
+    expect(DECISIONS.extend.label).toBe("Verder testen");
+    expect(DECISIONS.test_more.label).toBe("Verder testen");
   });
 
   it("loopt tot het aantal weken na het tussenbesluit", () => {

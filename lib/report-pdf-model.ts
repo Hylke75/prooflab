@@ -12,6 +12,7 @@ import { explainRecruitment } from "@/lib/domain/recruitment";
 import { asEvidenceLevel, outcomeWithLevel } from "@/lib/domain/evidence";
 import { allTestsSummary, type AllTestsPerAssumption, type AllTestsRow } from "@/lib/domain/all-tests";
 import { ladderSummary } from "@/lib/domain/dossier-label";
+import { reachableRevenue, sheetDate, sheetFromSnapshot, type DecisionSheet, type LegacySnapshot } from "@/lib/report-sheet";
 
 export type Tone = "blue" | "green" | "coral" | "lime" | "gray";
 export type Block =
@@ -28,6 +29,9 @@ export type PdfMeta = { shared: boolean; version: number };
 
 export type ReportPdfModel = {
   title: string;
+  // Fase B6: pagina 1, het beslisblad. Het volledige dossier (cover en hoofdstukken) volgt als bijlage.
+  sheet: DecisionSheet;
+  sheetEyebrow: string;
   cover: {
     status: string;
     statusTone: Tone;
@@ -69,10 +73,27 @@ export function sourceQuality(s: ReportSnapshot["sources"][number]): string {
   return `${s.type} · ${s.primary ? "primaire bron" : "secundaire bron"}`;
 }
 
+// SOM-omzet in de scenariotabel: "Niet vastgesteld" in plaats van € 0 (B6).
+export function somRevenueCell(s: { somRevenue: number | null; status: string; established?: boolean }): string {
+  const k = reachableRevenue(s);
+  return k.established ? k.value : s.somRevenue != null && s.somRevenue > 0 ? `${eur(s.somRevenue)} (niet vastgesteld)` : "Niet vastgesteld";
+}
+
+// Het beslisblad van deze momentopname: opgeslagen bij het maken van de versie, of afgeleid voor oudere rapporten.
+export function sheetOf(r: ReportSnapshot): DecisionSheet {
+  return sheetFromSnapshot(r as unknown as LegacySnapshot, r.observationCounts ? ladderSummary(r.observationCounts) : null);
+}
+
+// De datum bij de volgende stap, in woorden.
+export function nextStepDate(sh: DecisionSheet): string {
+  return sh.nextStep.date ? `${sheetDate(sh.nextStep.date)} (${sh.nextStep.dateLabel})` : sh.nextStep.dateLabel;
+}
+
 export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdfModel {
   const realistic = r.sizing.find((s) => s.label === "Realistisch") ?? r.sizing[1] ?? null;
   const signals = r.signals ?? [];
   const chapters: Chapter[] = [];
+  const revenue = reachableRevenue(realistic);
   // Methodeversie, beslisregels en plafonds (rapporten van vóór de methodeversie: 2026-11-a).
   const methodology = describeMethodology("methodology" in r ? r.methodology : null);
 
@@ -91,7 +112,8 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
         items: [
           { label: "Bevindingen met bron", value: String(r.counts.claims), note: `${r.counts.verified} geverifieerd · ${r.counts.insufficient} onvoldoende`, tone: "blue" },
           { label: "Experimenten", value: String(r.experiments.length).padStart(2, "0"), note: `${r.learningCards.length} met goedgekeurde Learning Card`, tone: "green" },
-          { label: "Bereikbare jaaromzet (realistisch)", value: realistic ? eur(realistic.somRevenue) : "?", note: realistic?.status ?? "niet berekend", tone: "coral" },
+          // B6: geen "€ 0" als de marktomvang niet is vastgesteld.
+          { label: "Bereikbare jaaromzet (realistisch)", value: revenue.value, note: revenue.note, tone: "coral" },
         ],
       },
     ],
@@ -148,7 +170,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
       t: "table",
       head: ["Scenario", "TAM", "SAM", "SOM-klanten", "SOM-omzet", "Onderbouwing"],
       widths: [16, 14, 14, 15, 17, 24],
-      rows: r.sizing.map((s) => [s.label, int(s.tamCount), int(s.samCount), int(s.somCount), eur(s.somRevenue), `${s.provenance.sourced}/${s.provenance.total} factoren met bron`]),
+      rows: r.sizing.map((s) => [s.label, int(s.tamCount), int(s.samCount), int(s.somCount), somRevenueCell(s), `${s.provenance.sourced}/${s.provenance.total} factoren met bron`]),
     });
     if (realistic) sizing.push({ t: "p", text: `Formule (realistisch): ${realistic.formula}`, small: true, mono: true });
     sizing.push({ t: "p", text: `${realistic?.status ?? ""}. Dit is omzetpotentieel onder de getoonde aannames, geen winst en geen voorspelling.` });
@@ -301,7 +323,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
       rows: [
         ["Besluit", r.decision.action],
         ["Vastgelegd op", nlDate(r.decision.at)],
-        ...(r.decision.extendWeeks ? [["Verlengde testfase", `${r.decision.extendWeeks} weken na de sprint`]] : []),
+        ...(r.decision.extendWeeks ? [["Verder testen (verlengde testfase)", `${r.decision.extendWeeks} weken`]] : []),
         ["Bevestiging opdrachtgever", r.decision.confirmedAt ? `Bevestigd op ${nlDate(r.decision.confirmedAt)}${r.decision.reviewedAgainst ? ", na de samenvatting “Wat ging tegen”" : ""}` : "Nog niet bevestigd"],
         ...(r.decision.comment ? [["Opmerking opdrachtgever", `“${r.decision.comment}”`]] : []),
         ["Rapportversie", `Versie ${meta.version}, momentopname van ${nlDate(r.generatedAt)}`],
@@ -460,10 +482,12 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
   const status = r.idea.isDemo ? "DEMO · GEEN ECHT ONDERZOEK" : r.label.toUpperCase();
   return {
     title: `ProofLab-rapport: ${r.idea.title} (versie ${meta.version})`,
+    sheet: sheetOf(r),
+    sheetEyebrow: `BESLISBLAD · VERSIE ${meta.version} · ${nlDate(r.generatedAt).toUpperCase()}`,
     cover: {
       status,
       statusTone: r.idea.isDemo ? "coral" : "blue",
-      eyebrow: `VALIDATIEDOSSIER · VERSIE ${meta.version} · ${nlDate(r.generatedAt).toUpperCase()}`,
+      eyebrow: `BIJLAGE · VOLLEDIG VALIDATIEDOSSIER · VERSIE ${meta.version} · ${nlDate(r.generatedAt).toUpperCase()}`,
       title: r.idea.title,
       preparedLine: r.client ? `Opgesteld door ${r.preparedBy} voor ${r.client}.` : `Opgesteld door ${r.preparedBy}.`,
       decisionQuestion: r.idea.decisionQuestion,
