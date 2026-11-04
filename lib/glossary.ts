@@ -160,7 +160,7 @@ export const GLOSSARY = {
   kalibratie: {
     term: "Kalibratie",
     uitleg:
-      "Of gegeven kansen kloppen met wat er gebeurt: van alles wat 70% kreeg, moet ongeveer 70% uitkomen. Tot een werkruimte 10 afgeronde dossiers heeft, toont ProofLab kansen als band van 10 procentpunt met “niet gekalibreerd”.",
+      "Of gegeven kansen kloppen met wat er gebeurt: van alles wat 70% kreeg, moet ongeveer 70% uitkomen. Tot een werkruimte 10 afgeronde dossiers heeft, toont ProofLab kansen als band van 10 procentpunt rond de waarde met “niet gekalibreerd”.",
   },
 } as const satisfies Record<string, GlossaryEntry>;
 

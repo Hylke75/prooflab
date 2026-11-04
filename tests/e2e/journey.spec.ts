@@ -128,6 +128,9 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.getByRole("button", { name: "Leg drempels vast" }).click();
   await expect(page.getByText(/Je hebt ongeveer \d+ deelnemers nodig/)).toBeVisible();
   await page.getByLabel("Minimale steekproef (verplicht)", { exact: true }).fill("5");
+  // Gebruikerstest C3: lager dan het berekende aantal vraagt een motivering.
+  const belowReason = page.getByLabel(/Waarom minder deelnemers dan berekend/);
+  if (await belowReason.isVisible()) await belowReason.fill("Testomgeving: vijf bezoekers volstaan om de journey te doorlopen.");
   await page.getByRole("radio", { name: "Koud", exact: true }).check();
   await page.getByRole("button", { name: /Test Card opslaan als concept/ }).click();
   // Fase B1a: na opslaan terug op het bord met een bevestiging; daarvandaan naar het concept.
@@ -140,7 +143,8 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.waitForURL(/\/experiments\/[0-9a-f-]{36}/);
   await page.getByRole("button", { name: "Ter review aanbieden" }).click();
   await expect(page.getByRole("button", { name: "Akkoord: keur goed en vergrendel" })).toBeVisible();
-  for (const box of await page.locator("input[type=checkbox][name^=check_]").all()) await box.check();
+  // Gebruikerstest B4: wie zijn eigen test goedkeurt, vinkt ook de bevestiging bij de melding aan.
+  for (const box of await page.locator("input[type=checkbox][name^=check_], input[type=checkbox][name=confirm_self_approval]").all()) await box.check();
   await page.getByRole("button", { name: "Akkoord: keur goed en vergrendel" }).click();
   await expect(page.getByText(/vergrendeld/i).first()).toBeVisible();
   await page.getByRole("button", { name: "Publiceer en start de meting" }).click();

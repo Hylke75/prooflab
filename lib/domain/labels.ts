@@ -21,7 +21,9 @@ export const CLAIM_STATUS = {
   verified: { label: "Geverifieerd", pill: "green", explain: "Citaat letterlijk teruggevonden in een primaire of officiële bron, of in twee onafhankelijke bronnen." },
   estimate: { label: "Onderbouwde schatting", pill: "blue", explain: "Citaat klopt, maar steunt op één secundaire bron of een schatting van derden." },
   insufficient: { label: "Onvoldoende bewijs", pill: "orange", explain: "Geen controleerbaar citaat, of alleen een aanname of AI-afleiding." },
-  contested: { label: "Tegenstrijdige bronnen", pill: "coral", explain: "Er is minstens één gecontroleerde bron die iets anders zegt." },
+  contested: { label: "Tegenstrijdige bronnen", pill: "coral", explain: "Minstens één gecontroleerde bron bevestigt de bevinding en minstens één spreekt haar tegen." },
+  // Gebruikerstest A5: alleen tegensprekende gecontroleerde bronnen, geen enkele bevestigende.
+  refuted: { label: "Weerlegd", pill: "coral", explain: "Gecontroleerde bronnen spreken de bevinding tegen en geen enkele bron bevestigt haar." },
   outdated: { label: "Verouderd", pill: "gray", explain: "De bron is te oud voor dit soort gegevens; opnieuw controleren." },
 } as const;
 export type ClaimStatus = keyof typeof CLAIM_STATUS;

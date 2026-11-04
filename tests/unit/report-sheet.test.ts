@@ -23,6 +23,7 @@ const emptyStatus: DossierInput = {
   realTestObservations: 5,
   decisions: 1,
   latestDecisionAction: "continue",
+  decisionRule: "saved",
 };
 
 function input(over: Partial<SheetInput> = {}, status: Partial<DossierInput> = {}): SheetInput {

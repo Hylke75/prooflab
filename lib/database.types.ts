@@ -1369,6 +1369,8 @@ export type Database = {
           owner_id: string
           public_slug: string | null
           recruitment_group: string | null
+          self_approved: boolean | null
+          submitted_by: string | null
           ai_draft_id: string | null
           started_at: string | null
           state: string
@@ -1392,6 +1394,8 @@ export type Database = {
           owner_id?: string
           public_slug?: string | null
           recruitment_group?: string | null
+          self_approved?: boolean | null
+          submitted_by?: string | null
           ai_draft_id?: string | null
           started_at?: string | null
           state?: string
@@ -1415,6 +1419,8 @@ export type Database = {
           owner_id?: string
           public_slug?: string | null
           recruitment_group?: string | null
+          self_approved?: boolean | null
+          submitted_by?: string | null
           ai_draft_id?: string | null
           started_at?: string | null
           state?: string

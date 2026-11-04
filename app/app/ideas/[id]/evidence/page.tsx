@@ -31,6 +31,9 @@ import { againstFor } from "@/lib/against-data";
 import { extendedPhase, extensionBlocker } from "@/lib/domain/extension";
 import { todayInNL } from "@/lib/domain/sprint";
 import { Term } from "@/components/ui/Term";
+import { DeskEvidence, type DeskLinkRow } from "@/components/evidence/DeskEvidence";
+import { supabaseServer } from "@/lib/supabase/server";
+import { CLAIM_STATUS, type ClaimStatus } from "@/lib/domain/labels";
 
 export const metadata: Metadata = { title: "Bewijs & besluit" };
 
@@ -66,7 +69,19 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
       </PageFrame>
     );
   }
-  const [d, ruleCheck, calibration] = await Promise.all([loadDossier(idea), loadRuleCheck(id), loadCalibration(id)]);
+  const supabase = await supabaseServer();
+  const [d, ruleCheck, calibration, { data: deskRows }] = await Promise.all([
+    loadDossier(idea),
+    loadRuleCheck(id),
+    loadCalibration(id),
+    // Gebruikerstest A2: gekoppeld bureauonderzoek per aanname.
+    supabase.from("assumption_claims").select("assumption_id, claim_id, relation, claims(statement, status)").eq("idea_id", id),
+  ]);
+  const deskLinks: DeskLinkRow[] = (deskRows ?? []).flatMap((l) =>
+    l.claims && l.claims.status in CLAIM_STATUS
+      ? [{ assumptionId: l.assumption_id, claimId: l.claim_id, relation: l.relation === "contradicts" ? ("contradicts" as const) : ("supports" as const), statement: l.claims.statement, status: l.claims.status as ClaimStatus }]
+      : [],
+  );
   const obs = d.observations.filter((o) => !o.is_synthetic).sort((a, b) => strength({ isFact: b.is_fact, isBehaviour: b.is_behaviour, isRealContext: b.is_real_context, isCostly: b.is_costly, isSynthetic: false }) - strength({ isFact: a.is_fact, isBehaviour: a.is_behaviour, isRealContext: a.is_real_context, isCostly: a.is_costly, isSynthetic: false }));
   // B0: waarnemingen uit oefengesprekken of nog niet aangegeven gesprekken (in loadDossier als synthetisch gemarkeerd).
   const practiceObs = d.observations.filter((o) => o.is_practice).length;
@@ -258,6 +273,8 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
           )}
         </div>
       </div>
+
+      <DeskEvidence ideaId={id} assumptions={d.assumptions} links={deskLinks} refutedCounts={METHODS[method].refutedCounts} />
 
       {(drafts.length > 0 || approved.length > 0) && <div className="section-title mt-24"><h2><Term k="learning-card">Learning Cards</Term></h2></div>}
       <div className="grid-2">

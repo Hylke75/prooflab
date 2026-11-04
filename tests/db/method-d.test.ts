@@ -68,9 +68,9 @@ d("methode 2026-11-d in de database", () => {
     await db?.end();
   });
 
-  it("een nieuw dossier start op 2026-11-d", async () => {
+  it("een nieuw dossier start op de nieuwste versie (sinds de gebruikerstest 2026-11-e)", async () => {
     const { idea } = await newIdea(owner);
-    expect(await versionOf(idea)).toBe("2026-11-d");
+    expect(await versionOf(idea)).toBe("2026-11-e");
   });
 
   it("een bestaand dossier houdt zijn versie zolang niemand overstapt", async () => {
@@ -96,7 +96,7 @@ d("methode 2026-11-d in de database", () => {
     const { idea } = await newIdea(owner);
     await forceVersion(idea, "2026-11-a");
     expect(await as(owner, async (c) => (await c.query("select public.switch_method_version($1, '2026-11-d', '{}'::jsonb) as v", [idea])).rows[0].v)).toBe("2026-11-d");
-    await expect(db.query("update public.ideas set method_version = '2026-11-e' where id = $1", [idea])).rejects.toThrow(/check|METHOD_VERSION/);
+    await expect(db.query("update public.ideas set method_version = '2026-11-z' where id = $1", [idea])).rejects.toThrow(/check|METHOD_VERSION/);
     expect((await db.query("select public.method_version_rank('2026-11-d') as r")).rows[0].r).toBe(4);
   });
 });

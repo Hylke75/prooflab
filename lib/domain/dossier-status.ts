@@ -5,7 +5,9 @@
 // De regels, expliciet:
 // - Markt is "klaar" als de beslissende onderzoeksvraag is beantwoord met minstens één geverifieerde bevinding.
 //   Tot fase B2 een vraag als beslissend markeert, is dat de eerste vraag (laagste positie). Anders: "Verkenning".
-// - Aannames zijn "klaar" als er minstens één kritieke aanname (belang ≥ 4) met een aangewezen hoofdtest is.
+// - Aannames zijn "klaar" als er minstens één kritieke aanname (belang ≥ 4) met een aangewezen hoofdtest is én de
+//   beslisregel (go-regel) is vastgelegd (gebruikerstest A6). Kent de database de beslisregel nog niet ("unknown"),
+//   dan telt alleen de hoofdtest.
 // - Testen is "klaar" als er een afgeronde test is met een uitslag: een Learning Card met geslaagd of niet geslaagd.
 //   Onbeslist telt niet. "Loopt" als er een test live of gepauzeerd is of nog op een uitslag wacht.
 // - Besluit is "klaar" als het laatste besluit definitief is: doorgaan of stoppen. Na "verder testen", "verlengde
@@ -31,6 +33,8 @@ export type DossierInput = {
   realTestObservations: number; // niet-synthetische waarnemingen uit tests
   decisions: number;
   latestDecisionAction: string | null; // actie van het laatste besluit (decisions.action), null zonder besluit
+  // Gebruikerstest A6: is de beslisregel van het dossier vastgelegd? "unknown" zolang de database de tabel niet kent.
+  decisionRule: "saved" | "missing" | "unknown";
 };
 
 // Besluiten die stap Besluit afronden. Let op: voor de uitkomstklok telt pauzeren ook als definitief
@@ -94,19 +98,25 @@ export function getDossierStatus(d: DossierInput): DossierStatus {
           : "De beslissende onderzoeksvraag staat nog niet op beantwoord.",
   };
 
-  const assumptionsDone = d.criticalWithPrimaryTest > 0;
+  const assumptionsDone = d.criticalWithPrimaryTest > 0 && d.decisionRule !== "missing";
+  // Hoofdtest aangewezen, maar de beslisregel ontbreekt nog: de stap loopt.
+  const ruleMissing = d.criticalWithPrimaryTest > 0 && d.decisionRule === "missing";
   const assumptions: DossierStep = {
     key: "assumptions",
     number: 2,
     label: STEP_LABELS.assumptions,
     state: assumptionsDone ? "done" : d.assumptions > 0 ? "running" : "empty",
-    statusLabel: assumptionsDone ? "Klaar" : d.assumptions > 0 ? "Nog geen hoofdtest" : "Nog niet gestart",
+    statusLabel: assumptionsDone ? "Klaar" : ruleMissing ? "Loopt" : d.assumptions > 0 ? "Nog geen hoofdtest" : "Nog niet gestart",
     hasEvidence: d.assumptionsWithEvidence > 0 && (d.verifiedClaims > 0 || d.realTestObservations > 0),
     why: assumptionsDone
-      ? "Minstens één kritieke aanname heeft een aangewezen hoofdtest."
-      : d.assumptions > 0
-        ? "Wijs bij een kritieke aanname een hoofdtest aan."
-        : "Er zijn nog geen aannames.",
+      ? d.decisionRule === "saved"
+        ? "Minstens één kritieke aanname heeft een aangewezen hoofdtest en de beslisregel ligt vast."
+        : "Minstens één kritieke aanname heeft een aangewezen hoofdtest."
+      : ruleMissing
+        ? "Leg de beslisregel vast."
+        : d.assumptions > 0
+          ? "Wijs bij een kritieke aanname een hoofdtest aan."
+          : "Er zijn nog geen aannames.",
   };
 
   const testDone = d.testsWithVerdict > 0;

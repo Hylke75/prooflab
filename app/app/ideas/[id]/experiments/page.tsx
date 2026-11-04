@@ -62,7 +62,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
   const savedAssumption = saved ? assumptions.find((a) => a.id === saved.hypotheses?.assumption_id) : undefined;
   const goProposal =
     saved && savedAssumption && canWrite
-      ? proposeGoRule({ rule, assumption: savedAssumption, experiment: saved, isPrimary: savedAssumption.primaryExperimentId === saved.id })
+      ? proposeGoRule({ rule, assumption: savedAssumption, experiment: saved, isPrimary: savedAssumption.primaryExperimentId === saved.id, assumptions })
       : null;
   // B5: wat de intake al weet, om de Test Card vooraf in te vullen (prijs, beschrijving). Een expliciet prijsveld
   // (price_eur/price_period) telt als het dossier dat heeft; anders zoekt ProofLab de prijs in de intaketeksten.

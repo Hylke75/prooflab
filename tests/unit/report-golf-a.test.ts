@@ -97,12 +97,12 @@ describe("rapport: kansen (punt 3)", () => {
   it("toont kansen in banden met 'niet gekalibreerd' zolang er geen kalibratie is", () => {
     const out = all(fixture({ assumptions: [assumption], calibration: { resolved: 3, calibrated: false } }));
     expect(out).toContain("Geschatte kans (niet gekalibreerd)");
-    expect(out).toContain("40–50% (30–60%)");
+    expect(out).toContain("35–45% (25–65%)");
     expect(out).toMatch(/minder dan 10 opgeloste dossiers/);
   });
 
   it("oudere rapporten zonder kalibratie: ook in banden", () => {
-    expect(all(fixture({ assumptions: [assumption] }))).toContain("40–50% (30–60%)");
+    expect(all(fixture({ assumptions: [assumption] }))).toContain("35–45% (25–65%)");
   });
 
   it("gekalibreerd: hele procenten", () => {

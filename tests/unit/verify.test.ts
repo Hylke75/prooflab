@@ -129,9 +129,9 @@ describe("figures with scale words, percentages and both decimal styles", () => 
 describe("claim status edge cases", () => {
   const now = new Date("2026-10-27T12:00:00Z");
 
-  it("calls a claim contested when only contradicting sources exist", () => {
+  it("calls a claim refuted when only contradicting sources exist (gebruikerstest A5)", () => {
     const r = computeClaimStatus({ evidenceType: "third_party_estimate", freshness: "statistic" }, [ev({ stance: "contradicts" })], now);
-    expect(r.status).toBe("contested");
+    expect(r.status).toBe("refuted");
   });
 
   it("does not count two sources without a domain as independent", () => {

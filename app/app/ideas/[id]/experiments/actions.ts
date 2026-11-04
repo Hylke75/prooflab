@@ -9,9 +9,10 @@ import { checkQuote } from "@/lib/domain/verify";
 import { KIND_DEFAULTS, testEvidenceLevel } from "@/lib/domain/evidence";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { RECRUITMENT_KEYS } from "@/lib/domain/recruitment";
+import { interviewIntake } from "@/lib/domain/interview-intake";
 import { canDesignatePrimary } from "@/lib/domain/primary-test";
 import { earlierTestsOfType, experimentMetrics, loadSurveyResponses, surveyConfigOf, type LandingConfig, type PricingConfig } from "@/lib/experiment-metrics";
-import { errorSummary, sampleBand, validateTestCard } from "@/lib/domain/test-card";
+import { errorSummary, sampleBand, sampleBelowRequired, validateTestCard } from "@/lib/domain/test-card";
 import { fieldErrorsFrom, savedNothing } from "@/lib/domain/form-errors";
 import { empiricalPrior, pct } from "@/lib/domain/stats";
 import { ideaMethodVersion } from "@/lib/method-data";
@@ -31,9 +32,9 @@ import { dedupeFragments } from "@/lib/signals/import";
 import type { Json } from "@/lib/database.types";
 import type { AssumptionCategory, ObservationKind } from "@/lib/domain/labels";
 import { assumptionKind, metricFitsAssumption } from "@/lib/domain/assumption-kind";
-import { checkEnd, goRuleBlock, thresholdBlock } from "@/lib/domain/experiment-gates";
+import { checkEnd, goRuleBlock, selfApproval, thresholdBlock } from "@/lib/domain/experiment-gates";
 import { loadDecisionRule } from "@/lib/decision-rule-data";
-import { GO_RULE_NOTE, proposeGoRule } from "@/lib/domain/decision-rule-proposal";
+import { excludedCriticalCheck, GO_RULE_NOTE, proposeGoRule } from "@/lib/domain/decision-rule-proposal";
 import { acceptAiLearning, ruleBasedLearning, type LearningInput } from "@/lib/domain/learning-proposal";
 import { proposeLearning } from "@/lib/ai/learning";
 import { fictionSignals, fictionWarning } from "@/lib/domain/practice";
@@ -118,6 +119,23 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
     if (label && Number.isFinite(amount) && amount > 0) pricePoints.push({ label: label.slice(0, 60), amount, period: period.slice(0, 30) });
   }
   const guideLines = String(raw.guide ?? "").split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 15);
+  // Fase B1b: het benodigde aantal volgt uit de vastgelegde drempels en eerdere tests van dit type, niet uit een
+  // verwachting van de gebruiker. Het middenscenario wordt bewaard als expected_pct en required_n. Gebruikerstest C3:
+  // vóór de controle berekend, zodat een steekproef onder het berekende aantal een motivering vraagt (zelfde regel als
+  // op het scherm, validateTestCard).
+  let band: ReturnType<typeof sampleBand> | null = null;
+  if (rule && v.success_threshold_pct != null && v.max_duration_days != null) {
+    band = sampleBand({
+      rule,
+      thresholdPct: v.success_threshold_pct,
+      successCount: v.success_count ?? null,
+      prior: empiricalPrior(await earlierTestsOfType(ideaId, v.type).catch(() => [])),
+      availablePerWeek: v.available_per_week ?? null,
+      maxDurationDays: v.max_duration_days,
+    });
+  }
+  const requiredN = rule && rule !== "absolute" ? (band?.requiredN ?? null) : null;
+  const sampleReason = String(raw.sample_below_reason ?? "").trim().slice(0, 300);
   Object.assign(
     fieldErrors,
     validateTestCard({
@@ -141,6 +159,8 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       headline: String(raw.headline ?? ""),
       price_points: pricePoints.length,
       guide_questions: guideLines.length,
+      required_n: requiredN,
+      sample_below_reason: sampleReason,
     }),
   );
   if (Object.keys(fieldErrors).length) return { error: errorSummary(fieldErrors), fieldErrors };
@@ -149,20 +169,16 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
   const maxDays = v.max_duration_days as number;
   const successPct = v.success_threshold_pct as number;
 
-  // Fase B1b: het benodigde aantal volgt uit de vastgelegde drempels en eerdere tests van dit type, niet uit een
-  // verwachting van de gebruiker. Het middenscenario wordt bewaard als expected_pct en required_n.
-  let band: ReturnType<typeof sampleBand> | null = null;
-  if (rule) {
-    band = sampleBand({
-      rule,
-      thresholdPct: successPct,
-      successCount: v.success_count ?? null,
-      prior: empiricalPrior(await earlierTestsOfType(ideaId, v.type).catch(() => [])),
-      availablePerWeek: v.available_per_week ?? null,
-      maxDurationDays: maxDays,
-    });
-  }
   const thresholdChange = String(raw.threshold_change_reason ?? "").trim().slice(0, 600);
+  // Gebruikerstest C3: wijzigingen ten opzichte van het berekende of eerst vastgelegde, samen in de motivering (max. 600).
+  const belowSample = sampleBelowRequired({ rule, min_sample: minSample, required_n: requiredN });
+  const changeReason = [
+    thresholdChange ? `Drempels gewijzigd na vastleggen: ${thresholdChange}` : null,
+    belowSample ? `Steekproef onder berekend aantal (${minSample} in plaats van ${requiredN}): ${sampleReason}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ")
+    .slice(0, 600);
 
   let config: Json;
   if (survey) {
@@ -205,7 +221,7 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       max_duration_days: maxDays,
       expected_biases: v.expected_biases || null,
       // Drempels die na het vastleggen (stap 1) toch zijn gewijzigd: de motivering blijft bij deze versie bewaard.
-      change_reason: thresholdChange ? `Drempels gewijzigd na vastleggen: ${thresholdChange}` : null,
+      change_reason: changeReason || null,
       // Vastgelegd met de drempels en na goedkeuring vergrendeld (guard_hypothesis_lock).
       decision_rule: rule,
       success_count: rule === "absolute" ? (v.success_count ?? null) : null,
@@ -303,6 +319,10 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
     // Voor tests uit stap 3 ongewijzigd; verkennend klantonderzoek vraagt geen pretest (lib/domain/customer-research.ts).
     const required = approvalChecks(exp.type, isExploratory(exp.hypotheses), studyFormatOf(exp.config as { format?: string } | null));
     if (required.some((k) => form.get(k) !== "on")) return { error: "Bevestig alle controlepunten voordat je goedkeurt." };
+    // Gebruikerstest B4: wie zijn eigen test goedkeurt, bevestigt dat expliciet (submitted_by bestaat pas na de migratie).
+    const ws = await getWorkspace();
+    const self = selfApproval({ ownerId: exp.owner_id, submittedBy: exp.submitted_by ?? null, approverId: ws.user.id });
+    if (self.self && form.get("confirm_self_approval") !== "on") return { error: "Je keurt je eigen test goed. Bevestig dat met het vinkje bij de melding." };
   }
   const { error } = await supabase
     .from("experiments")
@@ -310,7 +330,9 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
     .eq("id", expId)
     .eq("idea_id", ideaId);
   if (error) return { error: error.message.includes("EXPERIMENT") ? error.message.replace(/^.*?: /, "") : "De status kon niet worden gewijzigd." };
-  refresh(ideaId);
+  // Gebruikerstest A10: alleen deze testpagina en het testbord opnieuw opbouwen; de stappenbalk staat op de pagina zelf.
+  revalidatePath(`/app/ideas/${ideaId}/experiments/${expId}`);
+  revalidatePath(`/app/ideas/${ideaId}/experiments`);
   const msg: Record<string, string> = {
     ready_for_review: "Klaar voor review. Controleer de Test Card en keur goed.",
     approved: "Goedgekeurd. De hypothese en drempels zijn nu vergrendeld, net als de beslisregel van het dossier (als die er is).",
@@ -346,22 +368,44 @@ export async function setPrimaryTest(ideaId: string, expId: string, _: ActionSta
 
 // Fase B5: het voorgestelde go-regel met één klik vastleggen. De server stelt het voorstel opnieuw op uit de database
 // (niet uit het formulier) en legt het vast via save_decision_rule, dat ook de vergrendeling bewaakt.
-export async function adoptProposedGoRule(ideaId: string, expId: string, _: ActionState): Promise<ActionState> {
+export async function adoptProposedGoRule(ideaId: string, expId: string, _: ActionState, form?: FormData): Promise<ActionState> {
   await requireWritableIdea(ideaId);
   const supabase = await supabaseServer();
-  const { data: exp } = await supabase.from("experiments").select("id, title, hypotheses(assumption_id, assumptions(id, statement, primary_experiment_id))").eq("id", expId).eq("idea_id", ideaId).maybeSingle();
+  const [{ data: exp }, rule, { data: all }] = await Promise.all([
+    supabase.from("experiments").select("id, title, hypotheses(assumption_id, assumptions(id, statement, primary_experiment_id))").eq("id", expId).eq("idea_id", ideaId).maybeSingle(),
+    loadDecisionRule(ideaId),
+    // select("*"): selected_for_test bestaat pas na de B4-migratie.
+    supabase.from("assumptions").select("*").eq("idea_id", ideaId),
+  ]);
   const a = exp?.hypotheses?.assumptions;
   if (!exp || !a) return { error: "Test niet gevonden." };
-  const rule = await loadDecisionRule(ideaId);
   if (rule === undefined) return { error: "De beslisregel kan nog niet worden vastgelegd: werk het databaseschema bij." };
   if (rule) return { error: null, ok: "Het dossier heeft al een go-regel." };
-  const proposal = proposeGoRule({ rule, assumption: a, experiment: exp, isPrimary: a.primary_experiment_id === expId });
+  const proposal = proposeGoRule({
+    rule,
+    assumption: a,
+    experiment: exp,
+    isPrimary: a.primary_experiment_id === expId,
+    assumptions: (all ?? []).map((x) => ({ id: x.id, statement: x.statement, importance: x.importance, selectedForTest: x.selected_for_test === true })),
+  });
   if (!proposal) return { error: "Alleen bij een hoofdtest stelt ProofLab de go-regel voor. Wijs deze test eerst aan als hoofdtest." };
+  // Gebruikerstest B1: het voorstel wordt op de server opnieuw opgesteld; uit het formulier komt alleen welke kritieke
+  // aannames zijn uitgevinkt (met motivering). De aanname van de hoofdtest blijft altijd in de regel. Een oud formulier
+  // zonder vinkjes neemt het hele voorstel over.
+  const hasChoices = !!form && proposal.conditions.some((c) => form.has(`cond_${c.assumptionId}`));
+  const chosen = proposal.conditions.filter((c) => c.main || !hasChoices || form?.get(`cond_${c.assumptionId}`) === "on");
+  const check = excludedCriticalCheck({
+    critical: proposal.conditions.filter((c) => !c.main).map((c) => ({ id: c.assumptionId, statement: c.statement })),
+    chosenIds: chosen.map((c) => c.assumptionId),
+    reasons: Object.fromEntries(proposal.conditions.map((c) => [c.assumptionId, form ? String(form.get(`reason_${c.assumptionId}`) ?? "") : ""])),
+    baseNote: GO_RULE_NOTE,
+  });
+  if (check.error !== null) return { error: check.error };
   const { data, error } = await supabase.rpc("save_decision_rule", {
     p_idea: ideaId,
     p_primary: proposal.experimentId,
-    p_note: GO_RULE_NOTE,
-    p_conditions: [{ assumption_id: proposal.assumptionId, min_probability: proposal.minProbability }] as unknown as Json,
+    p_note: check.note,
+    p_conditions: chosen.map((c) => ({ assumption_id: c.assumptionId, min_probability: c.minProbability })) as unknown as Json,
   });
   if (error) {
     if (error.message.includes("DECISION_RULE_LOCKED")) return { error: "De beslisregel ligt al vast." };
@@ -395,8 +439,8 @@ const InterviewSchema = z.object({
   held_on: z.string().date("Vul de datum van het gesprek in."),
   record_type: z.enum(["transcript", "notes"]),
   transcript: text(60000).min(50, "Plak het transcript of je notities (minimaal 50 tekens)."),
-  // Een bekende wordt in de database altijd eigen netwerk (is_acquaintance).
-  recruitment_group: z.enum(RECRUITMENT_KEYS).optional(),
+  // Gebruikerstest C8: één veld; leeg = afleiden uit het wervingskanaal. Een bekende is eigen netwerk (is_acquaintance).
+  recruitment_group: z.union([z.enum(RECRUITMENT_KEYS), z.literal("")]).optional(),
   // B0: verplicht, zonder voorkeuze. Alleen een echt gesprek telt als bewijs.
   is_practice: z.enum(["real", "practice"], { error: "Geef aan of dit een echt gesprek of een oefening is." }).transform((v) => v === "practice"),
 });
@@ -413,21 +457,31 @@ export async function addInterview(ideaId: string, expId: string, _: ActionState
   await requireWritableIdea(ideaId);
   const p = InterviewSchema.safeParse(Object.fromEntries(form));
   // B1: alle ontbrekende velden tegelijk, elk bij het eigen veld, plus een samenvatting bij de knop.
-  const consentMissing = form.get("consent_recorded") !== "on";
   const fieldErrors: Record<string, string> = p.success ? {} : fieldErrorsFrom(p.error.issues, INTERVIEW_MESSAGES);
   if (p.success && /@|\b\d{9,}\b|\b06[\s-]?\d{8}\b/.test(p.data.participant_label)) fieldErrors.participant_label = "Gebruik een pseudoniem, geen e-mailadres of telefoonnummer.";
-  if (consentMissing) fieldErrors.consent_recorded = "Zonder vastgelegde toestemming mag het gesprek niet worden verwerkt.";
-  if (!p.success || Object.keys(fieldErrors).length) return { error: savedNothing("Het interview", fieldErrors), fieldErrors };
   const supabase = await supabaseServer();
-  const { data: exp } = await supabase.from("experiments").select("state, type").eq("id", expId).eq("idea_id", ideaId).single();
+  const { data: exp } = await supabase.from("experiments").select("state, type, recruitment_group").eq("id", expId).eq("idea_id", ideaId).single();
+  // Gebruikerstest C8: toestemming is alleen verplicht bij een echt gesprek; consent_recorded is de werkelijke waarde.
+  // Bekende = wervingsgroep eigen netwerk; zonder keuze volgt de groep uit het wervingskanaal.
+  const intake = interviewIntake({
+    isPractice: p.success ? p.data.is_practice : form.get("is_practice") === "practice",
+    consent: form.get("consent_recorded") === "on",
+    recruitmentGroup: p.success ? p.data.recruitment_group : null,
+    recruitedVia: p.success ? p.data.recruited_via : String(form.get("recruited_via") ?? ""),
+    testGroup: exp?.recruitment_group ?? null,
+  });
+  // Is nog niet gekozen of het een echt gesprek is, dan is de toestemming ook nog niet aan de orde.
+  if (intake.error && form.get("is_practice") === "real") fieldErrors.consent_recorded = intake.error;
+  if (!p.success || Object.keys(fieldErrors).length) return { error: savedNothing("Het interview", fieldErrors), fieldErrors };
   if (!exp || exp.type !== "interview" || !["live", "paused"].includes(exp.state)) return { error: "Interviews voeg je toe terwijl het experiment loopt." };
   const { error } = await supabase.from("interviews").insert({
     ...p.data,
     segment: p.data.segment || null,
     experiment_id: expId,
     idea_id: ideaId,
-    is_acquaintance: form.get("is_acquaintance") === "on",
-    consent_recorded: true,
+    recruitment_group: intake.recruitment_group,
+    is_acquaintance: intake.is_acquaintance,
+    consent_recorded: intake.consent_recorded,
   });
   if (error) return { error: "Het interview is niet opgeslagen. Probeer het opnieuw." };
   refresh(ideaId);

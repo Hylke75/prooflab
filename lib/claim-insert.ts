@@ -4,6 +4,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { recomputeClaim } from "@/lib/claims";
 import { checkQuote, numericFromInput, valueInQuote, type QuoteCheck } from "@/lib/domain/verify";
 import { isUnknown, normalizeReferenceDate, scopeValue, UNKNOWN } from "@/lib/domain/claim-scope";
+import { evidenceTypeError } from "@/lib/domain/source-defaults";
 
 // Een bevinding met letterlijk citaat vastleggen: gedeeld door het gewone bevindingformulier en het importeren van
 // een bestaand rapport. De status wordt altijd berekend uit het citaat en de bron (recomputeClaim), nooit gekozen.
@@ -50,6 +51,12 @@ export async function insertClaimWithQuote(
   origin: "manual" | "ai" = "manual",
 ): Promise<InsertClaimResult> {
   const supabase = await supabaseServer();
+  // Gebruikerstest B2: wat mensen zelf zeggen (interview, outreach, enquête) is nooit een officiële statistiek.
+  if (v.evidence_type === "official_statistic") {
+    const { data: src } = await supabase.from("sources").select("source_type").eq("id", excerpt.source_id).maybeSingle();
+    const typeError = evidenceTypeError(src?.source_type, v.evidence_type);
+    if (typeError) return { error: typeError };
+  }
   const check = checkQuote(v.quote, excerpt.text, v.stance === "supports" ? v.statement : undefined);
   const numericRaw = blank(v.numeric_value);
   const numeric = numericFromInput(numericRaw);

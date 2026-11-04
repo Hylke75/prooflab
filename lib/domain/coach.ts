@@ -164,11 +164,11 @@ export function nextAction(p: IdeaProgress): NextAction {
       icon: "shield",
     };
   const approved = firstWithState(p, ["approved"]);
-  if (approved) return { title: "Publiceer de test", detail: `"${approved.title}" is goedgekeurd en vergrendeld. Zet hem live om te gaan meten.`, href: exp(approved), icon: "flask" };
+  if (approved) return { title: "Publiceer de test", detail: `"${approved.title}" is goedgekeurd en vergrendeld. Zet hem live om te gaan meten.`, href: `${exp(approved)}#publiceren`, icon: "flask" };
   const review = firstWithState(p, ["ready_for_review"]);
-  if (review) return { title: "Keur de Test Card goed", detail: `"${review.title}" wacht op review. Goedkeuren vergrendelt hypothese en drempels.`, href: exp(review), icon: "flask" };
+  if (review) return { title: "Keur de Test Card goed", detail: `"${review.title}" wacht op review. Goedkeuren vergrendelt hypothese en drempels.`, href: `${exp(review)}#goedkeuren`, icon: "flask" };
   const draft = firstWithState(p, ["draft"]);
-  if (draft) return { title: "Rond je Test Card af en zet hem ter review", detail: `"${draft.title}" is nog een concept. Leg vooraf vast wat je meet en wanneer het klopt.`, href: exp(draft), icon: "flask" };
+  if (draft) return { title: "Rond je Test Card af en zet hem ter review", detail: `"${draft.title}" is nog een concept. Leg vooraf vast wat je meet en wanneer het klopt.`, href: `${exp(draft)}#ter-review`, icon: "flask" };
   if (realityCheckDue(p)) return { title: "Doe de Reality Check", detail: "Er is nieuw bewijs sinds de laatste check. De check zoekt tegenbewijs en valkuilen vóór het besluit.", href: `${base}/evidence`, icon: "shield" };
   if (decisionDue(p)) {
     const atDecision = decisionMomentAction(p);
@@ -304,9 +304,9 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
       const review = firstWithState(p, ["ready_for_review"]);
       const approved = firstWithState(p, ["approved"]);
       const live = firstWithState(p, ["live", "paused"]);
-      if (draft) add("Rond je Test Card af en zet hem ter review", `${base}/experiments/${draft.id}`, "flask");
-      if (review) add("Keur de Test Card goed", `${base}/experiments/${review.id}`, "check");
-      if (approved) add("Publiceer de test", `${base}/experiments/${approved.id}`, "flask");
+      if (draft) add("Rond je Test Card af en zet hem ter review", `${base}/experiments/${draft.id}#ter-review`, "flask");
+      if (review) add("Keur de Test Card goed", `${base}/experiments/${review.id}#goedkeuren`, "check");
+      if (approved) add("Publiceer de test", `${base}/experiments/${approved.id}#publiceren`, "flask");
       if (live) add("Bekijk de tussenstand van de lopende test", `${base}/experiments/${live.id}`, "clock");
       if (p.experiments.length === 0 && p.topAssumption) add("Ontwerp een test voor de grootste onzekerheid", `${base}/experiments?assumption=${p.topAssumption.id}`, "flask");
       const unlearned = endedWithoutCard(p)[0];

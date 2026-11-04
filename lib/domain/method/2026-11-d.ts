@@ -16,6 +16,7 @@ export const method2026_11_d: MethodModule = {
   usesCaps: true,
   usesRules: true,
   primaryDecides: true,
+  refutedCounts: false,
   rules: [
     ...method2026_11_c.rules,
     "Tegenbewijs telt per bron één keer, net als ondersteunend bewijs: per bron (bijvoorbeeld één interview) telt alleen het sterkste tegensignaal. Tegenbewijs uit verschillende bronnen telt elk mee, afnemend per soort.",

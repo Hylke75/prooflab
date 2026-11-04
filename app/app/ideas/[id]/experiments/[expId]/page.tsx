@@ -1,10 +1,10 @@
-import { interviewRecruitment, RECRUITMENT_GROUPS, RECRUITMENT_KEYS, recruitmentLabel } from "@/lib/domain/recruitment";
+import { interviewRecruitment, recruitmentLabel } from "@/lib/domain/recruitment";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { Term } from "@/components/ui/Term";
-import { ActionForm, CheckField, Field } from "@/components/ui/ActionForm";
+import { ActionForm, Field } from "@/components/ui/ActionForm";
 import { RuleSummary, ruleName } from "@/components/experiments/RuleSummary";
 import { ResultMeter } from "@/components/experiments/ResultMeter";
 import { GuideAuditList, TranscriptAuditList } from "@/components/experiments/InterviewAudit";
@@ -25,14 +25,15 @@ import { CHANNELS } from "@/lib/domain/tracking";
 import { DMU_ROLES, EXPERIMENT_STATES, EXPERIMENT_TYPES, OBSERVATION_KINDS, type ExperimentState, type ExperimentType } from "@/lib/domain/labels";
 import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, reviewObservation, setInterviewPractice, setPrimaryTest, transitionExperiment } from "../actions";
 import { fictionSignals, fictionWarning, PRACTICE_LABELS, practiceStatus } from "@/lib/domain/practice";
-import { PracticeChoice } from "@/components/experiments/PracticeChoice";
+import { InterviewIntakeFields } from "@/components/experiments/PracticeChoice";
+import { DirectionField } from "@/components/ui/DirectionField";
 import { truncateWords } from "@/lib/domain/truncate";
 import { canDesignatePrimary, TEST_ROLES, testRole } from "@/lib/domain/primary-test";
 import { isStarted } from "@/lib/domain/test-counts";
 import { loadTestExclusions } from "@/lib/progress";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 import { assumptionKind, assumptionKindLabel, metricFitsAssumption } from "@/lib/domain/assumption-kind";
-import { belowMinSample, END_BELOW_SAMPLE_CONFIRM, END_REASON_MAX, END_REASON_MIN, goRuleBlock, thresholdBlock } from "@/lib/domain/experiment-gates";
+import { belowMinSample, END_BELOW_SAMPLE_CONFIRM, END_REASON_MAX, END_REASON_MIN, goRuleBlock, SELF_APPROVAL_CONFIRM, selfApproval, selfApprovalText, thresholdBlock } from "@/lib/domain/experiment-gates";
 import { loadDecisionRule } from "@/lib/decision-rule-data";
 import { proposeGoRule } from "@/lib/domain/decision-rule-proposal";
 import { describeRule } from "@/lib/domain/decision-rule";
@@ -60,39 +61,53 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
   if (!h) notFound();
   const type = exp.type as ExperimentType;
   const state = exp.state as ExperimentState;
-  const m = await experimentMetrics(exp, h);
-  const { data: cards } = await supabase.from("learning_cards").select("id").eq("experiment_id", expId);
-  // Hoofdtest of verkennend (golf A, punt 11).
-  const { data: primaryOf } = await supabase.from("assumptions").select("id, primary_experiment_id").eq("id", h.assumption_id).maybeSingle();
+  // Gebruikerstest A10: alle onafhankelijke ladingen tegelijk in plaats van na elkaar (was een waterval van ~10 stappen).
+  const [m, { data: cards }, { data: primaryOf }, surveyDraft, interviews, quality, interviewerNames, exclusions, rule, { data: ideaAssumptions }, me] = await Promise.all([
+    experimentMetrics(exp, h),
+    supabase.from("learning_cards").select("id").eq("experiment_id", expId),
+    // Hoofdtest of verkennend (golf A, punt 11).
+    supabase.from("assumptions").select("id, primary_experiment_id").eq("id", h.assumption_id).maybeSingle(),
+    // AI-opzet van de enquête (golf A, punt 17): wat heeft de mens eraan veranderd?
+    (async () => {
+      if (type !== "survey" || !exp.ai_draft_id) return null;
+      const { data: d } = await supabase.from("ai_drafts").select("content").eq("id", exp.ai_draft_id).maybeSingle();
+      const original = d ? surveyConfigOf(d.content) : null;
+      const current = surveyConfigOf(exp.config);
+      return original && current ? draftEdit(surveyDraftText(original), surveyDraftText(current)) : null;
+    })(),
+    type === "interview" && canWrite
+      ? supabase.from("interviews").select("*, observations(*)").eq("experiment_id", expId).order("held_on").then((r) => r.data ?? [])
+      : Promise.resolve([]),
+    canWrite ? loadAiQuality() : Promise.resolve(null),
+    (async (): Promise<string[]> => {
+      if (type !== "interview" || !canWrite) return [];
+      const ws = await getWorkspace();
+      const { data: me } = await supabase.from("profiles").select("full_name").eq("user_id", ws.user.id).maybeSingle();
+      const full = me?.full_name?.trim();
+      return full ? [full, full.split(/\s+/)[0]] : [];
+    })(),
+    // Fase B0, punt 4: telt deze test mee in kans en rangorde? Zelfde regel en gegevens als de risicokaart.
+    isStarted(state) ? loadTestExclusions(id) : Promise.resolve(null),
+    // B5: de go-regel van het dossier. Een hoofdtest start pas als die vastligt; zonder regel stelt ProofLab hem voor.
+    loadDecisionRule(id),
+    // Gebruikerstest B1: de kritieke aannames voor het voorstel van de go-regel (select("*"): selected_for_test bestaat
+    // pas na de B4-migratie; zonder kolom is niets gekozen).
+    canWrite && ["draft", "ready_for_review", "approved"].includes(state)
+      ? supabase.from("assumptions").select("*").eq("idea_id", id)
+      : Promise.resolve({ data: [] as { id: string; statement: string; importance: number; selected_for_test?: boolean }[] }),
+    // Gebruikerstest B4: wie kijkt er, om zelfgoedkeuring vooraf te tonen.
+    canWrite && state === "ready_for_review" ? getWorkspace().then((ws) => ws.user.id) : Promise.resolve(null),
+  ]);
+  const self = selfApproval({ ownerId: exp.owner_id, submittedBy: exp.submitted_by ?? null, approverId: me });
   const role = testRole(exp.id, h.assumption_id, primaryOf ? [primaryOf] : []);
   const { data: currentPrimary } =
     primaryOf?.primary_experiment_id && role !== "primary"
       ? await supabase.from("experiments").select("state").eq("id", primaryOf.primary_experiment_id).maybeSingle()
       : { data: null };
   const designate = canDesignatePrimary(exp, currentPrimary);
-  // AI-opzet van de enquête (golf A, punt 17): wat heeft de mens eraan veranderd?
-  const surveyDraft = await (async () => {
-    if (type !== "survey" || !exp.ai_draft_id) return null;
-    const { data: d } = await supabase.from("ai_drafts").select("content").eq("id", exp.ai_draft_id).maybeSingle();
-    const original = d ? surveyConfigOf(d.content) : null;
-    const current = surveyConfigOf(exp.config);
-    return original && current ? draftEdit(surveyDraftText(original), surveyDraftText(current)) : null;
-  })();
-  const interviews =
-    type === "interview" && canWrite
-      ? (await supabase.from("interviews").select("*, observations(*)").eq("experiment_id", expId).order("held_on")).data ?? []
-      : [];
-  const quality = canWrite ? await loadAiQuality() : null;
   const guideLines = type === "interview" ? ((exp.config as InterviewConfig).guide ?? []) : [];
   const productNames = [idea.title, (exp.config as LandingConfig).product_name ?? ""];
   const guideAudit = auditGuide(guideLines, { productNames });
-  let interviewerNames: string[] = [];
-  if (type === "interview" && canWrite) {
-    const ws = await getWorkspace();
-    const { data: me } = await supabase.from("profiles").select("full_name").eq("user_id", ws.user.id).maybeSingle();
-    const full = me?.full_name?.trim();
-    interviewerNames = full ? [full, full.split(/\s+/)[0]] : [];
-  }
   const channels = (exp.channels as { channel: string; expected_reach: number | null }[]) ?? [];
   const publicUrl = exp.public_slug ? `${env.appUrl}/t/${exp.public_slug}` : null;
   const running = state === "live" || state === "paused";
@@ -112,15 +127,17 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
     ) : null;
   // B0 punt 6: afronden onder de minimale steekproef vraagt een reden en een bevestiging.
   const endBelowSample = belowMinSample(m.n, h.min_sample);
-  // Fase B0, punt 4: telt deze test mee in kans en rangorde? Zelfde regel en gegevens als de risicokaart.
-  const exclusion = isStarted(state) ? (await loadTestExclusions(id)).get(expId) ?? null : null;
-
-  // B5: de go-regel van het dossier. Een hoofdtest start pas als die vastligt; zonder regel stelt ProofLab hem voor.
-  const rule = await loadDecisionRule(id);
+  const exclusion = exclusions?.get(expId) ?? null;
   const goBlock = goRuleBlock({ isPrimary: role === "primary", rule: rule === undefined ? "unknown" : rule ? "saved" : "missing" });
   const goProposal =
     canWrite && h.assumptions && ["draft", "ready_for_review", "approved"].includes(state)
-      ? proposeGoRule({ rule, assumption: { id: h.assumption_id, statement: h.assumptions.statement }, experiment: exp, isPrimary: role === "primary" })
+      ? proposeGoRule({
+          rule,
+          assumption: { id: h.assumption_id, statement: h.assumptions.statement },
+          experiment: exp,
+          isPrimary: role === "primary",
+          assumptions: (ideaAssumptions ?? []).map((a) => ({ id: a.id, statement: a.statement, importance: a.importance, selectedForTest: a.selected_for_test === true })),
+        })
       : null;
   // B5: de deadline. Vóór de start geldt hij als de test vandaag start; daarna is het de vastgelegde einddatum.
   const deadline = exp.ends_at ? new Date(exp.ends_at) : new Date(`${deadlineFromDays(h.max_duration_days, isoDay(new Date()))}T12:00:00`);
@@ -273,17 +290,25 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
           {!canWrite && <p className="sub">Je kijkt mee. Het onderzoeksteam beheert dit experiment.</p>}
           {goProposal && <GoRuleProposalCard ideaId={id} proposal={goProposal} />}
           {canWrite && state === "draft" && (
-            <>
+            <div id="ter-review" className="coach-target">
               <p className="sub">Controleer de Test Card. Daarna bied je het experiment aan voor review.</p>
               {blockNote("Ter review aanbieden kan niet: deze Test Card kan zo niet worden goedgekeurd. Maak een nieuwe Test Card.")}
               <ActionForm action={transitionExperiment.bind(null, id, expId, "ready_for_review")} submitLabel="Ter review aanbieden" disabled={blocked} describedBy={blocked ? "approval-block" : undefined} footer={<button formAction={deleteDraft.bind(null, id, expId)} className="text-link" style={{ color: "var(--color-risk-text)" }}>Concept verwijderen</button>}>
                 <span />
               </ActionForm>
-            </>
+            </div>
           )}
           {canWrite && state === "ready_for_review" && (
+            <div id="goedkeuren" className="coach-target">
             <ActionForm action={transitionExperiment.bind(null, id, expId, "approved")} submitLabel="Akkoord: keur goed en vergrendel" disabled={blocked} describedBy={blocked ? "approval-block" : undefined}>
               {blockNote("Goedkeuren kan niet:")}
+              {self.self && (
+                <div className="note" role="note" id="zelf-goedkeuren" style={{ marginTop: 0 }}>
+                  <strong>{selfApprovalText(self)}</strong> Liefst keurt iemand anders de Test Card goed; kan dat niet, bevestig het dan hieronder. In het rapport
+                  staat deze test als &ldquo;zelf goedgekeurd&rdquo;.
+                  <label className="check-row mt-8"><input type="checkbox" name="confirm_self_approval" required /> {SELF_APPROVAL_CONFIRM}</label>
+                </div>
+              )}
               <p className="sub">Goedkeuren vergrendelt de hypothese en drempels. Bevestig:</p>
               {type === "survey" ? (
                 <>
@@ -304,9 +329,10 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                 </>
               )}
             </ActionForm>
+            </div>
           )}
           {canWrite && state === "approved" && (
-            <>
+            <div id="publiceren" className="coach-target">
               {type !== "interview" && !trackingConfigured() && <div className="form-error">Meting is niet geconfigureerd (INGEST_SECRET en TRACKING_SALT ontbreken). De test kan nog niet live.</div>}
               {publicUrl && type !== "survey" && <p className="sub">Bekijk eerst het <a className="text-link" href={`/t/${exp.public_slug}`} target="_blank">voorbeeld</a> (metingen staan nog uit).</p>}
               {goBlock && (
@@ -322,7 +348,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
               >
                 <span />
               </ActionForm>
-            </>
+            </div>
           )}
           {canWrite && running && (
             <div className="row">
@@ -503,11 +529,9 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                         </select>
                         <input className="field mt-8" name="summary" placeholder="Korte samenvatting" aria-label="Samenvatting" />
                         <textarea className="field mt-8" name="quote" rows={3} placeholder="Letterlijk citaat uit het transcript" aria-label="Citaat" />
-                        <select className="field mt-8" name="relation" aria-label="Relatie tot de aanname" defaultValue="supports">
-                          <option value="supports">Ondersteunt de aanname</option>
-                          <option value="contradicts">Spreekt de aanname tegen</option>
-                          <option value="neutral">Neutraal</option>
-                        </select>
+                        <div className="mt-8">
+                          <DirectionField kind="statement" id={`obs-rel-${iv.id}`} name="relation" neutral />
+                        </div>
                       </ActionForm>
                     </details>
                     <div className="row" style={{ alignItems: "flex-start", justifyContent: "flex-end" }}>
@@ -533,32 +557,16 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                   <Field name="dmu_role" id="iv-r" label="Rol in het koopproces" required>
                     <select className="field" defaultValue="user">{Object.entries(DMU_ROLES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
                   </Field>
-                  <Field name="recruited_via" id="iv-c" label="Geworven via" required>
-                    <select className="field" defaultValue="network">{Object.entries(CHANNELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-                  </Field>
-                </div>
-                <div className="double-field">
                   <Field name="segment" id="iv-s" label="Segment (optioneel)"><input className="field" maxLength={160} /></Field>
-                  <Field name="record_type" id="iv-t" label="Soort verslag" required>
-                    <select className="field" defaultValue="transcript"><option value="transcript">Transcript (bijv. uit Teams, Zoom of Fathom)</option><option value="notes">Eigen notities</option></select>
-                  </Field>
                 </div>
-                <PracticeChoice />
+                <Field name="record_type" id="iv-t" label="Soort verslag" required>
+                  <select className="field" defaultValue="transcript"><option value="transcript">Transcript (bijv. uit Teams, Zoom of Fathom)</option><option value="notes">Eigen notities</option></select>
+                </Field>
+                {/* Gebruikerstest C8: wervingskanaal en -groep in één logica, toestemming alleen bij een echt gesprek. */}
+                <InterviewIntakeFields testGroup={exp.recruitment_group ?? null} />
                 <Field name="transcript" id="iv-x" label="Transcript of notities" required hint="Minimaal 50 tekens.">
                   <textarea className="field" rows={8} />
                 </Field>
-                <Field
-                  name="recruitment_group"
-                  id="iv-g"
-                  label="Wervingsgroep"
-                  hint="Is het een bekende? Vink dat hieronder aan: dan telt het gesprek als eigen netwerk. Gesprekken uit dezelfde groep tellen afnemend mee."
-                >
-                  <select className="field" defaultValue={exp.recruitment_group ?? "unknown"}>
-                    {RECRUITMENT_KEYS.filter((k) => k !== "own_network").map((k) => <option key={k} value={k}>{RECRUITMENT_GROUPS[k].label}</option>)}
-                  </select>
-                </Field>
-                <label className="check-row"><input type="checkbox" name="is_acquaintance" /> Deze persoon is een bekende (vriend, collega, bestaande klant): wervingsgroep eigen netwerk</label>
-                <CheckField name="consent_recorded" id="iv-consent" label="Toestemming voor verwerking is gegeven en vastgelegd (bewaartermijn 12 maanden)" required />
               </ActionForm>
             </div>
           )}

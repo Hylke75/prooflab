@@ -8,6 +8,7 @@ import { ruleProblem } from "@/lib/domain/decision-rule";
 import { rulePrimaryProblem } from "@/lib/domain/primary-test";
 import { parseDutchNumber } from "@/lib/forecast-schemas";
 import type { Json } from "@/lib/database.types";
+import { excludedCriticalCheck, isCriticalForRule } from "@/lib/domain/decision-rule-proposal";
 
 export type ActionState = { error: string | null; ok?: string | null };
 
@@ -19,7 +20,8 @@ const LOCKED = "De beslisregel ligt vast sinds de eerste goedgekeurde test. Zo k
 export async function saveDecisionRule(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
   await requireWritableIdea(ideaId);
   const supabase = await supabaseServer();
-  const { data: assumptions } = await supabase.from("assumptions").select("id, primary_experiment_id").eq("idea_id", ideaId);
+  // select("*"): selected_for_test (fase B4) bestaat pas na die migratie; zonder kolom is niets gekozen.
+  const { data: assumptions } = await supabase.from("assumptions").select("*").eq("idea_id", ideaId);
   const conditions: { assumption_id: string; min_probability: number }[] = [];
   for (const a of assumptions ?? []) {
     if (form.get(`cond_${a.id}`) !== "on") continue;
@@ -29,7 +31,16 @@ export async function saveDecisionRule(ideaId: string, _: ActionState, form: For
   }
   const primary = z.string().uuid().safeParse(form.get("primary_experiment_id"));
   const primaryId = primary.success ? primary.data : null;
-  const note = String(form.get("note") ?? "").trim().slice(0, 600);
+  // Gebruikerstest B1: een kritieke aanname (gekozen om nu te testen, belang 5) weglaten vraagt een motivering; die komt
+  // als "Uitgesloten: …" in de toelichting.
+  const check = excludedCriticalCheck({
+    critical: (assumptions ?? []).filter((a) => isCriticalForRule({ importance: a.importance, selectedForTest: a.selected_for_test === true })).map((a) => ({ id: a.id, statement: a.statement })),
+    chosenIds: conditions.map((c) => c.assumption_id),
+    reasons: Object.fromEntries((assumptions ?? []).map((a) => [a.id, String(form.get(`reason_${a.id}`) ?? "")])),
+    baseNote: String(form.get("note") ?? "").trim().slice(0, 600),
+  });
+  if (check.error !== null) return { error: check.error };
+  const note = check.note;
   const problem = ruleProblem({ conditions: conditions.map((c) => ({ minProbability: c.min_probability })), primaryExperimentId: primaryId });
   if (problem) return { error: problem };
   // De hoofdtest van de regel moet bij een gekozen aanname als hoofdtest zijn aangewezen (golf A, punt 11).

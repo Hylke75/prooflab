@@ -59,24 +59,85 @@ const CLAIM_WEIGHT: Record<ClaimStatus, number> = {
   estimate: 0.6,
   insufficient: 0,
   contested: 0,
+  // Gebruikerstest A5: in methode 2026-11-a t/m 2026-11-d weegt een weerlegde bevinding zoals een tegenstrijdige: 0.
+  refuted: 0,
   outdated: 0.2,
 };
 
+// Gebruikerstest A5, methode 2026-11-e: een weerlegde bevinding waarop een aanname leunt, weegt als tegenbewijs. Bewust
+// conservatief met het gewicht van een onderbouwde schatting (0,6 op de bewijsas, factor 1,2 op de kansverhouding) en
+// niet dat van een geverifieerde bevinding: "weerlegd" kan op één secundaire tegensprekende bron rusten.
+export const REFUTED_WEIGHT = 0.6;
+
+// Waarom een gekoppelde bevinding (nog) niet meetelt in de bewijsas en de kans (gebruikerstest A2).
+export type DeskSkipReason = "insufficient" | "contested" | "refuted_old_method" | "refuted_counter";
+export const DESK_SKIP_REASON: Record<DeskSkipReason, string> = {
+  insufficient: "geen controleerbaar citaat (onvoldoende bewijs)",
+  contested: "bronnen spreken elkaar tegen",
+  refuted_old_method: "de bevinding is weerlegd; als tegenbewijs telt dat pas vanaf methode 2026-11-e",
+  refuted_counter: "de bevinding sprak de aanname tegen, maar is zelf weerlegd; dat is geen steun voor de aanname",
+};
+
+export type DeskLink = { status: ClaimStatus; relation: "supports" | "contradicts" };
+// counts: telt mee als steun of tegenbewijs voor de aanname; anders met de reden waarom niet.
+export type DeskVerdict = { counts: true; direction: "supports" | "contradicts"; weight: number } | { counts: false; reason: DeskSkipReason };
+
+// Wat één gekoppelde bevinding met de aanname doet. Let op de twee richtingen: claim_sources.stance (bron ↔ bevinding)
+// bepaalt de status van de bevinding; assumption_claims.relation (bevinding ↔ aanname) bepaalt of de bevinding de aanname
+// steunt of tegenspreekt. Een weerlegde bevinding die de aanname zou steunen, spreekt de aanname dus tegen (vanaf
+// methode 2026-11-e); een weerlegde tegenbevinding is geen steun.
+export function deskVerdict(c: DeskLink, opts: { refutedCounts?: boolean } = {}): DeskVerdict {
+  if (c.status === "refuted") {
+    if (!opts.refutedCounts) return { counts: false, reason: "refuted_old_method" };
+    if (c.relation === "contradicts") return { counts: false, reason: "refuted_counter" };
+    return { counts: true, direction: "contradicts", weight: REFUTED_WEIGHT };
+  }
+  const w = CLAIM_WEIGHT[c.status];
+  if (w === 0) return { counts: false, reason: c.status === "contested" ? "contested" : "insufficient" };
+  return { counts: true, direction: c.relation, weight: w };
+}
+
+// Telling per aanname: meetellende bevindingen per richting en de gekoppelde bevindingen die niet meetellen, met reden.
+export function deskTally<T extends DeskLink>(
+  claims: T[],
+  opts: { refutedCounts?: boolean } = {},
+): { supporting: T[]; contradicting: T[]; notCounted: (T & { reason: DeskSkipReason; reasonText: string })[] } {
+  const supporting: T[] = [];
+  const contradicting: T[] = [];
+  const notCounted: (T & { reason: DeskSkipReason; reasonText: string })[] = [];
+  for (const c of claims) {
+    const v = deskVerdict(c, opts);
+    if (!v.counts) notCounted.push({ ...c, reason: v.reason, reasonText: DESK_SKIP_REASON[v.reason] });
+    else if (v.direction === "supports") supporting.push(c);
+    else contradicting.push(c);
+  }
+  return { supporting, contradicting, notCounted };
+}
+
+// Korte zin voor scherm en melding: "1 gekoppeld, telt nog niet mee: bronnen spreken elkaar tegen".
+export function notCountedLine(reasons: string[]): string | null {
+  if (reasons.length === 0) return null;
+  const unique = [...new Set(reasons)];
+  return `${reasons.length} gekoppeld, ${reasons.length === 1 ? "telt" : "tellen"} nog niet mee: ${unique.join("; ")}`;
+}
+
 // Evidence axis of the assumption map, 0 (no evidence) .. 1 (strong evidence). Desk research can
 // lift an assumption to at most ~0.45; only real-world behaviour gets it further.
+// refutedCounts (methode 2026-11-e): een weerlegde bevinding telt als tegenbewijs (deskVerdict).
 export function assumptionEvidence(
   claims: { status: ClaimStatus; relation: "supports" | "contradicts" }[],
   observations: (ObservationDims & { relation: "supports" | "contradicts" })[],
+  opts: { refutedCounts?: boolean } = {},
 ): { score: number; supporting: number; contradicting: number } {
   let desk = 0;
   let field = 0;
   let supporting = 0;
   let contradicting = 0;
   for (const c of claims) {
-    const w = CLAIM_WEIGHT[c.status];
-    if (w === 0) continue;
-    desk += w;
-    if (c.relation === "supports") supporting++;
+    const v = deskVerdict(c, opts);
+    if (!v.counts) continue;
+    desk += v.weight;
+    if (v.direction === "supports") supporting++;
     else contradicting++;
   }
   for (const o of observations) {
@@ -150,8 +211,13 @@ export const CLAIM_LR: Record<ClaimStatus, LrEntry> = {
   estimate: { lr: 1.2, label: "Onderbouwde schatting", why: "Eén secundaire bron of schatting van derden." },
   insufficient: { lr: 1, label: "Bevinding met onvoldoende bewijs", why: "Niet controleerbaar; telt niet mee." },
   contested: { lr: 1, label: "Bevinding met tegenstrijdige bronnen", why: "Telt niet mee tot de tegenspraak is opgelost." },
+  refuted: { lr: 1, label: "Weerlegde bevinding", why: "Telt in methode 2026-11-a t/m 2026-11-d niet mee; vanaf 2026-11-e als tegenbewijs." },
   outdated: { lr: 1, label: "Verouderde bevinding", why: "Telt niet mee tot opnieuw gecontroleerd." },
 };
+
+// Methode 2026-11-e: een weerlegde bevinding waarop de aanname leunt, telt als tegenbewijs met de factor van een
+// onderbouwde schatting (conservatief; zie REFUTED_WEIGHT).
+export const REFUTED_LR: LrEntry = { lr: 1.2, label: "Weerlegde bevinding (tegenbewijs)", why: "Gecontroleerde bronnen spreken de bevinding tegen; conservatief gewogen als één secundaire bron." };
 
 // Weight in log-odds of an AI-coded observation that no consultant has reviewed yet.
 export const AI_UNREVIEWED_WEIGHT = 0.5;
@@ -477,7 +543,8 @@ type Item = {
 
 // Wat methode 2026-11-c toevoegt aan de rekenwijze van 2026-11-b. Zonder opties rekent de kern exact als 2026-11-b.
 // contraPerSource (methode 2026-11-d): ook tegenbewijs telt per bron één keer (alleen het sterkste tegensignaal).
-type CoreOptions = { recruitmentDamping?: boolean; aiNeedsReview?: boolean; relevanceWeighting?: boolean; contraPerSource?: boolean };
+// refutedCounts (methode 2026-11-e): een weerlegde bevinding telt als tegenbewijs (deskVerdict, REFUTED_LR).
+type CoreOptions = { recruitmentDamping?: boolean; aiNeedsReview?: boolean; relevanceWeighting?: boolean; contraPerSource?: boolean; refutedCounts?: boolean };
 
 export function assumptionProbabilityV2(
   claims: ProbabilityClaim[],
@@ -505,11 +572,15 @@ function probabilityCore(
     // Methode 2026-11-c: een indirecte bevinding (andere populatie, regio of te oude peildatum) telt half
     // (gewicht 0,5 in log-odds, zoals niet beoordeelde AI-codering in 2026-11-a en 2026-11-b).
     const weight = opts.relevanceWeighting ? relevanceWeight(c.relevance) : 1;
+    // Methode 2026-11-e: een weerlegde bevinding waarop de aanname leunt, telt tegen; een weerlegde tegenbevinding niet
+    // (factor 1, dus neutraal). In oudere methodes is een weerlegde bevinding neutraal (CLAIM_LR.refuted).
+    const refuted = opts.refutedCounts && c.status === "refuted";
+    const entry = refuted && c.relation === "supports" ? REFUTED_LR : CLAIM_LR[c.status];
     items.push({
       kindKey: `claim:${c.status}`,
-      label: `${CLAIM_LR[c.status].label}${weight < 1 ? " (indirect bewijs)" : ""}`,
-      entry: CLAIM_LR[c.status],
-      supports: c.relation === "supports",
+      label: `${entry.label}${weight < 1 ? " (indirect bewijs)" : ""}`,
+      entry,
+      supports: refuted ? false : c.relation === "supports",
       weight,
       sourceKey: c.sourceKey || own(),
       sourceLabel: c.sourceLabel || "Bron",
@@ -700,4 +771,27 @@ export function explainMerged(m: MergedSource): string {
 // Korte vorm voor tabellen (methodepagina en rapport).
 export function mergedShort(m: Pick<MergedSource, "signals" | "label" | "direction">): string {
   return `${m.signals} ${m.direction === "contradicts" ? "tegensignalen" : "signalen"} uit ${m.label} samengevoegd`;
+}
+
+// ===========================================================================
+// Methode 2026-11-e (gebruikerstest A5): bouwt voort op 2026-11-d.
+// - Een weerlegde bevinding (alleen gecontroleerde tegensprekende bronnen) waarop een aanname leunt, telt als
+//   tegenbewijs met de factor van een onderbouwde schatting (REFUTED_LR, conservatief). Een weerlegde tegenbevinding
+//   is geen steun en telt niet mee.
+// ===========================================================================
+
+export function assumptionProbabilityV5(
+  claims: ProbabilityClaim[],
+  observations: ProbabilityObservation[],
+  prior = 0.5,
+  overrides: LrOverrides = {},
+  caps: EvidenceCaps = DEFAULT_CAPS,
+): AssumptionProbability {
+  return probabilityCore(claims, observations, prior, overrides, caps, {
+    recruitmentDamping: true,
+    aiNeedsReview: true,
+    relevanceWeighting: true,
+    contraPerSource: true,
+    refutedCounts: true,
+  });
 }

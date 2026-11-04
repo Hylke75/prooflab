@@ -102,6 +102,7 @@ export function dossierInput(p: IdeaProgress): DossierInput {
       realTestObservations: p.behaviourObservations,
       decisions: p.decisions,
       latestDecisionAction: p.latestDecisionAction,
+      decisionRule: "unknown",
     }
   );
 }

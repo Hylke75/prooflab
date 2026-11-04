@@ -522,3 +522,73 @@ de migratie toont het tabblad de bestaande enquêtes en interviews en meldt dat 
   geloofwaardig tellen niet; zelfrapportage, geen gedrag. Live interviews: alleen echte gesprekken met toestemming
 - ✅ Tests: `tests/unit/customer-research.test.ts`; e2e `tests/e2e/klantonderzoek.spec.ts` (niet gedraaid)
 - 🟡 Migratie toepassen; daarna de e2e draaien en visueel controleren op 1440 px en 390 px
+
+## Gebruikerstest: verbeterpunten A/B/C (12 november)
+
+Bevindingen uit de gebruikerstest met het dossier "AI-communicatie voor sportclubs", geanalyseerd en goedgekeurd door de
+product owner. Drie commits (A bugs, B betrouwbaarheid besluit, C gebruiksvriendelijkheid) en één migratie
+`20261112090000_gebruikerstest.sql` (**nog niet toegepast**; zonder de migratie valt de app terug, zie per punt).
+
+### A. Bugs
+- ✅ **A1** Prioriteitenlijst leesbaar: nummer en soort op één regel, de aanname eronder over de volle breedte; ook in het
+  testbord, "Wat test je eerst?" en de clusterpopup (`app/globals.css`, DESIGN_DIFF_LOG #49)
+- ✅ **A2** Gekoppeld bureauonderzoek dat niet meetelt, staat apart met de reden en een link naar de bevinding
+  (risicokaart, melding na koppelen, blok "Bureauonderzoek per aanname" op Bewijs & besluit). Eén regel voor alles:
+  `deskTally`/`deskVerdict` in `lib/domain/evidence.ts`
+- ✅ **A3** "bewijsas" vervangen door gewone taal ("Kans en rangorde zijn opnieuw berekend")
+- ✅ **A4** Bevindingstatus als Nederlands label bij het koppelen en in de AI-prompts
+- ✅ **A5** Nieuwe status **Weerlegd** (alleen gecontroleerde tegensprekende bronnen); "Tegenstrijdig" alleen bij pro én
+  contra. Methode **2026-11-e** (nieuwe dossiers): een weerlegde bevinding waarop een aanname leunt telt als tegenbewijs,
+  conservatief met de factor van één secundaire bron (× 1,2; bewijsas 0,6). Een weerlegde tegenbevinding telt niet als
+  steun. Dossiers op 2026-11-a t/m d rekenen ongewijzigd. Migratie: check op `claims.status` vervangen, tegenstrijdige
+  bevindingen zonder enige gecontroleerde bevestigende bron herberekend naar weerlegd, methodeversie e (check, standaard,
+  volgorde). Zonder migratie: `recomputeClaim` valt bij "weerlegd" terug op "tegenstrijdig"
+- ✅ **A6** Stap Aannames is pas klaar met een hoofdtest én een vastgelegde beslisregel ("Loopt · Leg de beslisregel vast")
+- ✅ **A7** "Kies om nu te testen" werkt direct (`useOptimistic`), en vernieuwt alleen de aannamepagina
+- ✅ **A8** Coachlinks springen naar `#ter-review`, `#goedkeuren` en `#publiceren` op de testpagina (DESIGN_DIFF_LOG #50)
+- ✅ **A9** `/app/ideas/:id/decision` stuurt door naar Bewijs & besluit (`next.config.ts`)
+- ✅ **A10** Prestaties: `revalidatePath` alleen het eigen pad bij koppelen, bevinding toevoegen, kiezen en
+  teststatus; Markt laadt van geïmporteerde rapporten alleen het aantal blokken plus 3 voorbeeldblokken (was: alle
+  tekst); de tabs Concurrenten, Klantonderzoek en Marktpotentieel worden pas bij openen opgebouwd; de run-voortgang
+  ververst niet opnieuw zolang de vorige verversing loopt en vertraagt tot 30 s zonder wijziging; parallelle queries in
+  `recomputeClaim`, `loadProgress` en de testpagina (zie het rapport bij de commit voor de tellingen)
+
+### B. Betrouwbaarheid besluit
+- ✅ **B1** Go-regel: het voorstel neemt alle kritieke aannames (gekozen om nu te testen én belang 5) mee, plus altijd
+  de aanname van de hoofdtest, elk minstens 70%. Per aanname een vinkje (testpagina en aannamepagina); een kritieke
+  aanname uitvinken vraagt een motivering van minstens 15 tekens, bewaard als "Uitgesloten: <aanname> – <reden>" in de
+  toelichting. Zelfde controle op de server (`excludedCriticalCheck` in `lib/domain/decision-rule-proposal.ts`)
+- ✅ **B2** Standaard soort informatie en versheid per brontype (`lib/domain/source-defaults.ts`); het formulier volgt
+  het fragment tot je zelf kiest, met de hint "Afwijkend van de standaard voor …"; bij de bevinding een pill (afgeleid).
+  De server weigert "officiële statistiek" bij interview, outreach en enquête. Geen apart brontype voor prijspagina's:
+  bedrijfswebsite → productinformatie (12 maanden)
+- ✅ **B3** Nieuwe soorten aannames **kanaal** en **regelgeving/context** met eigen passende test (outreach-proef of
+  landingpage per kanaal; bureauonderzoek/juridische check buiten ProofLab), zonder nieuwe testtypes. Volgorde:
+  regelgeving → bouwen met termijn/budget → kanaal → prijs → overige techniek → gedrag → markt, met de categorie als
+  terugval. Migratie: `assumptions_kind_check` uitgebreid (zonder migratie werkt alleen het afleiden uit de tekst)
+- ✅ **B4** Zelfgoedkeuring: melding "Je keurt je eigen test goed" met verplicht vinkje (ook op de server); migratie
+  `experiments.submitted_by` en `experiments.self_approved`, gezet door `guard_experiment` (die ook `owner_id` bewaakt);
+  het rapport (web en PDF) zet "zelf goedgekeurd" in de status bij Alle tests. Geen vier-ogenregel (fase 3)
+
+### C. Gebruiksvriendelijkheid
+- ✅ **C1** Eén gedeeld richting-veld (`components/ui/DirectionField.tsx`): "Wat doet dit citaat met je bevinding?"
+  (Bevestigt / Weerlegt de bevinding) met voorbeeld, bij een bron en bij een geïmporteerd rapport; hetzelfde patroon
+  met "aanname" bij het koppelen op de risicokaart en bij een interviewuitspraak, met zichtbaar label
+- ✅ **C2** Redenen met de juiste vervoeging ("1 gecontroleerde bron spreekt dit tegen", "2 … spreken …") en een
+  vervolgstap; ook bij tegenstrijdige bronnen de bevestigende telling
+- ✅ **C3** Drempels vastleggen hoogt de minimale steekproef op tot het berekende aantal ("Automatisch berekend (was
+  N)"); lager kan alleen met een motivering (min. 10 tekens), die de server als "Steekproef onder berekend aantal: …"
+  bij de Test Card bewaart. Zelfde controle in `validateTestCard`. Alleen bij de kansregel
+- ✅ **C4** Voorgestelde naam van een experiment stopt op een woordgrens met "…" (`experimentTitle`), staat zichtbaar
+  boven Details met de hint "Aanpasbaar" en wordt niet overschreven als je hem zelf wijzigde
+- ✅ **C5** "Wij denken dat …" met een voorbeeldbewering; "Schrijf een bewering, geen vraag." Een afsluitend
+  vraagteken geeft een melding en houdt opslaan tegen (scherm en server)
+- ✅ **C6** Niet-gekalibreerde kansen in een band rond de waarde (43% → 35–45%, was 40–50%); gelijke waarden als één
+  getal; de tooltip noemt alleen de exacte waarde; de kalibratie-uitleg staat één keer per kaart (ook rapport/PDF)
+- ✅ **C7** Tot acht aannames op één plek in een ring; daarboven een badge "N ▾" met een popup bij het punt ("N
+  aannames op deze plek — kies er één"), die sluit bij Escape en bij een klik buiten
+- ✅ **C8** Interview toevoegen: toestemming alleen zichtbaar én verplicht bij een echt gesprek (server idem;
+  `consent_recorded` is de werkelijke waarde); één veld voor de wervingsgroep met "Eigen netwerk (bekende: …)", de
+  server leidt "bekende" daaruit af; zonder keuze volgt de groep uit het wervingskanaal (`lib/domain/interview-intake.ts`)
+- 🟡 Niet gedaan in deze omgeving: e2e (Playwright) en visuele controle op 1440/390 px met login; `scripts/test-db.sh`
+  (geen bruikbare lokale Postgres). Migratie nog toepassen

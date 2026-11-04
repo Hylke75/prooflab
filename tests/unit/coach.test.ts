@@ -62,6 +62,7 @@ function progress(over: Partial<IdeaProgress> = {}): IdeaProgress {
       realTestObservations: base.behaviourObservations,
       decisions: base.decisions,
       latestDecisionAction: base.latestDecisionAction,
+      decisionRule: "saved",
     },
   };
 }
@@ -104,7 +105,7 @@ describe("nextAction", () => {
   it("walks a Test Card through draft, review and approval to publication", () => {
     expect(nextAction(progress({ experiments: [exp("draft")] }))).toMatchObject({
       title: "Rond je Test Card af en zet hem ter review",
-      href: `${base}/experiments/e-draft`,
+      href: `${base}/experiments/e-draft#ter-review`,
     });
     expect(nextAction(progress({ experiments: [exp("ready_for_review")] })).title).toBe("Keur de Test Card goed");
     expect(nextAction(progress({ experiments: [exp("approved")] })).title).toBe("Publiceer de test");
@@ -208,7 +209,7 @@ describe("coachFor", () => {
 
   it("points the experiments screen at the card that needs work", () => {
     const c = coachFor("experiments", progress({ experiments: [exp("ready_for_review")] }));
-    expect(c.suggestions[0]).toMatchObject({ label: "Keur de Test Card goed", href: `${base}/experiments/e-ready_for_review` });
+    expect(c.suggestions[0]).toMatchObject({ label: "Keur de Test Card goed", href: `${base}/experiments/e-ready_for_review#goedkeuren` });
   });
 
   it("points the report screen at the first report", () => {

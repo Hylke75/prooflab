@@ -8,7 +8,7 @@ import { RedTeamButton } from "@/components/assumptions/RedTeamButton";
 import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadInformationValue, loadProgress } from "@/lib/progress";
-import { AI_UNREVIEWED_WEIGHT, CLAIM_LR, fmtLr, OBSERVATION_LR, type LrEntry } from "@/lib/domain/evidence";
+import { AI_UNREVIEWED_WEIGHT, CLAIM_LR, fmtLr, OBSERVATION_LR, REFUTED_LR, type LrEntry } from "@/lib/domain/evidence";
 import { DECISION_BOUNDARY, EUR_PER_COST_UNIT, TEST_LR } from "@/lib/domain/recommend";
 import { loadIdeaWeights } from "@/lib/learning-data";
 import { describeWeights, type WeightsInUse } from "@/lib/domain/calibration";
@@ -30,7 +30,9 @@ const lrText = (e: LrEntry) => (e.lr === 1 ? "telt niet mee" : e.against ? `÷ $
 
 // The factors behind the probabilities and the ranking, visible as they are used in code.
 function HowWeCalculate({ weights, method, caps }: { weights: WeightsInUse; method: MethodVersion; caps: EvidenceCaps }) {
-  const rows = [...Object.values(OBSERVATION_LR), ...Object.values(CLAIM_LR)];
+  // Methode 2026-11-e: een weerlegde bevinding telt als tegenbewijs (in plaats van "telt niet mee").
+  const claimRows = Object.entries(CLAIM_LR).map(([k, e]) => (k === "refuted" && METHODS[method].refutedCounts ? { ...REFUTED_LR, against: true } : e));
+  const rows = [...Object.values(OBSERVATION_LR), ...claimRows];
   return (
     <details className="card mt-18">
       <summary className="text-link">Hoe rekent ProofLab de kans en de informatiewaarde uit?</summary>
@@ -195,6 +197,7 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
           kindActions={Object.fromEntries(board.map((a) => [a.id, setKind.bind(null, id, a.id)]))}
           selectActions={Object.fromEntries(board.map((a) => [a.id, setSelectedForTest.bind(null, id, a.id, !a.selectedForTest)]))}
           selectionAvailable={!selectionColumn.error}
+          refutedCounts={METHODS[method].refutedCounts}
         />
       )}
 
@@ -210,7 +213,7 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
         <DecisionRuleCard
           ideaId={id}
           rule={rule}
-          assumptions={ranked.map((a) => ({ id: a.id, statement: a.statement, importance: a.importance, primaryExperimentId: a.primaryExperimentId }))}
+          assumptions={ranked.map((a) => ({ id: a.id, statement: a.statement, importance: a.importance, primaryExperimentId: a.primaryExperimentId, selectedForTest: !!a.selectedForTest }))}
           experiments={experiments ?? []}
           canWrite={canWrite}
         />

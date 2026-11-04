@@ -271,6 +271,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         level: testEvidenceLevel(e.type, { decisionRule: e.hypotheses?.decision_rule }),
         n: e.metrics?.n ?? 0,
         successes: e.metrics?.successes ?? 0,
+        // Gebruikerstest B4: zonder de migratie bestaat de kolom niet en is niets als zelf goedgekeurd bekend.
+        selfApproved: e.self_approved === true,
       })),
     ),
     learningCards: d.learningCards

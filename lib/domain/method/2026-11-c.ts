@@ -15,6 +15,7 @@ export const method2026_11_c: MethodModule = {
   usesCaps: true,
   usesRules: true,
   primaryDecides: true,
+  refutedCounts: false,
   rules: [
     ...method2026_11_b.rules,
     "Herhaling binnen dezelfde wervingsgroep (eigen netwerk, warm contact, koud, betaald panel, onbekend) telt over verschillende bronnen heen afnemend mee: n bronnen uit één groep tellen als log₂(1 + n).",

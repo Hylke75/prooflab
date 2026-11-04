@@ -4,10 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import { TAB_EVENT } from "./source-prefill";
 
 // Tabs switch instantly on the client (like the reference design) and keep the URL in sync.
-export function Tabs({ tabs, initial, children }: { tabs: { key: string; label: string }[]; initial: string; children: React.ReactNode[] }) {
+// lazy (gebruikerstest A10): zware tabs worden pas opgebouwd zodra ze voor het eerst open gaan, en blijven daarna staan.
+// Wisselen blijft direct; alleen de eerste keer bouwt de browser de inhoud op.
+export function Tabs({ tabs, initial, lazy = [], children }: { tabs: { key: string; label: string }[]; initial: string; lazy?: string[]; children: React.ReactNode[] }) {
   const [active, setActive] = useState(tabs.some((t) => t.key === initial) ? initial : tabs[0].key);
+  const [seen, setSeen] = useState<ReadonlySet<string>>(() => new Set([active]));
   const select = useCallback((key: string) => {
     setActive(key);
+    setSeen((s) => (s.has(key) ? s : new Set([...s, key])));
     const url = new URL(window.location.href);
     url.searchParams.set("tab", key);
     window.history.replaceState(null, "", url);
@@ -40,7 +44,7 @@ export function Tabs({ tabs, initial, children }: { tabs: { key: string; label: 
       </div>
       {tabs.map((t, i) => (
         <div key={t.key} role="tabpanel" id={`panel-${t.key}`} aria-labelledby={`tab-${t.key}`} className={`tab-panel${active === t.key ? " active" : ""}`}>
-          {children[i]}
+          {!lazy.includes(t.key) || seen.has(t.key) ? children[i] : null}
         </div>
       ))}
     </>

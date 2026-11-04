@@ -18,6 +18,8 @@ export type AllTestsInput = {
   level: EvidenceLevel | null;
   n: number;
   successes: number;
+  // Gebruikerstest B4: goedgekeurd door wie hem maakte of ter review aanbood (experiments.self_approved).
+  selfApproved?: boolean;
 };
 
 export type AllTestsRow = {
@@ -55,7 +57,7 @@ export function buildAllTests(tests: AllTestsInput[]): { rows: AllTestsRow[]; pe
   const done = (s: string) => ["ended", "analyzed", "decided"].includes(s);
   const rows = registered.map((t) => {
     const outcome = done(t.state) && t.label ? `${t.label}${t.level ? ` · niveau: ${LEVEL_SHORT[t.level]}` : ""}` : "—";
-    const status = [t.endedEarly ? "afgebroken" : null, STATE_TEXT[t.state] ?? t.state].filter(Boolean).join(" · ");
+    const status = [t.endedEarly ? "afgebroken" : null, STATE_TEXT[t.state] ?? t.state, t.selfApproved ? "zelf goedgekeurd" : null].filter(Boolean).join(" · ");
     return {
       title: t.title,
       type: t.type,

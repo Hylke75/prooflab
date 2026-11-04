@@ -2,7 +2,7 @@ import type { AssumptionProbability, EvidenceCaps, ProbabilityClaim, Probability
 import type { LrOverrides } from "@/lib/domain/calibration";
 import type { RuledVerdict, VerdictInput } from "@/lib/domain/stats";
 
-export const METHOD_VERSIONS = ["2026-11-a", "2026-11-b", "2026-11-c", "2026-11-d"] as const;
+export const METHOD_VERSIONS = ["2026-11-a", "2026-11-b", "2026-11-c", "2026-11-d", "2026-11-e"] as const;
 export type MethodVersion = (typeof METHOD_VERSIONS)[number];
 
 // De beslisregel zoals vastgelegd op de Test Card (null bij Test Cards van vóór methode 2026-11-b).
@@ -17,6 +17,8 @@ export type MethodModule = {
   usesRules: boolean;
   // Alleen de hoofdtest per aanname beslist over de status van de aanname (vanaf 2026-11-c).
   primaryDecides: boolean;
+  // Een weerlegde bevinding telt als tegenbewijs voor een aanname die erop leunt (vanaf 2026-11-e, gebruikerstest A5).
+  refutedCounts: boolean;
   rules: string[];
   probability: (claims: ProbabilityClaim[], observations: ProbabilityObservation[], prior: number, overrides: LrOverrides, caps: EvidenceCaps) => AssumptionProbability;
   verdict: (h: HypothesisRule, input: VerdictInput) => RuledVerdict;

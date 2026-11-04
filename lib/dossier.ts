@@ -8,7 +8,7 @@ import { breakEvenRevenue, computeSizing, computeUnitEconomics, factorConsistenc
 import { explainContribution } from "@/lib/domain/evidence";
 import { dossierLabel, type LadderObservation } from "@/lib/domain/dossier-label";
 import type { DossierFacts } from "@/lib/domain/reality-check";
-import type { ClaimStatus } from "@/lib/domain/labels";
+import { CLAIM_STATUS, type ClaimStatus } from "@/lib/domain/labels";
 import type { Idea } from "@/lib/data";
 import { loadIdeaWeights } from "@/lib/learning-data";
 import { asMethodVersion, METHODS } from "@/lib/domain/method";
@@ -292,7 +292,8 @@ export function dossierSummaryForAi(d: Dossier): string {
   return [
     `Beslisvraag: ${d.idea.decision_question}`,
     "Bevindingen:",
-    ...d.claims.slice(0, 40).map((c) => `- [${c.status}] ${c.statement}`),
+    // Gebruikerstest A4: Nederlandse statuslabels, geen ruwe codes.
+    ...d.claims.slice(0, 40).map((c) => `- [${c.status in CLAIM_STATUS ? CLAIM_STATUS[c.status as ClaimStatus].label : c.status}] ${c.statement}`),
     "Aannames (belangrijkheid, bewijs 0-1, status):",
     ...d.assumptions.map((a) => `- (${a.importance}, ${a.evidence.toFixed(2)}, ${a.status}) ${a.statement}`),
     "Experimenten:",

@@ -69,11 +69,12 @@ test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-reg
   await expect(status).toContainText("Klaar voor goedkeuring");
   await expect(status).toContainText("Loopt");
   await expect(status.locator("li[aria-current=step]")).toContainText("Concept");
-  for (const label of ["Wat test je? (verplicht)", "Bij wie? (verplicht)", "Het klopt als ≥ (%) (verplicht)", "Het klopt niet als < (%) (verplicht)", "Minimale steekproef (verplicht)", "Deadline (verplicht)"]) {
+  // Gebruikerstest C4/C5: de naam staat zichtbaar bovenaan; de hypothese heet "Wij denken dat …".
+  for (const label of ["Naam van het experiment (verplicht)", "Wij denken dat … (verplicht)", "Bij wie? (verplicht)", "Het klopt als ≥ (%) (verplicht)", "Het klopt niet als < (%) (verplicht)", "Minimale steekproef (verplicht)", "Deadline (verplicht)"]) {
     await expect(card.getByLabel(label, { exact: true })).toBeVisible();
   }
-  // Vijf velden, zes invoervakjes (succes- en faaldrempel); de rest zit dicht onder Details.
-  await expect(card.locator("input:visible:not([type=hidden]):not([type=radio]), textarea:visible, select:visible")).toHaveCount(6);
+  // Naam plus vijf velden, zeven invoervakjes (succes- en faaldrempel); de rest zit dicht onder Details.
+  await expect(card.locator("input:visible:not([type=hidden]):not([type=radio]), textarea:visible, select:visible")).toHaveCount(7);
   await expect(card.getByLabel("Kop (verplicht)", { exact: true })).toBeHidden();
   // De deadline is een datum; de looptijd in dagen gaat mee als verborgen veld.
   await expect(card.getByLabel("Deadline (verplicht)", { exact: true })).toHaveValue(/^\d{4}-\d{2}-\d{2}$/);
@@ -97,7 +98,7 @@ test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-reg
   page.on("request", (r) => {
     if (r.method() === "POST") posts++;
   });
-  await card.getByLabel("Wat test je? (verplicht)", { exact: true }).fill("Zelfstandige NVM-makelaars kiezen op de testpagina een abonnement van € 249 per maand.");
+  await card.getByLabel("Wij denken dat … (verplicht)", { exact: true }).fill("Zelfstandige NVM-makelaars kiezen op de testpagina een abonnement van € 249 per maand.");
   await save.click();
   await expect(card.getByText("Nog niet opgeslagen: 1 punt moet nog worden aangevuld.")).toBeVisible();
   await expect(card.locator(".tc-save").getByRole("button", { name: "Drempels vastleggen", exact: true })).toBeVisible();
@@ -155,7 +156,8 @@ test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-reg
   await expect(steps).toContainText("Concept");
   await page.getByRole("button", { name: "Ter review aanbieden" }).click();
   await expect(steps).toContainText("Klaar voor goedkeuring");
-  for (const box of await page.locator("input[type=checkbox][name^=check_]").all()) await box.check();
+  // Gebruikerstest B4: wie zijn eigen test goedkeurt, vinkt ook de bevestiging bij de melding aan.
+  for (const box of await page.locator("input[type=checkbox][name^=check_], input[type=checkbox][name=confirm_self_approval]").all()) await box.check();
   await page.getByRole("button", { name: "Akkoord: keur goed en vergrendel" }).click();
 
   // B5: zonder vastgelegde go-regel start een hoofdtest niet; de reden staat bij de knop.
