@@ -61,7 +61,16 @@ export function experimentFromSourceKey(key: string | null | undefined): string 
 // Een test die al loopt of klaar is (concepten en goedgekeurde, nog niet gestarte tests tellen nergens mee).
 export const isStarted = (state: string) => !["draft", "ready_for_review", "approved"].includes(state);
 
-export type TestOutcomeRow = TestOutcome & { assumptionId: string | null; state: string };
+// Fase 1, punt 2 (Stand van het bewijs): ook het testtype, of de Learning Card goedgekeurd is, het vastgelegde bewijsniveau
+// en het aantal geslaagde deelnemers (metrics.successes). Alleen voor weergave; uitsluiting en kans gebruiken ze niet.
+export type TestOutcomeRow = TestOutcome & {
+  assumptionId: string | null;
+  state: string;
+  type?: string | null;
+  cardStatus?: "approved" | "draft" | null;
+  evidenceLevel?: string | null;
+  successes?: number | null;
+};
 
 // De uitkomst en het aantal deelnemers per test, uit gegevens die consultant en opdrachtgever allebei mogen lezen:
 // - met Learning Card (goedgekeurd, anders het concept): het oordeel en n van die kaart;
@@ -75,7 +84,9 @@ export function testOutcomesFrom(
   return experiments.map((e) => {
     const own = cards.filter((c) => c.experiment_id === e.id);
     const card = own.find((c) => c.status === "approved") ?? own.find((c) => c.status === "draft") ?? null;
-    const cardN = Number((card?.metrics as { n?: unknown } | null)?.n);
+    const metrics = card?.metrics as { n?: unknown; successes?: unknown; evidence_level?: unknown } | null;
+    const cardN = Number(metrics?.n);
+    const successes = Number(metrics?.successes);
     const coded = new Set(interviewObservations.filter((o) => o.experiment_id === e.id && o.interview_id && !o.is_synthetic).map((o) => o.interview_id)).size;
     const n = card ? (Number.isFinite(cardN) ? cardN : null) : e.type === "interview" ? coded : null;
     return {
@@ -86,6 +97,10 @@ export function testOutcomesFrom(
       verdict: card ? (card.verdict as TestOutcome["verdict"]) : null,
       n,
       minSample: e.hypotheses?.min_sample ?? null,
+      type: e.type,
+      cardStatus: card ? (card.status === "approved" ? "approved" : "draft") : null,
+      evidenceLevel: typeof metrics?.evidence_level === "string" ? metrics.evidence_level : null,
+      successes: card && metrics?.successes != null && Number.isFinite(successes) ? successes : null,
     };
   });
 }

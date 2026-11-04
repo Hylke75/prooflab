@@ -320,6 +320,7 @@ export type RegisterItem = {
   direction: "supports" | "contradicts";
   level: EvidenceLevel;
   sourceLabel: string | null;
+  sourceKey: string | null; // evidenceSourceKey (interview:…, experiment:…); null zonder herkenbare bron
   fate: "counted" | "not_counted";
   code: RegisterReason | null; // reden bij not_counted
   notes: RegisterNote[]; // opmerkingen bij counted
@@ -358,12 +359,12 @@ function claimSkip(status: ClaimStatus, relation: "supports" | "contradicts", re
 }
 
 function registerEntry(
-  base: Pick<RegisterItem, "itemType" | "id" | "kind" | "label" | "direction" | "level" | "sourceLabel">,
+  base: Pick<RegisterItem, "itemType" | "id" | "kind" | "label" | "direction" | "level" | "sourceLabel"> & { sourceKey?: string | null },
   fate: RegisterItem["fate"],
   code: RegisterReason | null = null,
   reason: string | null = null,
 ): RegisterItem {
-  return { ...base, fate, code, notes: [], reason: reason ?? (code && code in REGISTER_REASON ? REGISTER_REASON[code as keyof typeof REGISTER_REASON] : null) };
+  return { ...base, sourceKey: base.sourceKey ?? null, fate, code, notes: [], reason: reason ?? (code && code in REGISTER_REASON ? REGISTER_REASON[code as keyof typeof REGISTER_REASON] : null) };
 }
 
 const NEUTRAL_TEXT = "verandert de kans niet (factor 1)";
@@ -464,13 +465,13 @@ export function assumptionProbability(
   };
   for (const c of claims) {
     const counts = add(`claim:${c.status}`, CLAIM_LR[c.status].label, CLAIM_LR[c.status], c.relation === "supports", 1);
-    const base = { itemType: "claim" as const, id: c.id ?? null, kind: c.status, label: CLAIM_LR[c.status].label, direction: c.relation, level: CLAIM_LEVEL, sourceLabel: c.sourceLabel ?? null };
+    const base = { itemType: "claim" as const, id: c.id ?? null, kind: c.status, label: CLAIM_LR[c.status].label, direction: c.relation, level: CLAIM_LEVEL, sourceLabel: c.sourceLabel ?? null, sourceKey: c.sourceKey ?? null };
     items.push(counts ? registerEntry(base, "counted") : registerEntry(base, "not_counted", claimSkip(c.status, c.relation, false)));
   }
   for (const o of observations) {
     const kind = (o.kind in OBSERVATION_LR ? o.kind : "other") as ObservationKind;
     const base = OBSERVATION_LR[o.kind as ObservationKind] ?? OBSERVATION_LR.other;
-    const reg = { itemType: "observation" as const, id: o.id ?? null, kind, label: base.label, direction: base.against ? ("contradicts" as const) : o.relation, level: KIND_LEVEL[kind], sourceLabel: o.sourceLabel ?? null };
+    const reg = { itemType: "observation" as const, id: o.id ?? null, kind, label: base.label, direction: base.against ? ("contradicts" as const) : o.relation, level: KIND_LEVEL[kind], sourceLabel: o.sourceLabel ?? null, sourceKey: o.sourceKey ?? null };
     if (o.isSynthetic) {
       ignored.synthetic++;
       items.push(registerEntry(reg, "not_counted", "synthetic"));
@@ -726,7 +727,7 @@ function probabilityCore(
     const refuted = opts.refutedCounts && c.status === "refuted";
     const entry = refuted && c.relation === "supports" ? REFUTED_LR : CLAIM_LR[c.status];
     const reg = registerEntry(
-      { itemType: "claim", id: c.id ?? null, kind: c.status, label: entry.label, direction: refuted ? "contradicts" : c.relation, level: CLAIM_LEVEL, sourceLabel: c.sourceLabel ?? null },
+      { itemType: "claim", id: c.id ?? null, kind: c.status, label: entry.label, direction: refuted ? "contradicts" : c.relation, level: CLAIM_LEVEL, sourceLabel: c.sourceLabel ?? null, sourceKey: c.sourceKey ?? null },
       "counted",
     );
     register.push(reg);
@@ -749,7 +750,7 @@ function probabilityCore(
     const kind = (o.kind in OBSERVATION_LR ? o.kind : "other") as ObservationKind;
     const base = OBSERVATION_LR[kind];
     const reg = registerEntry(
-      { itemType: "observation", id: o.id ?? null, kind, label: base.label, direction: base.against ? "contradicts" : o.relation, level: KIND_LEVEL[kind], sourceLabel: o.sourceLabel ?? null },
+      { itemType: "observation", id: o.id ?? null, kind, label: base.label, direction: base.against ? "contradicts" : o.relation, level: KIND_LEVEL[kind], sourceLabel: o.sourceLabel ?? null, sourceKey: o.sourceKey ?? null },
       "counted",
     );
     register.push(reg);
