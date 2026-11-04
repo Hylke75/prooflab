@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { SOURCE_PREFILL_EVENT, type SourcePrefill } from "./source-prefill";
+import { SOURCE_PREFILL_EVENT, SOURCE_TITLE_PARAM, type SourcePrefill } from "./source-prefill";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { checkQuote } from "@/lib/domain/verify";
 import { EVIDENCE_TYPES, SOURCE_TYPES } from "@/lib/domain/labels";
@@ -14,25 +14,48 @@ export function AddSourceForm({ action }: { action: Action }) {
   const typeRef = useRef<HTMLSelectElement>(null);
   const excerptRef = useRef<HTMLTextAreaElement>(null);
   const [prefilled, setPrefilled] = useState<string | null>(null);
+  const [fromDocument, setFromDocument] = useState(false);
   // Een kandidaat-bron uit het zoeklogboek: URL en titel invullen, het citaat plakt de gebruiker zelf.
+  // Een eigen document (stap Markt, "Gebruik als bron"): alleen de titel; ook dan plakt de gebruiker het fragment zelf.
   useEffect(() => {
-    const onPrefill = (e: Event) => {
-      const d = (e as CustomEvent<SourcePrefill>).detail;
-      if (!d?.url) return;
+    const apply = (d: SourcePrefill) => {
       if (titleRef.current) titleRef.current.value = d.title.slice(0, 300);
+      if (d.origin === "document") {
+        setFromDocument(true);
+        setPrefilled(null);
+        requestAnimationFrame(() => {
+          titleRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+          titleRef.current?.focus({ preventScroll: true });
+        });
+        return;
+      }
       if (urlRef.current) urlRef.current.value = d.url;
       if (typeRef.current) typeRef.current.value = "other";
+      setFromDocument(false);
       setPrefilled(d.url);
       requestAnimationFrame(() => {
         excerptRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
         excerptRef.current?.focus({ preventScroll: true });
       });
     };
+    const onPrefill = (e: Event) => {
+      const d = (e as CustomEvent<SourcePrefill>).detail;
+      if (d?.url || (d?.origin === "document" && d.title)) apply(d);
+    };
     window.addEventListener(SOURCE_PREFILL_EVENT, onPrefill);
+    // Vanaf een andere pagina (bijv. Bronnen & koppelingen) komt de titel via de querystring.
+    const fromUrl = new URL(window.location.href).searchParams.get(SOURCE_TITLE_PARAM);
+    if (fromUrl) apply({ url: "", title: fromUrl, origin: "document" });
     return () => window.removeEventListener(SOURCE_PREFILL_EVENT, onPrefill);
   }, []);
   return (
     <ActionForm action={action} submitLabel="Bron opslaan" resetOnSuccess>
+      {fromDocument && (
+        <div className="note" role="status" style={{ marginTop: 0 }}>
+          Titel overgenomen uit je document. Een document is geen bron vanzelf: kies het type bron, vul eventueel de URL of
+          vindplaats in en plak het relevante fragment letterlijk uit het document. ProofLab controleert daarna het citaat zoals bij elke bron.
+        </div>
+      )}
       {prefilled && (
         <div className="note" role="status" style={{ marginTop: 0 }}>
           Kandidaat-bron overgenomen. Open de pagina, kies het type bron en plak hieronder het relevante fragment letterlijk. Pas daarna kan een

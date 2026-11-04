@@ -1,0 +1,36 @@
+/* Blok "Notities en documenten" (components/steps/StepNotes.tsx). Zelfde tokens als de rest van de app. */
+.step-notes>details.quickline{display:block;padding:0;border:0}
+.step-notes>details>summary{flex-wrap:wrap}
+.step-notes-title{font-size:20px;line-height:28px}
+.step-notes-step{margin-right:auto}
+.step-notes-hint{margin:12px 0 20px}
+.step-notes-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px}
+.step-notes-sub{font-size:16px;line-height:24px;margin-bottom:10px}
+.step-notes-sub .step-notes-count{display:inline;font-weight:500;color:var(--color-text-muted);font-size:inherit}
+.step-notes-list{list-style:none;margin:0 0 12px;padding:0}
+.step-note,.step-doc{border-bottom:1px solid var(--color-border);padding:14px 0}
+.step-note:last-child,.step-doc:last-child{border-bottom:0}
+.step-note-title{font-size:16px;line-height:24px;font-weight:700}
+.step-note-meta{margin:2px 0 8px}
+.step-note-actions{margin-top:10px;gap:8px}
+.step-note-actions>div{display:contents}
+.note-body{font-size:15px;line-height:1.6;color:var(--color-text);overflow-wrap:anywhere}
+.note-body p+p,.note-body p+ul,.note-body p+ol,.note-body ul+p,.note-body ol+p{margin-top:8px}
+.note-body ul,.note-body ol{margin:6px 0 0 20px;padding:0}
+.note-body ul{list-style:disc}.note-body ol{list-style:decimal}
+.note-body li{display:list-item}
+.note-body .note-h{font-weight:700;font-family:var(--font-heading);color:var(--color-heading);margin:12px 0 4px;line-height:1.35}
+.note-body .note-h1{font-size:17px}.note-body .note-h2{font-size:16px}.note-body .note-h3{font-size:15px}
+.note-body .note-h:first-child{margin-top:0}
+.note-body .text-link{font-size:inherit;display:inline}
+.step-doc-main{display:flex;gap:12px;align-items:flex-start}
+.step-doc-ext{flex:none;min-width:44px;height:44px;padding:0 6px;border-radius:var(--radius-inner);background:var(--color-surface-soft);color:var(--color-primary);font-size:11px;font-weight:700;display:grid;place-items:center;letter-spacing:.04em}
+.step-doc-name{font-size:15px;overflow-wrap:anywhere;display:inline;min-height:44px}
+.step-doc-desc{font-size:14px;color:var(--color-text);margin-top:4px}
+.step-notes-add{margin-top:8px}
+.step-notes-add>summary{list-style:none;width:fit-content}
+.step-notes-add>summary::-webkit-details-marker{display:none}
+.step-notes-add[open]>summary{background:var(--color-surface-soft)}
+input[type=file].field{padding:10px 12px}
+@media(max-width:850px){.step-notes-grid{grid-template-columns:minmax(0,1fr);gap:20px}}
+@media print{.step-notes{display:none!important}}
