@@ -40,6 +40,9 @@ import { proposeLearning } from "@/lib/ai/learning";
 import { fictionSignals, fictionWarning } from "@/lib/domain/practice";
 import { coachSurveyDraft } from "@/lib/survey-coach";
 import { approvalChecks, decisive, isExploratory, studyFormatOf } from "@/lib/domain/customer-research";
+import { defaultedTestCardFields } from "@/lib/defaulted-test-card";
+import { withDefaultedFallback, withFields } from "@/lib/defaulted-fields";
+import { cleanDefaultedFields } from "@/lib/view-mode";
 
 export type ActionState = { error: string | null; ok?: string | null; warning?: string | null; fieldErrors?: Record<string, string> };
 
@@ -203,10 +206,21 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
     }
   }
 
+  // Fase 1 · punt 1: welke velden nog precies de standaardwaarde van ProofLab hebben (in Snel ingeklapt onder Details).
+  // Herkomst voor het auditspoor en de Test Card; de waarden zelf en de berekening veranderen er niet door.
+  const defaulted = cleanDefaultedFields(
+    "hypotheses",
+    defaultedTestCardFields({
+      type: v.type,
+      rule,
+      values: { ...v, fail_threshold_pct: v.fail_threshold_pct ?? null, expected_biases: v.expected_biases ?? null, success_threshold_pct: successPct, min_sample: minSample, max_duration_days: maxDays },
+      channels,
+      recruitmentGroup: v.recruitment_group ?? null,
+      requiredN,
+    }),
+  );
   const supabase = await supabaseServer();
-  const { data: h, error: hErr } = await supabase
-    .from("hypotheses")
-    .insert({
+  const hypothesis = {
       idea_id: ideaId,
       assumption_id: v.assumption_id,
       we_believe: v.we_believe,
@@ -228,9 +242,8 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       expected_pct: band ? band.expectedPct : null,
       available_per_week: rule ? (v.available_per_week ?? null) : null,
       required_n: band ? band.requiredN : null,
-    })
-    .select("id")
-    .single();
+  };
+  const { data: h, error: hErr } = await withDefaultedFallback((w) => supabase.from("hypotheses").insert(withFields(hypothesis, defaulted, w)).select("id").single());
   if (hErr || !h) return { error: `De Test Card kon niet worden opgeslagen (hypothese: ${hErr?.message ?? "onbekende fout"}). Probeer het opnieuw.` };
   const { data: exp, error } = await supabase
     .from("experiments")
@@ -474,7 +487,7 @@ export async function addInterview(ideaId: string, expId: string, _: ActionState
   if (intake.error && form.get("is_practice") === "real") fieldErrors.consent_recorded = intake.error;
   if (!p.success || Object.keys(fieldErrors).length) return { error: savedNothing("Het interview", fieldErrors), fieldErrors };
   if (!exp || exp.type !== "interview" || !["live", "paused"].includes(exp.state)) return { error: "Interviews voeg je toe terwijl het experiment loopt." };
-  const { error } = await supabase.from("interviews").insert({
+  const interview = {
     ...p.data,
     segment: p.data.segment || null,
     experiment_id: expId,
@@ -482,7 +495,10 @@ export async function addInterview(ideaId: string, expId: string, _: ActionState
     recruitment_group: intake.recruitment_group,
     is_acquaintance: intake.is_acquaintance,
     consent_recorded: intake.consent_recorded,
-  });
+  };
+  // Fase 1 · punt 1: zonder eigen keuze is de wervingsgroep afgeleid uit het kanaal (een standaardwaarde, in het auditspoor).
+  const defaulted = p.data.recruitment_group ? [] : ["recruitment_group"];
+  const { error } = await withDefaultedFallback((w) => supabase.from("interviews").insert(withFields(interview, defaulted, w)));
   if (error) return { error: "Het interview is niet opgeslagen. Probeer het opnieuw." };
   refresh(ideaId);
   // B0: een als echt aangegeven gesprek met woorden als "fictief" of "test": opgeslagen, maar controleer de keuze.

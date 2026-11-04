@@ -22,7 +22,10 @@ export function DecisionRuleCard({
   assumptions,
   experiments,
   canWrite,
+  compact = false,
 }: {
+  // Fase 1 · punt 1 (Snel): de regel blijft zichtbaar, de uitleg is één zin en het formulier staat ingeklapt.
+  compact?: boolean;
   ideaId: string;
   rule: DecisionRule | null;
   // primaryExperimentId: de hoofdtest van de aanname (golf A); alleen die kan de hoofdtest van de regel zijn.
@@ -42,10 +45,14 @@ export function DecisionRuleCard({
         <h2 className="as-h3">Beslisregel</h2>
         <LockPill rule={rule} />
       </div>
-      <p className="sub">
-        Leg vóór de eerste test vast wanneer je doorgaat: welke aannames boven welke kans moeten uitkomen en welke hoofdtest moet slagen. Bij het besluit toont
-        ProofLab per voorwaarde of die is gehaald. Wie daarvan afwijkt, motiveert dat; de motivering staat in het auditspoor en in het rapport.
-      </p>
+      {compact ? (
+        <p className="sub">Leg vóór de eerste test vast wanneer je doorgaat. Afwijken kan alleen met een motivering.</p>
+      ) : (
+        <p className="sub">
+          Leg vóór de eerste test vast wanneer je doorgaat: welke aannames boven welke kans moeten uitkomen en welke hoofdtest moet slagen. Bij het besluit toont
+          ProofLab per voorwaarde of die is gehaald. Wie daarvan afwijkt, motiveert dat; de motivering staat in het auditspoor en in het rapport.
+        </p>
+      )}
       {rule && (
         <>
           <p className="mt-12"><strong>{describeRule(rule, primaryTitle)}</strong></p>
@@ -68,7 +75,7 @@ export function DecisionRuleCard({
         </>
       )}
       {canWrite && !rule?.lockedAt && (
-        <details className="mt-12" open={!rule}>
+        <details className="mt-12" open={!rule && !compact}>
           <summary className="text-link">{rule ? "Regel aanpassen" : "Leg de beslisregel vast"}</summary>
           <ActionForm action={saveDecisionRule.bind(null, ideaId)} submitLabel="Beslisregel vastleggen">
             <fieldset style={{ border: 0, padding: 0, margin: "12px 0 0" }}>

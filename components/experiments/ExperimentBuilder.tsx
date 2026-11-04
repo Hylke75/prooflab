@@ -36,6 +36,9 @@ import { templateSurvey, type SurveyConfig } from "@/lib/domain/survey";
 import { metricFromKey, surveyErrors } from "@/lib/domain/survey-editor";
 import { assumptionKind, assumptionKindLabel, interviewGuideFor, metricFitsAssumption, type AssumptionKind } from "@/lib/domain/assumption-kind";
 import { experimentTitle } from "@/lib/domain/truncate";
+import { MoreInThorough, useViewMode } from "@/components/shell/ViewMode";
+import { defaultedTestCardFields } from "@/lib/defaulted-test-card";
+import { defaultedLabels } from "@/lib/view-mode";
 
 type VariantsResult = { error: string | null; variants: PreparedVariant[]; draftNotes: string[]; draftWarnings: string[] };
 type VariantsAction = (input: { assumption_id: string; type: "landing" | "pricing"; headline: string; subline: string; offer: string }) => Promise<VariantsResult>;
@@ -118,6 +121,8 @@ export function ExperimentBuilder({
   audience: string;
   action: Action;
 }) {
+  // Fase 1 · punt 1: in Snel staat het rekenwerk ("Hoe is dit berekend?") in Grondig; de berekening zelf is gelijk.
+  const quick = useViewMode().level === "quick";
   const [assumptionId, setAssumptionId] = useState(initialAssumption);
   const assumption = assumptions.find((a) => a.id === assumptionId) ?? assumptions[0];
   const [tier, setTier] = useState(() => Math.max(0, options.findIndex((o) => o.type === initialType)));
@@ -342,6 +347,19 @@ export function ExperimentBuilder({
   // B1: verplichte velden dragen aria-required, ook zonder fout.
   const aria = (f: string) => ({ "aria-required": REQUIRED_FIELDS.has(f) || undefined, ...(shown[f] ? { "aria-invalid": true as const, "aria-describedby": `err-${f}` } : {}) });
   const reachN = Number(reach) || 0;
+  // Fase 1 · punt 1: velden die nog precies de standaardwaarde hebben. Ze staan grotendeels dicht onder Details; vóór
+  // opslaan staat hier welke dat zijn, zodat niets stil op de standaard blijft (ook in het auditspoor).
+  const defaultedNow = defaultedLabels(
+    "hypotheses",
+    defaultedTestCardFields({
+      type,
+      rule: v2 ? activeRule : null,
+      values: { ...card, min_sample: card.min_sample, max_duration_days: card.max_duration_days },
+      channels,
+      recruitmentGroup: recruitment || null,
+      requiredN: v2 && activeRule !== "absolute" ? (band?.requiredN ?? null) : null,
+    }),
+  );
   const set = (k: keyof typeof card, v: string) => setCard((c) => ({ ...c, [k]: v }));
 
   return (
@@ -509,6 +527,7 @@ export function ExperimentBuilder({
                 <p className="tc-need">Met dit testtype is de drempel niet aantoonbaar te halen. Opslaan als concept kan; goedkeuren niet.</p>
               )}
               {band.advice && <div className="form-error" role="status">{band.advice}</div>}
+              {quick ? <MoreInThorough /> : (
               <details className="mt-8">
                 <summary className="text-link">Hoe is dit berekend?</summary>
                 <div className="note" style={{ marginTop: 8 }}>
@@ -542,6 +561,7 @@ export function ExperimentBuilder({
                   )}
                 </div>
               </details>
+              )}
             </div>
           )}
           <div className="double-field">
@@ -735,6 +755,15 @@ export function ExperimentBuilder({
             </>
           )}
           </details>
+          {defaultedNow.length > 0 && (
+            <div className="note" id="tc-defaults" role="status">
+              <strong>Standaardwaarden van ProofLab:</strong> {defaultedNow.join(", ")}. Controleer ze{" "}
+              <button type="button" className="text-link" onClick={() => { setDetailsOpen(true); requestAnimationFrame(() => document.getElementById("tc-details")?.scrollIntoView({ block: "start", behavior: "smooth" })); }}>
+                onder Details
+              </button>{" "}
+              of laat ze staan; bij opslaan komt in het auditspoor dat ze standaard zijn ingevuld.
+            </div>
+          )}
           <div className="note">Je legt deze criteria vast vóór de test. Na goedkeuring zijn ze vergrendeld; wijzigen kan alleen met een nieuwe versie en een motivering.</div>
           <div className="tc-save" id="tc-save">
             {errs.length > 0 && (

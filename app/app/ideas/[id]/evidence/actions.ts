@@ -26,6 +26,7 @@ import { EXTEND_MAX_WEEKS, EXTEND_MIN_WEEKS, extensionBlocker, nlDay, planTestMo
 import { againstFor } from "@/lib/against-data";
 import { isConclusiveDecision } from "@/lib/domain/dossier-status";
 import { DECISIONS } from "@/lib/domain/labels";
+import { assumptionDefaults, withDefaultedFallback, withFields } from "@/lib/defaulted-fields";
 
 import { fieldErrorsFrom, savedNothing } from "@/lib/domain/form-errors";
 
@@ -155,7 +156,8 @@ export async function addPremortem(ideaId: string, _: ActionState, form: FormDat
   }
   if (reasons.length === 0) return { error: "Vul minstens één reden in." };
   const supabase = await supabaseServer();
-  const { error } = await supabase.from("assumptions").insert(reasons.map((r) => ({ ...r, idea_id: ideaId, origin: "premortem" })));
+  const rows = reasons.map((r) => ({ ...r, idea_id: ideaId, origin: "premortem" }));
+  const { error } = await withDefaultedFallback((w) => supabase.from("assumptions").insert(rows.map((r) => withFields(r, assumptionDefaults(r), w))));
   if (error) return { error: "De pre-mortem kon niet worden opgeslagen." };
   refresh(ideaId);
   return { error: null, ok: `${reasons.length} reden(en) staan nu als aanname op de risicokaart. Voer de Reality Check opnieuw uit.` };

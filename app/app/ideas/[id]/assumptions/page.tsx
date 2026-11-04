@@ -5,7 +5,8 @@ import { PageFrame } from "@/components/shell/PageFrame";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { RiskBoard, type BoardAssumption } from "@/components/assumptions/RiskBoard";
 import { RedTeamButton } from "@/components/assumptions/RedTeamButton";
-import { getIdea } from "@/lib/data";
+import { getIdea, getViewMode } from "@/lib/data";
+import { Detail } from "@/components/shell/ViewMode";
 import { audienceExample } from "@/lib/research-questions";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadInformationValue, loadProgress } from "@/lib/progress";
@@ -92,6 +93,8 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
   const selectParam = (await searchParams).select;
   const select = typeof selectParam === "string" && /^[0-9a-f-]{36}$/i.test(selectParam) ? selectParam : null;
   const { idea, canWrite } = await getIdea(id);
+  // Fase 1 · punt 1: in Snel geen rekenuitleg, red team of soortkeuze; de kansen en de rangorde zijn gelijk.
+  const quick = (await getViewMode(id)) === "quick";
   // Gebruikerstest D11: voorbeeld met de korte doelgroep van dit dossier, anders neutraal.
   const who = audienceExample(idea);
   const supabase = await supabaseServer();
@@ -211,7 +214,11 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
         </div>
       )}
 
-      {!lock && <RedTeamButton ideaId={id} assumptions={board} canWrite={canWrite} />}
+      {!lock && (
+        <Detail>
+          <RedTeamButton ideaId={id} assumptions={board} canWrite={canWrite} />
+        </Detail>
+      )}
       {rule !== undefined && (
         <DecisionRuleCard
           ideaId={id}
@@ -219,9 +226,19 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
           assumptions={ranked.map((a) => ({ id: a.id, statement: a.statement, importance: a.importance, primaryExperimentId: a.primaryExperimentId, selectedForTest: !!a.selectedForTest }))}
           experiments={experiments ?? []}
           canWrite={canWrite}
+          compact={quick}
         />
       )}
-      {board.length > 0 && !lock && <HowWeCalculate weights={weights.inUse} method={method} caps={caps.caps} />}
+      {board.length > 0 && !lock && (
+        <Detail hint={false}>
+          <HowWeCalculate weights={weights.inUse} method={method} caps={caps.caps} />
+        </Detail>
+      )}
+      {board.length > 0 && !lock && quick && (
+        <p className="tiny mt-18">
+          <Link className="text-link" href={`/app/ideas/${id}/method`}>Hoe rekent ProofLab de kans uit? →</Link>
+        </p>
+      )}
 
       {canWrite && (
         <div className="card mt-18">

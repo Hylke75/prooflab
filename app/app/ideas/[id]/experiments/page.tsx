@@ -3,7 +3,8 @@ import { asMethodVersion } from "@/lib/domain/method";
 import Link from "next/link";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { ExperimentBuilder } from "@/components/experiments/ExperimentBuilder";
-import { getIdea, getWorkspace } from "@/lib/data";
+import { getIdea, getViewMode, getWorkspace } from "@/lib/data";
+import { MoreInThorough } from "@/components/shell/ViewMode";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadInformationValue } from "@/lib/progress";
 import { priorsByType } from "@/lib/experiment-metrics";
@@ -32,6 +33,8 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
   const { id } = await params;
   const sp = await searchParams;
   const { idea, canWrite } = await getIdea(id);
+  // Fase 1 · punt 1: in Snel één test per aanname op het bord (de hoofdtest, anders de nieuwste); de rest in Grondig.
+  const quick = (await getViewMode(id)) === "quick";
   const ws = await getWorkspace();
   const supabase = await supabaseServer();
   // Ordered by information value (research 3.9): the default suggestion is the test that can change the decision most per euro and week.
@@ -53,6 +56,23 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
   // Hoofdtest per aanname (golf A, punt 11): de rest is verkennend.
   const primaries = assumptions.map((a) => ({ id: a.id, primary_experiment_id: a.primaryExperimentId }));
   const stateOf = (expId: string | null) => (experiments ?? []).find((e) => e.id === expId)?.state ?? null;
+  const onBoard = (() => {
+    const all = experiments ?? [];
+    if (!quick) return all;
+    const seen = new Set<string>();
+    const primaryIds = new Set(primaries.map((p) => p.primary_experiment_id).filter(Boolean));
+    // Eerst de hoofdtests, daarna de nieuwste per aanname; het zojuist opgeslagen concept blijft altijd zichtbaar.
+    const ordered = [...all.filter((e) => primaryIds.has(e.id)), ...all.filter((e) => !primaryIds.has(e.id))];
+    const keep = new Set<string>();
+    for (const e of ordered) {
+      const key = e.hypotheses?.assumption_id ?? e.id;
+      if (seen.has(key) && e.id !== savedId) continue;
+      seen.add(key);
+      keep.add(e.id);
+    }
+    return all.filter((e) => keep.has(e.id));
+  })();
+  const hiddenTests = (experiments ?? []).length - onBoard.length;
   const rec = selected
     ? recommend({ category: selected.category as AssumptionCategory, evidence: selected.evidence, hasDiscoveryEvidence: interviewObs > 0 })
     : null;
@@ -90,7 +110,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           <Link className="text-link" href={`/app/ideas/${id}/experiments/${saved.id}`}>Open het concept →</Link>
         </div>
       )}
-      {goProposal && <GoRuleProposalCard ideaId={id} proposal={goProposal} />}
+      {goProposal && <GoRuleProposalCard ideaId={id} proposal={goProposal} compact={quick} />}
       {saved && rule && rule.primaryExperimentId === saved.id && (
         <p className="form-ok" role="status" id="go-regel-vast">
           <strong>Go-regel vastgelegd.</strong> {describeRule(rule, saved.title)}
@@ -101,7 +121,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           {COLUMNS.map((col) => (
             <div key={col.label} className="card tight">
               <div className="tiny" style={{ fontWeight: 600 }}>{col.label}</div>
-              {(experiments ?? []).filter((e) => col.states.includes(e.state as ExperimentState)).map((e) => (
+              {onBoard.filter((e) => col.states.includes(e.state as ExperimentState)).map((e) => (
                 <Link
                   key={e.id}
                   href={`/app/ideas/${id}/experiments/${e.id}`}
@@ -119,6 +139,12 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
             </div>
           ))}
         </div>
+      )}
+      {hiddenTests > 0 && (
+        <p className="tiny" style={{ marginTop: -12, marginBottom: 20 }}>
+          {hiddenTests === 1 ? "1 andere test staat" : `${hiddenTests} andere tests staan`} niet op het bord (één test per aanname in Snel).
+          <MoreInThorough />
+        </p>
       )}
 
       {assumptions.length > 0 && (

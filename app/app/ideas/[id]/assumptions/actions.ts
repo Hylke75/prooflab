@@ -16,6 +16,7 @@ import { deskVerdict, DESK_SKIP_REASON } from "@/lib/domain/evidence";
 import { CLAIM_STATUS, type ClaimStatus } from "@/lib/domain/labels";
 import { METHODS } from "@/lib/domain/method";
 import { ideaMethodVersion } from "@/lib/method-data";
+import { assumptionDefaults, withDefaultedFallback, withFields } from "@/lib/defaulted-fields";
 
 export type ActionState = { error: string | null; ok?: string | null };
 
@@ -38,7 +39,9 @@ export async function addAssumption(ideaId: string, _: ActionState, form: FormDa
   const p = Schema.safeParse(Object.fromEntries(form));
   if (!p.success) return { error: p.error.issues[0].message };
   const supabase = await supabaseServer();
-  const { error } = await supabase.from("assumptions").insert({ ...p.data, idea_id: ideaId, origin: "manual" });
+  // Fase 1 · punt 1: de startkans van 50% is een standaardwaarde; dat staat in defaulted_fields (en het auditspoor).
+  const row = { ...p.data, idea_id: ideaId, origin: "manual" };
+  const { error } = await withDefaultedFallback((w) => supabase.from("assumptions").insert(withFields(row, assumptionDefaults(row), w)));
   if (error) return { error: "Opslaan mislukt." };
   refresh(ideaId);
   return { error: null, ok: "Aanname toegevoegd." };
@@ -100,6 +103,8 @@ export async function setPrior(ideaId: string, assumptionId: string, _: ActionSt
   if (problem) return { error: problem };
   const { error } = await supabase.rpc("change_assumption_prior", { p_assumption: assumptionId, p_prior: prior, p_rationale: rationale, p_reason: reason });
   if (error) return { error: priorDbError(error.message) };
+  // Fase 1 · punt 1: de startkans is nu door een mens gekozen, niet meer de standaardwaarde (fout = kolom ontbreekt nog).
+  await supabase.from("assumptions").update({ defaulted_fields: [] }).eq("id", assumptionId).eq("idea_id", ideaId);
   refresh(ideaId);
   return { error: null, ok: a.prior_locked_at ? "Startkans gewijzigd; de reden staat in het auditspoor." : "Startkans opgeslagen." };
 }
@@ -150,14 +155,16 @@ export async function seedAssumptions(ideaId: string, _: ActionState): Promise<A
       const res = await runAi(ideaId, "assumptions", (p) =>
         suggestAssumptions(ideaContext(idea), (claims ?? []).map((c) => `${c.statement} [${statusLabel(c.status)}]`), p),
       );
-      await supabase.from("assumptions").insert(res.data.assumptions.map((a) => ({ ...a, idea_id: ideaId, origin: "ai" })));
+      const rows = res.data.assumptions.map((a) => ({ ...a, idea_id: ideaId, origin: "ai" }));
+      await withDefaultedFallback((w) => supabase.from("assumptions").insert(rows.map((r) => withFields(r, assumptionDefaults(r), w))));
       refresh(ideaId);
       return { error: null, ok: `${res.data.assumptions.length} aannames voorgesteld. Pas aan of verwijder wat niet klopt.` };
     } catch {
       // Logged by runAi; fall back to the template below.
     }
   }
-  await supabase.from("assumptions").insert(TEMPLATE_ASSUMPTIONS.map((a) => ({ ...a, idea_id: ideaId, origin: "template" })));
+  const rows = TEMPLATE_ASSUMPTIONS.map((a) => ({ ...a, idea_id: ideaId, origin: "template" }));
+  await withDefaultedFallback((w) => supabase.from("assumptions").insert(rows.map((r) => withFields(r, assumptionDefaults(r), w))));
   refresh(ideaId);
   return { error: null, ok: "Standaardaannames toegevoegd. Maak ze specifiek voor dit idee." };
 }

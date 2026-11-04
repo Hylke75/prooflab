@@ -42,6 +42,7 @@ import { TestCardStatus } from "@/components/experiments/TestCardStatus";
 import { deadlineFromDays, isoDay } from "@/lib/domain/test-card";
 import { decisive, isExploratory } from "@/lib/domain/customer-research";
 import { StudyView } from "./StudyView";
+import { defaultedLabels } from "@/lib/view-mode";
 
 export const metadata: Metadata = { title: "Experiment" };
 
@@ -278,6 +279,13 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                   : "Niet vastgelegd (telt als onbekend)"}
             </strong>
           </div>
+          {/* Fase 1 · punt 1: velden die bij het opslaan nog de standaardwaarde van ProofLab hadden (ook in het auditspoor). */}
+          {defaultedLabels("hypotheses", (h as { defaulted_fields?: unknown }).defaulted_fields).length > 0 && (
+            <div className="data-row" id="tc-standaardwaarden">
+              <span>Standaardwaarden van ProofLab</span>
+              <strong style={{ textAlign: "right" }}>{defaultedLabels("hypotheses", (h as { defaulted_fields?: unknown }).defaulted_fields).join(", ")}</strong>
+            </div>
+          )}
           {surveyDraft && (
             <div className="data-row">
               <span>Enquête</span>

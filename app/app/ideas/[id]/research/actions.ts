@@ -6,6 +6,7 @@ import { questionDraftText } from "@/lib/domain/ai-draft";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { requireWritableIdea } from "@/lib/data";
+import { assumptionDefaults, withDefaultedFallback, withFields } from "@/lib/defaulted-fields";
 import { contentHash, recomputeClaim } from "@/lib/claims";
 import { ClaimFieldsSchema, insertClaimWithQuote } from "@/lib/claim-insert";
 import { fetchPageText } from "@/lib/fetch-page";
@@ -860,9 +861,8 @@ export async function assumptionFromSignal(ideaId: string, signalId: string, _: 
   const statement = painAsAssumption(sig.label, idea.target_audience);
   const { data: existing } = await supabase.from("assumptions").select("id").eq("idea_id", ideaId).eq("statement", statement).limit(1);
   if (existing?.length) return { error: "Deze aanname bestaat al." };
-  const { error } = await supabase
-    .from("assumptions")
-    .insert({ idea_id: ideaId, statement, category: "desirability", importance: 4, origin: sig.origin === "ai" ? "ai" : "manual" });
+  const row = { idea_id: ideaId, statement, category: "desirability", importance: 4, origin: sig.origin === "ai" ? "ai" : "manual" };
+  const { error } = await withDefaultedFallback((w) => supabase.from("assumptions").insert(withFields(row, assumptionDefaults(row), w)));
   if (error) return { error: "De aanname kon niet worden gemaakt." };
   return done(ideaId, "Aanname gemaakt. Scherp hem aan op de pagina Aannames en toets hem met klantinterviews.");
 }
