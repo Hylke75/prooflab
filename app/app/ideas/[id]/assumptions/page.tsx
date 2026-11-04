@@ -17,7 +17,8 @@ import { ASSUMPTION_CATEGORIES, type AssumptionCategory, type AssumptionStatus }
 import { asMethodVersion, CURRENT_METHOD, METHODS, type MethodVersion } from "@/lib/domain/method";
 import { EVIDENCE_LEVELS, type EvidenceCaps } from "@/lib/domain/evidence";
 import { loadCalibration, loadIdeaCaps } from "@/lib/method-data";
-import { addAssumption, deleteAssumption, linkClaim, seedAssumptions, setImportance, setPrior, unlinkClaim } from "./actions";
+import { addAssumption, deleteAssumption, linkClaim, seedAssumptions, setImportance, setKind, setPrior, setSelectedForTest, unlinkClaim } from "./actions";
+import { assumptionKind, ASSUMPTION_KINDS } from "@/lib/domain/assumption-kind";
 import { DecisionRuleCard } from "@/components/decision/DecisionRule";
 import { loadDecisionRule } from "@/lib/decision-rule-data";
 import { forecastFirstLock } from "@/lib/domain/forecast";
@@ -87,7 +88,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
   const { idea, canWrite } = await getIdea(id);
   const supabase = await supabaseServer();
   const method = asMethodVersion(idea.method_version);
-  const [ranked, progress, { data: claims }, { data: links }, weights, caps, calibration, rule, { data: experiments }] = await Promise.all([
+  const [ranked, progress, { data: claims }, { data: links }, weights, caps, calibration, rule, { data: experiments }, selectionColumn] = await Promise.all([
     loadInformationValue(id),
     loadProgress(id),
     supabase.from("claims").select("id, statement, status").eq("idea_id", id).order("created_at"),
@@ -97,14 +98,21 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
     loadCalibration(id),
     loadDecisionRule(id),
     supabase.from("experiments").select("id, title").eq("idea_id", id).order("created_at"),
+    // Fase B4: kiezen kan pas als de kolom selected_for_test bestaat (migratie 20261110140000).
+    supabase.from("assumptions").select("selected_for_test").eq("idea_id", id).limit(1),
   ]);
   const board: BoardAssumption[] = ranked.map((a) => ({
     ...a,
     category: a.category as AssumptionCategory,
     status: a.status as AssumptionStatus,
+    kind: assumptionKind(a),
+    kindStored: !!a.kind && a.kind in ASSUMPTION_KINDS,
+    selectedForTest: !!a.selectedForTest,
     claims: (links ?? []).filter((l) => l.assumption_id === a.id).map((l) => ({ id: l.claim_id, relation: l.relation, statement: l.claims?.statement ?? "", status: l.claims?.status ?? "" })),
   }));
   const lock = forecastFirstLock(progress);
+  // De knop bovenaan opent de eerste gekozen aanname, anders de hoogste in de rangorde.
+  const first = board.find((a) => a.selectedForTest) ?? board[0];
   const missing = (Object.keys(ASSUMPTION_CATEGORIES) as AssumptionCategory[]).filter((c) => !board.some((a) => a.category === c));
   const usable = (claims ?? []).filter((c) => c.status !== "insufficient");
 
@@ -116,7 +124,7 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
           <h1>Wat moet waar zijn?</h1>
           <p className="sub">Een idee is een verzameling aannames. Begin bij de aannames die het belangrijkst zijn en waarover je nog het minst weet.</p>
         </div>
-        <Link className="btn primary" href={`/app/ideas/${id}/experiments${board[0] ? `?assumption=${board[0].id}` : ""}`}>
+        <Link className="btn primary" href={`/app/ideas/${id}/experiments${first ? `?assumption=${first.id}` : ""}`}>
           Ontwerp een test <Icon name="arrow" size="sm" />
         </Link>
       </div>
@@ -155,6 +163,9 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
           importanceActions={Object.fromEntries(board.map((a) => [a.id, setImportance.bind(null, id, a.id)]))}
           priorActions={Object.fromEntries(board.map((a) => [a.id, setPrior.bind(null, id, a.id)]))}
           deleteActions={Object.fromEntries(board.map((a) => [a.id, deleteAssumption.bind(null, id, a.id)]))}
+          kindActions={Object.fromEntries(board.map((a) => [a.id, setKind.bind(null, id, a.id)]))}
+          selectActions={Object.fromEntries(board.map((a) => [a.id, setSelectedForTest.bind(null, id, a.id, !a.selectedForTest)]))}
+          selectionAvailable={!selectionColumn.error}
         />
       )}
 

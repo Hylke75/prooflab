@@ -6,7 +6,8 @@ import { layoutRiskPoints } from "@/lib/domain/risk-layout";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { ASSUMPTION_CATEGORIES, ASSUMPTION_STATUS, type AssumptionCategory, type AssumptionStatus } from "@/lib/domain/labels";
 import { applyCap, bandFromShift, capReason, explainContribution, explainMerged, probabilityFromShift, type AssumptionProbability } from "@/lib/domain/evidence";
-import type { VoiResult } from "@/lib/domain/recommend";
+import { MAX_SELECTED_FOR_TEST, splitBySelection, type VoiResult } from "@/lib/domain/recommend";
+import { ASSUMPTION_KINDS, type AssumptionKind } from "@/lib/domain/assumption-kind";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 import { Probability } from "@/components/ui/Probability";
 import { formatProbability } from "@/lib/domain/probability-display";
@@ -31,6 +32,10 @@ export type BoardAssumption = {
   claims: { id: string; statement: string; relation: string; status: string }[];
   // Fase B0, punt 4: tests die niet meetellen in kans en rangorde (onbeslist of onder de minimale steekproef).
   excludedTests?: { experimentId: string; title: string; text: string }[];
+  // Fase B4: de soort (vastgelegd of afgeleid) en of de consultant hem koos om nu te testen.
+  kind: AssumptionKind;
+  kindStored: boolean;
+  selectedForTest: boolean;
 };
 
 type Action = (s: FormState, f: FormData) => Promise<FormState>;
@@ -53,8 +58,15 @@ export function RiskBoard({
   importanceActions,
   priorActions,
   deleteActions,
+  kindActions = {},
+  selectActions = {},
+  selectionAvailable = true,
   calibrated = false,
 }: {
+  kindActions?: Record<string, Action>;
+  selectActions?: Record<string, Action>;
+  // False zolang de migratie voor fase B4 niet is toegepast: dan kan er (nog) niet gekozen worden.
+  selectionAvailable?: boolean;
   calibrated?: boolean;
   ideaId: string;
   assumptions: BoardAssumption[];
@@ -97,6 +109,17 @@ export function RiskBoard({
   }, [cluster]);
 
   if (!current) return null;
+  const rank = new Map(assumptions.map((a, i) => [a.id, i + 1]));
+  const { now: chosen, later } = splitBySelection(assumptions);
+  const item = (a: BoardAssumption) => (
+    <button type="button" className={`assumption-item${a.id === current.id ? " active" : ""}`} onClick={() => select(a.id)} aria-pressed={a.id === current.id}>
+      <span className="count">{rank.get(a.id)}</span>
+      <span>{a.statement}</span>
+      <small>
+        {ASSUMPTION_KINDS[a.kind].label} · {a.voi.test.external ? "technische proef" : a.voi.test.label}
+      </small>
+    </button>
+  );
   // Centre stays at least 46px (horizontal) / 50px (vertical) from the frame, so a spread dot never leaves it.
   const pos = (x: number, y: number, dx = 0, dy = 0) => ({
     left: `calc(clamp(46px, ${x.toFixed(2)}%, calc(100% - 46px)) + ${dx}px)`,
@@ -186,20 +209,25 @@ export function RiskBoard({
       <div className="card">
         <div className="section-title">
           <h2 className="as-h3">Prioriteiten</h2>
-          <span className="pill gray">Op informatiewaarde</span>
+          <span className="pill gray">{chosen.length} van {MAX_SELECTED_FOR_TEST} gekozen</span>
         </div>
         <p className="tiny" style={{ marginTop: -8, marginBottom: 8 }}>
-          Bovenaan staat wat een test het meest kan laten veranderen aan het besluit, per euro en week. Score 100 = de hoogste in dit dossier.
+          Bovenaan staat wat een test het meest kan laten veranderen aan het besluit, voor de minste tijd en kosten. Kies maximaal {MAX_SELECTED_FOR_TEST} aannames om nu te testen; de rest blijft hier staan voor later.
         </p>
-        {assumptions.map((a, i) => (
-          <button key={a.id} type="button" className={`assumption-item${a.id === current.id ? " active" : ""}`} onClick={() => select(a.id)} aria-pressed={a.id === current.id}>
-            <span className="count">{i + 1}</span>
-            <span>{a.statement}</span>
-            <small aria-label={`Informatiewaarde ${a.voi.index} van 100, geschatte kans ${formatProbability(a.probability.probability, calibrated).text}${calibrated ? "" : " (niet gekalibreerd)"}${a.probability.cap?.active ? ", begrensd" : ""}`}>
-              {formatProbability(a.probability.probability, calibrated).text}{a.probability.cap?.active ? " (begrensd)" : ""} · IW {a.voi.index}
-            </small>
-          </button>
-        ))}
+        {chosen.length > 0 && (
+          <>
+            <div className="eyebrow" id="nu-testen">Nu testen</div>
+            <ul aria-labelledby="nu-testen" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+              {chosen.map((a) => <li key={a.id}>{item(a)}</li>)}
+            </ul>
+          </>
+        )}
+        <div className="eyebrow" id="later-testen" style={{ marginTop: chosen.length > 0 ? 14 : 0 }}>
+          {chosen.length > 0 ? "Later" : "Rangorde (nog niets gekozen)"}
+        </div>
+        <ul aria-labelledby="later-testen" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          {later.map((a) => <li key={a.id}>{item(a)}</li>)}
+        </ul>
         <div className="divider" />
         <div className="eyebrow">Geselecteerde aanname</div>
         <h3 style={{ margin: "6px 0 10px" }}>{current.statement}</h3>
@@ -210,9 +238,46 @@ export function RiskBoard({
           <span className="pill gray">Bewijsscore {Math.round(current.evidence * 100)} van 100</span>
         </div>
         <ProbabilityDetail key={current.id} a={current} prior={prior} setPrior={setPrior} save={canWrite ? priorActions[current.id] : undefined} calibrated={calibrated} />
-        <p className="sub mt-12">
-          <strong>Waarom nu testen (informatiewaarde {current.voi.index} van 100):</strong> {current.voi.why}
-        </p>
+        <p className="sub mt-12" data-testid="rangorde-reden">{current.voi.reason}</p>
+        <details className="mt-8">
+          <summary className="text-link">Score en berekening</summary>
+          <p className="tiny mt-8">
+            Informatiewaarde (IW) {current.voi.index} van 100 (100 = de hoogste in dit dossier; de rangorde gebruikt de onafgeronde score).
+            Geschatte kans {formatProbability(current.probability.probability, calibrated).text}
+            {calibrated ? "" : " (niet gekalibreerd)"}
+            {current.probability.cap?.active ? " (begrensd)" : ""}. {current.voi.why}
+          </p>
+        </details>
+        <div className="row mt-12">
+          <span className="pill blue">Soort: {ASSUMPTION_KINDS[current.kind].label}{current.kindStored ? "" : " (afgeleid uit de tekst)"}</span>
+          {current.selectedForTest ? <span className="pill green">Gekozen om nu te testen</span> : <span className="pill gray">Later</span>}
+        </div>
+        {canWrite && kindActions[current.id] && (
+          <ActionForm key={`kind-${current.id}`} action={kindActions[current.id]} submitLabel="Soort opslaan" submitClass="btn white sm" className="mt-8">
+            <label className="tiny" htmlFor={`kind-${current.id}`}>Soort aanname (bepaalt de passende test)</label>
+            <select className="field mt-8" id={`kind-${current.id}`} name="kind" defaultValue={current.kindStored ? current.kind : ""} style={{ maxWidth: 260 }}>
+              <option value="">Afleiden uit de tekst ({ASSUMPTION_KINDS[current.kind].label})</option>
+              {(Object.keys(ASSUMPTION_KINDS) as AssumptionKind[]).map((k) => <option key={k} value={k}>{ASSUMPTION_KINDS[k].label}</option>)}
+            </select>
+          </ActionForm>
+        )}
+        {canWrite && selectionAvailable && selectActions[current.id] && (
+          <ActionForm
+            key={`sel-${current.id}`}
+            action={selectActions[current.id]}
+            submitLabel={current.selectedForTest ? "Zet op later" : "Kies om nu te testen"}
+            submitClass={current.selectedForTest ? "btn white sm" : "btn primary sm"}
+            className="mt-8"
+            disabled={!current.selectedForTest && chosen.length >= MAX_SELECTED_FOR_TEST}
+            describedBy={!current.selectedForTest && chosen.length >= MAX_SELECTED_FOR_TEST ? `sel-full-${current.id}` : undefined}
+          >
+            {!current.selectedForTest && chosen.length >= MAX_SELECTED_FOR_TEST ? (
+              <p className="tiny" id={`sel-full-${current.id}`}>Je hebt al {MAX_SELECTED_FOR_TEST} aannames gekozen. Zet er eerst één op later.</p>
+            ) : (
+              <span />
+            )}
+          </ActionForm>
+        )}
         <p className="sub mt-12">
           {current.supporting} ondersteunend en {current.contradicting} tegensprekend bewijs gekoppeld (waarnemingen per persoon geteld).
           {current.probability.counted === 0 ? " We weten hier nog weinig van." : ""}

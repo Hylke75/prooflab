@@ -8,6 +8,8 @@ import { excludedTests, experimentFromSourceKey, isStarted, testOutcomesFrom, wi
 import { ideaMethodVersion, loadIdeaCaps, loadSourceRefs } from "@/lib/method-data";
 import type { AssumptionCategory, ClaimStatus } from "@/lib/domain/labels";
 import { rankByInformationValue, type VoiResult } from "@/lib/domain/recommend";
+import { assumptionKind } from "@/lib/domain/assumption-kind";
+import { pickDecisiveQuestion, relatesToDecisive, type QuestionRow } from "@/lib/domain/decisive-question";
 import type { IdeaProgress } from "@/lib/domain/coach";
 import { getUser } from "@/lib/data";
 import { testsWithVerdict } from "@/lib/domain/dossier-status";
@@ -39,6 +41,8 @@ export type AssumptionWithEvidence = {
   kind?: string | null;
   // Fase B0, punt 4: gestarte tests van deze aanname die niet meetellen in kans en rangorde, met de reden.
   excludedTests: TestExclusion[];
+  // Fase B4: door de consultant gekozen om nu te testen (maximaal 3 per idee); de rest staat op "later".
+  selectedForTest?: boolean;
 };
 
 type ObsLink = {
@@ -226,6 +230,8 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
       priorLocked: !!a.prior_locked_at,
       primaryExperimentId: a.primary_experiment_id ?? null,
       kind: a.kind ?? null,
+      // Fase B4: de kolom bestaat pas na migratie 20261110100000; zonder kolom is niets gekozen.
+      selectedForTest: a.selected_for_test === true,
       excludedTests: inputs.tests
         .filter((t) => t.assumptionId === a.id && isStarted(t.state))
         .map((t) => excluded.get(t.experimentId))
@@ -261,10 +267,31 @@ export type AssumptionWithVoi = AssumptionWithEvidence & { voi: VoiResult };
 export const loadInformationValue = cache(async (ideaId: string): Promise<AssumptionWithVoi[]> => {
   // B0: alleen waarnemingen uit echte gesprekken (zie loadAssumptionInputs) en uit tests die meetellen.
   const [list, inputs] = await Promise.all([loadAssumptions(ideaId), loadAssumptionInputs(ideaId)]);
-  return orderByInformationValue(list, hasDiscoveryEvidence(inputs));
+  const decisive = await loadDecisiveRelation(ideaId, list);
+  return orderByInformationValue(list, hasDiscoveryEvidence(inputs), decisive.assumptionIds);
 });
 
-export function orderByInformationValue(list: AssumptionWithEvidence[], hasDiscoveryEvidence: boolean): AssumptionWithVoi[] {
+// Fase B4: de beslissende vraag (B2: is_decisive; anders de eerste onderzoeksvraag; zonder vragen de beslisvraag
+// van het idee) en de aannames die hem direct raken: via een gekoppelde bevinding van die vraag of tekstoverlap.
+export const loadDecisiveRelation = cache(
+  async (ideaId: string, list: Pick<AssumptionWithEvidence, "id" | "statement">[]): Promise<{ question: string | null; assumptionIds: Set<string> }> => {
+    const supabase = await supabaseServer();
+    // select("*"): is_decisive komt mee zodra B2 de kolom toevoegt, zonder dat deze query daarop wacht.
+    const [{ data: questions }, { data: links }, { data: idea }] = await Promise.all([
+      supabase.from("research_questions").select("*").eq("idea_id", ideaId),
+      supabase.from("assumption_claims").select("assumption_id, claims(question_id)").eq("idea_id", ideaId),
+      supabase.from("ideas").select("decision_question").eq("id", ideaId).maybeSingle(),
+    ]);
+    const q = pickDecisiveQuestion((questions ?? []) as unknown as QuestionRow[]);
+    const question = q ? { id: q.id, text: q.question } : idea?.decision_question ? { id: null, text: idea.decision_question } : null;
+    const linked = new Map<string, string[]>();
+    for (const l of links ?? []) linked.set(l.assumption_id, [...(linked.get(l.assumption_id) ?? []), l.claims?.question_id ?? ""]);
+    const ids = new Set(list.filter((a) => relatesToDecisive(a.statement, question, linked.get(a.id) ?? [])).map((a) => a.id));
+    return { question: question?.text ?? null, assumptionIds: ids };
+  },
+);
+
+export function orderByInformationValue(list: AssumptionWithEvidence[], hasDiscoveryEvidence: boolean, decisiveIds?: ReadonlySet<string>): AssumptionWithVoi[] {
   const ranked = rankByInformationValue(
     list.map((a) => ({
       id: a.id,
@@ -274,6 +301,8 @@ export function orderByInformationValue(list: AssumptionWithEvidence[], hasDisco
       category: a.category as AssumptionCategory,
       evidence: a.evidence,
       hasDiscoveryEvidence,
+      kind: assumptionKind(a),
+      decisive: decisiveIds?.has(a.id) ?? false,
     })),
   );
   return ranked.map((voi) => ({ ...list.find((a) => a.id === voi.id)!, voi }));
