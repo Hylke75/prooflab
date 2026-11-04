@@ -205,7 +205,10 @@ export function deadlineFromText(text: string, today: string): string | null {
   for (const m of t.matchAll(/\b(?:eind|einde|het einde van)\s+(?:van\s+)?(?:dit|het)\s+jaar\b/g)) {
     push(m.index ?? 0, iso(Number(today.slice(0, 4)), 12, 31));
   }
-  candidates.sort((a, b) => a.index - b.index);
+  // Een datum direct na "vóór", "uiterlijk", "beslissen", "deadline" of "binnen" is de beslisdatum; die wint van een
+  // eerder genoemde periode ("bouwen we in Q1 …, beslissen vóór 1 maart" → 1 maart, niet eind Q1). Anders de eerste.
+  const cued = (index: number) => /(?:v[oó]{2}r|voor|uiterlijk|beslis\w*|deadline|uiterste datum|ten laatste|binnen)\s*(?:op\s+|het\s+|de\s+)?$/.test(t.slice(Math.max(0, index - 30), index)) || /^binnen\b/.test(t.slice(index));
+  candidates.sort((a, b) => Number(cued(b.index)) - Number(cued(a.index)) || a.index - b.index);
   return candidates.find((c) => c.date !== null && c.date >= today)?.date ?? null;
 }
 

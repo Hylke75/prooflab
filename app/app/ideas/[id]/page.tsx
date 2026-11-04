@@ -43,7 +43,7 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
   const sprintText = !s.planned
     ? "Nog geen sprint gepland"
     : s.state === "running"
-      ? `Week ${s.week} van ${s.weeks} · ${SPRINT_PHASES[s.phase].label}`
+      ? `Week ${s.week} van ${s.weeks} · planning: ${SPRINT_PHASES[s.phase].label.toLowerCase()}`
       : s.state === "finished"
         ? "Sprint afgerond"
         : `Sprint start over ${s.daysToStart} ${s.daysToStart === 1 ? "dag" : "dagen"}`;

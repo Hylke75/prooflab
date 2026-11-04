@@ -56,6 +56,10 @@ describe("beslisdatum uit de tekst", () => {
     expect(deadlineFromText("in Q1 2027", TODAY)).toBe("2027-03-31");
     expect(deadlineFromText("in het eerste kwartaal", TODAY)).toBe("2027-03-31");
     expect(deadlineFromText("binnen 6 weken", TODAY)).toBe("2026-12-16");
+    // Systeemcontrole: een eerder genoemde periode is niet de beslisdatum.
+    expect(deadlineFromText("Bouwen we de cursus in Q1 voor € 15.000, of niet? Beslissen vóór 1 maart.", TODAY)).toBe("2027-03-01");
+    expect(deadlineFromText("Lanceren we in Q1 2027? Uiterlijk 15 december besluiten.", TODAY)).toBe("2026-12-15");
+    expect(deadlineFromText("Starten we in Q1 2027 of niet?", TODAY)).toBe("2027-03-31");
     expect(deadlineFromText("voor het einde van het jaar", TODAY)).toBe("2026-12-31");
   });
 

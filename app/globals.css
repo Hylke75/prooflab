@@ -512,3 +512,11 @@ details:not([open])>.sprint-pop{display:none}
   .stepper .connector{flex:1 1 8px;min-width:6px}
 }
 .workspace{overflow-x:clip}
+/* Systeemcontrole 4 nov (3): een kop die na een stap de focus krijgt, toont geen focusrand (het is geen knop). */
+.focus-target:focus{outline:none}
+/* Testbord: in een smalle kolom stonden icoon, titel en status naast elkaar en brak de titel per letter af.
+   In het bord staan ze onder elkaar: icoon en status op één regel, de titel eronder over de volle breedte. */
+#bord .assumption-item{flex-wrap:wrap;align-items:center;gap:6px 10px}
+#bord .assumption-item>span:not(.count){order:3;flex:1 1 100%;min-width:0;overflow-wrap:break-word;hyphens:auto;font-size:13.5px;line-height:1.4}
+@media (max-width:560px){#bord{grid-template-columns:1fr}}
+#bord .assumption-item>small{flex:1 1 auto;min-width:0}

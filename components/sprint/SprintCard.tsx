@@ -112,7 +112,9 @@ export function SprintStrip({ idea, progress, canWrite, today }: { idea: SprintI
       </div>
     );
   }
-  const current = s.state === "running" ? SPRINT_PHASES[s.phase].label : s.state === "finished" ? "Afgerond" : "Nog niet gestart";
+  // De kalender zegt wat er deze week volgens de planning hoort te gebeuren; waar het dossier echt staat, tonen de
+  // stappenbalk en "Huidige stap". Daarom expliciet "Planning:", anders lijkt "Onderzoek" te botsen met "Test loopt".
+  const current = s.state === "running" ? `Planning: ${SPRINT_PHASES[s.phase].label.toLowerCase()}` : s.state === "finished" ? "Afgerond" : "Nog niet gestart";
   return (
     <div className="sprint-strip no-print" role="group" aria-label="Sprintplanning">
       <span className="tiny sprint-kicker">Sprint</span>
