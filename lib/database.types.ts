@@ -874,6 +874,7 @@ export type Database = {
       }
       assumptions: {
         Row: {
+          defaulted_fields: string[]
           prior: number | null
           category: string
           created_at: string
@@ -890,6 +891,7 @@ export type Database = {
           selected_for_test: boolean
         }
         Insert: {
+          defaulted_fields?: string[]
           prior?: number | null
           category: string
           created_at?: string
@@ -906,6 +908,7 @@ export type Database = {
           selected_for_test?: boolean
         }
         Update: {
+          defaulted_fields?: string[]
           prior?: number | null
           category?: string
           created_at?: string
@@ -1447,6 +1450,7 @@ export type Database = {
       }
       hypotheses: {
         Row: {
+          defaulted_fields: string[]
           assumption_id: string | null
           available_per_week: number | null
           change_reason: string | null
@@ -1475,6 +1479,7 @@ export type Database = {
           we_believe: string
         }
         Insert: {
+          defaulted_fields?: string[]
           assumption_id?: string | null
           available_per_week?: number | null
           change_reason?: string | null
@@ -1503,6 +1508,7 @@ export type Database = {
           we_believe: string
         }
         Update: {
+          defaulted_fields?: string[]
           assumption_id?: string | null
           available_per_week?: number | null
           change_reason?: string | null
@@ -1598,6 +1604,7 @@ export type Database = {
       }
       ideas: {
         Row: {
+          detail_level: string
           outcome_clock_start: string | null
           outcome_question: string
           outcome_min_value_per_customer: number | null
@@ -1643,6 +1650,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          detail_level?: string
           outcome_clock_start?: string | null
           outcome_question?: string
           outcome_min_value_per_customer?: number | null
@@ -1688,6 +1696,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          detail_level?: string
           outcome_clock_start?: string | null
           outcome_question?: string
           outcome_min_value_per_customer?: number | null
@@ -1751,6 +1760,7 @@ export type Database = {
       }
       interviews: {
         Row: {
+          defaulted_fields: string[]
           consent_recorded: boolean
           created_at: string
           dmu_role: string
@@ -1769,6 +1779,7 @@ export type Database = {
           is_practice: boolean | null
         }
         Insert: {
+          defaulted_fields?: string[]
           consent_recorded: boolean
           created_at?: string
           dmu_role: string
@@ -1787,6 +1798,7 @@ export type Database = {
           is_practice?: boolean | null
         }
         Update: {
+          defaulted_fields?: string[]
           consent_recorded?: boolean
           created_at?: string
           dmu_role?: string

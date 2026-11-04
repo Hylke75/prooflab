@@ -1,0 +1,25 @@
+/* Fase 1 · punt 1: Snel en Grondig (components/shell/ViewMode.tsx). Eigen bestand, zodat globals.css ongemoeid blijft. */
+/* De schakelaar volgt de pill-tabs (.tabs/.tab): wit vlak met rand, actieve keuze in het primaire blauw. */
+.detail-level{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.detail-level-switch{display:inline-flex;gap:4px;padding:4px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-pill)}
+.detail-level-switch button{border:0;background:transparent;min-height:44px;min-width:76px;padding:8px 18px;font:600 14px/20px var(--font-body);color:var(--color-heading);border-radius:var(--radius-pill);cursor:pointer;transition:background-color var(--dur) ease-out,color var(--dur) ease-out}
+.detail-level-switch button:not(.active):hover{background:var(--color-surface-muted)}
+.detail-level-switch button.active{background:var(--color-primary);color:var(--color-on-dark)}
+.detail-level-switch button:focus-visible{outline:3px solid var(--color-accent);outline-offset:2px}
+.detail-level-switch[aria-busy="true"] button.active{opacity:.85}
+.detail-level-readonly{align-self:center;min-height:32px}
+.detail-level-error{margin:0;max-width:320px;text-align:right}
+/* De hint staat één keer per pagina op de eerste plek waar Snel iets verbergt. */
+.more-in-thorough-anchor{display:block}
+.more-in-thorough-anchor:empty{display:none}
+.more-in-thorough{display:block;margin:12px 0;padding:10px 14px;border-radius:var(--radius-inner);background:var(--color-surface-muted);color:var(--color-text-muted);font-size:14px;line-height:1.5}
+.more-in-thorough .text-link{min-height:44px}
+.explain-once{display:inline}
+@media(max-width:560px){
+  .detail-level{width:100%;align-items:stretch}
+  .detail-level-switch{width:100%}
+  .detail-level-switch button{flex:1;min-width:0}
+  .detail-level-error{text-align:left;max-width:none}
+}
+@media (prefers-reduced-motion:reduce){.detail-level-switch button{transition:none}}
+@media print{.detail-level,.more-in-thorough{display:none}}
