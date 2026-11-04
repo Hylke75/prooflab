@@ -3,6 +3,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { getIdea } from "@/lib/data";
 import { loadProgress } from "@/lib/progress";
 import { dossierSummaryForAi, loadDossier, type Dossier } from "@/lib/dossier";
+import { sanitizeAiText } from "@/lib/domain/ai-text";
 import { coachContextLines } from "@/lib/coach/context";
 import { sprintStage } from "@/lib/domain/coach";
 import { sprintStatus, todayInNL } from "@/lib/domain/sprint";
@@ -296,7 +297,13 @@ export async function runCoachReview(ideaId: string, opts: { force?: boolean } =
           ),
         );
         const suppressed = notes.filter((n) => n.status !== "open").map((n) => ({ code: n.code, title: n.title }));
-        created += await insertNotes(db, ideaId, validateAiNotes(res.data, ideaId, [...open, ...suppressed]), "ai");
+        // Gebruikerstest D10: geen interne codes; een notitie met een resterende code valt weg.
+        const clean = validateAiNotes(res.data, ideaId, [...open, ...suppressed]).flatMap((n) => {
+          const title = sanitizeAiText(n.title);
+          const body = sanitizeAiText(n.body);
+          return title && body ? [{ ...n, title, body }] : [];
+        });
+        created += await insertNotes(db, ideaId, clean, "ai");
         ai = "ok";
       } catch {
         ai = "failed";

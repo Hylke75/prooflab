@@ -55,6 +55,13 @@ export function shortAudienceOf(i: Pick<IntakeFacts, "audience_detail" | "audien
   return clean(i.audience_short) || shortAudience(i.audience_detail);
 }
 
+// Gebruikerstest D11: de korte doelgroep met een hoofdletter, voor voorbeeldzinnen ("Amateursportclubs blijven …").
+// Null zonder toelichting: dan een neutraal voorbeeld, nooit een voorbeeld uit een ander dossier.
+export function audienceExample(i: Pick<IntakeFacts, "audience_detail" | "audience_short">): string | null {
+  const s = shortAudienceOf(i);
+  return s ? s.charAt(0).toLocaleUpperCase("nl-NL") + s.slice(1) : null;
+}
+
 // De doelgroep zo specifiek als de intake hem noemt, maar kort genoeg voor in een zin (D8): eerst de bevestigde korte
 // doelgroep, dan de afgeleide korte vorm, dan de toelichting, dan de brede categorie.
 export function specificAudience(i: Pick<IntakeFacts, "target_audience" | "audience_detail" | "audience_short">): string {

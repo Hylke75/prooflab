@@ -655,7 +655,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                       {Object.entries(ROLE).map(([k, [v]]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                   </div>
-                  <div className="form-line"><label htmlFor="sg-label">Naam</label><input className="field" id="sg-label" name="label" placeholder="Bijv. Eventmanager" /></div>
+                  <div className="form-line"><label htmlFor="sg-label">Naam</label><input className="field" id="sg-label" name="label" placeholder="Bijv. Bestuurder of gebruiker" /></div>
                 </div>
                 <div className="form-line"><label htmlFor="sg-job">Wat probeert deze persoon te bereiken?</label><input className="field" id="sg-job" name="job_to_be_done" /></div>
                 <div className="double-field">

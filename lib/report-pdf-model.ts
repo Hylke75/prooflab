@@ -106,6 +106,21 @@ export function calibrationNote(calibrated: boolean): string {
     : `Deze kansen zijn nog niet aan uitkomsten getoetst: bij dit rapport had de werkruimte minder dan ${CALIBRATION_MIN_RESOLVED} opgeloste dossiers. Daarom staan ze in banden van 10 procentpunt rond de berekende waarde.`;
 }
 
+// Gebruikerstest D13: de status van een bevinding in het rapport. "tegengesproken" staat er alleen bij als de status
+// dat zelf nog niet zegt (tegenstrijdig of weerlegd), zodat er nooit "(Weerlegd, tegengesproken)" staat.
+export function claimStatusText(c: { status: string; statusKey?: string; contradicted: boolean }): string {
+  const already = c.statusKey === "contested" || c.statusKey === "refuted";
+  return `${c.status}${c.contradicted && !already ? ", tegengesproken" : ""}`;
+}
+
+// De toelichting bij het aantal bevindingen: geverifieerd, onvoldoende en (als ze er zijn) tegenstrijdig en weerlegd.
+export function claimCountsNote(counts: { verified: number; insufficient: number; contested?: number; refuted?: number }): string {
+  const parts = [`${counts.verified} geverifieerd`, `${counts.insufficient} onvoldoende`];
+  if (counts.contested) parts.push(`${counts.contested} tegenstrijdig`);
+  if (counts.refuted) parts.push(`${counts.refuted} weerlegd`);
+  return parts.join(" · ");
+}
+
 // Het beslisblad van deze momentopname: opgeslagen bij het maken van de versie, of afgeleid voor oudere rapporten.
 export function sheetOf(r: ReportSnapshot): DecisionSheet {
   return sheetFromSnapshot(r as unknown as LegacySnapshot, r.observationCounts ? ladderSummary(r.observationCounts) : null);
@@ -137,7 +152,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
       {
         t: "kpis",
         items: [
-          { label: "Bevindingen met bron", value: String(r.counts.claims), note: `${r.counts.verified} geverifieerd · ${r.counts.insufficient} onvoldoende`, tone: "blue" },
+          { label: "Bevindingen met bron", value: String(r.counts.claims), note: claimCountsNote(r.counts), tone: "blue" },
           { label: "Experimenten", value: String(r.experiments.length).padStart(2, "0"), note: `${r.learningCards.length} met goedgekeurde Learning Card`, tone: "green" },
           // B6: geen "€ 0" als de marktomvang niet is vastgesteld.
           { label: "Bereikbare jaaromzet (realistisch)", value: revenue.value, note: revenue.note, tone: "coral" },
@@ -172,7 +187,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
     market.push({ t: "h", text: label });
     market.push({
       t: "list",
-      items: list.map((c) => `${c.statement} ${notes(c.notes)} (${c.status}${c.contradicted ? ", tegengesproken" : ""})${c.doesNotProve ? ` Bewijst niet: ${c.doesNotProve}` : ""}`),
+      items: list.map((c) => `${c.statement} ${notes(c.notes)} (${claimStatusText(c)})${c.doesNotProve ? ` Bewijst niet: ${c.doesNotProve}` : ""}`),
     });
   }
   if (!r.claims.length) market.push({ t: "p", text: "Er zijn nog geen bevindingen met bron vastgelegd.", muted: true });
@@ -308,7 +323,9 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
 
   // 08 Counter-evidence and limitations
   const counter: string[] = [
-    ...r.claims.filter((c) => c.contradicted).map((c) => `Tegengesproken door een bron: ${c.statement} ${notes(c.notes)}`),
+    // D13: weerlegd (alleen tegensprekende gecontroleerde bronnen) apart van tegengesproken.
+    ...r.claims.filter((c) => c.statusKey === "refuted").map((c) => `Weerlegd door gecontroleerde bronnen: ${c.statement} ${notes(c.notes)}`),
+    ...r.claims.filter((c) => c.contradicted && c.statusKey !== "refuted").map((c) => `Tegengesproken door een bron: ${c.statement} ${notes(c.notes)}`),
     ...r.experiments.filter((e) => e.verdict === "fail").map((e) => `Experiment niet geslaagd: ${e.title} (${e.successes} van ${e.n}).`),
     ...r.assumptions.filter((a) => a.status === "refuted").map((a) => `Aanname weerlegd: ${a.statement}`),
     ...signals.filter((s) => s.kind === "objection").slice(0, 5).map((s) => `Bezwaar van klanten: ${s.label} (${s.mentions}×)`),

@@ -25,6 +25,7 @@ import { proposeUncertainty } from "@/lib/research-uncertainty-data";
 import { groundedScope } from "@/lib/domain/claim-scope";
 import { CLAIM_STATUS, COMPETITOR_KINDS, type ClaimStatus, type CompetitorKind } from "@/lib/domain/labels";
 import { withoutProposals } from "@/lib/domain/competitor-proposals";
+import { sanitizeChallenges } from "@/lib/domain/ai-text";
 import { storeAlternativeProposals } from "@/lib/competitor-proposals-data";
 
 type RunState = { status: string; done: number; total: number; current: string | null; cost: number; budget: number; error: string | null };
@@ -421,8 +422,9 @@ async function runTask(task: TaskRow, idea: Idea, mode: RunMode, runWith: Provid
     // Gebruikerstest D6: genoemde alternatieven worden voorstellen zonder bron (tellen nergens mee).
     const proposed = await storeAlternativeProposals(supabase, idea.id, res.data.alternatives ?? []);
     return {
-      output: { challenges: res.data.challenges },
-      detail: `${res.data.challenges.length} kritische punten gevonden${proposed ? `; ${proposed} alternatief${proposed === 1 ? "" : "en"} als voorstel bij Concurrenten` : ""}.`,
+      // Gebruikerstest D10: geen interne codes; een uitdaging met een resterende code valt weg.
+      output: { challenges: sanitizeChallenges(res.data.challenges) },
+      detail: `${sanitizeChallenges(res.data.challenges).length} kritische punten gevonden${proposed ? `; ${proposed} alternatief${proposed === 1 ? "" : "en"} als voorstel bij Concurrenten` : ""}.`,
       cost: res.usage.cost,
     };
   }

@@ -551,3 +551,5 @@ details:not([open])>.sprint-pop{display:none}
 .study-questions{margin:8px 0 0 18px;padding:0;font-size:14px;line-height:1.7}
 .study-questions li{overflow-wrap:anywhere}
 @media (prefers-reduced-motion:reduce){.study-link{transition:none}}
+/* Gebruikerstest D12: stappen boven het besluit (1. Voorspelling – 2. Besluit), past ook op 390px. */
+.decision-steps{list-style:none;display:flex;flex-wrap:wrap;gap:10px 18px;margin:4px 0 14px;padding:12px 14px;background:var(--color-surface-soft);border-radius:var(--radius-inner);font-size:14px}.decision-steps>li{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}.decision-steps>li.later{color:var(--color-text-muted)}.decision-steps ul{flex-basis:100%;margin:4px 0 0 18px;padding:0;font-size:13px;line-height:1.7}.decision-steps a{display:inline-block;min-height:24px}

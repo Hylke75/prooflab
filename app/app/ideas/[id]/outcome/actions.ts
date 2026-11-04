@@ -14,6 +14,7 @@ import { providersFor } from "@/lib/ai/settings";
 import { PROVIDER_LABELS, providerOfModel } from "@/lib/ai/providers/config";
 import { ensembleMean } from "@/lib/ai/providers/select";
 import { dossierSummaryForAi, loadDossier } from "@/lib/dossier";
+import { cleanAiText } from "@/lib/domain/ai-text";
 import { ideaContext } from "@/lib/idea-context";
 import { todayInNL } from "@/lib/domain/sprint";
 import { EffortSchema, ExclusionSchema, OutcomeDefinitionSchema, optionalAmount as number, outcomeValueProblem } from "@/lib/forecast-schemas";
@@ -267,7 +268,8 @@ export async function requestAiForecast(ideaId: string, _: ActionState): Promise
       p_idea: ideaId,
       p_moment: moment,
       p_probability: r.value.data.probability,
-      p_rationale: r.value.data.rationale,
+      // Gebruikerstest D10: geen interne codes in de toelichting.
+      p_rationale: cleanAiText(r.value.data.rationale),
       p_model: r.value.model,
     });
     if (error?.message.includes("FORECAST_MOMENT")) closed = true;

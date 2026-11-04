@@ -6,6 +6,13 @@ import { ActionForm, Field, type FormState } from "@/components/ui/ActionForm";
 import { DECISIONS, type DecisionAction } from "@/lib/domain/labels";
 import { DEVIATION_MIN_CHARS, deviates, deviationLabel } from "@/lib/domain/decision-rule";
 import { EXTEND_WEEK_OPTIONS } from "@/lib/domain/extension";
+import type { DecisionBlocker, DecisionStepKey } from "@/lib/domain/forecast";
+
+const STEP_LINKS: Record<DecisionStepKey, string> = {
+  definitie: "Leg vast wanneer dit idee geslaagd is →",
+  basispercentage: "Kies het basispercentage →",
+  voorspelling: "Geef je eigen voorspelling →",
+};
 
 // De keuzes in het scherm. "extend" (verlengde testfase) is sinds B6 opgenomen in "Verder testen" met een duur.
 const VISIBLE_CHOICES = (Object.keys(DECISIONS) as DecisionAction[]).filter((k) => k !== "extend");
@@ -18,6 +25,8 @@ export function DecisionSelector({
   disabledReason,
   ruleMet = null,
   blocked = {},
+  forecastStep = null,
+  forecast = null,
 }: {
   advised: DecisionAction | null;
   action: (s: FormState, f: FormData) => Promise<FormState>;
@@ -25,12 +34,36 @@ export function DecisionSelector({
   ruleMet?: boolean | null;
   // Golf B, punt 20: per keuze waarom die nu niet kan (verlengde testfase loopt, of al gehad).
   blocked?: Partial<Record<DecisionAction, string>>;
+  // Gebruikerstest D12: stap 1 vóór het besluit (uitkomst, basispercentage, eigen voorspelling) en de compacte invoer.
+  forecastStep?: { done: boolean; missing: DecisionBlocker[] } | null;
+  forecast?: React.ReactNode;
 }) {
   // B6: "Verder testen" en de verlengde testfase zijn één keuze met een duur; de server kiest hoe die wordt opgeslagen.
   const [choice, setChoice] = useState<DecisionAction>(advised && advised !== "extend" ? advised : "test_more");
   const deviation = deviates(choice, ruleMet);
   const choiceBlocked = blocked[choice] ?? null;
   return (
+    <>
+      {forecastStep && (
+        <ol className="decision-steps" aria-label="Stappen naar het besluit">
+          <li className={forecastStep.done ? "done" : "open"}>
+            <strong>1. Voorspelling</strong> <span className={`pill ${forecastStep.done ? "green" : "orange"}`}>{forecastStep.done ? "✓ klaar" : "open"}</span>
+            {forecastStep.missing.length > 0 && (
+              <ul>
+                {forecastStep.missing.map((m) => (
+                  <li key={m.step}>
+                    <a className="text-link" href={m.href}>{STEP_LINKS[m.step]}</a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+          <li className={forecastStep.done ? "open" : "later"} aria-current={forecastStep.done ? "step" : undefined}>
+            <strong>2. Besluit</strong>
+          </li>
+        </ol>
+      )}
+      {forecastStep && forecast}
     <ActionForm
       action={action}
       submitLabel="Bewaar mijn keuze"
@@ -92,5 +125,6 @@ export function DecisionSelector({
       {disabledReason && <div className="note" id="dec-blocked">{disabledReason}</div>}
       {!disabledReason && choiceBlocked && <div className="note" id="dec-blocked">{choiceBlocked}</div>}
     </ActionForm>
+    </>
   );
 }

@@ -234,12 +234,12 @@ describe("Reality Check: regio onbekend is geen andere regio", () => {
     const codes = r.findings.map((f) => f.code);
     expect(codes).not.toContain("other_region");
     const unknown = r.findings.find((f) => f.code === "unknown_region")!;
-    expect(unknown).toMatchObject({ severity: "info", title: "2 bevinding(en) met onbekende regio" });
+    expect(unknown).toMatchObject({ severity: "info", title: "2 bevindingen met onbekende regio" });
   });
 
   it("waarschuwt wel bij een echte andere regio", () => {
     const r = runRealityCheck({ ...facts, claims: [claim("Verenigde Staten"), claim("onbekend")] });
-    expect(r.findings.find((f) => f.code === "other_region")?.title).toBe("1 bevinding(en) over een andere regio");
+    expect(r.findings.find((f) => f.code === "other_region")?.title).toBe("1 bevinding over een andere regio");
   });
 });
 

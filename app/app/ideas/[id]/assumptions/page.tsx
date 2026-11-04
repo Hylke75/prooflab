@@ -6,6 +6,7 @@ import { ActionForm } from "@/components/ui/ActionForm";
 import { RiskBoard, type BoardAssumption } from "@/components/assumptions/RiskBoard";
 import { RedTeamButton } from "@/components/assumptions/RedTeamButton";
 import { getIdea } from "@/lib/data";
+import { audienceExample } from "@/lib/research-questions";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadInformationValue, loadProgress } from "@/lib/progress";
 import { AI_UNREVIEWED_WEIGHT, CLAIM_LR, fmtLr, OBSERVATION_LR, REFUTED_LR, type LrEntry } from "@/lib/domain/evidence";
@@ -91,6 +92,8 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
   const selectParam = (await searchParams).select;
   const select = typeof selectParam === "string" && /^[0-9a-f-]{36}$/i.test(selectParam) ? selectParam : null;
   const { idea, canWrite } = await getIdea(id);
+  // Gebruikerstest D11: voorbeeld met de korte doelgroep van dit dossier, anders neutraal.
+  const who = audienceExample(idea);
   const supabase = await supabaseServer();
   const method = asMethodVersion(idea.method_version);
   const [ranked, progress, { data: claims }, { data: links }, weights, caps, calibration, rule, { data: experiments }, selectionColumn] = await Promise.all([
@@ -226,7 +229,7 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
           <ActionForm action={addAssumption.bind(null, id)} submitLabel="Toevoegen" resetOnSuccess>
             <div className="form-line mt-12">
               <label htmlFor="as-st">Wat moet waar zijn?</label>
-              <input className="field" id="as-st" name="statement" placeholder="Bijv. Eventmanagers vertrouwen een AI-selectie genoeg om een aanvraag te doen." />
+              <input className="field" id="as-st" name="statement" placeholder={who ? `Bijv. ${who} stappen over van hun huidige werkwijze, omdat …` : "Bijv. De doelgroep stapt over van de huidige werkwijze, omdat …"} />
             </div>
             <div className="double-field">
               <div className="form-line">

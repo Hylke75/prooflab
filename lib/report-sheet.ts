@@ -58,7 +58,7 @@ export type SheetInput = {
   decision: { action: string; label: string; decidedOn: string; nextStep: string | null; extendWeeks: number | null; ruleMet: boolean | null; deviation: boolean } | null;
   evidenceLevel: string;
   ladder: string | null;
-  claims: { statement: string; verified: boolean; contradicted: boolean; notes: number[]; source: string | null; url: string | null; strong: boolean }[];
+  claims: { statement: string; verified: boolean; refuted?: boolean; contradicted: boolean; notes: number[]; source: string | null; url: string | null; strong: boolean }[];
   observations: { text: string; source: string; level: EvidenceLevel; strength: number; against: boolean; group: string }[];
   assumptions: { statement: string; importance: number; status: string; evidence: number }[];
   decisiveQuestion: { question: string; answered: boolean; verifiedClaims: number } | null;
@@ -103,7 +103,8 @@ export function strongestEvidence(input: Pick<SheetInput, "claims" | "observatio
   }
   const cands: Cand[] = [...perGroup.values()];
   input.claims
-    .filter((c) => c.verified && c.notes.length > 0)
+    // Gebruikerstest D13: een weerlegde bevinding is nooit sterk bewijs, ook niet als ze ooit geverifieerd was.
+    .filter((c) => c.verified && !c.refuted && c.notes.length > 0)
     .forEach((c, i) =>
       cands.push({
         text: oneSentence(c.statement),
@@ -289,7 +290,7 @@ export function sheetFromSnapshot(r: LegacySnapshot, ladderLine: string | null):
       ladder: ladderLine,
       claims: r.claims.map((c) => {
         const s = src.get(c.notes[0]);
-        return { statement: c.statement, verified: c.statusKey === "verified", contradicted: c.contradicted, notes: c.notes, source: s ? `${s.publisher ? `${s.publisher}, ` : ""}${s.title}` : null, url: s?.url ?? null, strong: !!s?.primary };
+        return { statement: c.statement, verified: c.statusKey === "verified", refuted: c.statusKey === "refuted", contradicted: c.contradicted, notes: c.notes, source: s ? `${s.publisher ? `${s.publisher}, ` : ""}${s.title}` : null, url: s?.url ?? null, strong: !!s?.primary };
       }),
       observations: measured.map((e) => ({
         text: `${e.successes} van ${e.n} deelnemers: ${e.metric}${e.selfReported ? " (zelfrapportage)" : ""}.`,

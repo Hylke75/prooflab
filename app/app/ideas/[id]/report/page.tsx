@@ -18,7 +18,7 @@ import { asEvidenceLevel, mergedShort, outcomeWithLevel } from "@/lib/domain/evi
 import { allTestsSummary } from "@/lib/domain/all-tests";
 import { formatGroups } from "@/lib/domain/report-counts";
 import { ladderSummary } from "@/lib/domain/dossier-label";
-import { PROBABILITY_EXPLAIN, assumptionProbabilityText, calibrationNote, probabilityColumnHead, sheetOf, somRevenueCell } from "@/lib/report-pdf-model";
+import { PROBABILITY_EXPLAIN, assumptionProbabilityText, calibrationNote, claimCountsNote, claimStatusText, probabilityColumnHead, sheetOf, somRevenueCell } from "@/lib/report-pdf-model";
 import { decisionParagraph, reachableRevenue } from "@/lib/report-sheet";
 import { todayInNL } from "@/lib/domain/sprint";
 import { endSentence } from "@/lib/text";
@@ -213,7 +213,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               <div style={{ background: "var(--color-surface-soft)", padding: 16, borderRadius: "var(--radius-inner)" }}>
                 <div className="tiny">Bevindingen met bron</div>
                 <div className="report-number">{r.counts.claims}</div>
-                <div className="tiny">{r.counts.verified} geverifieerd · {r.counts.insufficient} onvoldoende</div>
+                <div className="tiny">{claimCountsNote(r.counts)}</div>
               </div>
               <div style={{ background: "var(--color-success-soft)", padding: 16, borderRadius: "var(--radius-inner)" }}>
                 <div className="tiny">Experimenten</div>
@@ -251,7 +251,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                   <ul style={{ margin: "6px 0 0 18px", fontSize: 13, lineHeight: 1.7, color: "var(--color-text)" }}>
                     {list.map((c, i) => (
                       <li key={i}>
-                        {c.statement} <Notes n={c.notes} /> <em className="tiny">({c.status}{c.contradicted ? ", tegengesproken" : ""})</em>
+                        {c.statement} <Notes n={c.notes} /> <em className="tiny">({claimStatusText(c)})</em>
                         {c.scope && (
                           <div className="tiny">
                             {/* B6: een onbekende regio is geen andere regio; ze staat er als "onbekend". */}

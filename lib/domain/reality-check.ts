@@ -2,7 +2,8 @@
 // the pitfalls of experimentation and for conclusions the evidence does not carry. AI can add
 // critical questions on top, but these rules always run and cannot be switched off.
 
-import type { ClaimStatus, DecisionAction } from "./labels";
+import { SOURCE_TYPES, type ClaimStatus, type DecisionAction, type SourceType } from "./labels";
+import { plural } from "@/lib/text";
 import { dedupeByPerson } from "./per-person";
 import { isUnknown } from "./claim-scope";
 
@@ -117,30 +118,33 @@ export function runRealityCheck(f: DossierFacts): RealityCheckResult {
   if (f.claims.length > 0) {
     const independent = f.claims.some((c) => c.sourceTypes.some((t) => STRONG_SOURCE_TYPES.includes(t)));
     if (!independent) {
-      add("no_independent_source", "warning", "Geen onafhankelijke marktbron",
-        "Alle bevindingen steunen op bedrijfswebsites, nieuws of blogs. Voeg een officiële statistiek of onderzoeksrapport toe.");
+      // Gebruikerstest D9: de tekst noemt de brontypes die er echt zijn, niet een vaste opsomming.
+      add("no_independent_source", "warning", "Geen onafhankelijke marktbron", noIndependentSourceDetail(f.claims));
     }
     // B6: "regio onbekend" is geen andere regio. Een onbekende regio telt niet als afwijkend, maar staat apart als
     // onbekend: niet bevestigd, ook niet weerlegd.
     const { other: elsewhere, unknown: regionUnknown } = regionTally(f.ideaRegion, f.claims);
     if (elsewhere) {
-      add("other_region", "warning", `${elsewhere} bevinding(en) over een andere regio`,
+      add("other_region", "warning", `${plural(elsewhere, "bevinding", "bevindingen")} over een andere regio`,
         `Het onderzoek gaat over ${f.ideaRegion}. Cijfers uit een andere regio zijn hooguit een analogie, geen marktbewijs.`);
     }
     if (regionUnknown) {
-      add("unknown_region", "info", `${regionUnknown} bevinding(en) met onbekende regio`,
+      add("unknown_region", "info", `${plural(regionUnknown, "bevinding", "bevindingen")} met onbekende regio`,
         `Bij deze bevindingen staat niet over welke regio ze gaan. Ze tellen niet als afwijkend, maar ook niet als bevestigd voor ${f.ideaRegion}; vul de regio aan als de bron die noemt.`);
     }
     const contested = f.claims.filter((c) => c.status === "contested").length;
     if (contested) {
-      add("contested_claims", "warning", `${contested} bewering(en) met tegenstrijdige bronnen`,
+      add("contested_claims", "warning", `${plural(contested, "bevinding", "bevindingen")} met tegenstrijdige bronnen`,
         "Los de tegenstrijdigheid op of neem beide waarden mee in de scenario's.");
     }
     // Gebruikerstest A5: een weerlegde bevinding (alleen tegensprekende gecontroleerde bronnen) is geen steun meer.
     const refuted = f.claims.filter((c) => c.status === "refuted").length;
     if (refuted) {
-      add("refuted_claims", "warning", `${refuted} bewering(en) weerlegd door gecontroleerde bronnen`,
-        "Geen enkele gecontroleerde bron bevestigt deze beweringen. Bouw er niet op, of zoek een bron die ze wel bevestigt.");
+      // Gebruikerstest D13: "1 bevinding weerlegd" / "3 bevindingen weerlegd", met het juiste meervoud.
+      add("refuted_claims", "warning", `${plural(refuted, "bevinding", "bevindingen")} weerlegd door gecontroleerde bronnen`,
+        refuted === 1
+          ? "Geen enkele gecontroleerde bron bevestigt deze bevinding. Bouw er niet op, of zoek een bron die haar wel bevestigt."
+          : "Geen enkele gecontroleerde bron bevestigt deze bevindingen. Bouw er niet op, of zoek een bron die ze wel bevestigt.");
     }
   }
   if (f.competitors.length > 0 && !f.competitors.some((c) => c.kind === "alternative" || c.kind === "status_quo")) {
@@ -251,6 +255,17 @@ export function runRealityCheck(f: DossierFacts): RealityCheckResult {
       "Onder welke uitkomst van de volgende test stoppen we?",
     ],
   };
+}
+
+// Gebruikerstest D9: welke soorten gecontroleerde bronnen de bevindingen hebben (labels uit SOURCE_TYPES). Zonder
+// gecontroleerde bron (geen letterlijk teruggevonden citaat) staat dat er ook zo.
+export function noIndependentSourceDetail(claims: { sourceTypes: string[] }[]): string {
+  const types = [...new Set(claims.flatMap((c) => c.sourceTypes))];
+  if (!types.length)
+    return "De bevindingen hebben nog geen gecontroleerde bron (geen letterlijk teruggevonden citaat). Voeg een officiële statistiek of onderzoeksrapport toe.";
+  const labels = types.map((t) => (SOURCE_TYPES[t as SourceType] ?? SOURCE_TYPES.other).toLowerCase());
+  const list = labels.length === 1 ? labels[0] : `${labels.slice(0, -1).join(", ")} en ${labels[labels.length - 1]}`;
+  return `De gecontroleerde bronnen zijn alleen van het soort ${list}. Voeg een officiële statistiek of onderzoeksrapport toe.`;
 }
 
 const REGION_GROUPS: Record<string, string[]> = {

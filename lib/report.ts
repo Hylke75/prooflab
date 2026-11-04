@@ -18,6 +18,7 @@ import { observationDirection, observationLevel } from "@/lib/domain/per-person"
 import { addDaysIso, buildDecisionSheet, sheetDate, type DecisionSheet } from "@/lib/report-sheet";
 import { todayInNL } from "@/lib/domain/sprint";
 import { isExploratory } from "@/lib/domain/customer-research";
+import { sanitizeChallenges } from "@/lib/domain/ai-text";
 
 // "AI · Gemini" for an AI forecast whose provider is known; null otherwise.
 function aiName(kind: string, model: string | null): string | null {
@@ -58,7 +59,10 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
   }));
 
   const check = d.realityCheck;
-  const checkFindings = ((check?.findings as { findings?: (Finding & { source?: string })[] } | null)?.findings ?? []).map((f) => ({ title: f.title, detail: f.detail, severity: f.severity, source: f.source ?? "regels" }));
+  // Gebruikerstest D10: AI-vragen zonder interne codes; een vraag met een resterende code valt weg.
+  const checkFindings = ((check?.findings as { findings?: (Finding & { source?: string })[] } | null)?.findings ?? [])
+    .map((f) => ({ title: f.title, detail: f.detail, severity: f.severity, source: f.source ?? "regels" }))
+    .flatMap((f) => (f.source === "ai" ? sanitizeChallenges([f]) : [f]));
   const lastDecision = d.decisions[d.decisions.length - 1] ?? null;
   const aiCost = d.research.ai.reduce((s, r) => s + Number(r.cost_usd), 0);
   const ladder = evidenceLadder(d.observations.map(ladderObservation));
@@ -88,6 +92,9 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       claims: claims.length,
       verified: claims.filter((c) => c.statusKey === "verified").length,
       insufficient: claims.filter((c) => c.statusKey === "insufficient").length,
+      // Gebruikerstest D13: tegenstrijdig en weerlegd apart geteld (oudere rapporten hebben deze velden niet).
+      contested: claims.filter((c) => c.statusKey === "contested").length as number | undefined,
+      refuted: claims.filter((c) => c.statusKey === "refuted").length as number | undefined,
     },
     // Fase B0, punt 1: klantwaarnemingen per persoon geteld (één interview = per bewijsniveau maximaal één waarneming).
     // Oudere rapporten hebben dit veld niet.
@@ -362,6 +369,8 @@ function decisionSheetFor(d: Dossier, ctx: SheetContext, ladder: EvidenceLadder,
       return {
         statement: c.statement,
         verified: c.status === "verified",
+        // D13: een weerlegde bevinding is nooit geverifieerd of "deels tegengesproken".
+        refuted: c.status === "refuted",
         contradicted: exact.some((s) => s.stance === "contradicts"),
         notes: exact.map((s) => footnote(s.sources)).filter((n): n is number => n !== null),
         source: first ? `${first.publisher ? `${first.publisher}, ` : ""}${first.title}` : null,
