@@ -34,7 +34,11 @@ import { dedupeFragments } from "@/lib/signals/import";
 import type { Json } from "@/lib/database.types";
 import type { AssumptionCategory, ObservationKind } from "@/lib/domain/labels";
 import { assumptionKind, metricFitsAssumption } from "@/lib/domain/assumption-kind";
-import { checkEnd, thresholdBlock } from "@/lib/domain/experiment-gates";
+import { checkEnd, goRuleBlock, thresholdBlock } from "@/lib/domain/experiment-gates";
+import { loadDecisionRule } from "@/lib/decision-rule-data";
+import { GO_RULE_NOTE, proposeGoRule } from "@/lib/domain/decision-rule-proposal";
+import { acceptAiLearning, ruleBasedLearning, type LearningInput } from "@/lib/domain/learning-proposal";
+import { proposeLearning } from "@/lib/ai/learning";
 import { fictionSignals, fictionWarning } from "@/lib/domain/practice";
 
 export type ActionState = { error: string | null; ok?: string | null; warning?: string | null; fieldErrors?: Record<string, string> };
@@ -270,6 +274,15 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
     const blocked = h ? thresholdBlock(h) : null;
     if (blocked) return { error: blocked };
   }
+  // B5: een hoofdtest start pas als de go-regel van het dossier is vastgelegd (zelfde regel als op het scherm).
+  if (to === "live" && exp.state === "approved") {
+    const { data: a } = exp.hypotheses
+      ? await supabase.from("assumptions").select("primary_experiment_id").eq("id", exp.hypotheses.assumption_id).maybeSingle()
+      : { data: null };
+    const rule = await loadDecisionRule(ideaId);
+    const blocked = goRuleBlock({ isPrimary: a?.primary_experiment_id === expId, rule: rule === undefined ? "unknown" : rule ? "saved" : "missing" });
+    if (blocked) return { error: blocked };
+  }
   // B0 punt 6: afronden onder de minimale steekproef vraagt een reden en een bevestiging. Het aantal deelnemers
   // wordt hier opnieuw bepaald uit de ruwe metingen, niet uit wat het formulier meestuurt.
   let endReason: string | null = null;
@@ -328,6 +341,34 @@ export async function setPrimaryTest(ideaId: string, expId: string, _: ActionSta
   if (error) return { error: error.message.includes("PRIMARY_TEST") ? error.message.replace(/^.*?: /, "") : "De hoofdtest kon niet worden aangewezen." };
   refresh(ideaId);
   return { error: null, ok: "Dit is nu de hoofdtest van de aanname. De andere tests van deze aanname zijn verkennend." };
+}
+
+// Fase B5: het voorgestelde go-regel met één klik vastleggen. De server stelt het voorstel opnieuw op uit de database
+// (niet uit het formulier) en legt het vast via save_decision_rule, dat ook de vergrendeling bewaakt.
+export async function adoptProposedGoRule(ideaId: string, expId: string, _: ActionState): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  const { data: exp } = await supabase.from("experiments").select("id, title, hypotheses(assumption_id, assumptions(id, statement, primary_experiment_id))").eq("id", expId).eq("idea_id", ideaId).maybeSingle();
+  const a = exp?.hypotheses?.assumptions;
+  if (!exp || !a) return { error: "Test niet gevonden." };
+  const rule = await loadDecisionRule(ideaId);
+  if (rule === undefined) return { error: "De beslisregel kan nog niet worden vastgelegd: werk het databaseschema bij." };
+  if (rule) return { error: null, ok: "Het dossier heeft al een go-regel." };
+  const proposal = proposeGoRule({ rule, assumption: a, experiment: exp, isPrimary: a.primary_experiment_id === expId });
+  if (!proposal) return { error: "Alleen bij een hoofdtest stelt ProofLab de go-regel voor. Wijs deze test eerst aan als hoofdtest." };
+  const { data, error } = await supabase.rpc("save_decision_rule", {
+    p_idea: ideaId,
+    p_primary: proposal.experimentId,
+    p_note: GO_RULE_NOTE,
+    p_conditions: [{ assumption_id: proposal.assumptionId, min_probability: proposal.minProbability }] as unknown as Json,
+  });
+  if (error) {
+    if (error.message.includes("DECISION_RULE_LOCKED")) return { error: "De beslisregel ligt al vast." };
+    return { error: "De go-regel kon niet worden vastgelegd. Probeer het opnieuw of leg hem vast op de aannamepagina." };
+  }
+  refresh(ideaId);
+  if (data === "locked_late") return { error: null, ok: "Go-regel vastgelegd. Er was al een test goedgekeurd: de regel ligt meteen vast en staat als 'achteraf vastgelegd' in het rapport." };
+  return { error: null, ok: "Go-regel vastgelegd. Hij ligt vast zodra de eerste test is goedgekeurd; tot dan pas je hem aan op de aannamepagina." };
 }
 
 export async function deleteDraft(ideaId: string, expId: string) {
@@ -586,6 +627,36 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
     }
   }
 
+  // Fase B5: "Daaruit leren we" en "Daarom gaan we" als voorstel: met AI als die verbonden is, anders (of als de AI
+  // faalt of de berekende uitspraak tegenspreekt) regelgebaseerd uit de uitkomst en de drempels.
+  const { data: primaryOf } = await supabase.from("assumptions").select("primary_experiment_id").eq("id", h.assumption_id).maybeSingle();
+  const learningInput: LearningInput = {
+    assumption: h.assumptions?.statement ?? h.we_believe,
+    verdict: verdictKind,
+    rule: v.rule,
+    n: m.n,
+    successes: m.successes,
+    minSample: h.min_sample,
+    successThresholdPct: Number(h.success_threshold_pct),
+    failThresholdPct: h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct),
+    successCount: v.successCount ?? null,
+    probability: v.probability ?? null,
+    belowSample,
+    endReason: exp.end_reason ?? null,
+    isPrimary: primaryOf?.primary_experiment_id === expId,
+    metricNumerator: h.metric_numerator,
+    followUp: follow,
+  };
+  let proposal = ruleBasedLearning(learningInput);
+  if (aiConfigured()) {
+    try {
+      const ai = await runAi(ideaId, "learning_card", (provider) => proposeLearning(learningInput, provider));
+      proposal = acceptAiLearning(ai.data, learningInput);
+    } catch {
+      // Terugval: de regelgebaseerde tekst. De mislukte AI-stap staat in het AI-logboek (runAi).
+    }
+  }
+
   const card = {
     we_believed:
       h.decision_rule === "absolute"
@@ -594,10 +665,8 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
     we_observed: `${m.successes} van ${m.n} (${pct(v.interval.point)}; 95%-interval ${pct(v.interval.low)} tot ${pct(v.interval.high)}).${
       s ? ` Zelfrapportage, geen waargenomen gedrag. Uitgenodigde respondenten: ${s.invitation.successes} van ${s.invitation.n}; open link: ${s.openLink.successes} van ${s.openLink.n}.` : ""
     }${m.warnings.length ? ` Let op: ${m.warnings.join(" ")}` : ""}`,
-    we_learned: belowSample
-      ? `Afgerond onder de minimale steekproef (${m.n} van ${h.min_sample}); de uitkomst telt niet mee. Reden: ${exp.end_reason}`
-      : v.reason,
-    therefore: follow,
+    we_learned: proposal.we_learned,
+    therefore: proposal.therefore,
     verdict: verdictKind,
     data_reliability: reliability,
     metrics: {
@@ -623,6 +692,8 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
       ended_early: exp.ended_early,
       ended_below_sample: belowSample,
       end_reason: exp.end_reason ?? null,
+      // B5: het voorstel zoals ProofLab het maakte; de metrics liggen vast, de tekstvelden past de consultant aan.
+      proposal: { ...proposal, verdict_reason: v.reason },
       ...(s
         ? {
             self_reported: true,

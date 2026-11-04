@@ -381,10 +381,69 @@ Uit `docs/VERBETERPLAN_WERKWIJZE.md`, golf B (punten 1, 2, 6, 15, 18 en 20). Mig
 - ✅ Tests: `tests/unit/menu.test.ts`, uitbreiding `tests/unit/coach.test.ts`; e2e-journey vergelijkt menu en stappenbalk en opent Systeemstatus via het avatarmenu. Visueel gecontroleerd op 1440 px en 390 px tegen de live omgeving (alleen lezen)
 - 🟡 De menustatus komt na het laden van de pagina (de layout kent het open idee niet); tot dan staan de stappen zonder teken. De e2e-journey is niet gedraaid
 
+## Methode 2026-11-d: tegenbewijs per bron (4 november)
+
+Methodedocument hoofdstuk 13. Bestaande dossiers op 2026-11-a t/m 2026-11-c rekenen ongewijzigd; nieuwe dossiers starten op 2026-11-d.
+
+- ✅ **Tegenbewijs per bron** (`assumptionProbabilityV4`, optie `contraPerSource` in `lib/domain/evidence.ts`; `lib/domain/method/2026-11-d.ts`): per bron telt alleen het sterkste tegensignaal; over bronnen heen afnemend per soort; plafonds ongewijzigd; geen wervingsgroep-demping voor tegenbewijs
+- ✅ **Weergave**: samengevoegde tegensignalen apart op aannamepagina, methodepagina en rapport (`explainMerged`, `mergedShort`); helptekst "Methodeversie" bijgewerkt
+- ✅ Migratie `20261109100000_method_d.sql` (akkoord product owner): `'2026-11-d'` toegestaan en standaard voor nieuwe dossiers, rangorde en overstapbewaking bijgewerkt, geen bestaande rijen gewijzigd
+- ✅ Tests `tests/unit/evidence-v4.test.ts`, `method.test.ts`; `tests/db/method-d.test.ts`, bijgewerkt `golf-a.test.ts` en `method-v2.test.ts`
+- ✅ Migratie live op Supabase (4 november, na de productie-deploy van `16323ce`): nieuwe dossiers starten op 2026-11-d; bestaande dossiers ongewijzigd (6 op 2026-11-a, 15 op 2026-11-c). Versie in de migratiegeschiedenis gelijkgetrokken met de repo (`20261109100000`)
+
+## Fase B2: onderzoek dat de grootste onzekerheid eerst raakt (8 november)
+
+Aanleiding: sjabloonvragen met de brede doelgroep, de prijsvraag niet onderzocht, $1,57 van max $1,50, de run liep alleen met een open tabblad, "Gemini: mislukt" zonder reden en de belangrijkste bevinding (een gratis alternatief) verstopt tussen 18 andere. Migratie `20261109090000_b2_onderzoek.sql` (nog niet live; de app werkt ook zonder, met het oude gedrag).
+
+- ✅ **1 Vragen uit de intake**: specifieke doelgroep, gebied, aanbod en genoemde prijs (`lib/research-questions.ts`); één beslissende vraag (`research_questions.is_decisive`, hooguit één per idee). Bestaande sjabloonvragen per rij bijwerken met "Vragen afleiden uit de intake" (gebeurt ook automatisch bij de start van een run); de consultant kan de beslissende vraag verplaatsen. `dossier.decisiveQuestion` gebruikt de gemarkeerde vraag
+- ✅ **2 Volgorde**: de beslissende vraag altijd eerst (zoeken, citaten, tegenbewijs); snelle check = die kern, daarna de rest zolang het budget het toelaat (`lib/research-steps.ts`)
+- ✅ **3 Hard plafond**: bovengrens per stap uit de prijstabel; een stap start alleen als uitgegeven + bovengrens ≤ plafond, en mag binnen de stap niet meer reserveren. Schatting vóór de start ("geschat: $x–$y van max $z"). Gedateerde modelvarianten worden als het gevraagde model geprijsd
+- ✅ **4 Op de server**: keten van porties via `after()` en `/api/research/[runId]/advance` met het token van de consultant, lease per run (`research_run_leases`), melding als coachnotitie bij afronden (`docs/OPERATIONS.md` §11)
+- ✅ **5 Reden bij een mislukte aanbieder** (timeout, quotum, geweigerd, …) en "Opnieuw proberen" per aanbieder of stap
+- ✅ **6 Kaart "Wat dit betekent voor je grootste onzekerheid"**: max. 3 bevindingen, "Risico" bij ondermijnend; AI-voorstel als slotstap van de run (regel als terugval), aan te passen door de consultant (`uncertainty_findings`)
+- ✅ **7 Samenvoegen**: dezelfde bewering of hetzelfde cijfer uit dezelfde bron wordt één bevinding met meerdere vindplaatsen (`lib/research-dedupe.ts`)
+- ✅ Tests: `research-questions`, `research-steps`, `research-worker`, `research-failures`, `research-dedupe`, `research-uncertainty`, `research-b2-acceptance` (snelle check op het testdossier: prijsvraag eerst, binnen $1,50, melding)
+- 🟡 Een run duurt hooguit zo lang als het toegangstoken geldig is (minstens een uur na de start); daarna pauzeert hij tot iemand van het team de pagina opent. Previews met Deployment Protection hebben `VERCEL_AUTOMATION_BYPASS_SECRET` nodig
+- ✅ Migratie live op Supabase (4 november): kolom, index, leasetabel en -functies, `uncertainty_findings` met RLS en triggers, en de nieuwe controles gecontroleerd; Supabase-advies meldt niets nieuws. Versie in de migratiegeschiedenis gelijkgetrokken met de repo (`20261109090000`)
+- [ ] Snelle check op het testdossier met de echte API's en visuele controle van de kaart en het paneel
+
+## Fase B6: beslisblad en rapport (4 november)
+
+- ✅ **Beslisblad als pagina 1** van het rapport (web en PDF): besluit **Doorgaan / Stoppen / Nog niet beslisbaar** met het bewijsniveau en de telling per persoon; de 3 sterkste bewijsstukken (geverifieerde bronnen en echte, niet-oefen, niet-synthetische waarnemingen; per persoon of test één stuk; op bewijsniveau gesorteerd), elk in één zin met bron (voetnoot en link); wat níét bewezen is (beslissende vraag, kritieke aannames, ontbrekende metingen; max. 3); de volgende stap met datum (einde testperiode, meetdatum, einde sprint of beslisdatum; anders eerlijk "Nog geen datum vastgelegd"). Pure logica in `lib/report-sheet.ts`; bewaard in de momentopname (`sheet`); oudere rapporten krijgen een afgeleid beslisblad met die vermelding. Het volledige dossier volgt als bijlage in de bestaande opbouw
+- ✅ "Nog niet beslisbaar" als: geen definitief besluit (doorgaan/stoppen), geen stap met echt bewijs (`getDossierStatus`), of doorgaan zonder afgeronde test met uitslag
+- ✅ Eén PDF-knop en bevestiging bij delen ("kan niet worden teruggedraaid"): gecontroleerd, al gedaan in fase 3
+- ✅ **Verder testen** en de verlengde testfase zijn één keuze met een duur (2–8 weken). Opgeslagen als `extend` (met weken) als het dossier die fase nog niet had, anders als `test_more` met de streefdatum in de volgende stap. Geen migratie; bestaande besluiten ongewijzigd
+- ✅ Reality Check: een onbekende regio telt niet meer als "andere regio" maar als aparte melding "onbekende regio"
+- ✅ Rapport: "Niet vastgesteld" met reden in plaats van "€ 0" bereikbare jaaromzet (KPI en scenariotabel)
+- ✅ Tests: `tests/unit/report-sheet.test.ts`, uitbreiding `tests/unit/report-pdf.test.ts`; e2e `tests/e2e/b6-beslisblad.spec.ts` en één extra controle in de journey
+- 🟡 De e2e-tests zijn niet gedraaid (geen lokale Supabase in deze omgeving)
+
+## Uitlegtooltips en zoeken binnen een dossier (4 november)
+
+- ✅ **Woordenboek** `lib/glossary.ts` met 31 vaktermen (o.a. beslissende vraag, kritieke aanname, hoofdtest, succes-/faaldrempel, kansregel, aantalregel, plafond, informatiewaarde, Reality Check, Learning Card, go-regel, wervingsgroep, TAM/SAM/SOM, Brier-score, kalibratie), uitleg volgens `lib/domain/*`
+- ✅ **`<Term k="…">`** (`components/ui/Term.tsx`): hover, focus, tik (opent/sluit), Escape, aria-describedby, portal zonder layoutverschuiving, past op 390 px; niet in de PDF. Geplaatst op Test Card, risicokaart, experimentpagina, bewijs & besluit, rapport (scherm), voorspelling/voorspelkwaliteit en marktverkenning
+- ✅ **Zoeken in een dossier**: knop en sneltoets `/` in de kop van elke ideepagina; server action met de sessie van de gebruiker (RLS) over bevindingen, aannames, bronnen en (als de tabel bestaat) eigen notities; per kolom een eigen `ilike` met ge-escapete jokers (geen `.or()`-filterstring); max. 30 resultaten, eerlijk verdeeld per soort; markering, lege staat, laadstatus, pijltjes/Enter; links naar `#claim-…`, `?select=…` en `?tab=sources#bron-…`. Geen zoeken in citaten of persoonlijke bronfragmenten
+- ✅ Tests: `tests/unit/glossary.test.ts`, `tests/unit/dossier-search.test.ts` (o.a. filterinjectie via een echte PostgREST-querybouwer); e2e `tests/e2e/tooltips-zoeken.spec.ts`
+- 🟡 De e2e-tests zijn niet gedraaid (geen lokale Supabase in deze omgeving); geen migratie nodig
+
+## Fase B3: intake in drie vragen en één bevestiging (10 november)
+
+Aanleiding: 6 vragen met ongeveer 20 velden, eerst "wanneer geslaagd" en dan pas het idee, doelgroep en prijs dubbel, de grootste onzekerheid achteraan in één regel, opdrachtgever standaard "+ Nieuwe opdrachtgever". Migratie `20261110090000_b3_intake.sql` (nog niet live; de intake werkt ook zonder, dan zonder AI-voorstel en met de prijs in de beschrijving).
+
+- ✅ **Drie vragen**: 1 het idee en voor wie (één tekstvak), 2 de beslissing met inzet en datum (inzet en datum worden direct herkend en getoond), 3 de grootste onzekerheid (meerregelig, met voorbeeld)
+- ✅ **Voorstel** (`lib/intake-proposal.ts`, `lib/ai/intake.ts`): succesdefinitie (maatstaf, doelwaarde, minimumbedrag, zin), doelgroep, soort klant, regio, branche, type project, prijs, inzet, beslisdatum en sprintduur. AI via `runOrgAi` (budgetstop en grootboek op de organisatie, want er is nog geen idee); zonder sleutel, budget of bij een fout de regels (bedragen, datums, prijs, doelgroep na "voor", terugverdienen van de inzet als doelwaarde). Wat letterlijk in de tekst staat wint van de AI
+- ✅ **Samenvattingskaart**: alle velden bewerkbaar, herkomst per veld (AI-voorstel / Uit je tekst / Nog invullen), fouten per veld (ActionForm/Field), "Klopt, start de marktverkenning" → idee, onderzoeksvragen (B2), /research. Antwoorden, voorstel en aangepaste velden in `ideas.intake_proposal`
+- ✅ **Opdrachtgever**: standaard "Geen (eigen idee)"; een nieuwe alleen na de keuze "+ Nieuwe opdrachtgever…" en met naam
+- ✅ Tests: `tests/unit/intake-proposal.test.ts`; e2e `b3-intake.spec.ts` en de intake in journey, testcard en dogfood via `tests/e2e/intake.ts`
+- ✅ Telling makelaarsdossier: oud 6 schermen, 23 velden (16 ingevuld, prijs 3× en doelgroep 2×), ±24 klikken; nieuw 3 schermen + 1 bevestiging, 3 tekstvakken + 17 voorgestelde velden op de kaart (0 leeg), 7 klikken (met naam aanpassen 8)
+- 🟡 Visueel gecontroleerd op 1440 px en 390 px met een tijdelijke voorbeeldpagina (zonder login); de e2e-tests zijn niet gedraaid (geen E2E-account in deze omgeving)
+- ✅ Migratie live op Supabase (4 november)
+- [ ] e2e `b3-intake` draaien tegen productie, met en zonder AI-sleutel
+
 ## Notities en documenten per stap (10 november)
 
 Opdracht product owner: "per stap zelf ook teksten kan toevoegen en ook documenten". Migratie
-`20261110130000_notities_documenten.sql` (nog niet live); beheer in `docs/OPERATIONS.md` §11.
+`20261110130000_notities_documenten.sql` (live sinds 4 november); beheer in `docs/OPERATIONS.md` §12.
 
 - ✅ **Blok "Notities en documenten"** (`components/steps/StepNotes.tsx`, zelfstandig) onderaan het overzicht van het idee
   en de hoofdpagina's van elke stap (Markt: /research en /integrations; Aannames; Testen; Besluit: /evidence en /outcome),
@@ -403,6 +462,6 @@ Opdracht product owner: "per stap zelf ook teksten kan toevoegen en ook document
 - ✅ Tests: `tests/unit/step-files.test.ts` (types, grootte, mime/extensie, bestandsnaam, pad), `tests/unit/simple-markdown.test.ts`
   (opmaak, geen HTML, alleen http(s)/mailto); `tests/db/step-notes.test.ts` (RLS, auteur, eigen/eigenaar, audit, bucket,
   storage-policies; storage-shim in `tests/db/supabase-shim.sql`); e2e `tests/e2e/notities.spec.ts`
-- 🟡 Migratie nog toepassen op de live Supabase (na akkoord) en controleren dat Storage aan staat; daarna de e2e
+- ✅ Migratie live op Supabase (4 november), met de bucket `step-documents`. Nog te doen: de e2e
   `notities.spec.ts` draaien. Visueel gecontroleerd op 1440 px en 390 px met voorbeelddata (lokaal, alleen lezen)
 - 🟡 Bestanden van een verwijderd idee blijven in de bucket staan; inhoud van bestanden wordt niet gescand

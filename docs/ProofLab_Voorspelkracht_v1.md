@@ -468,7 +468,8 @@ factor (grootste ln(factor) × gewicht) blijft over. "Dezelfde bron" is (`eviden
 | Overig (losse observatie, bevinding zonder bron) | het signaal zelf |
 
 **Tegenbewijs** (een tegensprekende koppeling, en bezwaren, "probleem niet herkend" en tegenvoorbeelden) wordt niet
-samengevoegd en telt per signaal mee, zoals in 2026-11-a. Daarna werkt alles als in 3.5: per soort en richting
+samengevoegd en telt per signaal mee, zoals in 2026-11-a (geldt tot en met 2026-11-c; vanaf 2026-11-d telt ook
+tegenbewijs per bron, zie hoofdstuk 13). Daarna werkt alles als in 3.5: per soort en richting
 afnemend meetellen (log₂(1 + n)), half gewicht voor niet beoordeelde AI-codering, synthetische data telt niet.
 
 **De factoren werken op de kansverhouding (odds):** logit(p) = logit(beginwaarde) + Σ ln(factor) × log₂(1 + n) ×
@@ -793,3 +794,61 @@ van bewijs naar besluit en aan de voorspellus. Migratie `20261107100000_golf_b.s
   verlengde fase meer. Coachregel `extension_ending` meldt het einde.
 - Bekende beperking: het voorspelmoment "bij het besluit" is één moment. Wie al vóór het tussenbesluit voorspelde,
   voorspelt na de verlengde fase niet opnieuw.
+
+## 13. Methode 2026-11-d: tegenbewijs per bron (4 november 2026)
+
+**Aanleiding.** Sinds fase B0 telt ProofLab aantallen per persoon (`lib/domain/per-person.ts`: één waarneming per
+interview per bewijsniveau en richting). De kans per aanname voegde ondersteunend bewijs al per bron samen (9.2),
+maar tegenbewijs telde nog per citaat: vijf bezwaren van één geïnterviewde verlaagden de kans vijf keer, alsof vijf
+mensen bezwaar hadden. Eén uitgesproken criticus woog zo zwaarder dan vijf mensen die elk één keer twijfelden. De
+product owner besloot dit recht te zetten in een nieuwe methodeversie **2026-11-d** (`lib/domain/method/2026-11-d.ts`,
+`assumptionProbabilityV4` in `lib/domain/evidence.ts`).
+
+### 13.1 De regel
+
+- **Tegenbewijs telt per bron één keer**, op dezelfde manier als ondersteunend bewijs: per bron (de sleutel uit
+  `evidenceSourceKey`, voor interviewcodering het interview) telt alleen het **sterkste tegensignaal** (grootste
+  ln(factor) × gewicht). Bij een bezwaar en een tegenvoorbeeld uit hetzelfde interview telt dus alleen het
+  tegenvoorbeeld (factor 2 tegen 1,5).
+- Ondersteunend bewijs en tegenbewijs worden per richting apart samengevoegd: een interview dat de aanname zowel
+  steunt als tegenspreekt, levert van elke richting zijn sterkste signaal.
+- **Over bronnen heen** werkt alles zoals in 2026-11-c: tegenbewijs van dezelfde soort uit verschillende bronnen
+  telt afnemend mee (log₂(1 + n), 3.5). Bezwaren van vijf verschillende geïnterviewden tellen dus elk mee.
+- **Geen demping per wervingsgroep voor tegenbewijs.** De afnemende factor binnen dezelfde wervingsgroep (11.1) blijft
+  alleen voor ondersteunend bewijs gelden. Tegenbewijs uit het eigen netwerk is eerder ondergewaardeerd (bekenden zijn
+  vriendelijk), dus het zou onterecht zijn het nog eens te verzwakken.
+- **Plafonds** per bewijsniveau (9.3) veranderen niet: tegenbewijs tilt nooit een niveau op en verlaagt alleen de kans.
+- Signalen zonder bron (losse observaties) krijgen elk een eigen sleutel en worden dus niet samengevoegd.
+- Al het andere (beslisregel per test, hoofdtest, AI-codering pas na beoordeling, indirect bewijs half) is gelijk aan
+  2026-11-c.
+
+### 13.2 Rekenvoorbeeld
+
+Beginwaarde 50%, bezwaar (factor 1,5 als tegenbewijs):
+
+| Situatie | 2026-11-c | 2026-11-d |
+|---|---|---|
+| Eén bezwaar van één geïnterviewde | 50% × 1/1,5 → **40%** | **40%** |
+| Vijf bezwaren van één geïnterviewde | ln(1,5) × log₂(6) → **26%** | één bezwaar telt → **40%** |
+| Vijf geïnterviewden met elk één bezwaar | **26%** | **26%** (ongewijzigd) |
+
+### 13.3 Weergave
+
+Samengevoegd tegenbewijs staat apart vermeld: op de aannamepagina "5 tegensignalen uit Interview … samengevoegd:
+alleen het sterkste tegenbewijs telt (Bezwaar)", op de methodepagina en in het rapport "5 tegensignalen uit …
+samengevoegd" (`explainMerged`, `mergedShort`; `MergedSource.direction = 'contradicts'`). Het rapport en de
+overstappagina noemen de regel bij de methode (`describe.ts`, `changesBetween`).
+
+### 13.4 Methodeversie, migratie en reproduceerbaarheid
+
+- Migratie `20261109100000_method_d.sql` (akkoord product owner, 4 november 2026): `ideas.method_version` staat
+  `'2026-11-d'` toe en dat is de standaard voor **nieuwe** dossiers; `method_version_rank` en `guard_method_version`
+  kennen de nieuwe versie.
+- **Bestaande dossiers houden hun versie**: de migratie wijzigt geen rijen, zodat elke eerder getoonde kans en elk
+  rapport te reproduceren blijft. 2026-11-a tot en met 2026-11-c rekenen exact als voorheen.
+- Overstappen kan alleen vooruit (a, b of c → d), via de overstappagina met vooraf de kans oud/nieuw per aanname, en
+  met audit (`switch_method_version`). Bestaande rapportversies veranderen niet; een nieuwe rapportversie legt de
+  nieuwe uitkomsten vast.
+- Tests: `tests/unit/evidence-v4.test.ts` (onder meer: vijf bezwaren van één interview = één bezwaar; bezwaren van
+  vijf interviews tellen elk mee; zonder herhaald tegenbewijs uit één bron rekent 2026-11-d als 2026-11-c) en
+  `tests/db/method-d.test.ts` (standaard, behoud van versie, overstap met audit, nooit terug).

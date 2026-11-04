@@ -18,7 +18,7 @@ export default async function NewIdeaPage() {
     <PageFrame crumbs={["Werkruimte", "Nieuw idee"]} coach="intake" coachCollapsed>
       <div className="section-row">
         <div>
-          <div className="eyebrow">Nieuw idee · Beslissing en idee</div>
+          <div className="eyebrow">Nieuw idee · Drie vragen</div>
           <h1>
             Elk sterk idee begint
             <br />

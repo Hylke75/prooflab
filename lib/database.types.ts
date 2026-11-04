@@ -732,6 +732,7 @@ export type Database = {
           detail: string | null
           id: string
           idea_id: string | null
+          org_id: string | null
           input_tokens: number
           model: string
           outcome: string
@@ -748,6 +749,7 @@ export type Database = {
           detail?: string | null
           id?: string
           idea_id?: string | null
+          org_id?: string | null
           input_tokens?: number
           model: string
           outcome: string
@@ -764,6 +766,7 @@ export type Database = {
           detail?: string | null
           id?: string
           idea_id?: string | null
+          org_id?: string | null
           input_tokens?: number
           model?: string
           outcome?: string
@@ -884,6 +887,7 @@ export type Database = {
           prior_locked_at: string | null
           primary_experiment_id: string | null
           kind: string | null
+          selected_for_test: boolean
         }
         Insert: {
           prior?: number | null
@@ -899,6 +903,7 @@ export type Database = {
           prior_locked_at?: string | null
           primary_experiment_id?: string | null
           kind?: string | null
+          selected_for_test?: boolean
         }
         Update: {
           prior?: number | null
@@ -914,6 +919,7 @@ export type Database = {
           prior_locked_at?: string | null
           primary_experiment_id?: string | null
           kind?: string | null
+          selected_for_test?: boolean
         }
         Relationships: [
           {
@@ -1603,6 +1609,8 @@ export type Database = {
           id: string
           is_demo: boolean
           key_uncertainty: string | null
+          offer_price: string | null
+          intake_proposal: Json | null
           method_version: string
           org_id: string
           project_type: string
@@ -1645,6 +1653,8 @@ export type Database = {
           id?: string
           is_demo?: boolean
           key_uncertainty?: string | null
+          offer_price?: string | null
+          intake_proposal?: Json | null
           method_version?: string
           org_id: string
           project_type: string
@@ -1687,6 +1697,8 @@ export type Database = {
           id?: string
           is_demo?: boolean
           key_uncertainty?: string | null
+          offer_price?: string | null
+          intake_proposal?: Json | null
           method_version?: string
           org_id?: string
           project_type?: string
@@ -2209,6 +2221,7 @@ export type Database = {
           why_it_matters: string | null
           unit: string | null
           expected_source: string | null
+          is_decisive: boolean
         }
         Insert: {
           created_at?: string
@@ -2226,6 +2239,7 @@ export type Database = {
           why_it_matters?: string | null
           unit?: string | null
           expected_source?: string | null
+          is_decisive?: boolean
         }
         Update: {
           created_at?: string
@@ -2243,6 +2257,7 @@ export type Database = {
           why_it_matters?: string | null
           unit?: string | null
           expected_source?: string | null
+          is_decisive?: boolean
         }
         Relationships: [
           {
@@ -2253,6 +2268,26 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      uncertainty_findings: {
+        Row: { id: string; idea_id: string; claim_id: string; effect: string; rank: number; reason: string | null; origin: string; created_by: string | null; created_at: string }
+        Insert: { id?: string; idea_id: string; claim_id: string; effect: string; rank?: number; reason?: string | null; origin: string; created_by?: string | null; created_at?: string }
+        Update: { id?: string; idea_id?: string; claim_id?: string; effect?: string; rank?: number; reason?: string | null; origin?: string; created_by?: string | null; created_at?: string }
+        Relationships: [
+          {
+            foreignKeyName: "uncertainty_findings_claim_id_fkey"
+            columns: ["claim_id"]
+            isOneToOne: false
+            referencedRelation: "claims"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      research_run_leases: {
+        Row: { run_id: string; idea_id: string; lease_id: string; lease_until: string }
+        Insert: { run_id: string; idea_id: string; lease_id: string; lease_until: string }
+        Update: { run_id?: string; idea_id?: string; lease_id?: string; lease_until?: string }
+        Relationships: []
       }
       research_runs: {
         Row: {
@@ -2929,7 +2964,10 @@ export type Database = {
         Returns: boolean
       }
       add_research_cost: { Args: { p_cost: number; p_task: string }; Returns: number }
+      research_run_lease: { Args: { p_run: string; p_lease: string; p_seconds: number }; Returns: boolean }
+      research_run_release: { Args: { p_run: string; p_lease: string }; Returns: undefined }
       org_ai_spend: { Args: { p_idea: string }; Returns: { spent: number; cap: number }[] }
+      org_ai_spend_for_org: { Args: { p_org: string }; Returns: { spent: number; cap: number }[] }
       system_status: {
         Args: { p_org?: string | null }
         Returns: {

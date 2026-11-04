@@ -7,6 +7,7 @@ import { todayInNL } from "@/lib/domain/sprint";
 import { getIdea, getWorkspace } from "@/lib/data";
 import { loadProgress } from "@/lib/progress";
 import { aiConfigured } from "@/lib/env";
+import { DossierSearch } from "@/components/search/DossierSearch";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadOpenNotes } from "@/lib/coach/review";
 import { CoachWatch } from "@/components/coach/CoachWatch";
@@ -69,6 +70,10 @@ export async function PageFrame({
             <>
               <SprintStrip idea={access.idea} progress={progress} canWrite={access.canWrite} today={todayInNL()} />
               <Stepper current={stepKey} ideaId={ideaId} states={stepStates(progress)} />
+              {/* Zoeken binnen dit dossier: knop of sneltoets "/" (alleen wat de gebruiker mag zien, via RLS). */}
+              <div className="dossier-search-bar no-print">
+                <DossierSearch ideaId={access.idea.id} />
+              </div>
             </>
           )}
           {ideaId && step && tabs.length > 1 && (

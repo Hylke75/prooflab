@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { InsightCard, type ClaimView } from "@/components/ui/InsightCard";
+import { Term } from "@/components/ui/Term";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { Tabs } from "@/components/research/Tabs";
 import { ResearchRunPanel, SearchLogList, type QuestionLog, type SearchLogUrl } from "@/components/research/ResearchRunPanel";
@@ -19,8 +20,9 @@ import { SUPPORT_LABEL, isSupportCheck, type SupportCheck } from "@/lib/domain/s
 import { UnitEconomicsPanel } from "@/components/research/UnitEconomicsPanel";
 import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
-import { aiConfigured, configuredProviders } from "@/lib/env";
-import { isProvider, PROVIDER_KEY_ENV, PROVIDER_LABELS, PROVIDERS, providerLabel } from "@/lib/ai/providers/config";
+import { aiConfigured, configuredProviders, env } from "@/lib/env";
+import { isProvider, modelFor, PROVIDER_KEY_ENV, PROVIDER_LABELS, PROVIDERS, providerLabel } from "@/lib/ai/providers/config";
+import { estimateRun, estimateText, planSteps, runBudgetUsd } from "@/lib/research-steps";
 import { ensembleProviders } from "@/lib/ai/providers/select";
 import { aiSettingsForOrg } from "@/lib/ai/settings";
 import { CLAIM_STATUS, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type EvidenceType, type SourceType } from "@/lib/domain/labels";
@@ -29,8 +31,14 @@ import { compareWithIntake, intakeScope } from "@/lib/domain/claim-scope";
 import type { FreshnessKind } from "@/lib/domain/verify";
 import {
   addClaim, addSource, aiPlan, fetchCbsFigures, checkClaimSupport, deleteClaim, deleteCompetitor, deleteQuestion, deleteSegment, deleteSource,
-  overrideSupport, recheckCompetitors, saveCompetitor, saveQuestion, saveScenario, saveSegment, saveUnitEconomics,
+  overrideSupport, recheckCompetitors, refreshQuestionsFromIntake, saveCompetitor, saveQuestion, saveScenario, saveSegment, saveUnitEconomics,
+  setDecisiveQuestion,
 } from "./actions";
+import { decisiveFirst, isGenericTemplate } from "@/lib/research-questions";
+import { FAILURE_TEXT, failedProviders, retryable } from "@/lib/research-failures";
+import { loadUncertaintyPicks } from "@/lib/research-uncertainty-data";
+import { uncertaintyText } from "@/lib/research-uncertainty";
+import { UncertaintyCard } from "@/components/research/UncertaintyCard";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
 export const metadata: Metadata = { title: "Marktverkenning" };
@@ -62,13 +70,19 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   const quality = canWrite ? await loadAiQuality() : null;
   const run = runRes.data;
   const { data: tasks } = run
-    ? await supabase.from("research_tasks").select("label, status, detail, kind, output").eq("run_id", run.id).order("position")
+    ? await supabase.from("research_tasks").select("id, label, status, detail, kind, output, question_id").eq("run_id", run.id).order("position")
     : { data: [] };
   // Zoeklogboek van de laatste run (RLS: alleen het onderzoeksteam leest het).
   const { data: logRows } =
     run && canWrite
       ? await supabase.from("research_search_log").select("id, question_id, question, provider, query, urls, passages, reused, kind").eq("run_id", run.id).order("created_at")
       : { data: [] };
+  // Fase B2, punt 4: werkt er nu een serverportie aan de run (lease)? Zonder de B2-migratie: onbekend.
+  const lease =
+    run && canWrite && (run.status === "queued" || run.status === "running")
+      ? await supabase.from("research_run_leases").select("lease_until").eq("run_id", run.id).maybeSingle()
+      : null;
+  const worker = workerState(lease);
   const counterTasks = (tasks ?? []).filter((t) => t.kind === "counter");
   const challenges =
     ((tasks ?? []).find((t) => t.kind === "reality_check" && t.status === "done")?.output as { challenges?: { title: string; detail: string }[] } | null)?.challenges ?? [];
@@ -140,12 +154,40 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   const counterClaims = claims.filter(isCounter);
   const verified = claims.filter((c) => c.status === "verified").length;
   const answered = questions.filter((q) => q.status === "answered").length;
-  const openQuestion = questions.find((q) => q.status !== "answered");
+  // Fase B2: de beslissende vraag (is_decisive) gaat voor; zonder markering de eerste open vraag.
+  const decisiveQuestion = questions.find((q) => q.is_decisive === true) ?? null;
+  const openQuestion = decisiveQuestion && decisiveQuestion.status !== "answered" ? decisiveQuestion : questions.find((q) => q.status !== "answered");
+  // Sjabloonvragen met de brede doelgroep terwijl de intake specifieker is, of nog geen beslissende vraag.
+  const questionsNeedIntake = questions.some((q) => isGenericTemplate(q, idea)) || (questions.length > 0 && !decisiveQuestion);
   const kinds = new Set(competitors.map((c) => c.kind));
   const ue = ueRes.data;
   const sizingClaims = claims
     .filter((c) => c.status !== "insufficient")
     .map((c) => ({ id: c.id, statement: c.statement, status: c.status, numeric_value: c.numeric_value, region: c.region, reference_date: c.scope?.referenceDate ?? null }));
+
+  // Fase B2, punt 3: de schatting vóór de start, per modus, met dezelfde bovengrenzen als de runner.
+  const searchProviders = canWrite && aiConfigured() ? await researchProviders(idea.org_id) : [];
+  const models = Object.fromEntries(PROVIDERS.map((p) => [p, modelFor(p, process.env, "research")]));
+  const runOrder = decisiveFirst(questions);
+  const runEstimates = searchProviders.length
+    ? (["quick", "deep"] as const).reduce(
+        (acc, mode) => {
+          const e = estimateRun(planSteps(runOrder, mode), searchProviders, mode, runBudgetUsd(mode, env.researchBudgetUsd), models);
+          acc[mode] = { text: estimateText(e), providers: e.providers.map((p) => PROVIDER_LABELS[p].name) };
+          return acc;
+        },
+        {} as Record<"quick" | "deep", { text: string; providers: string[] }>,
+      )
+    : undefined;
+
+  // Fase B2, punt 6: de bevindingen bij de grootste onzekerheid (alleen bestaande bevindingen met bron).
+  const uncertainty = await loadUncertaintyPicks(supabase, id);
+  const uncertaintyPicks = uncertainty.picks.flatMap((p) => {
+    const c = claims.find((x) => x.id === p.claimId);
+    if (!c) return [];
+    const sources = [...new Set(c.evidence.map((e) => e.source?.publisher || e.source?.title || "").filter(Boolean))];
+    return [{ claimId: p.claimId, effect: p.effect, reason: p.reason, origin: p.origin, statement: c.statement, status: c.status, sources }];
+  });
 
   const tab = typeof sp.tab === "string" ? sp.tab : "overview";
   const evidenceActions = (claim: (typeof claims)[number]) =>
@@ -199,6 +241,18 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
         <span className={`pill ${verified ? "green" : "orange"}`}>{verified} geverifieerde bevinding{verified === 1 ? "" : "en"}</span>
       </div>
 
+      <UncertaintyCard
+        ideaId={id}
+        uncertainty={uncertaintyText(idea.key_uncertainty, decisiveQuestion?.question)}
+        picks={uncertaintyPicks}
+        candidates={claims
+          .filter((c) => ["verified", "estimate", "contested"].includes(c.status) && !uncertaintyPicks.some((p) => p.claimId === c.id))
+          .map((c) => ({ id: c.id, statement: c.statement }))}
+        canWrite={canWrite}
+        editable={uncertainty.editable}
+        aiConnected={aiConfigured()}
+      />
+
       <Tabs
         initial={tab}
         tabs={[
@@ -215,7 +269,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
             <div className="card tight">
               <div className="tiny">Onderzoeksvragen beantwoord</div>
               <div className="mini-kpi num">{answered}/{questions.length}</div>
-              <span className="stat-caption">Maximaal vijf beslissende vragen</span>
+              <span className="stat-caption">Maximaal vijf <Term k="beslissende-vraag">beslissende vragen</Term></span>
             </div>
             <div className="card tight">
               <div className="tiny">Bevindingen met bron</div>
@@ -223,7 +277,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               <span className="stat-caption">{verified} geverifieerd · {claims.filter((c) => c.status === "insufficient").length} onvoldoende bewijs</span>
             </div>
             <div className="card tight">
-              <div className="tiny">Belangrijkste open vraag</div>
+              <div className="tiny">{openQuestion && openQuestion.id === decisiveQuestion?.id ? "Beslissende vraag" : "Belangrijkste open vraag"}</div>
               <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3, margin: "12px 0 7px" }}>{openQuestion?.question ?? "Alle vragen beantwoord"}</div>
               <span className={`pill ${openQuestion ? "orange" : "green"}`}>{openQuestion ? "Nog niet beantwoord" : "Klaar"}</span>
             </div>
@@ -234,6 +288,11 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
             <div className="card">
               <div className="section-title">
                 <h3>Onderzoekskaart</h3>
+                {canWrite && questionsNeedIntake && (
+                  <ActionForm action={refreshQuestionsFromIntake.bind(null, id)} submitLabel="Vragen afleiden uit de intake" submitClass="btn white sm" pendingLabel="Bezig…">
+                    <span />
+                  </ActionForm>
+                )}
                 {canWrite && aiConfigured() && (
                   <ActionForm action={aiPlan.bind(null, id)} submitLabel="Laat AI opnieuw voorstellen" submitClass="btn ai sm" pendingLabel="Bezig…">
                     <span />
@@ -250,6 +309,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                       <div className="question-text">
                         <strong>{q.question}</strong>
                         <span className="question-meta">
+                          {q.is_decisive === true && <span className="pill blue">Beslissende vraag</span>}
                           <span className={`pill ${pill}`}>{label}</span>
                           {METHOD[q.method as keyof typeof METHOD]}
                           {isExpectedSource(q.expected_source) ? ` · Brontype: ${EXPECTED_SOURCES[q.expected_source]}` : ""} · {qClaims.length} bevinding{qClaims.length === 1 ? "" : "en"}
@@ -261,6 +321,17 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                       {q.why_it_matters && <p className="tiny">Waarom: {q.why_it_matters}</p>}
                       {q.unit && <p className="tiny mt-8">Meeteenheid: {q.unit}</p>}
                       <p className="tiny mt-8">Klaar als: {q.done_criterion}</p>
+                      {q.is_decisive === true ? (
+                        <p className="tiny mt-8">Deze vraag raakt de grootste onzekerheid en gaat in elke onderzoeksrun als eerste.</p>
+                      ) : (
+                        canWrite &&
+                        decisiveQuestion && (
+                          <form action={setDecisiveQuestion.bind(null, id, q.id)} className="mt-8">
+                            <button className="text-link">Maak dit de beslissende vraag</button>
+                            <FormPendingOverlay />
+                          </form>
+                        )
+                      )}
                       {canWrite && (
                         <ActionForm action={saveQuestion.bind(null, id, q.id)} submitLabel="Vraag opslaan" submitClass="btn white sm" footer={<DeleteQuestion ideaId={id} questionId={q.id} />}>
                           <label className="field-label" htmlFor={`q-${q.id}`}>Vraag</label>
@@ -318,8 +389,10 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               ideaId={id}
               canWrite={canWrite}
               providers={PROVIDERS.map((p) => ({ id: p, name: providerLabel(p), keyEnv: PROVIDER_KEY_ENV[p], connected: configuredProviders().includes(p) }))}
-              searchWith={canWrite && aiConfigured() ? (await researchProviders(idea.org_id)).map((p) => PROVIDER_LABELS[p].name) : []}
-              run={run ? { id: run.id, status: run.status, mode: run.mode, cost: Number(run.cost_usd), budget: Number(run.budget_usd), tasks: (tasks ?? []).map((t) => ({ label: t.label, status: t.status, detail: t.detail })) } : null}
+              searchWith={searchProviders.map((p) => PROVIDER_LABELS[p].name)}
+              estimates={runEstimates}
+              worker={worker}
+              run={run ? { id: run.id, status: run.status, mode: run.mode, cost: Number(run.cost_usd), budget: Number(run.budget_usd), tasks: (tasks ?? []).map((t) => runTaskView(t)) } : null}
               searchLog={groupSearchLog((logRows ?? []).filter((r) => r.kind !== "counter"), questions)}
               cbsAction={fetchCbsFigures.bind(null, id)}
             />
@@ -363,7 +436,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
           {claims.length === 0 ? (
             <div className="empty-state">
               <h3>Nog geen bevindingen</h3>
-              <p>{aiConfigured() ? "Start een marktcheck, of voeg zelf een bron met letterlijk citaat toe." : "Voeg een bron toe onder Bronnen en leg er een bevinding met letterlijk citaat bij."}</p>
+              <p>{aiConfigured() ? <>Start een marktcheck, of voeg zelf een bron met <Term k="letterlijk-citaat">letterlijk citaat</Term> toe.</> : <>Voeg een bron toe onder Bronnen en leg er een bevinding met <Term k="letterlijk-citaat">letterlijk citaat</Term> bij.</>}</p>
             </div>
           ) : (
             <div className="stack">
@@ -385,7 +458,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
             <>
               <div className="section-title mt-24">
                 <div>
-                  <h2>Tegenbewijs</h2>
+                  <h2><Term k="tegenbewijs">Tegenbewijs</Term></h2>
                   <p className="sub">Bevindingen die het idee tegenspreken, per onderzoeksvraag. Lees ze even serieus als het ondersteunende bewijs.</p>
                 </div>
               </div>
@@ -546,7 +619,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               const sc = supportCounts(s.id);
               const missingHere = claims.some((c) => c.evidence.some((e) => e.source_id === s.id && e.live_found === false));
               return (
-                <div className="source-item" key={s.id}>
+                <div className="source-item" key={s.id} id={`bron-${s.id}`}>
                   <span className="source-icon" aria-hidden="true">{s.source_type === "official_statistic" ? "▣" : s.url ? "↗" : "◉"}</span>
                   <div style={{ flex: 1 }}>
                     <strong>{s.url ? <a href={s.url} target="_blank" rel="noreferrer noopener">{s.title}</a> : s.title}</strong>
@@ -649,6 +722,31 @@ function groupSearchLog(rows: LogRow[], questions: { id: string; position: numbe
 }
 
 // Providers that would run the web search for this organisation (its choice first, ensemble on or off).
+// Fase B2, punt 5: per stap de mislukte aanbieders met een korte reden, en of "opnieuw proberen" kan.
+function runTaskView(t: { id: string; label: string; status: string; detail: string | null; kind: string; output: unknown; question_id: string | null }) {
+  const retryKind = !!t.question_id && ["search", "extract", "counter"].includes(t.kind);
+  return {
+    id: t.id,
+    label: t.label,
+    status: t.status,
+    detail: t.detail,
+    failures: t.status === "done" && retryKind
+      ? failedProviders(t.output).map((f) => ({
+          provider: f.provider,
+          name: isProvider(f.provider) ? PROVIDER_LABELS[f.provider].name : f.provider,
+          reason: FAILURE_TEXT[f.reason],
+          canRetry: retryable(f.reason),
+        }))
+      : [],
+    canRetry: retryKind && t.status === "failed",
+  };
+}
+
+function workerState(lease: { error: unknown; data: { lease_until: string } | null } | null): "busy" | "idle" | "unknown" {
+  if (!lease || lease.error) return "unknown";
+  return lease.data && new Date(lease.data.lease_until).getTime() > Date.now() ? "busy" : "idle";
+}
+
 async function researchProviders(orgId: string) {
   return ensembleProviders(await aiSettingsForOrg(orgId), "research", configuredProviders());
 }

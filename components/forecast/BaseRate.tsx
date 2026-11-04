@@ -1,4 +1,5 @@
 import type { BaseRateView } from "@/lib/forecast-data";
+import { Term } from "@/components/ui/Term";
 import { pct } from "@/lib/domain/forecast";
 
 export function baseRateRange(b: BaseRateView | null): string {
@@ -11,7 +12,7 @@ export function BaseRateSummary({ baseRate, id }: { baseRate: BaseRateView; id?:
   return (
     <div className="note" id={id} style={{ marginTop: 12 }}>
       <strong style={{ color: "var(--color-heading)" }}>
-        Basispercentage: {baseRateRange(baseRate)}
+        <Term k="basispercentage">Basispercentage</Term>: {baseRateRange(baseRate)}
       </strong>
       {baseRate.kind === "class" && (
         <>

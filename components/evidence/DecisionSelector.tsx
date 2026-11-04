@@ -7,6 +7,9 @@ import { DECISIONS, type DecisionAction } from "@/lib/domain/labels";
 import { DEVIATION_MIN_CHARS, deviates, deviationLabel } from "@/lib/domain/decision-rule";
 import { EXTEND_WEEK_OPTIONS } from "@/lib/domain/extension";
 
+// De keuzes in het scherm. "extend" (verlengde testfase) is sinds B6 opgenomen in "Verder testen" met een duur.
+const VISIBLE_CHOICES = (Object.keys(DECISIONS) as DecisionAction[]).filter((k) => k !== "extend");
+
 // ruleMet: de toets aan de beslisregel van het dossier (null = geen regel). Wijkt de keuze af, dan is een motivering
 // verplicht (golf B, punt 6); die gaat naar het auditspoor en het rapport.
 export function DecisionSelector({
@@ -23,7 +26,8 @@ export function DecisionSelector({
   // Golf B, punt 20: per keuze waarom die nu niet kan (verlengde testfase loopt, of al gehad).
   blocked?: Partial<Record<DecisionAction, string>>;
 }) {
-  const [choice, setChoice] = useState<DecisionAction>(advised ?? "test_more");
+  // B6: "Verder testen" en de verlengde testfase zijn één keuze met een duur; de server kiest hoe die wordt opgeslagen.
+  const [choice, setChoice] = useState<DecisionAction>(advised && advised !== "extend" ? advised : "test_more");
   const deviation = deviates(choice, ruleMet);
   const choiceBlocked = blocked[choice] ?? null;
   return (
@@ -39,7 +43,7 @@ export function DecisionSelector({
     >
       <input type="hidden" name="action" value={choice} />
       <div role="radiogroup" aria-label="Besluit">
-        {(Object.keys(DECISIONS) as DecisionAction[]).map((k) => (
+        {VISIBLE_CHOICES.map((k) => (
           <button type="button" key={k} role="radio" aria-checked={choice === k} className={`decision-option${choice === k ? " active" : ""}`} onClick={() => setChoice(k)}>
             <span className="radio" />
             <span>
@@ -52,14 +56,24 @@ export function DecisionSelector({
       <Field className="" labelClassName="field-label" name="rationale" id="dec-why" label="Waarom? (komt in het rapport)" required hint="Minstens één zin (15 tekens).">
         <textarea className="field" rows={3} minLength={15} maxLength={2000} />
       </Field>
-      {choice === "extend" && !choiceBlocked && (
-        <>
-          <Field className="" labelClassName="field-label" name="extend_weeks" id="dec-weeks" label="Hoeveel weken extra testen?" required hint="Het definitieve besluit en de uitkomstklok starten pas na deze verlengde testfase.">
-            <select className="field" defaultValue="4">
-              {EXTEND_WEEK_OPTIONS.map((w) => <option key={w} value={w}>{w} weken</option>)}
-            </select>
-          </Field>
-        </>
+      {choice === "test_more" && (
+        <Field
+          className=""
+          labelClassName="field-label"
+          name="extend_weeks"
+          id="dec-weeks"
+          label="Hoe lang test je verder?"
+          required
+          hint={
+            blocked.extend
+              ? "Dit dossier had al een verlengde testfase of de uitkomstklok loopt: de duur wordt een streefdatum en houdt een definitief besluit niet tegen."
+              : "Het definitieve besluit (doorgaan of stoppen) en de uitkomstklok volgen na deze periode."
+          }
+        >
+          <select className="field" defaultValue="4">
+            {EXTEND_WEEK_OPTIONS.map((w) => <option key={w} value={w}>{w} weken</option>)}
+          </select>
+        </Field>
       )}
       {deviation && ruleMet != null && (
         <>

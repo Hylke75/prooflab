@@ -21,7 +21,8 @@ const isKind = (k: unknown): k is AssumptionKind => typeof k === "string" && k i
 // koppeling" gaat dus over betalen. Woordgrenzen voorkomen dat "wervingskosten" als prijsaanname telt.
 const PRICE = /€|\bprijs|\bprijzen\b|\bbetal|\beuro|\bper (maand|jaar|stuk|gebruiker)\b|\babonnement|\bbudget|\bkosten\b|\bkost\b|\btarie(f|ven)\b|\baanbetal|willingness to pay|\bwtp\b/;
 const TECHNICAL = /\bkoppel|\bintegrat|\bapi('s)?\b|\brealworks\b|\bbouwen\b|\btechnisch|\btechniek|\bsysteem|\bsystemen\b/;
-const BEHAVIOUR = /\bgebruik|\bdoen\b|\bdoet\b|\bwekelijks|\bdagelijks|\boverstap|\bgedrag/;
+// B4: "doen" telt niet meer: "vaak genoeg om er iets aan te willen doen" gaat over het probleem (markt).
+const BEHAVIOUR = /\bgebruik|\bwekelijks|\bdagelijks|\boverstap|\bgedrag|\baanvra|\baanmeld|\binschrijv/;
 
 // De soort van een aanname: het vastgelegde veld als dat er is, anders afgeleid uit de tekst. De categorie
 // (bijv. levensvatbaarheid) is te grof om de soort uit af te leiden: daaronder vallen ook wervingskosten en marge.

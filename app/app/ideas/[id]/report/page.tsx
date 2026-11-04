@@ -15,11 +15,16 @@ import { createReportVersion, shareReportVersion } from "./actions";
 import { Icon } from "@/components/Icon";
 import { Probability } from "@/components/ui/Probability";
 import { explainRecruitment } from "@/lib/domain/recruitment";
-import { asEvidenceLevel, outcomeWithLevel } from "@/lib/domain/evidence";
+import { asEvidenceLevel, mergedShort, outcomeWithLevel } from "@/lib/domain/evidence";
 import { allTestsSummary } from "@/lib/domain/all-tests";
 import { formatGroups } from "@/lib/domain/report-counts";
 import { ladderSummary } from "@/lib/domain/dossier-label";
 import { CALIBRATION_MIN_RESOLVED } from "@/lib/domain/probability-display";
+import { sheetOf, somRevenueCell } from "@/lib/report-pdf-model";
+import { reachableRevenue } from "@/lib/report-sheet";
+import { isUnknown } from "@/lib/domain/claim-scope";
+import { DecisionSheetView } from "./DecisionSheet";
+import { Term } from "@/components/ui/Term";
 
 export const metadata: Metadata = { title: "Rapportage" };
 
@@ -79,6 +84,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
     await supabase.rpc("mark_report_viewed", { p_report: current.id });
   }
   const newest = all[0];
+  const revenue = reachableRevenue(r?.sizing.find((s) => s.label === "Realistisch") ?? r?.sizing[1] ?? null);
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Rapport"]} coach="report" ideaId={id} section="/report">
@@ -188,11 +194,18 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             </p>
           </div>
 
+          {/* Fase B6: pagina 1 is het beslisblad; het volledige dossier volgt als bijlage, in de bestaande opbouw. */}
+          <DecisionSheetView sheet={sheetOf(r)} version={r.version} date={date(r.generatedAt)} />
+
+          <div className="report-head" style={{ marginTop: 10 }}>
+            <div className="eyebrow">Bijlage · Volledig dossier</div>
+          </div>
+
           <section className="report-section">
             <span className="eyebrow">01 / Managementsamenvatting</span>
             <h3>{r.decision ? `Besluit: ${r.decision.action}.` : r.realityCheck ? `Advies: ${r.realityCheck.advice}.` : "Nog geen besluit."}</h3>
             <p>
-              {r.decision?.rationale ?? r.realityCheck?.reason ?? "Het onderzoek loopt nog."} Bewijsniveau: <strong>{r.label}</strong>.
+              {r.decision?.rationale ?? r.realityCheck?.reason ?? "Het onderzoek loopt nog."} <Term k="bewijsniveau">Bewijsniveau</Term>: <strong>{r.label}</strong>.
               {r.labelMissing.length ? ` Voor een hoger niveau ontbreekt: ${r.labelMissing.join("; ")}.` : ""}
               {r.observationCounts ? ` ${ladderSummary(r.observationCounts)}` : ""}
             </p>
@@ -209,8 +222,9 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               </div>
               <div style={{ background: "var(--color-warning-soft)", padding: 16, borderRadius: "var(--radius-inner)" }}>
                 <div className="tiny">Bereikbare jaaromzet (realistisch)</div>
-                <div className="report-number">{r.sizing.find((s) => s.label === "Realistisch") ? eur(r.sizing.find((s) => s.label === "Realistisch")!.somRevenue) : "?"}</div>
-                <div className="tiny">{r.sizing.find((s) => s.label === "Realistisch")?.status ?? "niet berekend"}</div>
+                {/* B6: geen "€ 0" als de marktomvang niet is vastgesteld. */}
+                <div className="report-number">{revenue.value}</div>
+                <div className="tiny">{revenue.note}</div>
               </div>
             </div>
           </section>
@@ -240,7 +254,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                         {c.statement} <Notes n={c.notes} /> <em className="tiny">({c.status}{c.contradicted ? ", tegengesproken" : ""})</em>
                         {c.scope && (
                           <div className="tiny">
-                            Populatie: {c.scope.population} · regio: {c.scope.region} · peildatum: {c.scope.referenceDate}
+                            {/* B6: een onbekende regio is geen andere regio; ze staat er als "onbekend". */}
+                            Populatie: {isUnknown(c.scope.population) ? "onbekend" : c.scope.population} · regio: {isUnknown(c.scope.region) ? "onbekend" : c.scope.region} · peildatum: {isUnknown(c.scope.referenceDate) ? "onbekend" : c.scope.referenceDate}
                             {c.scope.relevance === "indirect" ? " · indirect (wijkt af van de intake)" : ""}
                           </div>
                         )}
@@ -275,8 +290,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             <span className="eyebrow">05 / Marktpotentieel</span>
             <h3>Van onderaf berekend, met zichtbare aannames</h3>
             <table className="table">
-              <thead><tr><th>Scenario</th><th>TAM</th><th>SAM</th><th>SOM-klanten</th><th>SOM-omzet</th><th>Onderbouwing</th></tr></thead>
-              <tbody>{r.sizing.map((s) => <tr key={s.label}><td>{s.label}</td><td className="num">{int(s.tamCount)}</td><td className="num">{int(s.samCount)}</td><td className="num">{int(s.somCount)}</td><td className="num">{eur(s.somRevenue)}</td><td>{s.provenance.sourced}/{s.provenance.total} factoren met bron</td></tr>)}</tbody>
+              <thead><tr><th>Scenario</th><th><Term k="tam">TAM</Term></th><th><Term k="sam">SAM</Term></th><th><Term k="som">SOM</Term>-klanten</th><th>SOM-omzet</th><th>Onderbouwing</th></tr></thead>
+              <tbody>{r.sizing.map((s) => <tr key={s.label}><td>{s.label}</td><td className="num">{int(s.tamCount)}</td><td className="num">{int(s.samCount)}</td><td className="num">{int(s.somCount)}</td><td className="num">{somRevenueCell(s)}</td><td>{s.provenance.sourced}/{s.provenance.total} factoren met bron</td></tr>)}</tbody>
             </table>
             {r.sizing[1] && <p className="tiny mt-8 mono">Formule (realistisch): {r.sizing[1].formula}</p>}
             <p>{r.sizing[1]?.status}. Dit is omzetpotentieel onder de getoonde aannames, geen winst en geen voorspelling.</p>
@@ -314,7 +329,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                         <Probability p={a.probability.point} calibrated={calibrated} showLabel={false} />{" "}
                         <span className="tiny">(<Probability p={a.probability.low} high={a.probability.high} calibrated={calibrated} showLabel={false} />)</span>
                         {"capReason" in a && a.capReason ? <span className="tiny" style={{ display: "block" }}>{a.capReason}</span> : null}
-                        {"merged" in a && a.merged.length ? <span className="tiny" style={{ display: "block" }}>{a.merged.map((m) => `${m.signals} signalen uit ${m.label} samengevoegd`).join("; ")}</span> : null}
+                        {"merged" in a && a.merged.length ? <span className="tiny" style={{ display: "block" }}>{a.merged.map((m) => mergedShort(m)).join("; ")}</span> : null}
                         {"recruitment" in a && a.recruitment?.length ? <span className="tiny" style={{ display: "block" }}>{a.recruitment.map((x) => explainRecruitment(x)).join(" ")}</span> : null}
                       </td>
                     ) : (
@@ -418,7 +433,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             ))}
             {r.learningCards.map((c, i) => (
               <div key={i} className="note">
-                <strong>Learning Card{"title" in c && c.title ? `: ${c.title}` : ""}.</strong>{" "}
+                <strong><Term k="learning-card">Learning Card</Term>{"title" in c && c.title ? `: ${c.title}` : ""}.</strong>{" "}
                 {"level" in c ? <span className="pill gray">{outcomeWithLevel(c.verdict === "pass" ? "geslaagd" : c.verdict === "fail" ? "niet geslaagd" : "onbeslist", asEvidenceLevel(c.level))}</span> : null} We dachten: {c.believed} We zagen: {c.observed} Daaruit leren we: {c.learned} Daarom: {c.therefore} (betrouwbaarheid: {{ low: "laag", medium: "middel", high: "hoog" }[c.reliability as "low"]})
               </div>
             ))}
@@ -454,7 +469,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           <section className="report-section">
             <span className="eyebrow">08 / Reality check: tegenargumenten en beperkingen</span>
             <h3>Wat dit onderzoek níét bewijst</h3>
-            <p className="explain">De Reality Check zoekt vóór elk besluit bewust naar tegenbewijs, zwakke data en conclusies die het bewijs niet draagt.</p>
+            <p className="explain">De <Term k="reality-check">Reality Check</Term> zoekt vóór elk besluit bewust naar <Term k="tegenbewijs">tegenbewijs</Term>, zwakke data en conclusies die het bewijs niet draagt.</p>
             {r.realityCheck ? (
               <>
                 <p>Uitgevoerd {date(r.realityCheck.at)}{r.realityCheck.aiUsed ? ", aangevuld met kritische vragen van AI" : ""}. Advies: {r.realityCheck.advice}. {r.realityCheck.reason}</p>
@@ -479,14 +494,14 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                   : r.decision.confirmation === "not_needed"
                     ? "Dit dossier heeft geen opdrachtgever: het besluit is direct definitief."
                     : "Nog niet bevestigd door de opdrachtgever."}
-                {r.decision.extendWeeks ? ` Na de sprint volgde een verlengde testfase van ${r.decision.extendWeeks} weken; het definitieve besluit en de uitkomstklok kwamen daarna.` : ""}
+                {r.decision.extendWeeks ? ` Daarna volgde een periode van ${r.decision.extendWeeks} weken verder testen (verlengde testfase); het definitieve besluit en de uitkomstklok kwamen daarna.` : ""}
                 {r.decision.confirmedAt && r.decision.reviewedAgainst ? " De opdrachtgever zag daarbij de samenvatting “Wat ging tegen” (mislukte tests, tegenbewijs, begrensde aannames en afwijkingen van de beslisregel)." : ""}
               </p>
             )}
             {r.decision?.rule && (
               <div className="mt-12">
                 <p>
-                  <strong>Beslisregel: {r.decision.rule.met ? "gehaald" : "niet gehaald"}.</strong> {r.decision.rule.lines.join("; ")}.
+                  <strong><Term k="go-regel">Beslisregel</Term>: {r.decision.rule.met ? "gehaald" : "niet gehaald"}.</strong> {r.decision.rule.lines.join("; ")}.
                 </p>
                 {r.decision.rule.deviation && (
                   <p className="mt-8">
@@ -511,7 +526,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 <p>Er is nog niet vastgelegd wanneer dit idee geslaagd is.</p>
               )}
               <p className="mt-8">
-                Basispercentage:{" "}
+                <Term k="basispercentage">Basispercentage</Term>:{" "}
                 {r.prediction.baseRate.low != null && r.prediction.baseRate.high != null
                   ? `${pct0(r.prediction.baseRate.low)}–${pct0(r.prediction.baseRate.high)}`
                   : "onbekend"}
@@ -541,7 +556,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 </p>
               )}
               <p className="explain">
-                Iedereen geeft zijn kans zonder de anderen te zien. De AI telt als één stem (het gemiddelde van de modellen), niet mee in het gemiddelde van de mensen, en is geen bewijs. De Brier-score
+                Iedereen geeft zijn kans zonder de anderen te zien. De AI telt als één stem (het gemiddelde van de modellen), niet mee in het gemiddelde van de mensen, en is geen bewijs. De <Term k="brier-score">Brier-score</Term>
                 meet achteraf hoe goed een kans was: 0 is perfect, 0,25 is wat je haalt met steeds 50%.
               </p>
               {r.prediction.stop && (

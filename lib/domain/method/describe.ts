@@ -35,6 +35,7 @@ export const METHOD_CHANGES: Record<MethodVersion, string> = {
   "2026-11-a": "De oorspronkelijke rekenwijze: intervalregel per test, geen samenvoegen per bron en geen plafonds.",
   "2026-11-b": "Een beslisregel per testtype (kansregel of vast aantal), bewijs per bron één keer meetellen en een plafond per bewijsniveau.",
   "2026-11-c": "Herhaling binnen dezelfde wervingsgroep telt afnemend mee, AI-codering telt pas na beoordeling, alleen de hoofdtest per aanname beslist over de status van de aanname en indirect bewijs (een bevinding over een andere populatie, regio of een te oude peildatum) telt half.",
+  "2026-11-d": "Ook tegenbewijs telt per bron één keer: vijf bezwaren van één geïnterviewde verlagen de kans één keer, bezwaren van verschillende geïnterviewden tellen elk mee.",
 };
 
 // De veranderingen tussen twee versies (alle versies na `from` tot en met `to`).
