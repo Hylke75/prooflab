@@ -34,7 +34,8 @@ import { isConclusiveDecision } from "@/lib/domain/dossier-status";
 import { audienceExample } from "@/lib/research-questions";
 import { Term } from "@/components/ui/Term";
 import { DeskEvidence, type DeskLinkRow } from "@/components/evidence/DeskEvidence";
-import { EvidenceScale } from "@/components/evidence/EvidenceScale";
+import { EvidenceStanding } from "@/components/evidence/EvidenceStanding";
+import { loadEvidenceStanding } from "@/lib/standing-data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { CLAIM_STATUS, type ClaimStatus } from "@/lib/domain/labels";
 
@@ -75,12 +76,14 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
     );
   }
   const supabase = await supabaseServer();
-  const [d, ruleCheck, calibration, { data: deskRows }] = await Promise.all([
+  const [d, ruleCheck, calibration, { data: deskRows }, standing] = await Promise.all([
     loadDossier(idea),
     loadRuleCheck(id),
     loadCalibration(id),
     // Gebruikerstest A2: gekoppeld bureauonderzoek per aanname.
     supabase.from("assumption_claims").select("assumption_id, claim_id, relation, claims(statement, status)").eq("idea_id", id),
+    // Fase 1, punt 2: Stand van het bewijs bovenaan; de volgende stap komt hier eerst van het besluit (coach).
+    loadEvidenceStanding(id, "evidence"),
   ]);
   const deskLinks: DeskLinkRow[] = (deskRows ?? []).flatMap((l) =>
     l.claims && l.claims.status in CLAIM_STATUS
@@ -136,6 +139,8 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
         </div>
       )}
 
+      <EvidenceStanding standing={standing} ideaId={id} />
+
       <div className="insight-banner" style={{ background: "var(--color-success-soft)" }}>
         <div>
           <span className="pill green">{d.label.label}</span>
@@ -152,10 +157,6 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
       <div className="grid-2">
         <div className="card">
           <div className="section-title"><h3>Bewijs op een rij</h3><span className="pill gray">{perPersonLabel(ladder)}</span></div>
-          {/* Fase 1, punt 2: dezelfde schaal als de kansberekening (verkenning → mening → gedrag → betaling → herhaling). */}
-          <div style={{ marginBottom: 12 }}>
-            <EvidenceScale step={highest?.step ?? "exploration"} label="Sterkste klantbewijs op de bewijsschaal" />
-          </div>
           <div className="row" style={{ gap: 6, marginBottom: 6 }}>
             {reached.map((r) => <span key={r.label} className={`pill ${r.count ? "green" : "gray"}`}>{r.label}{r.count ? ` · ${r.count}` : ""}</span>)}
           </div>

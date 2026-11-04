@@ -11,6 +11,9 @@ import { NOTE_KINDS, NOTES_SHOWN, byNotePriority, type NoteKind } from "@/lib/co
 import { nextAction, predictionTip, sprintStage } from "@/lib/domain/coach";
 import { SPRINT_PHASES, sprintStatus, todayInNL } from "@/lib/domain/sprint";
 import { dossierStatus, IDEA_OVERVIEW, IDEA_REPORT, STEPS, stepOverview } from "@/lib/steps";
+import { forecastFirstLock } from "@/lib/domain/forecast";
+import { loadEvidenceStanding } from "@/lib/standing-data";
+import { EvidenceStanding } from "@/components/evidence/EvidenceStanding";
 
 export const metadata: Metadata = { title: IDEA_OVERVIEW.label };
 
@@ -32,7 +35,9 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
   const next = nextAction(progress);
   const tip = predictionTip(progress);
   const steps = stepOverview(progress);
-  const notes = await loadOpenNotes(id, "consultant");
+  // Fase 1, punt 2: Stand van het bewijs. Golf B, punt 15: zolang de eigen voorspelling open staat, geen kansen.
+  const lock = forecastFirstLock(progress);
+  const [notes, standing] = await Promise.all([loadOpenNotes(id, "consultant"), lock ? Promise.resolve(null) : loadEvidenceStanding(id, "overview")]);
   const s = sprintStatus({
     start: idea.sprint_start,
     weeks: idea.sprint_weeks,
@@ -60,6 +65,15 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
           <p className="sub">{idea.decision_question}</p>
         </div>
       </div>
+
+      {standing ? (
+        <EvidenceStanding standing={standing} ideaId={id} />
+      ) : (
+        <div className="note" role="status" style={{ marginBottom: 24 }}>
+          <strong>Stand van het bewijs:</strong> eerst je eigen voorspelling, daarna zie je de kansen en de zekerheid.{" "}
+          <Link className="text-link" href={`/app/ideas/${id}/evidence`} prefetch={false}>Naar de voorspelling →</Link>
+        </div>
+      )}
 
       <div className="grid-3">
         <div className="card tight">
