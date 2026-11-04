@@ -4,6 +4,7 @@ import "./report-import.css";
 import { useEffect, useId, useRef, useState } from "react";
 import { ActionForm, Field, type FormState } from "@/components/ui/ActionForm";
 import { SavingOverlay } from "@/components/ui/SavingOverlay";
+import { DirectionField } from "@/components/ui/DirectionField";
 import { EVIDENCE_TYPES, SOURCE_TYPES, type EvidenceType } from "@/lib/domain/labels";
 import { defaultsForSource, deviationHint } from "@/lib/domain/source-defaults";
 import { checkImportFile, defaultTitle, IMPORT_ACCEPT, IMPORT_LABEL, IMPORT_SOURCE_TYPES, MAX_IMPORT_BYTES, MAX_PDF_PAGES } from "@/lib/domain/report-import";
@@ -603,12 +604,8 @@ function FindingForm({
             <option value="">Geen specifieke vraag</option>
           </select>
         </Field>
-        <Field name="stance" id={id("stance")} label="Richting">
-          <select className="field" defaultValue={p?.stance ?? "supports"}>
-            <option value="supports">Ondersteunt de bevinding</option>
-            <option value="contradicts">Spreekt de bevinding tegen</option>
-          </select>
-        </Field>
+        {/* Gebruikerstest C1: hetzelfde richting-veld als bij een gewone bron. */}
+        <DirectionField kind="quote" id={id("stance")} name="stance" defaultValue={p?.stance ?? "supports"} />
       </div>
       <div className="double-field">
         <Field

@@ -27,22 +27,34 @@ export type TestCardInput = {
   headline: string;
   price_points: number; // aantal geldige prijspunten
   guide_questions: number;
+  // Gebruikerstest C3: het vooraf berekende aantal deelnemers (kansregel) en de motivering als de minimale steekproef
+  // daaronder ligt. Zonder berekening (oude methode, aantalregel) geen controle.
+  required_n?: number | null;
+  sample_below_reason?: string | null;
 };
+
+// Gebruikerstest C3: een minimale steekproef onder het berekende aantal vraagt een motivering van minstens 10 tekens.
+export const SAMPLE_REASON_MIN = 10;
+export function sampleBelowRequired(c: Pick<TestCardInput, "rule" | "min_sample" | "required_n">): boolean {
+  return c.rule === "probability" && c.required_n != null && c.min_sample != null && c.min_sample < c.required_n;
+}
 
 export type FieldErrors = Record<string, string>;
 
 // Volgorde = volgorde op het scherm, zodat de eerste fout ook bovenaan de samenvatting staat. Fase B5: eerst de vijf
 // zichtbare velden, daarna wat onder "Details" staat.
 export const FIELD_LABELS: Record<string, string> = {
-  we_believe: "Wat test je?",
+  // Gebruikerstest C4: de naam staat zichtbaar bovenaan; C5: "Wij denken dat …" (een bewering, geen vraag).
+  title: "Naam van het experiment",
+  we_believe: "Wij denken dat …",
   target_group: "Bij wie?",
   success_threshold_pct: "Succesdrempel",
   fail_threshold_pct: "Faaldrempel",
   success_count: "Geslaagd bij minimaal (aantal)",
   thresholds: "Drempels vastleggen",
   min_sample: "Minimale steekproef",
+  sample_below_reason: "Reden voor minder deelnemers dan berekend",
   max_duration_days: "Deadline",
-  title: "Naam van het experiment",
   test_method: "Dat toetsen we door…",
   metric_label: "En we meten…",
   metric_numerator: "Teller en noemer",
@@ -85,6 +97,11 @@ export function validateTestCard(c: TestCardInput): FieldErrors {
   if (c.success_threshold_pct != null && c.success_threshold_pct > 100) add("success_threshold_pct", "Een drempel is hoogstens 100%.");
   if (c.rule && !c.thresholds_locked && !e.success_threshold_pct && !e.fail_threshold_pct && !e.success_count) {
     add("thresholds", "Leg eerst de drempels vast: daarna rekent ProofLab uit hoeveel deelnemers je nodig hebt.");
+  }
+  // Gebruikerstest C5: een hypothese is een bewering die kan kloppen of niet, geen vraag.
+  if (c.we_believe.trim().endsWith("?")) add("we_believe", "Schrijf een bewering, geen vraag: wat denk je dat er gebeurt? Haal het vraagteken weg.");
+  if (sampleBelowRequired(c) && (c.sample_below_reason ?? "").trim().length < SAMPLE_REASON_MIN) {
+    add("sample_below_reason", `De minimale steekproef ligt onder het berekende aantal (${c.required_n}). Leg in een zin uit waarom (minstens ${SAMPLE_REASON_MIN} tekens), of neem ${c.required_n} over.`);
   }
   if (recruitmentMissing(c.type, c.recruitment_group)) add("recruitment_group", "Kies de wervingsgroep: via welke weg bereik je de deelnemers?");
   if (c.channels.length === 0) add("channels", "Kies minstens één wervingskanaal. Zonder werving zegt een test niets.");
@@ -196,7 +213,7 @@ export function sampleBand(input: {
 // ---------------------------------------------------------------------------
 
 // Velden (sleutels van FieldErrors) die op het zichtbare deel van de Test Card staan.
-export const VISIBLE_FIELDS = ["we_believe", "target_group", "success_threshold_pct", "fail_threshold_pct", "success_count", "thresholds", "min_sample", "max_duration_days"] as const;
+export const VISIBLE_FIELDS = ["title", "we_believe", "target_group", "success_threshold_pct", "fail_threshold_pct", "success_count", "thresholds", "min_sample", "sample_below_reason", "max_duration_days"] as const;
 
 // Alle andere velden staan onder "Details" (de enquête staat in de preview en telt niet als detailveld).
 export function detailFieldErrors(e: FieldErrors): string[] {

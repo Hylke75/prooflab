@@ -35,6 +35,7 @@ import { SamplePlanner } from "@/components/survey/SamplePlanner";
 import { templateSurvey, type SurveyConfig } from "@/lib/domain/survey";
 import { metricFromKey, surveyErrors } from "@/lib/domain/survey-editor";
 import { assumptionKind, assumptionKindLabel, interviewGuideFor, metricFitsAssumption, type AssumptionKind } from "@/lib/domain/assumption-kind";
+import { experimentTitle } from "@/lib/domain/truncate";
 
 type VariantsResult = { error: string | null; variants: PreparedVariant[]; draftNotes: string[]; draftWarnings: string[] };
 type VariantsAction = (input: { assumption_id: string; type: "landing" | "pricing"; headline: string; subline: string; offer: string }) => Promise<VariantsResult>;
@@ -62,6 +63,7 @@ const FIELD_FOCUS: Record<string, string> = {
   success_count: "tc-count",
   thresholds: "tc-lock",
   min_sample: "tc-n",
+  sample_below_reason: "tc-n-reason",
   max_duration_days: "tc-deadline",
   recruitment_group: "tc-rg-0",
   channels: "tc-ch-0",
@@ -144,8 +146,13 @@ export function ExperimentBuilder({
   const [today] = useState(() => isoDay(new Date()));
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [isPrimary, setIsPrimary] = useState(() => !assumption.primary);
-  const titleFor = () => `${EXPERIMENT_TYPES[type].label}: ${assumption.statement.slice(0, 60)}`;
+  // Gebruikerstest C4: de voorgestelde naam stopt op een woordgrens; heeft de gebruiker hem zelf aangepast, dan blijft hij staan.
+  const titleFor = () => experimentTitle(EXPERIMENT_TYPES[type].label, assumption.statement);
   const [title, setTitle] = useState(titleFor);
+  const [titleTouched, setTitleTouched] = useState(false);
+  // Gebruikerstest C3: de minimale steekproef die ProofLab bij het vastleggen ophoogde (de oude waarde, voor de hint).
+  const [autoSample, setAutoSample] = useState<string | null>(null);
+  const [sampleReason, setSampleReason] = useState("");
   // Fase B1b, stap 1: de drempels liggen vast vóórdat ProofLab rekent. Wijzigen kan daarna alleen met een motivering.
   const [locked, setLocked] = useState(false);
   const [lockedAt, setLockedAt] = useState<string | null>(null); // drempels zoals ze de eerste keer zijn vastgelegd
@@ -156,7 +163,9 @@ export function ExperimentBuilder({
     setLastKey(`${type}|${assumption.id}`);
     setCard(withSurveyMetric(defaults, survey));
     setRule("probability");
-    setTitle(titleFor());
+    if (!titleTouched) setTitle(titleFor());
+    setAutoSample(null);
+    setSampleReason("");
     // De knoptekst volgt het testtype, tenzij de gebruiker hem zelf heeft aangepast.
     setPage((pg) => (Object.values(CTA_DEFAULT).includes(pg.cta_label) ? { ...pg, cta_label: CTA_DEFAULT[type] } : pg));
     setLocked(false);
@@ -256,6 +265,15 @@ export function ExperimentBuilder({
     }
     setLockError(null);
     if (lockedAt === null) setLockedAt(thresholdKey());
+    // Gebruikerstest C3: bij de kansregel neemt ProofLab het berekende aantal over als de steekproef lager is
+    // (min_sample = max(huidig, berekend)); lager kan daarna alleen met een motivering.
+    if (v2 && activeRule !== "absolute" && thresholdPct > 0) {
+      const b = sampleBand({ rule: activeRule, thresholdPct, successCount: countN, prior, availablePerWeek: Number(perWeek) > 0 ? Number(perWeek) : null, maxDurationDays: Number(card.max_duration_days) || 0 });
+      if (b.requiredN != null && n < b.requiredN) {
+        setAutoSample(n > 0 ? String(n) : "leeg");
+        set("min_sample", String(b.requiredN));
+      }
+    }
     setLocked(true);
     setChanging(false);
   };
@@ -283,6 +301,8 @@ export function ExperimentBuilder({
       headline: page.headline,
       price_points: validPrices,
       guide_questions: guide.split("\n").map((x) => x.trim()).filter(Boolean).length,
+      required_n: v2 && activeRule !== "absolute" ? (band?.requiredN ?? null) : null,
+      sample_below_reason: sampleReason,
     }),
     ...(surveyIssues.length ? { survey: "Maak de enquête eerst compleet (zie de meldingen bij de vragen)." } : {}),
   };
@@ -381,7 +401,33 @@ export function ExperimentBuilder({
           {/* B5: één duidelijke status bovenaan; een nieuwe Test Card is altijd een concept. */}
           <TestCardStatus state="draft" note="Nog niet opgeslagen. Na opslaan bied je de Test Card aan voor goedkeuring; daarna start de test." />
           <p className="explain" style={{ marginTop: 0, marginBottom: 14 }}>Vijf vragen; de rest staat vooringevuld onder Details. Na goedkeuring kan niets meer stil veranderen.</p>
-          <div className="form-line"><label htmlFor="tc-believe">Wat test je?<RequiredMark /></label><textarea className="field" id="tc-believe" name="we_believe" rows={3} value={card.we_believe} onChange={(e) => set("we_believe", e.target.value)} {...aria("we_believe")} />{fieldError("we_believe")}</div>
+          {/* Gebruikerstest C4: de naam zichtbaar boven Details, vooringevuld en aanpasbaar. */}
+          <div className="form-line">
+            <label htmlFor="tc-title">Naam van het experiment<RequiredMark /></label>
+            <input className="field" id="tc-title" name="title" maxLength={140} value={title} onChange={(e) => { setTitle(e.target.value); setTitleTouched(true); }} {...aria("title")} aria-describedby={shown.title ? "err-title tc-title-hint" : "tc-title-hint"} />
+            {fieldError("title")}
+            <p className="field-hint" id="tc-title-hint">Aanpasbaar. Voorgesteld uit het testtype en de aanname.</p>
+          </div>
+          {/* Gebruikerstest C5: de hypothese als bewering, niet als vraag. */}
+          <div className="form-line">
+            <label htmlFor="tc-believe">Wij denken dat …<RequiredMark /></label>
+            <textarea
+              className="field"
+              id="tc-believe"
+              name="we_believe"
+              rows={3}
+              value={card.we_believe}
+              onChange={(e) => set("we_believe", e.target.value)}
+              placeholder="Bijv. minstens 30% van de benaderde clubbesturen vraagt binnen twee weken een demo aan."
+              {...aria("we_believe")}
+              aria-describedby={[shown.we_believe ? "err-we_believe" : null, "tc-believe-hint", card.we_believe.trim().endsWith("?") && !shown.we_believe ? "tc-believe-question" : null].filter(Boolean).join(" ")}
+            />
+            {fieldError("we_believe")}
+            {card.we_believe.trim().endsWith("?") && !shown.we_believe && (
+              <p className="field-error" id="tc-believe-question" role="status">Dit is een vraag. Schrijf wat je verwacht dat er gebeurt, zonder vraagteken.</p>
+            )}
+            <p className="field-hint" id="tc-believe-hint">Schrijf een bewering, geen vraag.</p>
+          </div>
           <div className="form-line"><label htmlFor="tc-target">Bij wie?<RequiredMark /></label><input className="field" id="tc-target" name="target_group" value={card.target_group} onChange={(e) => set("target_group", e.target.value)} {...aria("target_group")} />{fieldError("target_group")}</div>
           {v2 && <input type="hidden" name="decision_rule" value={activeRule} />}
           <section className="tc-step" aria-labelledby="tc-step1">
@@ -504,8 +550,29 @@ export function ExperimentBuilder({
                 <label htmlFor="tc-n"><Term k="minimale-steekproef">Minimale steekproef</Term><RequiredMark /></label>
                 <input className="field num" id="tc-n" name="min_sample" type="number" min={5} value={card.min_sample} onChange={(e) => set("min_sample", e.target.value)} {...aria("min_sample")} />
                 {fieldError("min_sample")}
+                {autoSample !== null && band?.requiredN != null && n === band.requiredN && (
+                  <p className="field-hint">Automatisch berekend (was {autoSample}).</p>
+                )}
                 {band?.requiredN != null && band.requiredN !== n && (
                   <button type="button" className="text-link mt-8" onClick={() => set("min_sample", String(band.requiredN))}>Neem {band.requiredN} over</button>
+                )}
+                {/* Gebruikerstest C3: lager dan berekend kan, maar alleen met een motivering (bewaard bij de Test Card). */}
+                {band?.requiredN != null && n > 0 && n < band.requiredN && (
+                  <div className="form-line mt-8">
+                    <label htmlFor="tc-n-reason">Waarom minder deelnemers dan berekend ({band.requiredN})?<RequiredMark /></label>
+                    <textarea
+                      className="field"
+                      id="tc-n-reason"
+                      name="sample_below_reason"
+                      rows={2}
+                      value={sampleReason}
+                      onChange={(e) => setSampleReason(e.target.value)}
+                      placeholder="Bijv. er zijn maar 40 clubs in de regio; we accepteren een minder zekere uitkomst."
+                      {...aria("sample_below_reason")}
+                    />
+                    {fieldError("sample_below_reason")}
+                    <p className="field-hint">Minstens 10 tekens. Komt bij de Test Card als &ldquo;Steekproef onder berekend aantal&rdquo;.</p>
+                  </div>
                 )}
               </div>
             )}
@@ -553,11 +620,10 @@ export function ExperimentBuilder({
           {/* B5: alles hieronder staat vooringevuld. Een verplicht veld met een fout opent dit deel vanzelf. */}
           <details className="tc-details" open={detailsOpen} onToggle={(e) => setDetailsOpen(e.currentTarget.open)}>
           <summary id="tc-details">
-            <strong>Details</strong> <small>naam, meting, vertekeningen, werving{type === "landing" || type === "pricing" ? ", aanbodtekst" : ""}{type === "pricing" ? " en prijspunten" : ""}{type === "interview" ? " en gespreksleidraad" : ""} (vooringevuld)</small>
+            <strong>Details</strong> <small>meting, vertekeningen, werving{type === "landing" || type === "pricing" ? ", aanbodtekst" : ""}{type === "pricing" ? " en prijspunten" : ""}{type === "interview" ? " en gespreksleidraad" : ""} (vooringevuld)</small>
             {tried && detailFieldErrors(liveErrors).length > 0 && <span className="pill coral">{detailFieldErrors(liveErrors).length} aan te vullen</span>}
           </summary>
-          <div className="form-line mt-12"><label htmlFor="tc-title">Naam van het experiment<RequiredMark /></label><input className="field" id="tc-title" name="title" value={title} onChange={(e) => setTitle(e.target.value)} {...aria("title")} />{fieldError("title")}</div>
-          <div className="form-line"><label htmlFor="tc-method">Dat toetsen we door…<RequiredMark /></label><input className="field" id="tc-method" name="test_method" value={card.test_method} onChange={(e) => set("test_method", e.target.value)} {...aria("test_method")} />{fieldError("test_method")}</div>
+          <div className="form-line mt-12"><label htmlFor="tc-method">Dat toetsen we door…<RequiredMark /></label><input className="field" id="tc-method" name="test_method" value={card.test_method} onChange={(e) => set("test_method", e.target.value)} {...aria("test_method")} />{fieldError("test_method")}</div>
           <div className="form-line"><label htmlFor="tc-metric">En we meten…<RequiredMark /></label><input className="field" id="tc-metric" name="metric_label" value={card.metric_label} onChange={(e) => set("metric_label", e.target.value)} {...aria("metric_label")} />{fieldError("metric_label")}</div>
           <div className="double-field">
             <div className="form-line"><label htmlFor="tc-num">Teller<RequiredMark /></label><input className="field" id="tc-num" name="metric_numerator" value={card.metric_numerator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_numerator", e.target.value)} {...aria("metric_numerator")} /></div>

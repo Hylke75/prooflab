@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SOURCE_PREFILL_EVENT, SOURCE_TITLE_PARAM, type SourcePrefill } from "./source-prefill";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
+import { DirectionField } from "@/components/ui/DirectionField";
 import { checkQuote } from "@/lib/domain/verify";
 import { EVIDENCE_TYPES, SOURCE_TYPES, type EvidenceType } from "@/lib/domain/labels";
 import { defaultsForSource, deviationHint, SELF_REPORTED_SOURCES } from "@/lib/domain/source-defaults";
@@ -195,13 +196,8 @@ export function AddClaimForm({ action, excerpts, questions }: { action: Action; 
             </p>
           )}
         </div>
-        <div className="form-line">
-          <label htmlFor="cl-stance">Richting</label>
-          <select className="field" id="cl-stance" name="stance" value={stance} onChange={(e) => setStance(e.target.value as "supports" | "contradicts")}>
-            <option value="supports">Ondersteunt de bevinding</option>
-            <option value="contradicts">Spreekt de bevinding tegen</option>
-          </select>
-        </div>
+        {/* Gebruikerstest C1: één gedeeld veld voor de richting, met wat met wat wordt vergeleken. */}
+        <DirectionField kind="quote" id="cl-stance" name="stance" value={stance} onChange={(v) => setStance(v === "contradicts" ? "contradicts" : "supports")} />
       </div>
       <div className="double-field">
         <div className="form-line">

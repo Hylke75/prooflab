@@ -348,7 +348,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 Rekenwijze: {describeMethodology("methodology" in r ? r.methodology : null).title}.
                 {calibrated
                   ? ""
-                  : ` Niet gekalibreerd: bij dit rapport had de werkruimte minder dan ${CALIBRATION_MIN_RESOLVED} opgeloste dossiers om deze kansen aan te toetsen. Daarom staan ze in banden van 10 procentpunt; de exacte waarde staat in de tooltip.`}
+                  : ` Niet gekalibreerd: bij dit rapport had de werkruimte minder dan ${CALIBRATION_MIN_RESOLVED} opgeloste dossiers om deze kansen aan te toetsen. Daarom staan ze in banden van 10 procentpunt rond de berekende waarde; de exacte waarde staat in de tooltip.`}
               </p>
             )}
           </section>

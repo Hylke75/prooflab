@@ -1,10 +1,10 @@
-import { interviewRecruitment, RECRUITMENT_GROUPS, RECRUITMENT_KEYS, recruitmentLabel } from "@/lib/domain/recruitment";
+import { interviewRecruitment, recruitmentLabel } from "@/lib/domain/recruitment";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { Term } from "@/components/ui/Term";
-import { ActionForm, CheckField, Field } from "@/components/ui/ActionForm";
+import { ActionForm, Field } from "@/components/ui/ActionForm";
 import { RuleSummary, ruleName } from "@/components/experiments/RuleSummary";
 import { ResultMeter } from "@/components/experiments/ResultMeter";
 import { GuideAuditList, TranscriptAuditList } from "@/components/experiments/InterviewAudit";
@@ -25,7 +25,8 @@ import { CHANNELS } from "@/lib/domain/tracking";
 import { DMU_ROLES, EXPERIMENT_STATES, EXPERIMENT_TYPES, OBSERVATION_KINDS, type ExperimentState, type ExperimentType } from "@/lib/domain/labels";
 import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, reviewObservation, setInterviewPractice, setPrimaryTest, transitionExperiment } from "../actions";
 import { fictionSignals, fictionWarning, PRACTICE_LABELS, practiceStatus } from "@/lib/domain/practice";
-import { PracticeChoice } from "@/components/experiments/PracticeChoice";
+import { InterviewIntakeFields } from "@/components/experiments/PracticeChoice";
+import { DirectionField } from "@/components/ui/DirectionField";
 import { truncateWords } from "@/lib/domain/truncate";
 import { canDesignatePrimary, TEST_ROLES, testRole } from "@/lib/domain/primary-test";
 import { isStarted } from "@/lib/domain/test-counts";
@@ -528,11 +529,9 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                         </select>
                         <input className="field mt-8" name="summary" placeholder="Korte samenvatting" aria-label="Samenvatting" />
                         <textarea className="field mt-8" name="quote" rows={3} placeholder="Letterlijk citaat uit het transcript" aria-label="Citaat" />
-                        <select className="field mt-8" name="relation" aria-label="Relatie tot de aanname" defaultValue="supports">
-                          <option value="supports">Ondersteunt de aanname</option>
-                          <option value="contradicts">Spreekt de aanname tegen</option>
-                          <option value="neutral">Neutraal</option>
-                        </select>
+                        <div className="mt-8">
+                          <DirectionField kind="statement" id={`obs-rel-${iv.id}`} name="relation" neutral />
+                        </div>
                       </ActionForm>
                     </details>
                     <div className="row" style={{ alignItems: "flex-start", justifyContent: "flex-end" }}>
@@ -558,32 +557,16 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                   <Field name="dmu_role" id="iv-r" label="Rol in het koopproces" required>
                     <select className="field" defaultValue="user">{Object.entries(DMU_ROLES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
                   </Field>
-                  <Field name="recruited_via" id="iv-c" label="Geworven via" required>
-                    <select className="field" defaultValue="network">{Object.entries(CHANNELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-                  </Field>
-                </div>
-                <div className="double-field">
                   <Field name="segment" id="iv-s" label="Segment (optioneel)"><input className="field" maxLength={160} /></Field>
-                  <Field name="record_type" id="iv-t" label="Soort verslag" required>
-                    <select className="field" defaultValue="transcript"><option value="transcript">Transcript (bijv. uit Teams, Zoom of Fathom)</option><option value="notes">Eigen notities</option></select>
-                  </Field>
                 </div>
-                <PracticeChoice />
+                <Field name="record_type" id="iv-t" label="Soort verslag" required>
+                  <select className="field" defaultValue="transcript"><option value="transcript">Transcript (bijv. uit Teams, Zoom of Fathom)</option><option value="notes">Eigen notities</option></select>
+                </Field>
+                {/* Gebruikerstest C8: wervingskanaal en -groep in één logica, toestemming alleen bij een echt gesprek. */}
+                <InterviewIntakeFields testGroup={exp.recruitment_group ?? null} />
                 <Field name="transcript" id="iv-x" label="Transcript of notities" required hint="Minimaal 50 tekens.">
                   <textarea className="field" rows={8} />
                 </Field>
-                <Field
-                  name="recruitment_group"
-                  id="iv-g"
-                  label="Wervingsgroep"
-                  hint="Is het een bekende? Vink dat hieronder aan: dan telt het gesprek als eigen netwerk. Gesprekken uit dezelfde groep tellen afnemend mee."
-                >
-                  <select className="field" defaultValue={exp.recruitment_group ?? "unknown"}>
-                    {RECRUITMENT_KEYS.filter((k) => k !== "own_network").map((k) => <option key={k} value={k}>{RECRUITMENT_GROUPS[k].label}</option>)}
-                  </select>
-                </Field>
-                <label className="check-row"><input type="checkbox" name="is_acquaintance" /> Deze persoon is een bekende (vriend, collega, bestaande klant): wervingsgroep eigen netwerk</label>
-                <CheckField name="consent_recorded" id="iv-consent" label="Toestemming voor verwerking is gegeven en vastgelegd (bewaartermijn 12 maanden)" required />
               </ActionForm>
             </div>
           )}

@@ -533,7 +533,11 @@ details:not([open])>.sprint-pop{display:none}
 .rule-cond-main{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center}
 .rule-cond-main .rule-cond-min{width:130px}
 @media (max-width:560px){.rule-cond-main{grid-template-columns:1fr}.rule-cond-main .rule-cond-min{width:100%}}
-/* Clusterpopup op de risicokaart: lange aannames breken tussen woorden, niet per letter. */
+/* Clusterpopup op de risicokaart: lange aannames breken tussen woorden, niet per letter. Gebruikerstest C7: de popup
+   hangt bij het punt, met een titel, en scrolt binnen de kaart als er veel aannames op één plek staan. */
+.risk-pop{overflow-y:auto;min-height:90px}
+.risk-pop-title{margin:2px 8px 6px;font-size:13px;font-weight:600;color:var(--color-text-muted)}
+.risk-dot.cluster{display:flex;align-items:center;justify-content:center;gap:2px;font-size:13px;white-space:nowrap}
 .risk-pop button>span:not(.count){min-width:0;overflow-wrap:break-word;word-break:normal;hyphens:auto;line-height:1.4}
 
 /* Klantonderzoek (Markt): lijst van enquêtes en interviews. Elke regel is één link (min. 44px), metadata loopt

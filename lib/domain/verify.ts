@@ -153,6 +153,14 @@ const NO_EVIDENCE_TYPES: EvidenceType[] = ["ai_inference", "internal_assumption"
 
 export type StatusResult = { status: ClaimStatus; reason: string };
 
+// Gebruikerstest C2: juiste vervoeging bij aantallen bronnen ("1 gecontroleerde bron spreekt dit tegen", "2 gecontroleerde
+// bronnen spreken dit tegen"), en wat de gebruiker daarna kan doen.
+export function checkedSources(n: number, singular: string, plural: string): string {
+  return `${n} gecontroleerde ${n === 1 ? `bron ${singular}` : `bronnen ${plural}`}`;
+}
+export const REFUTED_NEXT_STEP = "Klopt de richting van het citaat? Zo ja: zoek een bron die de bevinding bevestigt of herformuleer haar.";
+export const CONTESTED_NEXT_STEP = "Bekijk welke bron gelijk heeft, of neem beide waarden mee.";
+
 export function computeClaimStatus(
   claim: { evidenceType: EvidenceType; freshness: FreshnessKind },
   evidence: EvidenceForStatus[],
@@ -168,7 +176,10 @@ export function computeClaimStatus(
   // Gebruikerstest A5: alleen tegensprekende gecontroleerde bronnen en geen enkele bevestigende = weerlegd. "Tegenstrijdig"
   // (contested) blijft voor het geval dat bronnen elkaar echt tegenspreken: minstens één bevestigt en minstens één niet.
   if (supporting.length === 0 && contradicting.length > 0) {
-    return { status: "refuted", reason: `${contradicting.length} gecontroleerde bron(nen) spreken dit tegen; geen bron ondersteunt het.` };
+    return {
+      status: "refuted",
+      reason: `${checkedSources(contradicting.length, "spreekt dit tegen", "spreken dit tegen")}; geen bron bevestigt het. ${REFUTED_NEXT_STEP}`,
+    };
   }
   if (supporting.length === 0) {
     const failed = evidence.filter((e) => e.quoteCheck === "not_found" || e.quoteCheck === "numbers_mismatch");
@@ -189,7 +200,10 @@ export function computeClaimStatus(
   }
 
   if (contradicting.length > 0) {
-    return { status: "contested", reason: `${contradicting.length} gecontroleerde bron(nen) spreken dit tegen.` };
+    return {
+      status: "contested",
+      reason: `${checkedSources(supporting.length, "bevestigt dit", "bevestigen dit")}, ${checkedSources(contradicting.length, "spreekt het tegen", "spreken het tegen")}. ${CONTESTED_NEXT_STEP}`,
+    };
   }
 
   const maxAge = FRESHNESS_MONTHS[claim.freshness];

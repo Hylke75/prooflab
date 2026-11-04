@@ -569,3 +569,26 @@ product owner. Drie commits (A bugs, B betrouwbaarheid besluit, C gebruiksvriend
 - ✅ **B4** Zelfgoedkeuring: melding "Je keurt je eigen test goed" met verplicht vinkje (ook op de server); migratie
   `experiments.submitted_by` en `experiments.self_approved`, gezet door `guard_experiment` (die ook `owner_id` bewaakt);
   het rapport (web en PDF) zet "zelf goedgekeurd" in de status bij Alle tests. Geen vier-ogenregel (fase 3)
+
+### C. Gebruiksvriendelijkheid
+- ✅ **C1** Eén gedeeld richting-veld (`components/ui/DirectionField.tsx`): "Wat doet dit citaat met je bevinding?"
+  (Bevestigt / Weerlegt de bevinding) met voorbeeld, bij een bron en bij een geïmporteerd rapport; hetzelfde patroon
+  met "aanname" bij het koppelen op de risicokaart en bij een interviewuitspraak, met zichtbaar label
+- ✅ **C2** Redenen met de juiste vervoeging ("1 gecontroleerde bron spreekt dit tegen", "2 … spreken …") en een
+  vervolgstap; ook bij tegenstrijdige bronnen de bevestigende telling
+- ✅ **C3** Drempels vastleggen hoogt de minimale steekproef op tot het berekende aantal ("Automatisch berekend (was
+  N)"); lager kan alleen met een motivering (min. 10 tekens), die de server als "Steekproef onder berekend aantal: …"
+  bij de Test Card bewaart. Zelfde controle in `validateTestCard`. Alleen bij de kansregel
+- ✅ **C4** Voorgestelde naam van een experiment stopt op een woordgrens met "…" (`experimentTitle`), staat zichtbaar
+  boven Details met de hint "Aanpasbaar" en wordt niet overschreven als je hem zelf wijzigde
+- ✅ **C5** "Wij denken dat …" met een voorbeeldbewering; "Schrijf een bewering, geen vraag." Een afsluitend
+  vraagteken geeft een melding en houdt opslaan tegen (scherm en server)
+- ✅ **C6** Niet-gekalibreerde kansen in een band rond de waarde (43% → 35–45%, was 40–50%); gelijke waarden als één
+  getal; de tooltip noemt alleen de exacte waarde; de kalibratie-uitleg staat één keer per kaart (ook rapport/PDF)
+- ✅ **C7** Tot acht aannames op één plek in een ring; daarboven een badge "N ▾" met een popup bij het punt ("N
+  aannames op deze plek — kies er één"), die sluit bij Escape en bij een klik buiten
+- ✅ **C8** Interview toevoegen: toestemming alleen zichtbaar én verplicht bij een echt gesprek (server idem;
+  `consent_recorded` is de werkelijke waarde); één veld voor de wervingsgroep met "Eigen netwerk (bekende: …)", de
+  server leidt "bekende" daaruit af; zonder keuze volgt de groep uit het wervingskanaal (`lib/domain/interview-intake.ts`)
+- 🟡 Niet gedaan in deze omgeving: e2e (Playwright) en visuele controle op 1440/390 px met login; `scripts/test-db.sh`
+  (geen bruikbare lokale Postgres). Migratie nog toepassen

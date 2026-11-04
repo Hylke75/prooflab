@@ -9,6 +9,7 @@ import { applyCap, bandFromShift, capReason, deskVerdict, DESK_SKIP_REASON, expl
 import { MAX_SELECTED_FOR_TEST, splitBySelection, type VoiResult } from "@/lib/domain/recommend";
 import { ASSUMPTION_KINDS, type AssumptionKind } from "@/lib/domain/assumption-kind";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
+import { DirectionField } from "@/components/ui/DirectionField";
 import { Probability } from "@/components/ui/Probability";
 import { Term } from "@/components/ui/Term";
 import { formatProbability } from "@/lib/domain/probability-display";
@@ -124,8 +125,18 @@ export function RiskBoard({
         clusterBtn.current?.focus();
       }
     };
+    // Gebruikerstest C7: een klik buiten de popup (en buiten de clusterknop) sluit hem.
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node | null;
+      if (t && (popRef.current?.contains(t) || clusterBtn.current?.contains(t))) return;
+      setCluster(null);
+    };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
+    };
   }, [cluster]);
 
   if (!current) return null;
@@ -140,10 +151,20 @@ export function RiskBoard({
       </small>
     </button>
   );
-  // Centre stays at least 46px (horizontal) / 50px (vertical) from the frame, so a spread dot never leaves it.
-  const pos = (x: number, y: number, dx = 0, dy = 0) => ({
-    left: `calc(clamp(46px, ${x.toFixed(2)}%, calc(100% - 46px)) + ${dx}px)`,
-    top: `calc(clamp(50px, ${y.toFixed(2)}%, calc(100% - 50px)) + ${dy}px)`,
+  // Centre stays at least 46px (horizontal) / 50px (vertical) from the frame, plus the ring radius of a spread group
+  // (gebruikerstest C7: tot acht punten in een ring), so a spread dot never leaves it.
+  const cx = (x: number, spread = 0) => `clamp(${46 + spread}px, ${x.toFixed(2)}%, calc(100% - ${46 + spread}px))`;
+  const cy = (y: number, spread = 0) => `clamp(${50 + spread}px, ${y.toFixed(2)}%, calc(100% - ${50 + spread}px))`;
+  const pos = (x: number, y: number, dx = 0, dy = 0, spread = 0) => ({
+    left: `calc(${cx(x, spread)} + ${dx}px)`,
+    top: `calc(${cy(y, spread)} + ${dy}px)`,
+  });
+  // De clusterpopup hangt bij het punt: eronder in de bovenste helft, erboven in de onderste helft, en schuift binnen de kaart.
+  const popPos = (x: number, y: number): React.CSSProperties => ({
+    left: `clamp(8px, calc(${cx(x)} - 130px), calc(100% - min(260px, 100% - 16px) - 8px))`,
+    ...(y <= 50
+      ? { top: `calc(${cy(y)} + 26px)`, maxHeight: `calc(100% - ${cy(y)} - 34px)` }
+      : { bottom: `calc(100% - ${cy(y)} + 26px)`, maxHeight: `calc(${cy(y)} - 34px)` }),
   });
   return (
     <div className="grid-2">
@@ -174,9 +195,10 @@ export function RiskBoard({
                     setCluster(cluster === p.key ? null : p.key);
                   }}
                   aria-expanded={cluster === p.key}
-                  aria-label={`${p.ids.length} aannames op dezelfde plek: ${p.indexes.map((i) => i + 1).join(", ")}`}
+                  aria-haspopup="true"
+                  aria-label={`${p.ids.length} aannames op dezelfde plek: ${p.indexes.map((i) => i + 1).join(", ")}. Kies er één.`}
                 >
-                  {p.ids.length}×
+                  {p.ids.length} <span aria-hidden="true">▾</span>
                 </button>
               );
             }
@@ -187,7 +209,7 @@ export function RiskBoard({
                 key={a.id}
                 type="button"
                 className={`risk-dot${hot ? " hot" : ""}`}
-                style={{ ...pos(p.x, p.y, p.dx, p.dy), outline: a.id === current.id ? "3px solid var(--color-heading)" : undefined }}
+                style={{ ...pos(p.x, p.y, p.dx, p.dy, p.spread), outline: a.id === current.id ? "3px solid var(--color-heading)" : undefined }}
                 onClick={() => select(a.id)}
                 aria-label={`Aanname ${p.index + 1}: ${a.statement}. Geschatte kans dat dit klopt: ${formatProbability(a.probability.probability, calibrated).text}${calibrated ? "" : " (niet gekalibreerd)"}.`}
                 aria-pressed={a.id === current.id}
@@ -197,7 +219,8 @@ export function RiskBoard({
             );
           })}
           {openCluster && openCluster.kind === "cluster" && (
-            <div className="risk-pop" ref={popRef} role="group" aria-label="Aannames op dezelfde plek" style={{ left: 8, top: 8 }}>
+            <div className="risk-pop" ref={popRef} role="group" aria-labelledby="risk-pop-title" style={popPos(openCluster.x, openCluster.y)}>
+              <p className="risk-pop-title" id="risk-pop-title">{openCluster.ids.length} aannames op deze plek — kies er één</p>
               {openCluster.ids.map((id, i) => {
                 const a = assumptions.find((x) => x.id === id)!;
                 return (
@@ -224,6 +247,8 @@ export function RiskBoard({
         </div>
         <p className="tiny">
           Horizontaal staat de geschatte kans dat de aanname klopt: start op 50% en bijgewerkt met een vaste factor per soort bewijs. Rood = <Term k="kritieke-aanname">kritieke aanname</Term> met een kans onder 70%. Tik op een punt om de aanname te bekijken.
+          {/* Gebruikerstest C6: de kalibratie-uitleg één keer per kaart, niet bij elke kans. */}
+          {calibrated ? "" : " Kansen zijn nog niet gekalibreerd en staan als band van 10 procentpunt rond de berekende waarde."}
         </p>
       </div>
       <div className="card">
@@ -407,7 +432,7 @@ function ProbabilityDetail({
         Geschatte kans dat deze aanname klopt. De bandbreedte laat zien wat er gebeurt als de factoren per bewijssoort 50% zwakker of sterker zijn.
         {calibrated
           ? ""
-          : " Niet gekalibreerd: je werkruimte heeft nog te weinig opgeloste dossiers om deze kansen te toetsen, daarom tonen we een band van 10 procentpunt. De exacte waarde staat in de tooltip."}
+          : " Niet gekalibreerd: je werkruimte heeft nog te weinig opgeloste dossiers om deze kansen te toetsen, daarom tonen we een band van 10 procentpunt rond de berekende waarde. De exacte waarde staat in de tooltip."}
       </p>
       {capped && cap && (
         <p className="tiny mt-8">
@@ -513,12 +538,9 @@ function LinkClaimForm({ action, claims, refutedCounts }: { action: Action; clai
       <select className="field" id="link-claim" name="claim_id" value={claimId} onChange={(e) => setClaimId(e.target.value)}>
         {claims.map((c) => <option key={c.id} value={c.id}>{claimStatusLabel(c.status)} · {c.statement.slice(0, 80)}</option>)}
       </select>
-      <label className="field-label" htmlFor="link-relation">Als de bevinding klopt, wat betekent dat voor deze aanname?</label>
-      <select className="field" id="link-relation" name="relation" value={relation} onChange={(e) => setRelation(e.target.value as "supports" | "contradicts")} aria-describedby="link-effect">
-        <option value="supports">Dan klopt de aanname eerder (ondersteunt)</option>
-        <option value="contradicts">Dan klopt de aanname minder (spreekt tegen)</option>
-      </select>
-      {effect && <p className="field-hint" id="link-effect" role="status">{effect}</p>}
+      {/* Gebruikerstest C1: hetzelfde patroon als bij citaten, nu tussen bevinding en aanname. */}
+      <DirectionField kind="finding" id="link-relation" name="relation" value={relation} onChange={(v) => setRelation(v === "contradicts" ? "contradicts" : "supports")} />
+      {effect && <p className="field-hint" id="link-effect" role="status"><strong>Gevolg:</strong> {effect}</p>}
     </ActionForm>
   );
 }

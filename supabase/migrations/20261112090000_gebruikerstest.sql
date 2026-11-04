@@ -33,7 +33,7 @@ alter table public.claims add constraint claims_status_check
 -- minstens één zo'n tegensprekende bron, is weerlegd. Alleen status en reden veranderen; de bronnen zelf niet.
 update public.claims c
 set status = 'refuted',
-    status_reason = 'Gecontroleerde bronnen spreken dit tegen; geen bron ondersteunt het (herberekend bij de invoering van "weerlegd").'
+    status_reason = 'Gecontroleerde bronnen spreken dit tegen; geen bron bevestigt het. Klopt de richting van het citaat? Zo ja: zoek een bron die de bevinding bevestigt of herformuleer haar.'
 where c.status = 'contested'
   and not exists (
     select 1 from public.claim_sources cs
