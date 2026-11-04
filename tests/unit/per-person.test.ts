@@ -102,7 +102,7 @@ describe("bewijsladder van het dossier telt per persoon", () => {
 
   it("één enthousiaste geïnterviewde levert geen vijf bewijzen", () => {
     const l = evidenceLadder([lo("problem_confirmed"), lo("current_behaviour"), lo("current_spend"), lo("problem_confirmed"), lo("current_behaviour")]);
-    expect(l.highest).toEqual({ label: "Probleem in eigen gedrag", count: 1 });
+    expect(l.highest).toMatchObject({ label: "Probleem in eigen gedrag", count: 1, level: "problem", step: "behaviour" });
     expect(l.counted).toBe(1);
     expect(l.quotes).toBe(5);
     expect(l.people).toBe(1);
@@ -112,7 +112,7 @@ describe("bewijsladder van het dossier telt per persoon", () => {
   it("telt meerdere personen en losse testwaarnemingen, zonder synthetische data", () => {
     const l = evidenceLadder([lo("opinion", "iv1"), lo("opinion", "iv2"), lo("opinion", "iv2"), lo("deposit", null), lo("deposit", "iv3", true)]);
     expect(l.rungs.find((r) => r.label === "Uitgesproken belangstelling")!.count).toBe(2);
-    expect(l.highest).toEqual({ label: "Aanbetaling", count: 1 });
+    expect(l.highest).toMatchObject({ label: "Aanbetaling", count: 1, level: "deposit", step: "payment" });
     expect(l.paymentShown).toBe(true);
     expect(l.quotes).toBe(4);
     expect(l.counted).toBe(3);

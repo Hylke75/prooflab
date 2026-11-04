@@ -1,6 +1,8 @@
 // Report labels follow checkable rules per dossier, never an LLM score or a % "chance of success".
 
 import { countPerPerson, dedupeByPerson, type PersonRef } from "./per-person";
+import type { EvidenceLevel } from "./evidence";
+import { ladderRungs, type ScaleStep } from "./evidence-scale";
 
 export type DossierLabel = "Verkenning" | "Onderbouwd marktbeeld" | "Eerste gedragsbewijs" | "Herhaald marktgedragsbewijs";
 
@@ -42,20 +44,15 @@ export function dossierLabel(i: LabelInput): { label: DossierLabel; missing: str
 // één interview levert per bewijsniveau en richting maximaal één waarneming (lib/domain/per-person.ts).
 // ---------------------------------------------------------------------------
 
-export const EVIDENCE_LADDER: { kinds: string[]; label: string }[] = [
-  { kinds: ["opinion"], label: "Uitgesproken belangstelling" },
-  { kinds: ["problem_confirmed", "current_behaviour", "current_spend"], label: "Probleem in eigen gedrag" },
-  { kinds: ["waitlist_signup"], label: "Kleine handeling (aanmelding)" },
-  { kinds: ["demo_request", "quote_request"], label: "Concrete aanvraag of keuze bij prijs" },
-  { kinds: ["deposit"], label: "Aanbetaling" },
-  { kinds: ["repeat_purchase"], label: "Herhaalde aankoop" },
-];
+// Fase 1, punt 2: afgeleid van de bewijsschaal (lib/domain/evidence-scale.ts), dus met dezelfde indeling als de
+// kansberekening (KIND_LEVEL): een demo-aanvraag is overal een kleine handeling.
+export const EVIDENCE_LADDER: { kinds: string[]; label: string; level: EvidenceLevel; step: ScaleStep }[] = ladderRungs().map(({ kinds, label, level, step }) => ({ kinds, label, level, step }));
 
 export type LadderObservation = PersonRef & { isSynthetic: boolean };
 
 export type EvidenceLadder = {
-  rungs: { label: string; count: number }[];
-  highest: { label: string; count: number } | null;
+  rungs: { label: string; count: number; level?: EvidenceLevel; step?: ScaleStep }[];
+  highest: { label: string; count: number; level?: EvidenceLevel; step?: ScaleStep } | null;
   paymentShown: boolean; // aanbetaling of herhaalaankoop gezien
   counted: number; // niet-synthetische waarnemingen, per persoon
   quotes: number; // niet-synthetische waarnemingen zoals vastgelegd (losse citaten)
@@ -65,7 +62,7 @@ export type EvidenceLadder = {
 export function evidenceLadder(observations: LadderObservation[]): EvidenceLadder {
   const real = observations.filter((o) => !o.isSynthetic);
   const counted = dedupeByPerson(real, (o) => o);
-  const rungs = EVIDENCE_LADDER.map((r) => ({ label: r.label, count: counted.filter((o) => r.kinds.includes(o.kind)).length }));
+  const rungs = EVIDENCE_LADDER.map((r) => ({ label: r.label, count: counted.filter((o) => r.kinds.includes(o.kind)).length, level: r.level, step: r.step }));
   const totals = countPerPerson(real, (o) => o);
   return {
     rungs,

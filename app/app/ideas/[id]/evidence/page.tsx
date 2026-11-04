@@ -34,6 +34,7 @@ import { isConclusiveDecision } from "@/lib/domain/dossier-status";
 import { audienceExample } from "@/lib/research-questions";
 import { Term } from "@/components/ui/Term";
 import { DeskEvidence, type DeskLinkRow } from "@/components/evidence/DeskEvidence";
+import { EvidenceScale } from "@/components/evidence/EvidenceScale";
 import { supabaseServer } from "@/lib/supabase/server";
 import { CLAIM_STATUS, type ClaimStatus } from "@/lib/domain/labels";
 
@@ -151,6 +152,10 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
       <div className="grid-2">
         <div className="card">
           <div className="section-title"><h3>Bewijs op een rij</h3><span className="pill gray">{perPersonLabel(ladder)}</span></div>
+          {/* Fase 1, punt 2: dezelfde schaal als de kansberekening (verkenning → mening → gedrag → betaling → herhaling). */}
+          <div style={{ marginBottom: 12 }}>
+            <EvidenceScale step={highest?.step ?? "exploration"} label="Sterkste klantbewijs op de bewijsschaal" />
+          </div>
           <div className="row" style={{ gap: 6, marginBottom: 6 }}>
             {reached.map((r) => <span key={r.label} className={`pill ${r.count ? "green" : "gray"}`}>{r.label}{r.count ? ` · ${r.count}` : ""}</span>)}
           </div>
