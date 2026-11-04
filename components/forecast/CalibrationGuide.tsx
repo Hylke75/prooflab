@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Term } from "@/components/ui/Term";
 import type { ForecastView } from "@/lib/forecast-data";
 import { FORECAST_MOMENTS, MOMENT_LABELS, OWN_BASE_RATE_MIN, pct, type ForecastMoment } from "@/lib/domain/forecast";
 import { blendedEstimate, OVERCONFIDENT_GAP, overconfidence } from "@/lib/domain/calibration";
@@ -31,7 +32,7 @@ export function CalibrationGuide({ view }: { view: ForecastView }) {
   return (
     <div className="card" id="kalibratiehulp" style={{ scrollMarginTop: 100 }}>
       <div className="section-title">
-        <h3>IJkhulp: jouw voorspelling naast het basispercentage</h3>
+        <h3>IJkhulp: jouw voorspelling naast het <Term k="basispercentage">basispercentage</Term></h3>
         <span className={`pill ${enoughOwn ? "green" : "gray"}`}>{enoughOwn ? "Eigen scores beschikbaar" : "Startkalibratie"}</span>
       </div>
       <p className="sub">

@@ -1,5 +1,6 @@
 import type { DecisionSheet, SheetVerdict } from "@/lib/report-sheet";
 import { nextStepDate } from "@/lib/report-pdf-model";
+import { Term } from "@/components/ui/Term";
 
 // Beslisblad (fase B6): pagina 1 van het rapport, ook bij printen. Het volledige dossier volgt als bijlage.
 const VERDICT_BG: Record<SheetVerdict, string> = {
@@ -18,7 +19,7 @@ export function DecisionSheetView({ sheet, version, date }: { sheet: DecisionShe
           {sheet.verdictLabel}
         </h3>
         <p style={{ margin: 0 }}>
-          Bewijsniveau: <strong>{sheet.evidenceLevel}</strong>.{sheet.ladder ? ` ${sheet.ladder}` : ""}
+          <Term k="bewijsniveau">Bewijsniveau</Term>: <strong>{sheet.evidenceLevel}</strong>.{sheet.ladder ? ` ${sheet.ladder}` : ""}
         </p>
         {sheet.decisionLine && <p className="tiny" style={{ margin: "6px 0 0" }}>Vastgelegd besluit: {sheet.decisionLine}.</p>}
         {sheet.reasons.length > 0 && (

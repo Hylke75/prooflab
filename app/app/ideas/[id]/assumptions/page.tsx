@@ -82,8 +82,11 @@ function HowWeCalculate({ weights, method, caps }: { weights: WeightsInUse; meth
   );
 }
 
-export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/[id]/assumptions">) {
+export default async function AssumptionsPage({ params, searchParams }: PageProps<"/app/ideas/[id]/assumptions">) {
   const { id } = await params;
+  // ?select=<aanname> (vanuit het zoeken binnen een dossier): die aanname staat geselecteerd op de risicokaart.
+  const selectParam = (await searchParams).select;
+  const select = typeof selectParam === "string" && /^[0-9a-f-]{36}$/i.test(selectParam) ? selectParam : null;
   const { idea, canWrite } = await getIdea(id);
   const supabase = await supabaseServer();
   const method = asMethodVersion(idea.method_version);
@@ -145,7 +148,9 @@ export default async function AssumptionsPage({ params }: PageProps<"/app/ideas/
         </div>
       ) : (
         <RiskBoard
+          key={select ?? "rangorde"}
           ideaId={id}
+          initialId={select}
           assumptions={board}
           claims={usable}
           canWrite={canWrite}

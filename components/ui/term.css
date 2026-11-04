@@ -1,0 +1,13 @@
+/* Uitlegtooltip bij vaktermen (components/ui/Term.tsx). Eigen bestand, zodat globals.css ongemoeid blijft. */
+.term-wrap{display:inline}
+.term{text-decoration:underline dotted;text-decoration-thickness:1.5px;text-underline-offset:3px;text-decoration-color:currentColor;cursor:help;border-radius:4px;-webkit-tap-highlight-color:transparent}
+.term:hover{text-decoration-color:var(--color-primary)}
+.term:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
+.term-tip{position:fixed;z-index:90;max-width:min(320px,calc(100vw - 24px));padding:12px 14px;border-radius:var(--radius-input);background:var(--color-heading);color:var(--color-on-dark);box-shadow:var(--shadow-hover);font:400 13px/1.5 var(--font-body);letter-spacing:0;text-transform:none;text-align:left;white-space:normal;animation:term-in .18s ease-out}
+.term-tip strong{display:block;font-size:13px;font-weight:700;color:var(--color-on-dark);margin-bottom:3px}
+.term-tip span{display:block;color:var(--color-on-dark-muted)}
+@keyframes term-in{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+.term-tip.above{animation-name:term-in-above}
+@keyframes term-in-above{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.term-tip{animation:none}}
+@media print{.term{text-decoration:none;cursor:auto}.term-tip{display:none}}

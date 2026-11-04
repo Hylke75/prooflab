@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { InsightCard, type ClaimView } from "@/components/ui/InsightCard";
+import { Term } from "@/components/ui/Term";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { Tabs } from "@/components/research/Tabs";
 import { ResearchRunPanel, SearchLogList, type QuestionLog, type SearchLogUrl } from "@/components/research/ResearchRunPanel";
@@ -268,7 +269,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
             <div className="card tight">
               <div className="tiny">Onderzoeksvragen beantwoord</div>
               <div className="mini-kpi num">{answered}/{questions.length}</div>
-              <span className="stat-caption">Maximaal vijf beslissende vragen</span>
+              <span className="stat-caption">Maximaal vijf <Term k="beslissende-vraag">beslissende vragen</Term></span>
             </div>
             <div className="card tight">
               <div className="tiny">Bevindingen met bron</div>
@@ -435,7 +436,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
           {claims.length === 0 ? (
             <div className="empty-state">
               <h3>Nog geen bevindingen</h3>
-              <p>{aiConfigured() ? "Start een marktcheck, of voeg zelf een bron met letterlijk citaat toe." : "Voeg een bron toe onder Bronnen en leg er een bevinding met letterlijk citaat bij."}</p>
+              <p>{aiConfigured() ? <>Start een marktcheck, of voeg zelf een bron met <Term k="letterlijk-citaat">letterlijk citaat</Term> toe.</> : <>Voeg een bron toe onder Bronnen en leg er een bevinding met <Term k="letterlijk-citaat">letterlijk citaat</Term> bij.</>}</p>
             </div>
           ) : (
             <div className="stack">
@@ -457,7 +458,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
             <>
               <div className="section-title mt-24">
                 <div>
-                  <h2>Tegenbewijs</h2>
+                  <h2><Term k="tegenbewijs">Tegenbewijs</Term></h2>
                   <p className="sub">Bevindingen die het idee tegenspreken, per onderzoeksvraag. Lees ze even serieus als het ondersteunende bewijs.</p>
                 </div>
               </div>
@@ -618,7 +619,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               const sc = supportCounts(s.id);
               const missingHere = claims.some((c) => c.evidence.some((e) => e.source_id === s.id && e.live_found === false));
               return (
-                <div className="source-item" key={s.id}>
+                <div className="source-item" key={s.id} id={`bron-${s.id}`}>
                   <span className="source-icon" aria-hidden="true">{s.source_type === "official_statistic" ? "▣" : s.url ? "↗" : "◉"}</span>
                   <div style={{ flex: 1 }}>
                     <strong>{s.url ? <a href={s.url} target="_blank" rel="noreferrer noopener">{s.title}</a> : s.title}</strong>
