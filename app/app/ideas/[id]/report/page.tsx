@@ -25,6 +25,7 @@ import { endSentence } from "@/lib/text";
 import { isUnknown } from "@/lib/domain/claim-scope";
 import { DecisionSheetView } from "./DecisionSheet";
 import { EvidenceStanding } from "@/components/evidence/EvidenceStanding";
+import { ReportAppendix } from "@/components/report/ReportAppendix";
 import { standingFromSnapshot } from "@/lib/domain/evidence-standing";
 import { Term } from "@/components/ui/Term";
 
@@ -202,6 +203,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           {/* Fase B6: pagina 1 is het beslisblad; het volledige dossier volgt als bijlage, in de bestaande opbouw. */}
           <DecisionSheetView sheet={sheetOf(r)} version={r.version} date={date(r.generatedAt)} />
 
+          {/* Fase 1 · punt 1: in Snel staat de bijlage ingeklapt achter "Volledig dossier tonen" (printen en PDF: altijd volledig). */}
+          <ReportAppendix>
           <div className="report-head" style={{ marginTop: 10 }}>
             <div className="eyebrow">Bijlage · Volledig dossier</div>
           </div>
@@ -590,6 +593,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               zijn vóór de start vergrendeld. {r.method.aiCalls ? `AI is ${r.method.aiCalls}× gebruikt (${r.method.models.join(", ")}; kosten $${r.method.aiCostUsd}). AI-uitvoer telt nooit als bewijs.` : "Er is geen AI gebruikt."}
             </p>
           </section>
+
+          </ReportAppendix>
 
           <div style={{ borderTop: "1px solid var(--color-border)", paddingTop: 16, display: "flex", justifyContent: "space-between", color: "var(--color-text-muted)", fontSize: 12 }}>
             <span>ProofLab · {r.preparedBy}</span>

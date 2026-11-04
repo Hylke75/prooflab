@@ -43,6 +43,7 @@ import { deadlineFromDays, isoDay } from "@/lib/domain/test-card";
 import { decisive, isExploratory } from "@/lib/domain/customer-research";
 import { StudyView } from "./StudyView";
 import { defaultedLabels } from "@/lib/view-mode";
+import { Detail } from "@/components/shell/ViewMode";
 
 export const metadata: Metadata = { title: "Experiment" };
 
@@ -54,6 +55,8 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
   const { idea, canWrite } = await getIdea(id);
   // Fase 1 · punt 1: Snel of Grondig (alleen weergave; de meting en het oordeel zijn in beide standen gelijk).
   const level = await getViewMode(id);
+  // In Snel: geen Bayes-schatting, tabellen per kanaal en prijspunt, resultaten per bericht, auditlijsten en AI-kwaliteit.
+  const quick = level === "quick";
   const supabase = await supabaseServer();
   const { data: exp } = await supabase.from("experiments").select("*, hypotheses(*, assumptions(statement, category, kind))").eq("id", expId).eq("idea_id", id).maybeSingle();
   if (!exp || !exp.hypotheses) notFound();
@@ -204,7 +207,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
               <span className="pill orange">{exclusion.text.charAt(0).toUpperCase() + exclusion.text.slice(1)}</span> Deze test verandert de kans en de rangorde van de aanname niet. De waarnemingen blijven zichtbaar.
             </p>
           )}
-          {v.kind !== "running" && <ResultMeter v={v} success={Number(h.success_threshold_pct)} fail={h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct)} bayes={m.bayes} />}
+          {v.kind !== "running" && <ResultMeter v={v} success={Number(h.success_threshold_pct)} fail={h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct)} bayes={quick ? null : m.bayes} />}
         </div>
       )}
       {m.warnings.map((w) => <div className="note" key={w}>{w}</div>)}
@@ -407,6 +410,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
       </div>
 
       {(m.byChannel.length > 0 || m.byVariant.length > 0) && (
+        <Detail>
         <div className="grid-2 mt-18">
           {m.byChannel.length > 0 && (
             <div className="card">
@@ -436,9 +440,10 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
             </div>
           )}
         </div>
+        </Detail>
       )}
 
-      {canWrite && type !== "interview" && <PerPostResults expId={expId} type={type} rows={m.byContent} metricLabel={h.metric_label} />}
+      {canWrite && type !== "interview" && <Detail><PerPostResults expId={expId} type={type} rows={m.byContent} metricLabel={h.metric_label} /></Detail>}
 
       <Distribution ideaId={id} exp={exp} canWrite={canWrite} plan={h} />
 
@@ -454,7 +459,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
             {guideSummary(guideAudit).flagged > 0 ? (
               <div className="note">
                 <strong>Leidraadcontrole: {guideSummary(guideAudit).flagged} van {guideAudit.length} vragen verdienen aandacht.</strong> Waarschuwing, geen blokkade.
-                <GuideAuditList audit={guideAudit} />
+                {!quick && <GuideAuditList audit={guideAudit} />}
               </div>
             ) : (
               <p className="tiny mt-8">Leidraadcontrole: geen hypothetische, sturende of verkopende vragen gevonden.</p>
@@ -462,7 +467,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
           </div>
           {quality && (
             <div className="mt-18">
-              <AiQualityCard measures={[{ title: "AI-codering van interviews: geaccepteerd", measure: quality.coding }]} />
+              <Detail><AiQualityCard measures={[{ title: "AI-codering van interviews: geaccepteerd", measure: quality.coding }]} /></Detail>
             </div>
           )}
           {interviews.map((iv) => {
@@ -502,7 +507,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                   <summary className="text-link">Transcript tonen</summary>
                   <div className="quote" style={{ whiteSpace: "pre-wrap", maxHeight: 280, overflow: "auto" }}>{iv.transcript}</div>
                 </details>
-                <TranscriptAuditList turns={auditTranscript(iv.transcript, { productNames, interviewerNames })} />
+                {!quick && <TranscriptAuditList turns={auditTranscript(iv.transcript, { productNames, interviewerNames })} />}
                 {(iv.observations ?? []).map((o) => (
                   <div className="evidence-event" key={o.id}>
                     <div className="icon-circle">{o.kind === "problem_confirmed" ? "✓" : o.kind === "problem_absent" || o.kind === "counter_example" ? "✕" : "•"}</div>

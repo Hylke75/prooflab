@@ -12,10 +12,12 @@ import { ensembleMean } from "@/lib/ai/providers/select";
 const KIND_PILL = { consultant: "blue", client: "orange", ai: "gray" } as const;
 
 // Golf B, punt 15: de AI telt als één stem, het gemiddelde van de modellen. De losse modellen staan eronder ter info.
-function ForecastList({ rows }: { rows: ForecastRow[] }) {
+// hideAi (fase 1 · punt 1, Snel op Uitkomst): de AI-voorspellingen staan in Grondig; de eigen en andere menselijke
+// voorspellingen blijven. In de kalibratie telt de AI ongewijzigd als één voorspeller.
+function ForecastList({ rows, hideAi = false }: { rows: ForecastRow[]; hideAi?: boolean }) {
   const people = rows.filter((r) => r.kind !== "ai");
   const agg = aggregate(people.map((r) => r.probability));
-  const aiRows = rows.filter((r) => r.kind === "ai");
+  const aiRows = hideAi ? [] : rows.filter((r) => r.kind === "ai");
   const aiMean = ensembleMean(aiRows.map((r) => r.probability));
   const all = aggregate(aiAsOneVote(rows).map((v) => v.probability));
   return (
@@ -82,7 +84,7 @@ function ForecastList({ rows }: { rows: ForecastRow[] }) {
 // Blind forecasts at the open moment: you give your own probability first (starting at the base rate) and
 // only then see the others, their mean and spread. Compact on the evidence page, with history on the
 // outcome page.
-export function ForecastPanel({ view, compact = false }: { view: ForecastView; compact?: boolean }) {
+export function ForecastPanel({ view, compact = false, hideAi = false }: { view: ForecastView; compact?: boolean; hideAi?: boolean }) {
   const base = `/app/ideas/${view.ideaId}`;
   const m = view.openMoment;
   const given = m ? view.ownMoments.includes(m) : false;
@@ -134,8 +136,8 @@ export function ForecastPanel({ view, compact = false }: { view: ForecastView; c
     body = (
       <>
         <p className="sub"><strong>{MOMENT_LABELS[m].label}.</strong> Alle zichtbare voorspellingen voor dit moment.</p>
-        <ForecastList rows={rows} />
-        {view.aiAvailable && view.aiPending.length > 0 && (
+        <ForecastList rows={rows} hideAi={hideAi} />
+        {!hideAi && view.aiAvailable && view.aiPending.length > 0 && (
           <ActionForm
             action={requestAiForecast.bind(null, view.ideaId)}
             submitLabel={view.aiPending.length > 1 ? `${view.aiPending.length} AI-voorspellingen toevoegen` : "AI-voorspelling toevoegen"}

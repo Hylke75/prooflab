@@ -10,7 +10,8 @@ import { verdictInput } from "@/lib/method-preview";
 import { DecisionForecast } from "@/components/forecast/DecisionForecast";
 import { decisionBlocker, decisionSteps, forecastFirstLock } from "@/lib/domain/forecast";
 import { ForecastFirstLock } from "@/components/forecast/ForecastFirstLock";
-import { getIdea } from "@/lib/data";
+import { getIdea, getViewMode } from "@/lib/data";
+import { MoreInThorough } from "@/components/shell/ViewMode";
 import { loadDossier } from "@/lib/dossier";
 import { loadProgress } from "@/lib/progress";
 import { loadCalibration } from "@/lib/method-data";
@@ -52,6 +53,9 @@ const SEV = { blocker: ["Blokkerend", "coral"], warning: ["Let op", "orange"], i
 export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id]/evidence">) {
   const { id } = await params;
   const { idea, canWrite, isClientDecider } = await getIdea(id);
+  // Fase 1 · punt 1: in Snel geen ladderpillen, geen pre-mortem-invoer en goedgekeurde Learning Cards ingeklapt. Stand
+  // van het bewijs, Reality Check, beslisregel, besluit en bevestiging blijven; de berekening is gelijk.
+  const quick = (await getViewMode(id)) === "quick";
   // Gebruikerstest D11: voorbeelden met de korte doelgroep van dit dossier, anders neutraal.
   const who = audienceExample(idea);
   const progress = await loadProgress(id);
@@ -157,9 +161,13 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
       <div className="grid-2">
         <div className="card">
           <div className="section-title"><h3>Bewijs op een rij</h3><span className="pill gray">{perPersonLabel(ladder)}</span></div>
-          <div className="row" style={{ gap: 6, marginBottom: 6 }}>
-            {reached.map((r) => <span key={r.label} className={`pill ${r.count ? "green" : "gray"}`}>{r.label}{r.count ? ` · ${r.count}` : ""}</span>)}
-          </div>
+          {quick ? (
+            <MoreInThorough />
+          ) : (
+            <div className="row" style={{ gap: 6, marginBottom: 6 }}>
+              {reached.map((r) => <span key={r.label} className={`pill ${r.count ? "green" : "gray"}`}>{r.label}{r.count ? ` · ${r.count}` : ""}</span>)}
+            </div>
+          )}
           {obs.length === 0 && <p className="sub mt-12">Nog geen observaties. Die ontstaan uit interviews en afgeronde experimenten.</p>}
           {ladder.quotes > ladder.counted && (
             <p className="tiny mt-8">
@@ -229,7 +237,8 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
             ) : (
               <p className="tiny mt-8">Nog niet gedaan. De Reality Check waarschuwt tot er minstens één reden is vastgelegd.</p>
             )}
-            {canWrite && (
+            {canWrite && quick && <MoreInThorough />}
+            {canWrite && !quick && (
               <details className="mt-8" open={premortem.length === 0}>
                 <summary className="text-link">{premortem.length ? "Nog een reden toevoegen" : "Doe de pre-mortem (1 tot 3 redenen)"}</summary>
                 <ActionForm action={addPremortem.bind(null, id)} submitLabel="Zet op de risicokaart" submitClass="btn white sm" resetOnSuccess>
@@ -328,7 +337,10 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
           return (
             <div className="card" key={c.id}>
               <div className="section-title"><h3>{exp?.title ?? "Experiment"}</h3><span className={`pill ${c.verdict === "pass" ? "green" : c.verdict === "fail" ? "coral" : "orange"}`}>{outcomeWithLevel(c.verdict === "pass" ? "geslaagd" : c.verdict === "fail" ? "niet geslaagd" : "onbeslist", cardLevel(c.metrics, exp))}</span></div>
-              <div className="data-row"><span>We dachten</span><strong style={{ textAlign: "right" }}>{c.we_believed}</strong></div>
+              {(() => {
+                const full = (
+                  <>
+                    <div className="data-row"><span>We dachten</span><strong style={{ textAlign: "right" }}>{c.we_believed}</strong></div>
               <div className="data-row"><span>We zagen</span><strong style={{ textAlign: "right" }}>{c.we_observed}</strong></div>
               <RuleSummary o={outcomeFromCard(c.metrics, c.verdict, decisive(exp?.hypotheses))} />
               {(() => {
@@ -347,6 +359,18 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                       <span className="tiny">{ruleLine({ ...o, rule: now.rule, label: now.label, probability: now.probability, probabilityFail: now.probabilityFail, successCount: now.successCount })} Ter informatie; deze kaart blijft ongewijzigd.</span>
                     </strong>
                   </div>
+                );
+              })()}
+                  </>
+                );
+                // Snel: de goedgekeurde kaart als samenvatting (wat we leerden en wat we gaan doen); de rest ingeklapt.
+                return quick ? (
+                  <details className="mt-8">
+                    <summary className="text-link">Hele Learning Card (meting en regel)</summary>
+                    {full}
+                  </details>
+                ) : (
+                  full
                 );
               })()}
               <div className="data-row"><span>Daaruit leren we</span><strong style={{ textAlign: "right" }}>{c.we_learned}</strong></div>

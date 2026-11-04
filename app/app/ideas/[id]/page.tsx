@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { Icon, type IconName } from "@/components/Icon";
 import { calendarDate } from "@/components/sprint/SprintCard";
-import { getIdea } from "@/lib/data";
+import { getIdea, getViewMode } from "@/lib/data";
+import { MoreInThorough } from "@/components/shell/ViewMode";
 import { loadProgress } from "@/lib/progress";
 import { loadOpenNotes } from "@/lib/coach/review";
 import { NOTE_KINDS, NOTES_SHOWN, byNotePriority, type NoteKind } from "@/lib/coach/rules";
@@ -29,6 +30,8 @@ const SHORTCUTS: { suffix: string; label: string; icon: IconName }[] = [
 export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id]">) {
   const { id } = await params;
   const { idea, canWrite } = await getIdea(id);
+  // Fase 1 · punt 1: in Snel geen sprintkaart en geen snelkoppelingen (de sprintbalk en het menu blijven).
+  const quick = (await getViewMode(id)) === "quick";
   if (!canWrite) redirect(`/app/ideas/${id}/report`);
   const progress = await loadProgress(id);
   const today = todayInNL();
@@ -75,12 +78,14 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
         </div>
       )}
 
-      <div className="grid-3">
-        <div className="card tight">
-          <div className="eyebrow">Sprint</div>
-          <strong>{sprintText}</strong>
-          {s.planned && s.behind && <p className="tiny mt-8">{s.behindReason}</p>}
-        </div>
+      <div className={quick ? "grid-2" : "grid-3"}>
+        {!quick && (
+          <div className="card tight">
+            <div className="eyebrow">Sprint</div>
+            <strong>{sprintText}</strong>
+            {s.planned && s.behind && <p className="tiny mt-8">{s.behindReason}</p>}
+          </div>
+        )}
         <div className="card tight">
           <div className="eyebrow">Huidige stap</div>
           <strong>{status.currentLabel}</strong>
@@ -161,14 +166,22 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
         </div>
       </div>
 
-      <div className="section-title mt-24"><h2>Snelkoppelingen</h2></div>
-      <div className="chat-suggestions" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
-        {SHORTCUTS.map((sc) => (
-          <Link key={sc.suffix} className="suggestion card tight" href={`/app/ideas/${id}${sc.suffix}`} prefetch={false}>
-            <Icon name={sc.icon} /> {sc.label}
-          </Link>
-        ))}
-      </div>
+      {quick ? (
+        <div className="mt-24">
+          <MoreInThorough />
+        </div>
+      ) : (
+        <>
+          <div className="section-title mt-24"><h2>Snelkoppelingen</h2></div>
+          <div className="chat-suggestions" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+            {SHORTCUTS.map((sc) => (
+              <Link key={sc.suffix} className="suggestion card tight" href={`/app/ideas/${id}${sc.suffix}`} prefetch={false}>
+                <Icon name={sc.icon} /> {sc.label}
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
     </PageFrame>
   );
 }

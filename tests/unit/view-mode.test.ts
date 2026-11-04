@@ -5,6 +5,25 @@ import { asDetailLevel, cleanDefaultedFields, defaultedLabels, explainShowsText,
 import { Detail, ViewModeProvider } from "@/components/shell/ViewMode";
 import { DetailLevelSwitch } from "@/components/shell/DetailLevelSwitch";
 import { Explain } from "@/components/ui/Explain";
+import { ReportAppendix } from "@/components/report/ReportAppendix";
+
+describe("rapport: bijlage", () => {
+  const page = (level: "quick" | "thorough") =>
+    renderToStaticMarkup(h(ViewModeProvider, { level, canWrite: false, children: h(ReportAppendix, { children: h("section", null, "01 / Managementsamenvatting") }) }));
+
+  it("Snel: ingeklapt achter 'Volledig dossier tonen', maar in de pagina (printen is volledig)", () => {
+    const html = page("quick");
+    expect(html).toContain("Volledig dossier tonen");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toMatch(/class="report-appendix collapsed"[^>]*>.*01 \/ Managementsamenvatting/);
+  });
+
+  it("Grondig: geen knop, het dossier staat er gewoon", () => {
+    const html = page("thorough");
+    expect(html).not.toContain("Volledig dossier tonen");
+    expect(html).toBe("<section>01 / Managementsamenvatting</section>");
+  });
+});
 
 // Fase 1 · punt 1: Snel en Grondig. De stand is alleen weergave; hier de regels voor wat wel en niet in beeld komt.
 
