@@ -1,0 +1,33 @@
+/* Fase 1 · punt 3: interviews importeren, pseudonimiseren, markeren en thema's. Bestaande tokens; geen eigen kleuren.
+   Alles past op 390px: rijen lopen door, niets scrolt horizontaal behalve het transcript zelf (binnen zijn kader). */
+
+.pseudonym-review h3{font-size:15px;line-height:22px;margin:0 0 8px}
+.pseudonym-list{list-style:none;margin:0;padding:0;display:grid;gap:8px;max-height:420px;overflow:auto}
+.pseudonym-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(120px,170px);gap:8px 12px;align-items:center;padding:10px 12px;border:1px solid var(--color-border);border-radius:var(--radius-inner)}
+.pseudonym-row strong{font-size:14px;overflow-wrap:anywhere}
+.pseudonym-row .check-row{min-height:44px;align-items:flex-start}
+.transcript-preview{white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;margin:0;font-family:inherit;font-size:13px;line-height:1.6}
+.transcript-preview:focus-visible,.transcript-body:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
+
+/* Transcript om te markeren: één regel per segment, de kop (tijd en spreker) is niet selecteerbaar als citaat. */
+.transcript-body{white-space:pre-wrap;overflow-wrap:anywhere;max-height:70vh;overflow:auto;padding:14px 16px;border:1px solid var(--color-border);border-radius:var(--radius-inner);background:var(--color-surface);font-size:14px;line-height:1.7}
+.transcript-line{margin:0 0 6px}
+.transcript-line .seg-head{color:var(--color-text-muted);font-variant-numeric:tabular-nums;user-select:none;-webkit-user-select:none}
+.transcript-line mark{background:var(--color-surface-soft);box-shadow:inset 0 -2px 0 var(--color-primary);color:inherit;border-radius:3px}
+.marker-bar{position:sticky;bottom:0;margin-top:12px;padding:12px 14px;border:1px solid var(--color-border-strong);border-radius:var(--radius-inner);background:var(--color-surface);box-shadow:var(--shadow-card, 0 10px 30px rgba(25,33,44,.055))}
+.marker-bar blockquote{margin:6px 0 10px}
+
+/* Thema's over interviews heen. */
+.theme-table{width:100%;border-collapse:collapse;font-size:14px}
+.theme-table th,.theme-table td{padding:8px 6px;border-bottom:1px solid var(--color-border);text-align:left;vertical-align:top}
+.theme-table td.num,.theme-table th.num{text-align:right;white-space:nowrap}
+.theme-bar{display:block;height:6px;margin-top:6px;border-radius:var(--radius-pill);background:var(--color-surface-muted);overflow:hidden}
+.theme-bar>span{display:block;height:100%;background:var(--color-primary)}
+.theme-split{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px;color:var(--color-text-muted);margin-top:4px}
+@media(max-width:560px){
+  .pseudonym-row{grid-template-columns:minmax(0,1fr)}
+  .theme-table thead{display:none}
+  .theme-table tr{display:grid;grid-template-columns:minmax(0,1fr) auto;padding:8px 0;border-bottom:1px solid var(--color-border)}
+  .theme-table td{border:0;padding:2px 0}
+  .theme-table td.theme-detail{grid-column:1 / -1}
+}
