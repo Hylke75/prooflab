@@ -59,7 +59,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
           </div>
         </div>
         <div className="grid-2">
-          <ForecastFirstLock ideaId={id} moment={lock} what="de bewijspagina met de sterkte van het bewijs, de kansen per aanname en de Reality Check" client={!canWrite} />
+          <ForecastFirstLock ideaId={id} moment={lock} what="de bewijspagina met de sterkte van het bewijs, de kansen per aanname en de Reality Check" client={!canWrite} formHere={lock === "decision"} />
           {lock === "decision" && <DecisionForecast ideaId={id} />}
         </div>
       </PageFrame>

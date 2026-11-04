@@ -178,7 +178,7 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await expect(page.locator("summary", { hasText: "Andere referentie kiezen" })).toBeVisible();
   await page.goto(`${ideaUrl}/evidence`);
   // Eerst voorspellen (golf B, punt 15): de bewijspagina blijft vergrendeld tot de eigen voorspelling er is.
-  await expect(page.getByRole("link", { name: /Geef eerst je voorspelling/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Vul je voorspelling in bij het formulier hiernaast/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Bewaar mijn keuze" })).toHaveCount(0);
   // B0 punt 5: het veld is leeg; na invullen staat er wat er wordt vastgelegd.
   const forecast = page.getByLabel("Kans dat het doel wordt gehaald (%)", { exact: true });

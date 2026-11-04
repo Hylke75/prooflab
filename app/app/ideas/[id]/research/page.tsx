@@ -40,8 +40,14 @@ import { loadUncertaintyPicks } from "@/lib/research-uncertainty-data";
 import { uncertaintyText } from "@/lib/research-uncertainty";
 import { UncertaintyCard } from "@/components/research/UncertaintyCard";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
+import { OpenOnHash } from "@/components/ui/OpenOnHash";
 
 export const metadata: Metadata = { title: "Marktverkenning" };
+
+// Systeemcontrole: per onderzoeksvraag eerst de sterkste bevindingen (geverifieerd, dan onderbouwde schatting, …).
+const FIRST_FINDINGS = 3;
+const STATUS_ORDER: Record<string, number> = { verified: 0, estimate: 1, contested: 2, outdated: 3, insufficient: 4 };
+const byStrength = <T extends { status: string }>(list: T[]): T[] => [...list].sort((a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9));
 
 const METHOD = { desk: "Bureauonderzoek", customer: "Klantonderzoek", both: "Bureau- en klantonderzoek" } as const;
 const QSTATUS = { open: ["Open", "gray"], answered: ["Beantwoord", "green"], needs_customer_research: ["Vraagt klantonderzoek", "orange"] } as const;
@@ -433,6 +439,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
           </div>
 
           <div className="section-title mt-24"><h2>Bevindingen per onderzoeksvraag</h2></div>
+          <OpenOnHash />
           {claims.length === 0 ? (
             <div className="empty-state">
               <h3>Nog geen bevindingen</h3>
@@ -446,7 +453,16 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                 return (
                   <div key={q.id} className="stack">
                     <div className="eyebrow" style={{ marginBottom: 0 }}>Vraag {q.position} · {q.question}</div>
-                    {list.map((c) => <InsightCard key={c.id} claim={c} actions={claimActions(c.id)} evidenceActions={evidenceActions(c)} />)}
+                    {/* Systeemcontrole: eerst de drie sterkste bevindingen per vraag, de rest achter een uitklapper. */}
+                    {byStrength(list).slice(0, FIRST_FINDINGS).map((c) => <InsightCard key={c.id} claim={c} actions={claimActions(c.id)} evidenceActions={evidenceActions(c)} />)}
+                    {list.length > FIRST_FINDINGS && (
+                      <details className="more-findings">
+                        <summary className="text-link">Toon nog {list.length - FIRST_FINDINGS} {list.length - FIRST_FINDINGS === 1 ? "bevinding" : "bevindingen"} bij deze vraag</summary>
+                        <div className="stack mt-12">
+                          {byStrength(list).slice(FIRST_FINDINGS).map((c) => <InsightCard key={c.id} claim={c} actions={claimActions(c.id)} evidenceActions={evidenceActions(c)} />)}
+                        </div>
+                      </details>
+                    )}
                   </div>
                 );
               })}

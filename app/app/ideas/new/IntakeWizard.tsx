@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
 import { ActionForm, Field, useFieldError } from "@/components/ui/ActionForm";
 import { SavingOverlay } from "@/components/ui/SavingOverlay";
@@ -236,6 +236,10 @@ export function SummaryCard({
 }) {
   const p = result.proposal;
   const o = result.origin;
+  // Na "Maak het voorstel" verdwijnt de knop; zet de focus op de kop van de kaart (anders springt de browser naar
+  // de eerste link van de pagina en verschijnt "Naar de inhoud" over de tekst).
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => heading.current?.focus({ preventScroll: false }), []);
   const [stakeKind, setStakeKind] = useState<StakeKind>(p.stake_kind ?? "amount");
   const [metric, setMetric] = useState(p.outcome_metric ?? "");
   const [target, setTarget] = useState(numText(p.outcome_target));
@@ -271,7 +275,7 @@ export function SummaryCard({
       }
     >
       <span className="pill blue">Voorstel · nog niet opgeslagen</span>
-      <h2 style={{ marginTop: 21 }}>Klopt dit?</h2>
+      <h2 style={{ marginTop: 21 }} ref={heading} tabIndex={-1} className="focus-target">Klopt dit?</h2>
       <p className="sub">
         {result.source === "ai" ? "De AI haalde dit uit je drie antwoorden." : "ProofLab haalde dit uit je drie antwoorden."} Pas aan wat niet klopt; pas na
         &ldquo;Klopt&rdquo; wordt het dossier aangemaakt.

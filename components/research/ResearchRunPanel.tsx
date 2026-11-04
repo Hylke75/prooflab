@@ -191,6 +191,41 @@ export function ResearchRunPanel({
       router.refresh();
     });
 
+  // Systeemcontrole: na afloop klapt het stappenlogboek in; de uitkomst staat in de bevindingen. Tijdens een run en
+  // bij een fout die je opnieuw kunt proberen, blijft het open.
+  const failedProviders = run ? run.tasks.reduce((n, x) => n + (x.failures?.length ?? 0), 0) : 0;
+  const runLog = run && (
+    <>
+      {run.tasks.map((t, i) => (
+        <div className="run-step" key={i}>
+          <span className={`st ${ST[t.status] ?? ""}`}>{t.status === "done" ? "✓" : t.status === "failed" ? "!" : t.status === "running" ? "…" : i + 1}</span>
+          <div style={{ flex: 1 }}>
+            <strong>{t.label}</strong>
+            {t.detail && <div className="tiny">{t.detail}</div>}
+            {(t.failures ?? []).map((f) => (
+              <div key={f.provider} className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
+                <span className="pill coral">
+                  {f.name}: mislukt ({f.reason})
+                </span>
+                {canWrite && f.canRetry && t.id && (
+                  <button type="button" className="btn white sm" disabled={pending} onClick={() => retry(t.id!, f.provider)}>
+                    Opnieuw proberen
+                  </button>
+                )}
+              </div>
+            ))}
+            {canWrite && t.canRetry && t.id && (
+              <button type="button" className="btn white sm mt-8" disabled={pending} onClick={() => retry(t.id!, null)}>
+                Opnieuw proberen
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+      {searchLog.length > 0 && <SearchLogList questions={searchLog} canWrite={canWrite} />}
+    </>
+  );
+
   return (
     <div className="card">
       <div className="section-title">
@@ -273,32 +308,17 @@ export function ResearchRunPanel({
       {error && <div className="form-error mt-12">{error}</div>}
       {run && (
         <div className="mt-12">
-          {run.tasks.map((t, i) => (
-            <div className="run-step" key={i}>
-              <span className={`st ${ST[t.status] ?? ""}`}>{t.status === "done" ? "✓" : t.status === "failed" ? "!" : t.status === "running" ? "…" : i + 1}</span>
-              <div style={{ flex: 1 }}>
-                <strong>{t.label}</strong>
-                {t.detail && <div className="tiny">{t.detail}</div>}
-                {(t.failures ?? []).map((f) => (
-                  <div key={f.provider} className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
-                    <span className="pill coral">
-                      {f.name}: mislukt ({f.reason})
-                    </span>
-                    {canWrite && f.canRetry && t.id && (
-                      <button type="button" className="btn white sm" disabled={pending} onClick={() => retry(t.id!, f.provider)}>
-                        Opnieuw proberen
-                      </button>
-                    )}
-                  </div>
-                ))}
-                {canWrite && t.canRetry && t.id && (
-                  <button type="button" className="btn white sm mt-8" disabled={pending} onClick={() => retry(t.id!, null)}>
-                    Opnieuw proberen
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+          {active || run.tasks.some((t) => t.status === "failed" && t.canRetry) ? (
+            runLog
+          ) : (
+            <details className="run-details">
+              <summary className="text-link">
+                Toon wat deze run deed ({run.tasks.length} {run.tasks.length === 1 ? "stap" : "stappen"}
+                {failedProviders > 0 ? `, ${failedProviders}× een aanbieder mislukt` : ""})
+              </summary>
+              {runLog}
+            </details>
+          )}
           {active && (
             <div className="note" role="status">
               <strong>{worker === "busy" ? "Draait op de server." : "Wacht op de server."}</strong> Je kunt dit tabblad sluiten: de run gaat door en je
@@ -306,7 +326,6 @@ export function ResearchRunPanel({
               {worker === "idle" && " Staat de run langer stil, dan hervat ProofLab hem zodra iemand van het team deze pagina opent."}
             </div>
           )}
-          {searchLog.length > 0 && <SearchLogList questions={searchLog} canWrite={canWrite} />}
           <div className="row between mt-12">
             <span className="tiny num">
               Kosten tot nu toe: ${run.cost.toFixed(2)} van max. ${run.budget.toFixed(2)} · {run.mode === "quick" ? "snelle marktcheck (voorlopig)" : "diep onderzoek"}
