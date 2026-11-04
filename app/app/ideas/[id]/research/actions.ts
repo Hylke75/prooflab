@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { questionDraftText } from "@/lib/domain/ai-draft";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
@@ -108,7 +109,10 @@ export async function refreshQuestionsFromIntake(ideaId: string, _: ActionState)
   if (await runIsActive(supabase, ideaId)) return { error: "Er loopt nog een onderzoeksrun. Wacht tot die klaar is (of stop hem)." };
   const id = await ensureDecisiveQuestion(ideaId, idea, { refreshTemplates: true });
   if (!id) return { error: "Er zijn nog geen onderzoeksvragen." };
-  return done(ideaId, "De vragen volgen nu de intake; de beslissende vraag is gemarkeerd.");
+  // Systeemcontrole: de knop verdwijnt zodra de vragen de intake volgen, en met hem zijn melding. Daarom een vaste
+  // bevestiging boven de onderzoekskaart (via het adres), die blijft staan tot de pagina opnieuw wordt geopend.
+  revalidatePath(`/app/ideas/${ideaId}`, "layout");
+  redirect(`/app/ideas/${ideaId}/research?vragen=bijgewerkt#onderzoekskaart`);
 }
 
 export async function aiPlan(ideaId: string, _: ActionState): Promise<ActionState> {
