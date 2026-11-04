@@ -13,7 +13,7 @@ import { Markdown } from "@/components/coach/Markdown";
 
 // collapsed: het paneel staat ingeklapt (ook op brede schermen) en opent als slide-over via de coachknop. Voor
 // pagina's die zelf al een coachblok tonen, zoals Nieuw idee, zodat er maar één coach zichtbaar is.
-export function Coach({ data, aiConnected, notes, collapsed = false }: { data: CoachData; aiConnected: boolean; notes?: FeedNote[]; collapsed?: boolean }) {
+export function Coach({ data, aiConnected, notes, collapsed = false, step }: { data: CoachData; aiConnected: boolean; notes?: FeedNote[]; collapsed?: boolean; step?: string | null }) {
   const { coachOpen, openCoach, close } = useShell();
   const [state, action, pending] = useActionState<CoachAnswerState, FormData>(askCoach, { answer: null, error: null });
   return (
@@ -73,9 +73,11 @@ export function Coach({ data, aiConnected, notes, collapsed = false }: { data: C
               {data.ideaId ? (
                 <form action={action}>
                   <input type="hidden" name="ideaId" value={data.ideaId} />
+                  {step && <input type="hidden" name="step" value={step} />}
                   <label className="field-label" htmlFor="coachAsk" style={{ marginTop: 0 }}>
                     Vraag maar raak
                   </label>
+                  {step && <p className="tiny" style={{ margin: "0 0 6px" }}>De AI leest je dossier en je eigen notities bij deze stap.</p>}
                   <textarea id="coachAsk" name="question" className="coach-input" placeholder="Bijv. welke stap is nu het slimst?" required maxLength={600} />
                   <button className="btn ai coach-send" disabled={pending}>
                     <Icon name="spark" size="sm" /> {pending ? "Even denken…" : "Vraag de coach"}
