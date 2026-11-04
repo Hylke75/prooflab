@@ -2,7 +2,7 @@ import type { AssumptionProbability, EvidenceCaps, ProbabilityClaim, Probability
 import type { LrOverrides } from "@/lib/domain/calibration";
 import type { RuledVerdict, VerdictInput } from "@/lib/domain/stats";
 
-export const METHOD_VERSIONS = ["2026-11-a", "2026-11-b", "2026-11-c"] as const;
+export const METHOD_VERSIONS = ["2026-11-a", "2026-11-b", "2026-11-c", "2026-11-d"] as const;
 export type MethodVersion = (typeof METHOD_VERSIONS)[number];
 
 // De beslisregel zoals vastgelegd op de Test Card (null bij Test Cards van vóór methode 2026-11-b).

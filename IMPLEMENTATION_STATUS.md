@@ -381,6 +381,31 @@ Uit `docs/VERBETERPLAN_WERKWIJZE.md`, golf B (punten 1, 2, 6, 15, 18 en 20). Mig
 - ✅ Tests: `tests/unit/menu.test.ts`, uitbreiding `tests/unit/coach.test.ts`; e2e-journey vergelijkt menu en stappenbalk en opent Systeemstatus via het avatarmenu. Visueel gecontroleerd op 1440 px en 390 px tegen de live omgeving (alleen lezen)
 - 🟡 De menustatus komt na het laden van de pagina (de layout kent het open idee niet); tot dan staan de stappen zonder teken. De e2e-journey is niet gedraaid
 
+## Methode 2026-11-d: tegenbewijs per bron (4 november)
+
+Methodedocument hoofdstuk 13. Bestaande dossiers op 2026-11-a t/m 2026-11-c rekenen ongewijzigd; nieuwe dossiers starten op 2026-11-d.
+
+- ✅ **Tegenbewijs per bron** (`assumptionProbabilityV4`, optie `contraPerSource` in `lib/domain/evidence.ts`; `lib/domain/method/2026-11-d.ts`): per bron telt alleen het sterkste tegensignaal; over bronnen heen afnemend per soort; plafonds ongewijzigd; geen wervingsgroep-demping voor tegenbewijs
+- ✅ **Weergave**: samengevoegde tegensignalen apart op aannamepagina, methodepagina en rapport (`explainMerged`, `mergedShort`); helptekst "Methodeversie" bijgewerkt
+- ✅ Migratie `20261109100000_method_d.sql` (akkoord product owner): `'2026-11-d'` toegestaan en standaard voor nieuwe dossiers, rangorde en overstapbewaking bijgewerkt, geen bestaande rijen gewijzigd
+- ✅ Tests `tests/unit/evidence-v4.test.ts`, `method.test.ts`; `tests/db/method-d.test.ts`, bijgewerkt `golf-a.test.ts` en `method-v2.test.ts`
+- 🟡 Migratie nog toe te passen op de live database (Supabase); tot dan geeft overstappen naar 2026-11-d een fout en starten nieuwe dossiers op 2026-11-c
+
+## Fase B2: onderzoek dat de grootste onzekerheid eerst raakt (8 november)
+
+Aanleiding: sjabloonvragen met de brede doelgroep, de prijsvraag niet onderzocht, $1,57 van max $1,50, de run liep alleen met een open tabblad, "Gemini: mislukt" zonder reden en de belangrijkste bevinding (een gratis alternatief) verstopt tussen 18 andere. Migratie `20261109090000_b2_onderzoek.sql` (nog niet live; de app werkt ook zonder, met het oude gedrag).
+
+- ✅ **1 Vragen uit de intake**: specifieke doelgroep, gebied, aanbod en genoemde prijs (`lib/research-questions.ts`); één beslissende vraag (`research_questions.is_decisive`, hooguit één per idee). Bestaande sjabloonvragen per rij bijwerken met "Vragen afleiden uit de intake" (gebeurt ook automatisch bij de start van een run); de consultant kan de beslissende vraag verplaatsen. `dossier.decisiveQuestion` gebruikt de gemarkeerde vraag
+- ✅ **2 Volgorde**: de beslissende vraag altijd eerst (zoeken, citaten, tegenbewijs); snelle check = die kern, daarna de rest zolang het budget het toelaat (`lib/research-steps.ts`)
+- ✅ **3 Hard plafond**: bovengrens per stap uit de prijstabel; een stap start alleen als uitgegeven + bovengrens ≤ plafond, en mag binnen de stap niet meer reserveren. Schatting vóór de start ("geschat: $x–$y van max $z"). Gedateerde modelvarianten worden als het gevraagde model geprijsd
+- ✅ **4 Op de server**: keten van porties via `after()` en `/api/research/[runId]/advance` met het token van de consultant, lease per run (`research_run_leases`), melding als coachnotitie bij afronden (`docs/OPERATIONS.md` §11)
+- ✅ **5 Reden bij een mislukte aanbieder** (timeout, quotum, geweigerd, …) en "Opnieuw proberen" per aanbieder of stap
+- ✅ **6 Kaart "Wat dit betekent voor je grootste onzekerheid"**: max. 3 bevindingen, "Risico" bij ondermijnend; AI-voorstel als slotstap van de run (regel als terugval), aan te passen door de consultant (`uncertainty_findings`)
+- ✅ **7 Samenvoegen**: dezelfde bewering of hetzelfde cijfer uit dezelfde bron wordt één bevinding met meerdere vindplaatsen (`lib/research-dedupe.ts`)
+- ✅ Tests: `research-questions`, `research-steps`, `research-worker`, `research-failures`, `research-dedupe`, `research-uncertainty`, `research-b2-acceptance` (snelle check op het testdossier: prijsvraag eerst, binnen $1,50, melding)
+- 🟡 Een run duurt hooguit zo lang als het toegangstoken geldig is (minstens een uur na de start); daarna pauzeert hij tot iemand van het team de pagina opent. Previews met Deployment Protection hebben `VERCEL_AUTOMATION_BYPASS_SECRET` nodig
+- [ ] Migratie toepassen op de live Supabase (na akkoord); snelle check op het testdossier met de echte API's en visuele controle van de kaart en het paneel
+
 ## Fase B6: beslisblad en rapport (4 november)
 
 - ✅ **Beslisblad als pagina 1** van het rapport (web en PDF): besluit **Doorgaan / Stoppen / Nog niet beslisbaar** met het bewijsniveau en de telling per persoon; de 3 sterkste bewijsstukken (geverifieerde bronnen en echte, niet-oefen, niet-synthetische waarnemingen; per persoon of test één stuk; op bewijsniveau gesorteerd), elk in één zin met bron (voetnoot en link); wat níét bewezen is (beslissende vraag, kritieke aannames, ontbrekende metingen; max. 3); de volgende stap met datum (einde testperiode, meetdatum, einde sprint of beslisdatum; anders eerlijk "Nog geen datum vastgelegd"). Pure logica in `lib/report-sheet.ts`; bewaard in de momentopname (`sheet`); oudere rapporten krijgen een afgeleid beslisblad met die vermelding. Het volledige dossier volgt als bijlage in de bestaande opbouw

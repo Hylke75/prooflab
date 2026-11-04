@@ -160,7 +160,7 @@ export const PROBABILITY_CEIL = 0.99;
 // Sensitivity for the band: every ln(LR) scaled by 0,5 and 1,5 (LRs ±50% in log space).
 export const SENSITIVITY = 0.5;
 
-// sourceKey/sourceLabel: de bron van het signaal (evidenceSourceKey); alleen gebruikt door methode 2026-11-b.
+// sourceKey/sourceLabel: de bron van het signaal (evidenceSourceKey); gebruikt vanaf methode 2026-11-b.
 // recruitmentGroup: de wervingsgroep van het signaal (lib/domain/recruitment.ts); alleen gebruikt door methode 2026-11-c.
 // relevance: 'direct' of 'indirect' (golf C, claims.relevance; lib/domain/claim-scope.ts); alleen gebruikt door
 // methode 2026-11-c, waar een indirecte bevinding met halve sterkte telt.
@@ -437,7 +437,8 @@ export function normaliseCaps(raw: Partial<Record<keyof EvidenceCaps, unknown>> 
   return out;
 }
 
-export type MergedSource = { key: string; label: string; signals: number; kept: string };
+// direction: vanaf methode 2026-11-d wordt ook tegenbewijs per bron samengevoegd; zonder richting is het steunend bewijs.
+export type MergedSource = { key: string; label: string; signals: number; kept: string; direction?: "supports" | "contradicts" };
 
 export type CapInfo = {
   level: EvidenceLevel; // hoogste aanwezige niveau
@@ -475,7 +476,8 @@ type Item = {
 };
 
 // Wat methode 2026-11-c toevoegt aan de rekenwijze van 2026-11-b. Zonder opties rekent de kern exact als 2026-11-b.
-type CoreOptions = { recruitmentDamping?: boolean; aiNeedsReview?: boolean; relevanceWeighting?: boolean };
+// contraPerSource (methode 2026-11-d): ook tegenbewijs telt per bron één keer (alleen het sterkste tegensignaal).
+type CoreOptions = { recruitmentDamping?: boolean; aiNeedsReview?: boolean; relevanceWeighting?: boolean; contraPerSource?: boolean };
 
 export function assumptionProbabilityV2(
   claims: ProbabilityClaim[],
@@ -563,17 +565,28 @@ function probabilityCore(
   const indirect = opts.relevanceWeighting ? counting.filter((i) => i.kindKey.startsWith("claim:") && i.weight < 1).length : 0;
 
   // Ondersteunend bewijs: per bron alleen het sterkste signaal (grootste ln(factor) × gewicht).
-  // Tegenbewijs telt volledig per signaal en wordt niet samengevoegd.
-  const bySource = new Map<string, Item[]>();
-  for (const i of counting.filter((x) => x.supports)) bySource.set(i.sourceKey, [...(bySource.get(i.sourceKey) ?? []), i]);
+  // Tegenbewijs telt in 2026-11-a t/m 2026-11-c volledig per signaal; vanaf 2026-11-d (contraPerSource) ook per bron
+  // alleen het sterkste tegensignaal, zodat vijf bezwaren van één geïnterviewde één keer tellen.
   const pull = (i: Item) => Math.log(factorOf(i)) * i.weight;
   const merged: MergedSource[] = [];
-  const kept: Item[] = [];
-  for (const [key, list] of bySource) {
-    const best = [...list].sort((a, b) => pull(b) - pull(a) || a.kindKey.localeCompare(b.kindKey))[0];
-    kept.push(best);
-    if (list.length > 1) merged.push({ key, label: best.sourceLabel, signals: list.length, kept: best.label });
-  }
+  const perSource = (list: Item[], direction: "supports" | "contradicts"): Item[] => {
+    const bySource = new Map<string, Item[]>();
+    for (const i of list) bySource.set(i.sourceKey, [...(bySource.get(i.sourceKey) ?? []), i]);
+    const best: Item[] = [];
+    for (const [key, group] of bySource) {
+      const top = [...group].sort((a, b) => pull(b) - pull(a) || a.kindKey.localeCompare(b.kindKey))[0];
+      best.push(top);
+      if (group.length > 1) {
+        merged.push(
+          direction === "supports"
+            ? { key, label: top.sourceLabel, signals: group.length, kept: top.label }
+            : { key: `${key}:tegen`, label: top.sourceLabel, signals: group.length, kept: top.label, direction },
+        );
+      }
+    }
+    return best;
+  };
+  const kept: Item[] = perSource(counting.filter((x) => x.supports), "supports");
 
   // Methode 2026-11-c: herhaling binnen dezelfde wervingsgroep over verschillende bronnen heen telt afnemend mee,
   // met dezelfde functie als `diminishing`. Per groep (het sterkste signaal eerst) krijgt het k-de signaal (k = 0, 1,
@@ -591,7 +604,10 @@ function probabilityCore(
       if (list.length > 1) recruitment.push({ group, sources: list.length });
     }
   }
-  kept.push(...counting.filter((x) => !x.supports));
+  // Tegenbewijs: de afnemende factor binnen dezelfde wervingsgroep geldt bewust niet (alleen ondersteunend bewijs);
+  // de afnemende factor per soort hieronder geldt wel, over de bronnen heen.
+  const against = counting.filter((x) => !x.supports);
+  kept.push(...(opts.contraPerSource ? perSource(against, "contradicts") : against));
 
   // Daarna zoals methode 2026-11-a: per soort en richting afnemend meetellen; elke factor vermenigvuldigt
   // de kansverhouding (odds): logit(p) = logit(beginwaarde) + Σ ln(factor) × log₂(1 + n) × gewicht.
@@ -659,6 +675,29 @@ export function assumptionProbabilityV3(
   return probabilityCore(claims, observations, prior, overrides, caps, { recruitmentDamping: true, aiNeedsReview: true, relevanceWeighting: true });
 }
 
+// ===========================================================================
+// Methode 2026-11-d: bouwt voort op 2026-11-c.
+// - Tegenbewijs telt per bron één keer, net als ondersteunend bewijs: per bron (bijvoorbeeld één interview, via
+//   evidenceSourceKey) alleen het sterkste tegensignaal. Over verschillende bronnen heen telt tegenbewijs van
+//   dezelfde soort afnemend mee (log₂(1 + n)); de plafonds per bewijsniveau blijven zoals in 2026-11-c.
+// ===========================================================================
+
+export function assumptionProbabilityV4(
+  claims: ProbabilityClaim[],
+  observations: ProbabilityObservation[],
+  prior = 0.5,
+  overrides: LrOverrides = {},
+  caps: EvidenceCaps = DEFAULT_CAPS,
+): AssumptionProbability {
+  return probabilityCore(claims, observations, prior, overrides, caps, { recruitmentDamping: true, aiNeedsReview: true, relevanceWeighting: true, contraPerSource: true });
+}
+
 export function explainMerged(m: MergedSource): string {
+  if (m.direction === "contradicts") return `${m.signals} tegensignalen uit ${m.label} samengevoegd: alleen het sterkste tegenbewijs telt (${m.kept}).`;
   return `${m.signals} signalen uit ${m.label} samengevoegd: alleen het sterkste telt (${m.kept}).`;
+}
+
+// Korte vorm voor tabellen (methodepagina en rapport).
+export function mergedShort(m: Pick<MergedSource, "signals" | "label" | "direction">): string {
+  return `${m.signals} ${m.direction === "contradicts" ? "tegensignalen" : "signalen"} uit ${m.label} samengevoegd`;
 }

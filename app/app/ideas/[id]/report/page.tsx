@@ -15,7 +15,7 @@ import { createReportVersion, shareReportVersion } from "./actions";
 import { Icon } from "@/components/Icon";
 import { Probability } from "@/components/ui/Probability";
 import { explainRecruitment } from "@/lib/domain/recruitment";
-import { asEvidenceLevel, outcomeWithLevel } from "@/lib/domain/evidence";
+import { asEvidenceLevel, mergedShort, outcomeWithLevel } from "@/lib/domain/evidence";
 import { allTestsSummary } from "@/lib/domain/all-tests";
 import { formatGroups } from "@/lib/domain/report-counts";
 import { ladderSummary } from "@/lib/domain/dossier-label";
@@ -328,7 +328,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                         <Probability p={a.probability.point} calibrated={calibrated} showLabel={false} />{" "}
                         <span className="tiny">(<Probability p={a.probability.low} high={a.probability.high} calibrated={calibrated} showLabel={false} />)</span>
                         {"capReason" in a && a.capReason ? <span className="tiny" style={{ display: "block" }}>{a.capReason}</span> : null}
-                        {"merged" in a && a.merged.length ? <span className="tiny" style={{ display: "block" }}>{a.merged.map((m) => `${m.signals} signalen uit ${m.label} samengevoegd`).join("; ")}</span> : null}
+                        {"merged" in a && a.merged.length ? <span className="tiny" style={{ display: "block" }}>{a.merged.map((m) => mergedShort(m)).join("; ")}</span> : null}
                         {"recruitment" in a && a.recruitment?.length ? <span className="tiny" style={{ display: "block" }}>{a.recruitment.map((x) => explainRecruitment(x)).join(" ")}</span> : null}
                       </td>
                     ) : (

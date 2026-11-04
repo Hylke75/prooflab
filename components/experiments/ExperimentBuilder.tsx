@@ -76,7 +76,7 @@ export function ExperimentBuilder({
   initialType,
   researcher = "",
   surveyDraftAction,
-  method = "2026-11-c",
+  method = "2026-11-d",
   priors = {},
 }: {
   priors?: Partial<Record<ExperimentType, BetaPrior>>;
