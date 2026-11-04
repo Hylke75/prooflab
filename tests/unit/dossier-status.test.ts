@@ -111,7 +111,8 @@ describe("getDossierStatus: besluit (B1, na verder testen, bijsturen of pauzeren
 
   it.each([
     ["test_more", "Verder testen"],
-    ["extend", "Verlengde testfase"],
+    // B6: verder testen en de verlengde testfase zijn één keuze; beide heten "Verder testen".
+    ["extend", "Verder testen"],
     ["adjust", "Bijsturen"],
   ])("staat na %s op Testen, niet op Besloten", (action, label) => {
     const s = status({ ...tested, latestDecisionAction: action });

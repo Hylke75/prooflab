@@ -380,3 +380,14 @@ Uit `docs/VERBETERPLAN_WERKWIJZE.md`, golf B (punten 1, 2, 6, 15, 18 en 20). Mig
 - ✅ Intake: per vraag welke velden optioneel en later aan te vullen zijn
 - ✅ Tests: `tests/unit/menu.test.ts`, uitbreiding `tests/unit/coach.test.ts`; e2e-journey vergelijkt menu en stappenbalk en opent Systeemstatus via het avatarmenu. Visueel gecontroleerd op 1440 px en 390 px tegen de live omgeving (alleen lezen)
 - 🟡 De menustatus komt na het laden van de pagina (de layout kent het open idee niet); tot dan staan de stappen zonder teken. De e2e-journey is niet gedraaid
+
+## Fase B6: beslisblad en rapport (4 november)
+
+- ✅ **Beslisblad als pagina 1** van het rapport (web en PDF): besluit **Doorgaan / Stoppen / Nog niet beslisbaar** met het bewijsniveau en de telling per persoon; de 3 sterkste bewijsstukken (geverifieerde bronnen en echte, niet-oefen, niet-synthetische waarnemingen; per persoon of test één stuk; op bewijsniveau gesorteerd), elk in één zin met bron (voetnoot en link); wat níét bewezen is (beslissende vraag, kritieke aannames, ontbrekende metingen; max. 3); de volgende stap met datum (einde testperiode, meetdatum, einde sprint of beslisdatum; anders eerlijk "Nog geen datum vastgelegd"). Pure logica in `lib/report-sheet.ts`; bewaard in de momentopname (`sheet`); oudere rapporten krijgen een afgeleid beslisblad met die vermelding. Het volledige dossier volgt als bijlage in de bestaande opbouw
+- ✅ "Nog niet beslisbaar" als: geen definitief besluit (doorgaan/stoppen), geen stap met echt bewijs (`getDossierStatus`), of doorgaan zonder afgeronde test met uitslag
+- ✅ Eén PDF-knop en bevestiging bij delen ("kan niet worden teruggedraaid"): gecontroleerd, al gedaan in fase 3
+- ✅ **Verder testen** en de verlengde testfase zijn één keuze met een duur (2–8 weken). Opgeslagen als `extend` (met weken) als het dossier die fase nog niet had, anders als `test_more` met de streefdatum in de volgende stap. Geen migratie; bestaande besluiten ongewijzigd
+- ✅ Reality Check: een onbekende regio telt niet meer als "andere regio" maar als aparte melding "onbekende regio"
+- ✅ Rapport: "Niet vastgesteld" met reden in plaats van "€ 0" bereikbare jaaromzet (KPI en scenariotabel)
+- ✅ Tests: `tests/unit/report-sheet.test.ts`, uitbreiding `tests/unit/report-pdf.test.ts`; e2e `tests/e2e/b6-beslisblad.spec.ts` en één extra controle in de journey
+- 🟡 De e2e-tests zijn niet gedraaid (geen lokale Supabase in deze omgeving)

@@ -38,3 +38,32 @@ export function extensionBlocker(action: string, decisions: DecisionLite[], toda
   if (FINAL.includes(action) && phase?.active) return `De verlengde testfase loopt tot ${phase.end}. Het definitieve besluit en de uitkomstklok starten pas daarna.`;
   return null;
 }
+
+// B6: "Verder testen" met een duur (2 tot 8 weken) is één keuze. Mag het dossier nog een verlengde testfase krijgen,
+// dan wordt het besluit opgeslagen als extend met het aantal weken: het definitieve besluit en de uitkomstklok wachten
+// dan tot het einde van die periode (zelfde regels als de database). Had het dossier die fase al, of loopt de
+// uitkomstklok al, dan wordt het test_more: de duur staat dan in de volgende stap als streefdatum en houdt het
+// definitieve besluit niet tegen. Zo blijven bestaande besluiten en de databaseregels ongewijzigd.
+export type TestMorePlan = { action: "extend" | "test_more"; extendWeeks: number | null; until: string; binding: boolean; note: string | null };
+
+export function planTestMore(weeks: number, decisions: DecisionLite[], today: string, clockStarted: boolean): TestMorePlan {
+  const w = Math.min(EXTEND_MAX_WEEKS, Math.max(EXTEND_MIN_WEEKS, Math.round(weeks)));
+  const until = addDays(today, w * 7);
+  const blocked = extensionBlocker("extend", decisions, today, clockStarted);
+  if (!blocked) return { action: "extend", extendWeeks: w, until, binding: true, note: null };
+  return {
+    action: "test_more",
+    extendWeeks: null,
+    until,
+    binding: false,
+    note: clockStarted
+      ? "De uitkomstklok loopt al: de duur is een streefdatum en houdt een definitief besluit niet tegen."
+      : "Dit dossier had al een verlengde testfase: de duur is een streefdatum en houdt een definitief besluit niet tegen.",
+  };
+}
+
+// De volgende stap bij "Verder testen" zonder verlengde fase: de streefdatum vooraan, dan de eigen tekst.
+export function testMoreNextStep(weeks: number, until: string, own: string | null | undefined): string {
+  const head = `Verder testen: ${weeks} weken, tot ${until}.`;
+  return (own?.trim() ? `${head} ${own.trim()}` : head).slice(0, 600);
+}

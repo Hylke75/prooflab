@@ -130,9 +130,12 @@ export type ExperimentState = keyof typeof EXPERIMENT_STATES;
 export const DECISIONS = {
   continue: { label: "Doorgaan", hint: "Het bewijs draagt de volgende investering." },
   adjust: { label: "Bijsturen", hint: "Verander aanbod, doelgroep of belofte en toets opnieuw." },
-  test_more: { label: "Verder testen", hint: "Het bewijs is nog te zwak of onbeslist." },
-  // Golf B, punt 20: tussenbesluit na de sprint; het definitieve besluit volgt na 2 tot 8 weken.
-  extend: { label: "Doorgaan met testen (verlengde testfase)", hint: "Na de sprint 2 tot 8 weken extra gedragsbewijs verzamelen. Het definitieve besluit en de uitkomstklok starten daarna." },
+  // B6: "Verder testen" en de verlengde testfase zijn één keuze met een duur van 2 tot 8 weken. In de database blijft
+  // het de actie extend (met extend_weeks) zolang een dossier nog geen verlengde fase had; anders test_more.
+  test_more: { label: "Verder testen", hint: "Het bewijs is nog te zwak of onbeslist. Kies hoe lang je verder test (2 tot 8 weken); het definitieve besluit en de uitkomstklok volgen daarna." },
+  // Golf B, punt 20: tussenbesluit na de sprint; het definitieve besluit volgt na 2 tot 8 weken. Sinds B6 heet het in
+  // het scherm ook "Verder testen" (bestaande besluiten met deze actie blijven geldig).
+  extend: { label: "Verder testen", hint: "Verder testen gedurende 2 tot 8 weken. Het definitieve besluit en de uitkomstklok starten daarna." },
   pause: { label: "Pauzeren", hint: "Leg de redenen vast en kom later terug." },
   stop: { label: "Stoppen", hint: "Het bewijs spreekt het idee tegen. Dat bespaart geld." },
 } as const;

@@ -105,9 +105,10 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
 
       {phase && (
         <div className="note" role="status">
-          <strong>Verlengde testfase{phase.active ? "" : " afgelopen"}:</strong> {phase.weeks} weken, van {phase.start} tot {phase.end}.{" "}
+          {/* B6: verder testen en de verlengde testfase zijn één keuze met een duur. */}
+          <strong>Verder testen{phase.active ? "" : ": periode afgelopen"}:</strong> {phase.weeks} weken, van {phase.start} tot {phase.end}.{" "}
           {phase.active
-            ? "Verzamel nu het extra gedragsbewijs. Het definitieve besluit en de uitkomstklok volgen na deze fase."
+            ? "Verzamel nu het extra gedragsbewijs. Het definitieve besluit en de uitkomstklok volgen na deze periode."
             : "Neem nu het definitieve besluit: doorgaan, stoppen of pauzeren. Daarmee start de uitkomstklok."}
         </div>
       )}
@@ -332,7 +333,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                   <strong>{DECISIONS[dec.action as DecisionAction].label} · {new Date(dec.decided_at).toLocaleDateString("nl-NL")}</strong>
                   <p>{dec.rationale}</p>
                   {dec.next_step && <p>Volgende stap: {dec.next_step}</p>}
-                  {dec.action === "extend" && dec.extend_weeks != null && <p>Verlengde testfase van {dec.extend_weeks} weken; het definitieve besluit volgt daarna.</p>}
+                  {dec.action === "extend" && dec.extend_weeks != null && <p>Testperiode van {dec.extend_weeks} weken; het definitieve besluit volgt daarna.</p>}
                   {dec.rule_met != null && (
                     <p>
                       Beslisregel: {dec.rule_met ? "gehaald" : "niet gehaald"}.

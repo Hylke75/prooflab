@@ -17,10 +17,10 @@ import { runAi } from "@/lib/ai/guard";
 import type { Json } from "@/lib/database.types";
 import { loadProgress } from "@/lib/progress";
 import { decisionBlocker, outcomeDueForQuestion, outcomeQuestionFor } from "@/lib/domain/forecast";
-import { todayInNL } from "@/lib/domain/sprint";
+import { addDays, todayInNL } from "@/lib/domain/sprint";
 import { deviates, isFinalAction } from "@/lib/domain/decision-rule";
 import { loadRuleCheck } from "@/lib/decision-rule-data";
-import { EXTEND_MAX_WEEKS, EXTEND_MIN_WEEKS, extensionBlocker } from "@/lib/domain/extension";
+import { EXTEND_MAX_WEEKS, EXTEND_MIN_WEEKS, extensionBlocker, planTestMore, testMoreNextStep } from "@/lib/domain/extension";
 import { againstFor } from "@/lib/against-data";
 import { isConclusiveDecision } from "@/lib/domain/dossier-status";
 import { DECISIONS } from "@/lib/domain/labels";
@@ -28,6 +28,8 @@ import { DECISIONS } from "@/lib/domain/labels";
 import { fieldErrorsFrom, savedNothing } from "@/lib/domain/form-errors";
 
 export type ActionState = { error: string | null; ok?: string | null; fieldErrors?: Record<string, string> };
+// "2 december 2026" voor een kalenderdatum (YYYY-MM-DD).
+const nlDay = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Amsterdam" });
 const refresh = (id: string) => revalidatePath(`/app/ideas/${id}`, "layout");
 
 const CardSchema = z.object({
@@ -177,17 +179,20 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   const blocker = decisionBlocker(progress);
   if (blocker) return { error: blocker };
   // Golf B, punt 20: één verlengde testfase van 2 tot 8 weken; tijdens die fase geen definitief besluit.
-  if (p.data.action === "extend" && !p.data.extend_weeks) {
-    const fieldErrors = { extend_weeks: `Kies hoeveel weken extra testen (${EXTEND_MIN_WEEKS} tot ${EXTEND_MAX_WEEKS}).` };
+  // B6: "Verder testen" vraagt dezelfde duur; het oude extend blijft als invoer geldig.
+  if ((p.data.action === "extend" || p.data.action === "test_more") && !p.data.extend_weeks) {
+    const fieldErrors = { extend_weeks: `Kies hoe lang je verder test (${EXTEND_MIN_WEEKS} tot ${EXTEND_MAX_WEEKS} weken).` };
     return { error: savedNothing("Het besluit", fieldErrors), fieldErrors };
   }
   const { data: earlier } = await supabase.from("decisions").select("action, decided_at, extend_weeks").eq("idea_id", ideaId);
-  const extBlock = extensionBlocker(
-    p.data.action,
-    (earlier ?? []).map((x) => ({ action: x.action, decidedOn: todayInNL(new Date(x.decided_at)), extendWeeks: x.extend_weeks ?? null })),
-    todayInNL(),
-    !!idea.outcome_clock_start,
-  );
+  const lites = (earlier ?? []).map((x) => ({ action: x.action, decidedOn: todayInNL(new Date(x.decided_at)), extendWeeks: x.extend_weeks ?? null }));
+  // Verder testen met een duur: als verlengde testfase (extend) als het dossier die nog niet had, anders als test_more
+  // met de streefdatum in de volgende stap (lib/domain/extension.ts, planTestMore).
+  const plan = p.data.action === "test_more" ? planTestMore(p.data.extend_weeks!, lites, todayInNL(), !!idea.outcome_clock_start) : null;
+  const action = plan ? plan.action : p.data.action;
+  const extendWeeks = plan ? plan.extendWeeks : p.data.action === "extend" ? p.data.extend_weeks! : null;
+  const nextStep = plan && !plan.binding ? testMoreNextStep(p.data.extend_weeks!, nlDay(plan.until), p.data.next_step) : p.data.next_step || null;
+  const extBlock = extensionBlocker(action, lites, todayInNL(), !!idea.outcome_clock_start);
   if (extBlock) return { error: extBlock };
   // Golf B, punt 6: een definitief besluit wordt getoetst aan de beslisregel. Wie afwijkt, motiveert dat.
   const ruleCheck = isFinalAction(p.data.action) ? await loadRuleCheck(ideaId) : null;
@@ -203,13 +208,13 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
     idea_id: ideaId,
     reality_check_id: check.id,
     experiment_id: exps?.[0]?.id ?? null,
-    action: p.data.action,
+    action,
     rationale: p.data.rationale,
-    next_step: p.data.next_step || null,
+    next_step: nextStep,
     rule_met: ruleCheck ? ruleCheck.evaluation.met : null,
     rule_evaluation: ruleCheck ? (ruleCheck.evaluation as unknown as Json) : null,
     rule_deviation_reason: deviation ? p.data.rule_deviation_reason : null,
-    extend_weeks: p.data.action === "extend" ? p.data.extend_weeks : null,
+    extend_weeks: action === "extend" ? extendWeeks : null,
   });
   if (error) {
     // The database enforces the same rules; show its reason when it refuses.
@@ -224,7 +229,7 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
     return { error: "Het besluit kon niet worden opgeslagen." };
   }
   for (const e of exps ?? []) await supabase.from("experiments").update({ state: "decided" }).eq("id", e.id);
-  const status = { continue: "continued", stop: "stopped", pause: "parked", adjust: "active", test_more: "active", extend: "active" }[p.data.action];
+  const status = { continue: "continued", stop: "stopped", pause: "parked", adjust: "active", test_more: "active", extend: "active" }[action];
   await supabase.from("ideas").update({ status }).eq("id", ideaId);
   // The first decision after the outcome definition starts the six-month clock (set once, never moved).
   // The six-month clock starts at a final decision (continue, stop or pause). "Verder testen", "bijsturen" en de
@@ -238,8 +243,10 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
     await supabase.from("ideas").update({ outcome_due: outcomeDueForQuestion(question, decidedOn, idea.outcome_measure_date), outcome_clock_start: decidedOn }).eq("id", ideaId).is("outcome_due", null);
   }
   refresh(ideaId);
-  if (p.data.action === "extend")
-    return { error: null, ok: `Verlengde testfase van ${p.data.extend_weeks} weken vastgelegd. Het definitieve besluit en de uitkomstklok volgen daarna.` };
+  if (action === "extend")
+    return { error: null, ok: `Besluit vastgelegd: verder testen, ${extendWeeks} weken (tot ${nlDay(addDays(todayInNL(), extendWeeks! * 7))}). Het definitieve besluit en de uitkomstklok volgen daarna.` };
+  if (plan)
+    return { error: null, ok: `Besluit vastgelegd: verder testen, ${p.data.extend_weeks} weken (streefdatum ${nlDay(plan.until)}). ${plan.note ?? ""}`.trim() };
   // B1: na verder testen, bijsturen of pauzeren is het dossier niet besloten; de bevestiging zegt wat nu volgt.
   if (!isConclusiveDecision(p.data.action))
     return {

@@ -6,6 +6,9 @@ import { getWorkspace, requireWritableIdea } from "@/lib/data";
 import { loadDossier } from "@/lib/dossier";
 import { buildSnapshot } from "@/lib/report";
 import type { Json } from "@/lib/database.types";
+import { loadProgress } from "@/lib/progress";
+import { dossierStatus } from "@/lib/steps";
+import { nextAction, openDecisionAction } from "@/lib/domain/coach";
 
 export type ActionState = { error: string | null; ok?: string | null };
 
@@ -13,10 +16,15 @@ export async function createReportVersion(ideaId: string, _: ActionState): Promi
   const { idea } = await requireWritableIdea(ideaId);
   const ws = await getWorkspace();
   const supabase = await supabaseServer();
-  const d = await loadDossier(idea);
+  const [d, progress] = await Promise.all([loadDossier(idea), loadProgress(ideaId)]);
+  // B6: het beslisblad leest de dossierstatus (getDossierStatus) en, als het besluit geen volgende stap noemt, de
+  // volgende actie van de coach. Een actie over het rapport zelf ("Maak het eerste rapport") is geen volgende stap.
+  const open = openDecisionAction(progress);
+  const coachNext = progress.decisions === 0 ? nextAction(progress) : null;
+  const next = open?.title ?? (coachNext && !coachNext.href.endsWith("/report") ? coachNext.title : null);
   const { count } = await supabase.from("reports").select("id", { count: "exact", head: true }).eq("idea_id", ideaId);
   const version = (count ?? 0) + 1;
-  const snapshot = { ...buildSnapshot(d, { orgName: ws.org?.name ?? "", createdBy: ws.user.email }), version };
+  const snapshot = { ...buildSnapshot(d, { orgName: ws.org?.name ?? "", createdBy: ws.user.email, sheet: { status: dossierStatus(progress), nextAction: next } }), version };
   const { error } = await supabase.from("reports").insert({ idea_id: ideaId, version, snapshot: snapshot as unknown as Json });
   if (error) return { error: "De rapportversie kon niet worden gemaakt." };
   revalidatePath(`/app/ideas/${ideaId}/report`);
