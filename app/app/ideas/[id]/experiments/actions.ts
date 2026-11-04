@@ -22,12 +22,9 @@ import { analyzeInterview, suggestCopyVariants } from "@/lib/ai/research";
 import { ideaContext } from "@/lib/idea-context";
 import { honestyWarnings, prepareVariants, type PreparedVariant } from "@/lib/domain/copy-honesty";
 import { aiErrorMessage, runAi } from "@/lib/ai/guard";
-import { AiBudgetError } from "@/lib/ai/client";
-import { draftSurvey } from "@/lib/ai/survey";
-import { dossierSummaryForAi, loadDossier } from "@/lib/dossier";
 import { SurveyConfigSchema } from "@/lib/domain/survey";
 import { metricFromKey, parseSurveyJson, surveyErrors } from "@/lib/domain/survey-editor";
-import { sanitiseDraft, templateDraft, type DraftResult } from "@/lib/domain/survey-draft";
+import type { DraftResult } from "@/lib/domain/survey-draft";
 import { openAnswers } from "@/lib/domain/survey-results";
 import { contentHash } from "@/lib/claims";
 import { dedupeFragments } from "@/lib/signals/import";
@@ -40,6 +37,8 @@ import { GO_RULE_NOTE, proposeGoRule } from "@/lib/domain/decision-rule-proposal
 import { acceptAiLearning, ruleBasedLearning, type LearningInput } from "@/lib/domain/learning-proposal";
 import { proposeLearning } from "@/lib/ai/learning";
 import { fictionSignals, fictionWarning } from "@/lib/domain/practice";
+import { coachSurveyDraft } from "@/lib/survey-coach";
+import { approvalChecks, decisive, isExploratory, studyFormatOf } from "@/lib/domain/customer-research";
 
 export type ActionState = { error: string | null; ok?: string | null; warning?: string | null; fieldErrors?: Record<string, string> };
 
@@ -276,8 +275,10 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
   }
   // B5: een hoofdtest start pas als de go-regel van het dossier is vastgelegd (zelfde regel als op het scherm).
   if (to === "live" && exp.state === "approved") {
-    const { data: a } = exp.hypotheses
-      ? await supabase.from("assumptions").select("primary_experiment_id").eq("id", exp.hypotheses.assumption_id).maybeSingle()
+    // Verkennend klantonderzoek (zonder aanname) is nooit een hoofdtest: de go-regel blokkeert het niet.
+    const assumptionId = exp.hypotheses?.assumption_id ?? null;
+    const { data: a } = assumptionId
+      ? await supabase.from("assumptions").select("primary_experiment_id").eq("id", assumptionId).maybeSingle()
       : { data: null };
     const rule = await loadDecisionRule(ideaId);
     const blocked = goRuleBlock({ isPrimary: a?.primary_experiment_id === expId, rule: rule === undefined ? "unknown" : rule ? "saved" : "missing" });
@@ -288,19 +289,19 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
   let endReason: string | null = null;
   if (to === "ended") {
     if (!exp.hypotheses) return { error: "Experiment niet gevonden." };
-    const m = await experimentMetrics(exp, exp.hypotheses);
-    const end = checkEnd({ n: m.n, minSample: exp.hypotheses.min_sample, reason: String(form.get("end_reason") ?? ""), confirmed: form.get("confirm_below_sample") === "on" });
-    if (!end.ok) return { error: end.error };
-    endReason = end.endReason;
+    // Verkennend klantonderzoek telt nergens mee: het streefaantal is planning, afronden eronder vraagt geen reden.
+    const h = decisive(exp.hypotheses);
+    if (h) {
+      const m = await experimentMetrics(exp, h);
+      const end = checkEnd({ n: m.n, minSample: h.min_sample, reason: String(form.get("end_reason") ?? ""), confirmed: form.get("confirm_below_sample") === "on" });
+      if (!end.ok) return { error: end.error };
+      endReason = end.endReason;
+    }
   }
   if (to === "approved") {
     // Explicit human approval with the checks that protect participants and the test itself.
-    const required =
-      exp.type === "interview"
-        ? ["check_consent", "check_neutral"]
-        : exp.type === "survey"
-          ? ["check_honest", "check_privacy", "check_pretest"]
-          : ["check_reveal", "check_privacy", "check_budget"];
+    // Voor tests uit stap 3 ongewijzigd; verkennend klantonderzoek vraagt geen pretest (lib/domain/customer-research.ts).
+    const required = approvalChecks(exp.type, isExploratory(exp.hypotheses), studyFormatOf(exp.config as { format?: string } | null));
     if (required.some((k) => form.get(k) !== "on")) return { error: "Bevestig alle controlepunten voordat je goedkeurt." };
   }
   const { error } = await supabase
@@ -564,7 +565,10 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
   const { data: exp } = await supabase.from("experiments").select("*, hypotheses(*, assumptions(category, statement))").eq("id", expId).eq("idea_id", ideaId).single();
   if (!exp || !exp.hypotheses) return { error: "Experiment niet gevonden." };
   if (exp.state !== "ended") return { error: "Rond het experiment eerst af." };
-  const h = exp.hypotheses;
+  // Verkennend klantonderzoek heeft geen drempel en dus geen uitspraak: geen Learning Card. De open antwoorden gaan
+  // als klantsignaal naar Markt.
+  const h = decisive(exp.hypotheses);
+  if (!h) return { error: "Een verkennend onderzoek beslist niets en krijgt geen Learning Card. Neem de open antwoorden op als klantsignalen." };
   const m = await experimentMetrics(exp, h);
   const v = m.verdict;
   // B0 punt 6: afgerond onder de minimale steekproef (met reden): de uitkomst telt niet mee in kans en rangorde.
@@ -797,22 +801,9 @@ export async function draftSurveyWithCoach(ideaId: string, input: z.input<typeof
   const { data: a } = await supabase.from("assumptions").select("statement").eq("id", p.data.assumption_id).eq("idea_id", ideaId).single();
   if (!a) return { error: "Aanname niet gevonden.", draft: null };
   const audience = p.data.target_group?.trim() || [idea.target_audience, idea.audience_detail].filter(Boolean).join(", ");
-  const ctx = { assumption: a.statement, audience, researcher: ws.org?.name ?? "de onderzoeker", product: idea.title, productNames: [idea.title] };
-  if (!aiConfigured()) return { error: null, draft: templateDraft(ctx, "AI is niet verbonden; dit is het sjabloon van ProofLab, geen AI-opzet.") };
-  try {
-    const dossier = dossierSummaryForAi(await loadDossier(idea));
-    const res = await runAi(ideaId, "survey_draft", (p) =>
-      draftSurvey({ idea: ideaContext(idea), assumption: a.statement, audience, decisionQuestion: idea.decision_question, dossier }, p),
-    );
-    const draft = sanitiseDraft(res.data, ctx);
-    // Het AI-origineel blijft bewaard (golf A, punt 17): na het opslaan van de Test Card is zichtbaar wat de mens
-    // eraan veranderde. Lukt bewaren niet, dan werkt de opzet gewoon, alleen zonder vergelijking.
-    const { data: saved } = await supabase.from("ai_drafts").insert({ idea_id: ideaId, kind: "survey", content: draft.config as unknown as Json }).select("id").single();
-    return { error: null, draft, draftId: saved?.id ?? null };
-  } catch (e) {
-    if (e instanceof AiBudgetError) return { error: null, draft: templateDraft(ctx, `${e.message} Daarom staat hieronder het sjabloon van ProofLab, geen AI-opzet.`) };
-    return { error: null, draft: templateDraft(ctx, `${aiErrorMessage(e, "De coach kon geen opzet maken.")} Daarom staat hieronder het sjabloon van ProofLab, geen AI-opzet.`) };
-  }
+  // De opzet zelf (AI of sjabloon) komt uit lib/survey-coach.ts, gedeeld met het klantonderzoek op Markt.
+  const res = await coachSurveyDraft(idea, { subject: a.statement, audience, researcher: ws.org?.name ?? "de onderzoeker" });
+  return { error: null, draft: res.draft, draftId: res.draftId };
 }
 
 // One source of type "survey" with one excerpt per non-empty open answer (deduplicated, also against what

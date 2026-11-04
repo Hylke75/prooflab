@@ -77,23 +77,47 @@ function checkConditions(c: { questions: SurveyQuestionBase[] }, ctx: z.Refineme
 }
 type SurveyQuestionBase = z.infer<typeof QuestionSchema>;
 
+// Verkennend klantonderzoek vanuit Markt (lib/domain/customer-research.ts): purpose "explore" betekent geen
+// vooraf vastgelegde meting, dus de kernvraag is optioneel. format "interview" is een online interview
+// (schriftelijk): een toestemmingsvraag bovenaan en verder alleen open vragen.
+const studyShape = {
+  purpose: z.literal("explore").optional(),
+  format: z.enum(["survey", "interview"]).optional(),
+};
+
 export const SurveyConfigSchema = z
   .object({
     ...baseShape,
+    ...studyShape,
     // Pre-registered metric: share of respondents to the key question who choose one of the success options.
-    key_question: id,
-    success_options: z.array(id).min(1),
+    // Leeg ("") kan alleen bij een verkennend onderzoek: daar is de kernvraag optioneel.
+    key_question: z.union([id, z.literal("")]),
+    success_options: z.array(id),
     // Screening: the first question decides whether someone belongs to the target group. Who chooses none of the
     // qualifying options is thanked and stops there; the response is stored but not counted in the key metric.
     screening: z.object({ question: id, qualifying: z.array(id).min(1) }).optional(),
   })
   .superRefine((c, ctx) => {
     checkConditions(c, ctx);
+    const explore = c.purpose === "explore";
+    if (c.format === "interview") {
+      if (!explore) ctx.addIssue({ code: "custom", message: "Een online interview is altijd verkennend." });
+      if (!c.screening) ctx.addIssue({ code: "custom", message: "Een online interview begint met de vraag om toestemming." });
+      const open = c.questions.filter((q) => q.id !== c.screening?.question);
+      if (open.length === 0) ctx.addIssue({ code: "custom", message: "Een online interview heeft minstens één open vraag nodig." });
+      if (open.some((q) => q.type !== "text")) ctx.addIssue({ code: "custom", message: "Een online interview bestaat uit open vragen; zet keuzevragen om naar een open vraag." });
+    }
+    if (explore && !c.key_question) {
+      if (c.success_options.length) ctx.addIssue({ code: "custom", path: ["success_options"], message: "Succesopties horen bij een kernvraag; kies een kernvraag of haal de vinkjes weg." });
+      checkScreening(c, ctx);
+      return;
+    }
     const key = c.questions.find((q) => q.id === c.key_question);
     if (!key) {
       ctx.addIssue({ code: "custom", message: "Kies de kernvraag waarop de test wordt beoordeeld." });
       return;
     }
+    if (c.success_options.length === 0) ctx.addIssue({ code: "custom", path: ["success_options"], message: "Kies minstens één succesoptie bij de kernvraag." });
     if (key.type !== "single" && key.type !== "multi") ctx.addIssue({ code: "custom", message: "De kernvraag moet een keuzevraag zijn." });
     if (key.showIf) ctx.addIssue({ code: "custom", message: "De kernvraag moet aan iedereen worden gesteld." });
     if (key.attention) ctx.addIssue({ code: "custom", message: "De kernvraag kan geen controlevraag zijn." });
@@ -102,26 +126,29 @@ export const SurveyConfigSchema = z
     if (key.options && c.success_options.length >= key.options.length) {
       ctx.addIssue({ code: "custom", message: "Niet alle opties kunnen 'succes' zijn: dan meet de vraag niets." });
     }
-    if (c.screening) {
-      const s = c.screening;
-      const sq = c.questions.find((q) => q.id === s.question);
-      if (!sq || (sq.type !== "single" && sq.type !== "multi")) {
-        ctx.addIssue({ code: "custom", message: "De screeningsvraag moet een keuzevraag zijn." });
-        return;
-      }
-      if (c.questions[0].id !== sq.id) ctx.addIssue({ code: "custom", message: "De screeningsvraag moet de eerste vraag zijn." });
-      if (sq.id === c.key_question) ctx.addIssue({ code: "custom", message: "De screeningsvraag kan niet ook de kernvraag zijn." });
-      if (sq.attention) ctx.addIssue({ code: "custom", message: "De screeningsvraag kan geen controlevraag zijn." });
-      const sOpts = new Set((sq.options ?? []).map((o) => o.id));
-      if (s.qualifying.some((o) => !sOpts.has(o))) ctx.addIssue({ code: "custom", message: "De doelgroepantwoorden moeten bij de screeningsvraag horen." });
-      if (s.qualifying.length >= sOpts.size) ctx.addIssue({ code: "custom", message: "Niet alle antwoorden van de screeningsvraag kunnen bij de doelgroep horen: dan screent de vraag niemand." });
-    }
+    checkScreening(c, ctx);
   });
+
+function checkScreening(c: { questions: SurveyQuestionBase[]; key_question: string; screening?: { question: string; qualifying: string[] } }, ctx: z.RefinementCtx) {
+  if (!c.screening) return;
+  const s = c.screening;
+  const sq = c.questions.find((q) => q.id === s.question);
+  if (!sq || (sq.type !== "single" && sq.type !== "multi")) {
+    ctx.addIssue({ code: "custom", message: "De screeningsvraag moet een keuzevraag zijn." });
+    return;
+  }
+  if (c.questions[0].id !== sq.id) ctx.addIssue({ code: "custom", message: "De screeningsvraag moet de eerste vraag zijn." });
+  if (sq.id === c.key_question) ctx.addIssue({ code: "custom", message: "De screeningsvraag kan niet ook de kernvraag zijn." });
+  if (sq.attention) ctx.addIssue({ code: "custom", message: "De screeningsvraag kan geen controlevraag zijn." });
+  const sOpts = new Set((sq.options ?? []).map((o) => o.id));
+  if (s.qualifying.some((o) => !sOpts.has(o))) ctx.addIssue({ code: "custom", message: "De doelgroepantwoorden moeten bij de screeningsvraag horen." });
+  if (s.qualifying.length >= sOpts.size) ctx.addIssue({ code: "custom", message: "Niet alle antwoorden van de screeningsvraag kunnen bij de doelgroep horen: dan screent de vraag niemand." });
+}
 
 // What the public page receives (get_public_survey): without the key question, the success options, the
 // qualifying screening answers and the correct answer of attention checks.
 export const PublicSurveyConfigSchema = z
-  .object({ ...baseShape, screening: z.object({ question: id }).optional() })
+  .object({ ...baseShape, ...studyShape, screening: z.object({ question: id }).optional() })
   .superRefine((c, ctx) => checkConditions(c, ctx));
 export type PublicSurveyConfig = z.infer<typeof PublicSurveyConfigSchema>;
 
@@ -317,6 +344,8 @@ export const STATUS_LABEL: Record<ResponseStatus, string> = { ok: "ja", screened
 
 // null when the key question was not answered.
 export function isKeySuccess(config: Pick<SurveyConfig, "key_question" | "success_options">, answers: Answers): boolean | null {
+  // Verkennend onderzoek zonder kernvraag: er is niets te tellen.
+  if (!config.key_question) return null;
   const a = answers[config.key_question];
   if (a == null) return null;
   return (Array.isArray(a) ? a : [String(a)]).some((x) => config.success_options.includes(x));

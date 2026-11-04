@@ -1441,13 +1441,14 @@ export type Database = {
       }
       hypotheses: {
         Row: {
-          assumption_id: string
+          assumption_id: string | null
           available_per_week: number | null
           change_reason: string | null
           created_at: string
           decision_rule: string | null
           expected_pct: number | null
           expected_biases: string | null
+          exploratory: boolean
           fail_threshold_pct: number | null
           id: string
           idea_id: string
@@ -1458,8 +1459,9 @@ export type Database = {
           metric_numerator: string
           min_sample: number
           required_n: number | null
+          research_question_id: string | null
           success_count: number | null
-          success_threshold_pct: number
+          success_threshold_pct: number | null
           superseded_by: string | null
           target_group: string
           test_method: string
@@ -1467,13 +1469,14 @@ export type Database = {
           we_believe: string
         }
         Insert: {
-          assumption_id: string
+          assumption_id?: string | null
           available_per_week?: number | null
           change_reason?: string | null
           created_at?: string
           decision_rule?: string | null
           expected_pct?: number | null
           expected_biases?: string | null
+          exploratory?: boolean
           fail_threshold_pct?: number | null
           id?: string
           idea_id: string
@@ -1484,8 +1487,9 @@ export type Database = {
           metric_numerator: string
           min_sample: number
           required_n?: number | null
+          research_question_id?: string | null
           success_count?: number | null
-          success_threshold_pct: number
+          success_threshold_pct?: number | null
           superseded_by?: string | null
           target_group: string
           test_method: string
@@ -1493,13 +1497,14 @@ export type Database = {
           we_believe: string
         }
         Update: {
-          assumption_id?: string
+          assumption_id?: string | null
           available_per_week?: number | null
           change_reason?: string | null
           created_at?: string
           decision_rule?: string | null
           expected_pct?: number | null
           expected_biases?: string | null
+          exploratory?: boolean
           fail_threshold_pct?: number | null
           id?: string
           idea_id?: string
@@ -1510,8 +1515,9 @@ export type Database = {
           metric_numerator?: string
           min_sample?: number
           required_n?: number | null
+          research_question_id?: string | null
           success_count?: number | null
-          success_threshold_pct?: number
+          success_threshold_pct?: number | null
           superseded_by?: string | null
           target_group?: string
           test_method?: string
@@ -1531,6 +1537,13 @@ export type Database = {
             columns: ["idea_id"]
             isOneToOne: false
             referencedRelation: "ideas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hypotheses_research_question_id_fkey"
+            columns: ["research_question_id"]
+            isOneToOne: false
+            referencedRelation: "research_questions"
             referencedColumns: ["id"]
           },
           {

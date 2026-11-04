@@ -68,7 +68,7 @@ export type TestOutcomeRow = TestOutcome & { assumptionId: string | null; state:
 // - interviewtest zonder kaart: het aantal verschillende interviews met gecodeerde, niet-synthetische uitspraken;
 // - andere tests zonder kaart: n onbekend (hun meting wordt pas met de kaart een waarneming), dus geen uitsluiting.
 export function testOutcomesFrom(
-  experiments: { id: string; title: string; type: string; state: string; hypotheses: { assumption_id: string; min_sample: number } | null }[],
+  experiments: { id: string; title: string; type: string; state: string; hypotheses: { assumption_id: string | null; min_sample: number } | null }[],
   cards: { experiment_id: string; status: string; verdict: string; metrics: unknown }[],
   interviewObservations: { experiment_id: string | null; interview_id: string | null; is_synthetic: boolean }[],
 ): TestOutcomeRow[] {

@@ -8,6 +8,7 @@ import {
   addQuestion,
   auditSurveyQuestion,
   changeType,
+  clearKeyQuestion,
   conditionCandidates,
   isChoice,
   MAX_EDITOR_QUESTIONS,
@@ -69,6 +70,10 @@ export function SurveyEditor({
   const [pending, start] = useTransition();
   const errors = useMemo(() => surveyErrors(c), [c]);
   const names = productNames.filter(Boolean);
+  // Verkennend klantonderzoek vanuit Markt: geen vooraf vastgelegde meting; een online interview heeft alleen open vragen.
+  const explore = c.purpose === "explore";
+  const interview = c.format === "interview";
+  const typeEntries = interview ? TYPE_ENTRIES.filter(([k]) => k === "text") : TYPE_ENTRIES;
 
   // Keep keyboard focus on the control the consultant used after the list re-renders.
   useEffect(() => {
@@ -131,7 +136,7 @@ export function SurveyEditor({
   return (
     <div>
       <div className="preview-mini" style={{ minHeight: 0, padding: 22 }}>
-        <div className="preview-tag">ENQUÊTE</div>
+        <div className="preview-tag">{interview ? "ONLINE INTERVIEW (SCHRIFTELIJK)" : explore ? "VERKENNENDE ENQUÊTE" : "ENQUÊTE"}</div>
         <h3>{c.title || "Titel van de enquête"}</h3>
         <p>{c.intro || "Korte uitleg: waarover, hoe lang, geen goede of foute antwoorden."}</p>
         <span className="tiny">
@@ -145,11 +150,13 @@ export function SurveyEditor({
             {pending ? "De coach maakt een opzet…" : "Laat de coach een eerste opzet maken"}
           </button>
         )}
-        <p className="field-hint" id="sv-draft-hint">
-          {aiConnected
-            ? "De coach stelt vragen over recent gedrag voor op basis van de aanname, de doelgroep en het dossier. ProofLab controleert ze en jij beslist."
-            : "AI is niet verbonden: de knop vult het sjabloon van ProofLab in (vragen over recent gedrag)."}
-        </p>
+        {(draftAction || !explore) && (
+          <p className="field-hint" id="sv-draft-hint">
+            {aiConnected
+              ? `De coach stelt vragen over recent gedrag voor op basis van ${explore ? "de onderzoeksvraag" : "de aanname"}, de doelgroep en het dossier. ProofLab controleert ze en jij beslist.`
+              : "AI is niet verbonden: de knop vult het sjabloon van ProofLab in (vragen over recent gedrag)."}
+          </p>
+        )}
         {draft?.error && <div className="form-error" role="alert">{draft.error}</div>}
         {draft?.draft && (
           <div className="note" role="status">
@@ -189,8 +196,19 @@ export function SurveyEditor({
 
       <h3 className="as-h3 mt-12" style={{ fontSize: 16 }}>Vragen</h3>
       <p className="field-hint">
-        Kies één <strong>kernvraag</strong> (een keuzevraag die iedereen krijgt) en vink de antwoorden aan die als steun voor de aanname tellen. Dat wordt de vooraf vastgelegde meting in de Test Card.
+        {interview ? (
+          <>De eerste vraag vraagt om toestemming: wie &quot;nee&quot; kiest, stopt daar. Daarna alleen <strong>open vragen</strong> over de laatste keer dat het probleem speelde. Er is geen kernvraag en geen drempel.</>
+        ) : explore ? (
+          <>Een <strong>kernvraag</strong> is optioneel: dan zie je hoeveel mensen een concrete handeling noemen. Er hangt geen drempel of oordeel aan; dit onderzoek is verkennend.</>
+        ) : (
+          <>Kies één <strong>kernvraag</strong> (een keuzevraag die iedereen krijgt) en vink de antwoorden aan die als steun voor de aanname tellen. Dat wordt de vooraf vastgelegde meting in de Test Card.</>
+        )}
       </p>
+      {explore && !interview && c.key_question && (
+        <button type="button" className="text-link" onClick={() => { onChange(clearKeyQuestion(c)); setAnnounce("Kernvraag weggehaald."); }}>
+          Geen kernvraag gebruiken
+        </button>
+      )}
       <div className="sr-only" aria-live="polite">{announce}</div>
       <ol style={{ listStyle: "none", padding: 0, margin: 0 }}>
         {c.questions.map((q, i) => (
@@ -212,15 +230,17 @@ export function SurveyEditor({
         <div className="form-line" style={{ margin: 0 }}>
           <label htmlFor="sv-newtype">Soort nieuwe vraag</label>
           <select className="field" id="sv-newtype" value={newType} onChange={(e) => setNewType(e.target.value as QuestionType)}>
-            {TYPE_ENTRIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            {typeEntries.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
         </div>
         <button type="button" id="sq-add" className="btn white sm" onClick={add} disabled={c.questions.length >= MAX_EDITOR_QUESTIONS}>
           + Vraag toevoegen
         </button>
-        <button type="button" className="btn white sm" onClick={addCheck} disabled={c.questions.length >= MAX_EDITOR_QUESTIONS} aria-describedby="sv-quality-hint">
-          + Controlevraag toevoegen
-        </button>
+        {!interview && (
+          <button type="button" className="btn white sm" onClick={addCheck} disabled={c.questions.length >= MAX_EDITOR_QUESTIONS} aria-describedby="sv-quality-hint">
+            + Controlevraag toevoegen
+          </button>
+        )}
       </div>
       <p className="field-hint" id="sv-quality-hint">
         Niet meegeteld in de kernmeting: antwoorden buiten de doelgroep (screeningsvraag), sneller ingevuld dan geloofwaardig, een fout beantwoorde
@@ -236,7 +256,7 @@ export function SurveyEditor({
             <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>{errors.slice(0, 8).map((e) => <li key={e}>{e}</li>)}</ul>
           </div>
         ) : (
-          <div className="form-ok">De enquête is compleet. Na goedkeuring van de Test Card ligt hij vast.</div>
+          <div className="form-ok">{explore ? "Compleet. Na goedkeuring ligt het onderzoek vast." : "De enquête is compleet. Na goedkeuring van de Test Card ligt hij vast."}</div>
         )}
       </div>
     </div>
@@ -283,8 +303,8 @@ function QuestionEditor({
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end", marginTop: 6 }}>
           <div className="form-line" style={{ margin: 0, minWidth: 150 }}>
             <label htmlFor={`${p}-type`}>Soort vraag</label>
-            <select className="field" id={`${p}-type`} value={q.type} onChange={(e) => onChange(changeType(c, q.id, e.target.value as QuestionType))}>
-              {TYPE_ENTRIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            <select className="field" id={`${p}-type`} value={q.type} onChange={(e) => onChange(changeType(c, q.id, e.target.value as QuestionType))} disabled={c.format === "interview" && isScreen}>
+              {(c.format === "interview" && !isScreen ? TYPE_ENTRIES.filter(([k]) => k === "text") : TYPE_ENTRIES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </select>
           </div>
           <div className="row" style={{ gap: 6 }}>
@@ -317,10 +337,10 @@ function QuestionEditor({
 
         {isChoice(q) && (
           <>
-            {!isScreen && !isCheck && (
+            {!isScreen && !isCheck && c.format !== "interview" && (
               <label className="check-row">
                 <input type="radio" name="survey_key_ui" checked={isKey} onChange={() => onChange(updateQuestion(setKeyQuestion(c, q.id), q.id, { required: true }))} />
-                Dit is de kernvraag waarop de test wordt beoordeeld
+                {c.purpose === "explore" ? "Dit is de kernvraag (optioneel, zonder drempel)" : "Dit is de kernvraag waarop de test wordt beoordeeld"}
               </label>
             )}
             {!isKey && !isCheck && (

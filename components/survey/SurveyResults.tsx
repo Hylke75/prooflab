@@ -1,14 +1,16 @@
 import { ActionForm } from "@/components/ui/ActionForm";
-import { loadSurveyResponses, surveyConfigOf, type ExperimentMetrics } from "@/lib/experiment-metrics";
+import { loadSurveyCounts, loadSurveyResponses, surveyConfigOf, type ExperimentMetrics } from "@/lib/experiment-metrics";
+import { usableResponses } from "@/lib/domain/customer-research";
 import { supabaseServer } from "@/lib/supabase/server";
-import { notBelievable, notBelievableText, QUESTION_TYPES, summarise, type KeyMetric, type QuestionSummary, type SurveyConfig } from "@/lib/domain/survey";
+import { notBelievable, notBelievableText, QUESTION_TYPES, responseStatus, summarise, type KeyMetric, type QuestionSummary, type SurveyConfig } from "@/lib/domain/survey";
 import { openAnswers, redactContact, SHARE_MIN_N, shareableQuestions, sharedSummaries } from "@/lib/domain/survey-results";
 import { pct } from "@/lib/domain/stats";
 import { importSurveyOpenAnswers } from "@/app/app/ideas/[id]/experiments/actions";
 import { saveSurveyShare } from "@/app/app/ideas/[id]/experiments/[expId]/survey-actions";
 
 type Exp = { id: string; config: unknown; state: string };
-type Hyp = { min_sample: number; success_threshold_pct: number };
+// success_threshold_pct is null bij verkennend klantonderzoek (Markt): daar is geen drempel en geen oordeel.
+type Hyp = { min_sample: number; success_threshold_pct: number | null };
 
 const nl = (x: number | null, digits = 1) => (x == null ? "—" : x.toLocaleString("nl-NL", { maximumFractionDigits: digits }));
 const MAX_OPEN_SHOWN = 100;
@@ -18,7 +20,7 @@ const MAX_OPEN_SHOWN = 100;
 // never observed behaviour. Full responses are only readable for the research team (row level security); readers
 // see the key metric (counted in the database by survey_key_counts) and the closed questions the team chose to
 // share (survey_shared_summaries: aggregates only, never open answers).
-export async function SurveyResults({ ideaId, exp, h, m, canWrite }: { ideaId: string; exp: Exp; h: Hyp; m: ExperimentMetrics; canWrite: boolean }) {
+export async function SurveyResults({ ideaId, exp, h, m, canWrite }: { ideaId: string; exp: Exp; h: Hyp; m: ExperimentMetrics | null; canWrite: boolean }) {
   const config = surveyConfigOf(exp.config);
   if (!config) {
     return <div className="note mt-18">De opzet van deze enquête is ongeldig; er kunnen geen resultaten worden getoond.</div>;
@@ -26,6 +28,10 @@ export async function SurveyResults({ ideaId, exp, h, m, canWrite }: { ideaId: s
   const supabase = await supabaseServer();
   const { data: shareRow } = await supabase.from("survey_shares").select("questions").eq("experiment_id", exp.id).maybeSingle();
   const shared = shareRow?.questions ?? [];
+  // Verkennend klantonderzoek vanuit Markt: geen kernmeting met drempel, wel antwoorden per vraag en klantsignalen.
+  if (config.purpose === "explore" || !m || h.success_threshold_pct == null) {
+    return <ExploreResults ideaId={ideaId} exp={exp} config={config} shared={shared} canWrite={canWrite} targetN={h.min_sample} />;
+  }
 
   if (!canWrite) {
     const { data: sharedRows, error: sharedError } = shared.length ? await supabase.rpc("survey_shared_summaries", { p_experiment: exp.id }) : { data: [], error: null };
@@ -158,6 +164,104 @@ export async function SurveyResults({ ideaId, exp, h, m, canWrite }: { ideaId: s
           <p className="sub mt-8">
             {open.length} open {open.length === 1 ? "antwoord" : "antwoorden"}. Neem ze op als bron van het type enquête (één fragment per antwoord, dubbele overgeslagen); daarna groepeert de analyse van
             klantsignalen ze in pijnpunten, wensen en bezwaren. Het blijven uitspraken, geen gedrag.
+          </p>
+          <ActionForm action={importSurveyOpenAnswers.bind(null, ideaId, exp.id)} submitLabel="Neem open antwoorden op als klantsignalen" submitClass="btn soft sm" pendingLabel="Opnemen…">
+            <span />
+          </ActionForm>
+        </div>
+      )}
+    </>
+  );
+}
+
+// Verkennend onderzoek: hoeveel antwoorden (per persoon) er binnen zijn en hoeveel bruikbaar, de antwoorden per vraag
+// en de open antwoorden als klantsignalen. Geen percentage tegen een drempel, geen oordeel.
+async function ExploreResults({ ideaId, exp, config, shared, canWrite, targetN }: { ideaId: string; exp: Exp; config: SurveyConfig; shared: string[]; canWrite: boolean; targetN: number }) {
+  const interview = config.format === "interview";
+  const notStarted = exp.state === "draft" || exp.state === "ready_for_review" || exp.state === "approved";
+  if (!canWrite) {
+    // Opdrachtgevers: alleen aantallen (survey_key_counts) en de gesloten vragen die het team deelt.
+    const supabase = await supabaseServer();
+    const { counts, error } = await loadSurveyCounts(exp.id);
+    const total = usableResponses(counts);
+    const { data: sharedRows } = shared.length ? await supabase.rpc("survey_shared_summaries", { p_experiment: exp.id }) : { data: [] };
+    const view = sharedSummaries(config, (sharedRows ?? []).map((r) => ({ ...r, answers: Number(r.answers), count: Number(r.count) })), shared);
+    return (
+      <div className="card mt-18">
+        <h2 className="as-h3">{interview ? "Online interview" : "Verkennende enquête"}</h2>
+        {error ? (
+          <div className="form-error" role="alert">De aantallen konden niet worden opgehaald.</div>
+        ) : (
+          <p className="sub mt-8">{total.usable} bruikbare {total.usable === 1 ? "antwoord" : "antwoorden"} van {total.responses} ontvangen (streefaantal {targetN}).</p>
+        )}
+        {view.summaries.map((q) => (
+          <QuestionBlock key={q.id} q={q} index={config.questions.findIndex((x) => x.id === q.id)} config={config} />
+        ))}
+        <p className="tiny mt-8">Open antwoorden blijven bij het onderzoeksteam. Zelfrapportage, geen waargenomen gedrag.</p>
+      </div>
+    );
+  }
+  const { rows, error } = await loadSurveyResponses(exp.id);
+  const statuses = rows.map((r) => responseStatus(config, r));
+  const usable = statuses.filter((x) => x === "ok").length;
+  const outside = statuses.filter((x) => x === "screened_out").length;
+  const unbelievable = rows.length - usable - outside;
+  const summaries = summarise(config, rows).filter((q) => q.id !== config.screening?.question || !interview);
+  const open = openAnswers(config, rows);
+  return (
+    <>
+      <div className="section-title mt-24">
+        <h2>{interview ? "Antwoorden van de geïnterviewden" : "Antwoorden"}</h2>
+        <span className="pill orange">Zelfrapportage, geen gedrag</span>
+      </div>
+      {error && <div className="form-error" role="alert">De antwoorden konden niet volledig worden opgehaald. Ververs de pagina.</div>}
+      <div className="grid-3">
+        <div className="live-stat">
+          <small>Ontvangen</small>
+          <strong className="num">{rows.length}</strong>
+          <span className="tiny">één per persoon (uitnodiging of bezoeker)</span>
+        </div>
+        <div className="live-stat">
+          <small>Bruikbaar</small>
+          <strong className="num">{usable}</strong>
+          <span className="tiny">streefaantal {targetN} (planning, geen drempel)</span>
+        </div>
+        <div className="live-stat">
+          <small>Telt niet mee</small>
+          <strong className="num">{outside + unbelievable}</strong>
+          <span className="tiny">{interview ? `${outside} zonder toestemming` : `${outside} buiten de doelgroep`} · {unbelievable} niet geloofwaardig</span>
+        </div>
+      </div>
+
+      <div className="card mt-18">
+        <div className="section-title">
+          <h2 className="as-h3">Per vraag</h2>
+          {rows.length > 0 && (
+            <a className="btn white sm" href={`/app/ideas/${ideaId}/experiments/${exp.id}/survey.csv`} download>
+              Download antwoorden (CSV)
+            </a>
+          )}
+        </div>
+        {rows.length === 0 ? (
+          <p className="sub">{notStarted ? "Na de start verschijnen hier de antwoorden per vraag." : "Er zijn nog geen antwoorden binnen."}</p>
+        ) : (
+          <>
+            <p className="tiny" style={{ marginTop: -8 }}>Alleen bruikbare antwoorden{interview ? " van mensen die toestemming gaven" : ""}. Contactgegevens in open antwoorden zijn verwijderd.</p>
+            {summaries.map((q) => (
+              <QuestionBlock key={q.id} q={q} index={config.questions.findIndex((x) => x.id === q.id)} config={config} />
+            ))}
+          </>
+        )}
+      </div>
+
+      {!interview && <ShareCard ideaId={ideaId} expId={exp.id} config={config} shared={shared} />}
+
+      {open.length > 0 && (
+        <div className="card mt-18">
+          <h2 className="as-h3">Open antwoorden als klantsignalen</h2>
+          <p className="sub mt-8">
+            {open.length} open {open.length === 1 ? "antwoord" : "antwoorden"}. Neem ze op als bron; daarna groepeert de analyse van klantsignalen (Markt, Doelgroepen) ze in
+            pijnpunten, wensen en bezwaren. Het blijven uitspraken, geen gedrag.
           </p>
           <ActionForm action={importSurveyOpenAnswers.bind(null, ideaId, exp.id)} submitLabel="Neem open antwoorden op als klantsignalen" submitClass="btn soft sm" pendingLabel="Opnemen…">
             <span />

@@ -41,6 +41,9 @@ import { uncertaintyText } from "@/lib/research-uncertainty";
 import { UncertaintyCard } from "@/components/research/UncertaintyCard";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 import { OpenOnHash } from "@/components/ui/OpenOnHash";
+import { CustomerResearchPanel } from "@/components/research/CustomerResearchPanel";
+import { loadStudies } from "@/lib/customer-research-data";
+import { createStudy } from "./study-actions";
 
 export const metadata: Metadata = { title: "Marktverkenning" };
 
@@ -74,6 +77,8 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     supabase.from("customer_signals").select("*").eq("idea_id", id).order("mentions", { ascending: false }),
   ]);
   const quality = canWrite ? await loadAiQuality() : null;
+  // Klantonderzoek: alle enquêtes en interviews van dit dossier (verkennend vanuit Markt en tests uit stap 3).
+  const studies = await loadStudies(id);
   const run = runRes.data;
   const { data: tasks } = run
     ? await supabase.from("research_tasks").select("id, label, status, detail, kind, output, question_id").eq("run_id", run.id).order("position")
@@ -265,6 +270,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
           { key: "overview", label: "Marktbeeld" },
           { key: "competitors", label: "Concurrenten" },
           { key: "customers", label: "Doelgroepen" },
+          { key: "klantonderzoek", label: "Klantonderzoek" },
           { key: "sizing", label: "Marktpotentieel" },
           { key: "sources", label: "Bronnen" },
         ]}
@@ -607,6 +613,20 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
             <h3 style={{ margin: "7px 0" }}>&quot;Kun je vertellen over de laatste keer dat je dit probleem had?&quot;</h3>
             <p className="sub">Dat levert vaak concreter gedrag op dan vragen of iemand jouw nieuwe oplossing aantrekkelijk vindt.</p>
           </div>
+        </div>
+
+        {/* Klantonderzoek: verkennende enquêtes en online interviews bij de onderzoeksvragen */}
+        <div key="klantonderzoek">
+          <CustomerResearchPanel
+            ideaId={id}
+            canWrite={canWrite}
+            schemaReady={studies.schemaReady}
+            rows={studies.rows}
+            questions={questions.map((q) => ({ id: q.id, position: q.position, question: q.question }))}
+            audience={[idea.target_audience, idea.audience_detail].filter(Boolean).join(", ")}
+            aiConnected={aiConfigured()}
+            createAction={createStudy.bind(null, id)}
+          />
         </div>
 
         {/* Marktpotentieel */}

@@ -14,6 +14,7 @@ import { compareFingerprints, describeChanges, makeFingerprint, type Fingerprint
 import { evaluateRules, planNoteChanges, type CoachFacts, type CoachNoteDraft } from "./rules";
 import { validateAiNotes } from "./ai-notes";
 import { countsAsEvidence } from "@/lib/domain/practice";
+import { isExploratory } from "@/lib/domain/customer-research";
 
 // The trajectory coach looks at a dossier again only after a real change (fingerprint), at most once per
 // two minutes per dossier, and asks the AI at most three times per dossier per day.
@@ -145,7 +146,8 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
         startedAt: e.started_at,
         endsAt: e.ends_at,
         n: e.metrics?.n ?? 0,
-        minSample: h?.min_sample ?? 0,
+        // Verkennend klantonderzoek heeft alleen een streefaantal; de tempo-regels voor tests gelden daar niet.
+        minSample: isExploratory(h) ? 0 : (h?.min_sample ?? 0),
         locked: !!h?.locked_at,
         successThresholdPct: h?.success_threshold_pct ?? null,
         failThresholdPct: h?.fail_threshold_pct ?? null,

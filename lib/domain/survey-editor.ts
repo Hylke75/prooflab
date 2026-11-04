@@ -150,6 +150,12 @@ export function setKeyQuestion(c: SurveyConfig, qid: string): SurveyConfig {
   };
 }
 
+// Verkennend onderzoek (purpose "explore"): de kernvraag is optioneel en kan weer worden weggehaald.
+export function clearKeyQuestion(c: SurveyConfig): SurveyConfig {
+  if (c.purpose !== "explore") return c;
+  return { ...c, key_question: "", success_options: [] };
+}
+
 function withoutAttention(q: SurveyQuestion): SurveyQuestion {
   const rest = { ...q };
   delete rest.attention;

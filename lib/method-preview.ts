@@ -1,4 +1,5 @@
 import "server-only";
+import { decisive } from "@/lib/domain/customer-research";
 import { supabaseServer } from "@/lib/supabase/server";
 import { computeAssumptions, loadAssumptionInputs } from "@/lib/progress";
 import { experimentMetrics } from "@/lib/experiment-metrics";
@@ -48,9 +49,11 @@ export async function methodPreview(ideaId: string, from: MethodVersion, to: Met
   ]);
   const tests: PreviewTest[] = [];
   for (const e of experiments ?? []) {
-    if (!e.hypotheses || ["draft", "ready_for_review", "approved"].includes(e.state)) continue;
-    const m = await experimentMetrics(e, e.hypotheses, from);
-    const input = verdictInput(e.hypotheses, m.n, m.successes, m.endConditionReached);
+    // Verkennend klantonderzoek heeft geen drempel en dus geen oordeel onder welke methode dan ook.
+    const h = decisive(e.hypotheses);
+    if (!h || ["draft", "ready_for_review", "approved"].includes(e.state)) continue;
+    const m = await experimentMetrics(e, h, from);
+    const input = verdictInput(h, m.n, m.successes, m.endConditionReached);
     tests.push({
       id: e.id,
       title: e.title,
@@ -58,7 +61,7 @@ export async function methodPreview(ideaId: string, from: MethodVersion, to: Met
       n: m.n,
       successes: m.successes,
       from: m.verdict,
-      to: METHODS[to].verdict(e.hypotheses, input),
+      to: METHODS[to].verdict(h, input),
       approvedCard: (cards ?? []).some((c) => c.experiment_id === e.id),
     });
   }
