@@ -262,3 +262,54 @@ Supabase een gedeelde testserver met een zeer lage limiet. Stel daarom Resend in
    verstuurd.
 
 Dezelfde sleutel mag als `RESEND_API_KEY` in Vercel staan; `EMAIL_FROM` moet ook op het geverifieerde domein liggen.
+
+## 11. Onderzoeksruns op de server (fase B2)
+
+Een onderzoeksrun (snelle marktcheck of diep onderzoek) loopt op de server en gaat door als het tabblad dicht is.
+
+**Hoe het werkt.**
+
+1. *Start* (server action `startResearchRun`) maakt de run en zijn stappen aan, vernieuwt zo nodig de sessie van de
+   consultant (de nieuwe cookies gaan met de response mee naar de browser) en plant met `after()` uit `next/server`
+   een aanroep van `POST /api/research/[runId]/advance` met het toegangstoken van de consultant.
+2. *Portie*: die route controleert token, run en schrijfrecht, antwoordt direct `202` en werkt ná de response een
+   portie af (`lib/research-worker.ts`): lease op de run (`research_run_lease`, tabel `research_run_leases`), stappen
+   uitvoeren tot de portie ongeveer een minuut bezig is, lease vrijgeven en zichzelf opnieuw aanroepen voor de
+   volgende portie. Elke stap bewaart zijn resultaat voordat de volgende start (`lib/research-runner.ts`); een
+   afgebroken portie verliest dus niets, de onderbroken stap wordt na zes minuten opnieuw opgepakt.
+3. *Klaar*: de run krijgt status `done` en er komt een coachnotitie "Snelle marktcheck klaar" / "Diep onderzoek klaar"
+   (bron `system`) met bevindingen, kosten en wat niet is gedaan. Die staat in het coachpaneel en als badge op het
+   dashboard.
+4. *Open tabblad*: het paneel voert zelf geen stappen meer uit. Het ververst elke 5 s en vraagt elke minuut om
+   hervatten; werkt er al een portie (lease), dan doet de server niets.
+
+**Waarom zo, en niet Vercel Cron.** De bestaande cron (`/api/jobs/run`) werkt zonder gebruiker en zonder
+service-rol-sleutel, via functies die het ingest-geheim controleren. Het onderzoek schrijft in veel tabellen (bronnen,
+fragmenten, bevindingen, zoeklogboek, AI-grootboek) onder RLS als de consultant; dat allemaal omzetten naar
+geheim-gecontroleerde functies, of de service-rol-sleutel gebruiken (die RLS omzeilt), is een veel groter risico. De
+keten van porties met `after()` werkt op elk Vercel-plan (ook Hobby, waar cron maar één keer per dag mag), heeft geen
+externe dienst nodig en houdt RLS intact.
+
+**Grenzen.** Het werk draait met het toegangstoken van de consultant zonder het te vernieuwen (een vernieuwing buiten
+de browser zou zijn sessie ongeldig maken). Bij de start wordt een token dat binnen 45 minuten verloopt eerst
+vernieuwd, dus een run heeft minstens een uur. Is het token te kort geldig om nog een stap af te maken, dan pauzeert
+de run netjes; hij hervat zodra iemand van het team de Marktverkenning opent of op "Snelle marktcheck" klikt. Supabase
+→ Authentication → Sessions → *JWT expiry* (standaard 3600 s) bepaalt dit uur.
+
+**Instellen.**
+
+- Geen nieuwe omgevingsvariabelen nodig. `vercel.json` is niet gewijzigd.
+- Previews met Vercel Deployment Protection: zet *Protection Bypass for Automation* aan; Vercel levert dan
+  `VERCEL_AUTOMATION_BYPASS_SECRET`, die de vervolgaanroep meestuurt. Zonder bypass loopt een run op een beveiligde
+  preview alleen door zolang het tabblad open is (productie heeft dit niet nodig).
+- De vervolgaanroep gaat alleen naar de eigen app: de host van het verzoek als die bij deze deployment hoort
+  (`APP_URL`/`NEXT_PUBLIC_APP_URL`, `VERCEL_URL`, `VERCEL_BRANCH_URL`, `VERCEL_PROJECT_PRODUCTION_URL`), anders `APP_URL`.
+- Migratie `20261109090000_b2_onderzoek.sql` voegt de lease toe. Zonder die migratie werkt de keten ook, maar zonder
+  lease (de claim per stap voorkomt dan nog steeds dat een stap twee keer loopt).
+
+**Kosten.** Elke stap heeft een bovengrens (`lib/research-steps.ts`); een stap start alleen als uitgegeven + bovengrens
+≤ plafond van de run (snelle check max $1,50, diep onderzoek `RESEARCH_BUDGET_USD`). Het paneel toont vóór de start
+"geschat: $x–$y van max $z".
+
+**Storingen.** Logregels `research_hop_refused`/`research_hop_failed` (vervolgaanroep lukte niet: kijk naar
+Deployment Protection of het app-adres), `research_run_paused` (token te kort geldig) en `research_slice_failed`.

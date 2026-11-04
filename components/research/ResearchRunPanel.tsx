@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
-import { cancelResearchRun, startResearchRun } from "@/app/app/ideas/[id]/research/actions";
+import { cancelResearchRun, retryResearchStep, startResearchRun } from "@/app/app/ideas/[id]/research/actions";
 import { openSourceForm } from "./source-prefill";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 
 // Tabelnummer van CBS StatLine (zie lib/integrations/cbs.ts; hier los omdat dat bestand server-only is).
 const CBS_TABLE = "81589NED";
 
-type Task = { label: string; status: string; detail: string | null };
+// Fase B2, punt 5: mislukte aanbieders met een korte reden en een knop "opnieuw proberen".
+type Failure = { provider: string; name: string; reason: string; canRetry: boolean };
+type Task = { id?: string; label: string; status: string; detail: string | null; failures?: Failure[]; canRetry?: boolean };
 type RunView = { id: string; status: string; mode: string; cost: number; budget: number; tasks: Task[] } | null;
 export type ProviderStatus = { id: string; name: string; keyEnv: string; connected: boolean };
 
@@ -121,8 +123,9 @@ export function SearchLogList({ questions, canWrite, title = "Zoeklogboek" }: { 
   );
 }
 
-// Real progress from persisted tasks, no fake percentage. The run keeps going step by step
-// while this page is open; when the browser closes it resumes on the next visit.
+// Real progress from persisted tasks, no fake percentage. Fase B2: de run draait op de server
+// (lib/research-worker.ts) en gaat door als dit tabblad dicht is. Dit paneel ververst alleen de weergave en vraagt
+// de server af en toe om een stilgevallen run te hervatten; het voert zelf geen stappen uit.
 export function ResearchRunPanel({
   ideaId,
   run,
@@ -131,7 +134,13 @@ export function ResearchRunPanel({
   canWrite,
   searchLog = [],
   cbsAction,
+  estimates,
+  worker = "unknown",
 }: {
+  // Of er nu een serverportie aan de run werkt (lease), voor de statusregel.
+  worker?: "busy" | "idle" | "unknown";
+  // Fase B2: schatting vóór de start per modus ("geschat: $x–$y van max $z") en wie er zoekt.
+  estimates?: Record<"quick" | "deep", { text: string; providers: string[] }>;
   ideaId: string;
   run: RunView;
   // "Haal CBS-cijfers op": officiële bedrijventellingen als bron, zonder AI.
@@ -147,30 +156,32 @@ export function ResearchRunPanel({
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const busy = useRef(false);
   const active = run && (run.status === "queued" || run.status === "running");
+  const runId = run?.id ?? null;
 
   useEffect(() => {
-    if (!active || !canWrite) return;
-    let stop = false;
-    const tick = async () => {
-      if (busy.current || stop) return;
-      busy.current = true;
-      try {
-        const res = await fetch(`/api/research/${run!.id}/advance`, { method: "POST" });
-        if (!res.ok) setError("Een onderzoeksstap mislukte; ProofLab probeert het automatisch opnieuw.");
-        router.refresh();
-      } finally {
-        busy.current = false;
-      }
-    };
-    tick();
-    const t = setInterval(tick, 2500);
+    if (!active || !canWrite || !runId) return;
+    // Hervatten is idempotent: werkt er al een portie aan de run, dan doet de server niets.
+    const resume = () =>
+      fetch(`/api/research/${runId}/advance`, { method: "POST" })
+        .then((res) => setError(res.ok ? null : "De server kon de run nu niet oppakken; ProofLab probeert het zo opnieuw."))
+        .catch(() => setError("Geen verbinding; de run loopt op de server door."));
+    resume();
+    const refresh = setInterval(() => router.refresh(), 5000);
+    const again = setInterval(resume, 60_000);
     return () => {
-      stop = true;
-      clearInterval(t);
+      clearInterval(refresh);
+      clearInterval(again);
     };
-  }, [active, canWrite, run, router]);
+  }, [active, canWrite, runId, router]);
+
+  const retry = (taskId: string, provider: string | null) =>
+    start(async () => {
+      setError(null);
+      const r = await retryResearchStep(ideaId, taskId, provider);
+      if (r.error) setError(r.error);
+      router.refresh();
+    });
 
   const begin = (mode: "quick" | "deep") =>
     start(async () => {
@@ -224,14 +235,28 @@ export function ResearchRunPanel({
             in de bron staat, welke aanbieder de bron ook vond. Kosten worden per stap bijgehouden.
           </p>
           {canWrite && !active && (
-            <div className="row mt-12">
-              <button className="btn ai sm" onClick={() => begin("quick")} disabled={pending}>
-                <Icon name="spark" size="sm" /> Snelle marktcheck (3 vragen)
-              </button>
-              <button className="btn ai sm" onClick={() => begin("deep")} disabled={pending}>
-                Diep onderzoek (alle vragen + tegenbewijs)
-              </button>
-            </div>
+            <>
+              <div className="row mt-12" style={{ flexWrap: "wrap", gap: 8 }}>
+                <button className="btn ai sm" onClick={() => begin("quick")} disabled={pending}>
+                  <Icon name="spark" size="sm" /> Snelle marktcheck (beslissende vraag + tegenbewijs)
+                </button>
+                <button className="btn ai sm" onClick={() => begin("deep")} disabled={pending}>
+                  Diep onderzoek (alle vragen + tegenbewijs)
+                </button>
+              </div>
+              {estimates && (
+                <ul className="tiny num" style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }} aria-label="Kostenschatting vóór de start">
+                  <li>
+                    <strong>Snelle marktcheck</strong> {estimates.quick.text} · zoekt met {estimates.quick.providers.join(", ")}. Eerst de beslissende vraag
+                    met tegenbewijs, daarna de andere vragen zolang het budget het toelaat.
+                  </li>
+                  <li>
+                    <strong>Diep onderzoek</strong> {estimates.deep.text} · zoekt met {estimates.deep.providers.join(", ")}.
+                  </li>
+                  <li>Een stap die het maximum zou overschrijden, start niet. De schatting is een bovengrens per stap, geen belofte.</li>
+                </ul>
+              )}
+            </>
           )}
         </>
       )}
@@ -254,9 +279,33 @@ export function ResearchRunPanel({
               <div style={{ flex: 1 }}>
                 <strong>{t.label}</strong>
                 {t.detail && <div className="tiny">{t.detail}</div>}
+                {(t.failures ?? []).map((f) => (
+                  <div key={f.provider} className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
+                    <span className="pill coral">
+                      {f.name}: mislukt ({f.reason})
+                    </span>
+                    {canWrite && f.canRetry && t.id && (
+                      <button type="button" className="btn white sm" disabled={pending} onClick={() => retry(t.id!, f.provider)}>
+                        Opnieuw proberen
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {canWrite && t.canRetry && t.id && (
+                  <button type="button" className="btn white sm mt-8" disabled={pending} onClick={() => retry(t.id!, null)}>
+                    Opnieuw proberen
+                  </button>
+                )}
               </div>
             </div>
           ))}
+          {active && (
+            <div className="note" role="status">
+              <strong>{worker === "busy" ? "Draait op de server." : "Wacht op de server."}</strong> Je kunt dit tabblad sluiten: de run gaat door en je
+              krijgt een melding in de coach als hij klaar is.
+              {worker === "idle" && " Staat de run langer stil, dan hervat ProofLab hem zodra iemand van het team deze pagina opent."}
+            </div>
+          )}
           {searchLog.length > 0 && <SearchLogList questions={searchLog} canWrite={canWrite} />}
           <div className="row between mt-12">
             <span className="tiny num">

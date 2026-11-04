@@ -5,9 +5,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { getWorkspace } from "@/lib/data";
-import { templatePlan } from "@/lib/domain/research-plan";
+import { insertDerivedQuestions } from "@/lib/research-questions-data";
+import type { IntakeFacts } from "@/lib/research-questions";
 import { defaultFactors, MODEL_FACTORS, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
-import type { ProjectType, SectorTemplate } from "@/lib/domain/labels";
 import { OutcomeDefinitionSchema, optionalAmount, outcomeValueProblem } from "@/lib/forecast-schemas";
 import { measureWindowProblem } from "@/lib/domain/forecast";
 import { STAKE_KINDS, formatStake } from "@/lib/domain/decision-quality";
@@ -114,18 +114,30 @@ export async function createIdea(_: IntakeState, form: FormData): Promise<Intake
     .single();
   if (error || !idea) return { error: "Het idee kon niet worden opgeslagen. Probeer het opnieuw." };
 
-  await seedDossier(idea.id, v.project_type, v.sector_template, v.target_audience, v.region);
+  // Fase B2: de onderzoeksvragen komen uit de intake (specifieke doelgroep, aanbod, prijs, grootste onzekerheid).
+  await seedDossier(idea.id, {
+    title: v.title,
+    description: v.description,
+    decision_question: v.decision_question,
+    target_audience: v.target_audience,
+    audience_detail: v.audience_detail ?? null,
+    region: v.region,
+    region_detail: v.region_detail ?? null,
+    project_type: v.project_type,
+    sector_template: v.sector_template,
+    key_uncertainty: v.key_uncertainty ?? null,
+    outcome_min_value_per_customer: v.outcome_min_value_per_customer ?? null,
+  });
   revalidatePath("/app", "layout");
   redirect(`/app/ideas/${idea.id}/research`);
 }
 
-// A new dossier starts with a template research map, three visible sizing scenarios built
-// from editable assumptions, and "doing nothing" as the always-present alternative.
-async function seedDossier(ideaId: string, projectType: ProjectType, sector: SectorTemplate, audience: string, region: string) {
+// A new dossier starts with a research map derived from the intake (with one decisive question), three visible
+// sizing scenarios built from editable assumptions, and "doing nothing" as the always-present alternative.
+async function seedDossier(ideaId: string, intake: IntakeFacts) {
+  const audience = intake.target_audience;
   const supabase = await supabaseServer();
-  await supabase.from("research_questions").insert(
-    templatePlan(projectType, sector, { audience, region }).map((q, i) => ({ ...q, idea_id: ideaId, position: i + 1, origin: "template" })),
-  );
+  await insertDerivedQuestions(supabase, ideaId, intake);
   const model: SizingModel = /consument|particulier|b2c|huishoud/i.test(audience) ? "b2c_people" : "b2b_accounts";
   for (const kind of ["conservative", "realistic", "optimistic"] as ScenarioKind[]) {
     const { data: scenario } = await supabase.from("sizing_scenarios").insert({ idea_id: ideaId, kind, model }).select("id").single();
