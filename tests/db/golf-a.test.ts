@@ -94,8 +94,9 @@ d("golf A", () => {
     await db?.end();
   });
 
-  it("methode 2026-11-c: standaard voor nieuwe dossiers; overstappen van a of b naar c, nooit terug", async () => {
-    expect((await db.query("select method_version from public.ideas where id = $1", [A.idea])).rows[0].method_version).toBe("2026-11-c");
+  it("methode 2026-11-c: overstappen van a of b naar c, nooit terug", async () => {
+    // Sinds methode 2026-11-d (supabase/migrations/20261108090000_method_d.sql) starten nieuwe dossiers op 2026-11-d.
+    expect((await db.query("select method_version from public.ideas where id = $1", [A.idea])).rows[0].method_version).toBe("2026-11-d");
     const a = await newIdea(owner);
     const b = await newIdea(owner);
     await forceVersion(a.idea, "2026-11-a");
@@ -106,7 +107,7 @@ d("golf A", () => {
     expect(audit[0].detail).toMatchObject({ from: "2026-11-b", to: "2026-11-c" });
     await expect(as(owner, (c) => c.query("select public.switch_method_version($1, '2026-11-b', '{}'::jsonb)", [A.idea]))).rejects.toThrow(/METHOD_VERSION/);
     await expect(db.query("update public.ideas set method_version = '2026-11-a' where id = $1", [b.idea])).rejects.toThrow(/METHOD_VERSION/);
-    await expect(db.query("update public.ideas set method_version = '2026-11-d' where id = $1", [A.idea])).rejects.toThrow(/check|METHOD_VERSION/);
+    await expect(db.query("update public.ideas set method_version = '2026-11-z' where id = $1", [A.idea])).rejects.toThrow(/check|METHOD_VERSION/);
   });
 
   it("punt 3: aantal opgeloste dossiers van de werkruimte, ook voor de opdrachtgever, niet voor buitenstaanders", async () => {

@@ -198,10 +198,11 @@ d("methode 2026-11-b", () => {
     expect((await as(outsider, (c) => c.query("select * from public.evidence_source_refs($1)", [A.idea]))).rowCount).toBe(0);
   });
 
-  it("methodeversie: nieuwe dossiers op 2026-11-c, overstappen alleen vooruit en met audit", async () => {
-    expect((await db.query("select method_version from public.ideas where id = $1", [A.idea])).rows[0].method_version).toBe("2026-11-c");
+  it("methodeversie: nieuwe dossiers op de nieuwste versie (2026-11-d), overstappen alleen vooruit en met audit", async () => {
+    // Sinds supabase/migrations/20261108090000_method_d.sql starten nieuwe dossiers op 2026-11-d.
+    expect((await db.query("select method_version from public.ideas where id = $1", [A.idea])).rows[0].method_version).toBe("2026-11-d");
     const def = (await db.query("select column_default from information_schema.columns where table_schema = 'public' and table_name = 'ideas' and column_name = 'method_version'")).rows[0];
-    expect(def.column_default).toMatch(/2026-11-c/);
+    expect(def.column_default).toMatch(/2026-11-d/);
 
     // Een bestaand dossier (van vóór de migratie) staat op 2026-11-a; hier nagebootst buiten de triggers om.
     const old = await newIdea(owner);
