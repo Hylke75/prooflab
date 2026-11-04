@@ -466,6 +466,36 @@ Opdracht product owner: "per stap zelf ook teksten kan toevoegen en ook document
   `notities.spec.ts` draaien. Visueel gecontroleerd op 1440 px en 390 px met voorbeelddata (lokaal, alleen lezen)
 - 🟡 Bestanden van een verwijderd idee blijven in de bucket staan; inhoud van bestanden wordt niet gescand
 
+## Bestaand onderzoek importeren (11 november)
+
+Opdracht product owner: "Bij marktonderzoek moet je ook bestaande onderzoeken kunnen uploaden." Geen migratie: een
+geïmporteerd rapport is een gewone bron (`sources`) met de uitgelezen tekst als letterlijke fragmenten (`source_excerpts`).
+
+- ✅ **Importeren** (Markt → tab Bronnen, blok "Bestaand onderzoek importeren", `components/research/ReportImport.tsx`):
+  een nieuw bestand (PDF, DOCX, TXT, MD, CSV; ≤ 20 MB, ≤ 300 pagina's, ≤ 1 miljoen tekens) of een al geüpload document.
+  Het origineel komt bij Notities en documenten (stap Markt). Titel, uitgever/auteur, jaar of peildatum (een los jaar
+  wordt 1 januari, met vermelding), type bron, webadres en primair. Ingang ook via **Importeer als onderzoek** bij een
+  document in het blok Notities en documenten van Markt (zonder herladen op /research, via `?importeer=` elders)
+- ✅ **Uitlezen** (`lib/report-extract.ts`): PDF via unpdf per pagina (geen lettertypen/XFA; vindplaats "p. 4–5"),
+  DOCX via een eigen ZIP/XML-lezer zonder nieuwe dependency (`lib/docx-text.ts`; alleen `word/document.xml`, voet- en
+  eindnoten; grens op uitgepakte grootte tegen zip-bommen; versleutelde archieven geweigerd), tekstbestanden met
+  UTF-8/Windows-1252. Nette meldingen bij een scan zonder tekstlaag, wachtwoord, beschadigd, te groot of te lang
+- ✅ **Blokken** (`lib/domain/report-import.ts`): ±4.000 tekens met 800 tekens overlap, zodat elk citaat tot 750 tekens in
+  één blok staat; vindplaats "Rapport, blok N van M · p. X". Hetzelfde rapport twee keer importeren wordt geweigerd (inhoudshash)
+- ✅ **Bevinding vastleggen** (`saveReportFinding`): de consultant plakt een citaat; ProofLab zoekt zelf het blok, controleert
+  het citaat woord voor woord en de getallen uit de bevinding (bestaande `checkQuote`) en weigert anders. Daarna de gewone
+  statusberekening (`lib/claim-insert.ts`, gedeeld met het bestaande bevindingformulier)
+- ✅ **AI-voorstellen (optioneel)** (`lib/ai/report-findings.ts`): de AI leest het rapport in delen van ±60.000 tekens
+  ("Lees het volgende deel"), afgebakend met een willekeurige tag als data. Alleen voorstellen met een letterlijk
+  teruggevonden citaat en kloppende getallen blijven over; per voorstel accepteren (controleren, onderzoeksvraag kiezen)
+  of verwerpen; pas na accepteren een bevinding (`origin = 'ai'`). Via `runAi` (budget en grootboek, doel
+  `research:import_findings`). Zonder AI-sleutel werkt alles behalve de voorstellen
+- ✅ Tests: `tests/unit/report-import.test.ts` (blokken en overlap, pagina's, DOCX/zip-bom, PDF met en zonder tekstlaag,
+  filter op letterlijke citaten, datum), `tests/unit/report-import-actions.test.ts` (import, dubbel, alleen-lezen,
+  scan, voorstellen filteren, bevinding vastleggen en weigeren)
+- 🟡 AI-voorstellen worden niet bewaard tot ze geaccepteerd zijn (herladen = opnieuw laten voorstellen). Geen OCR voor
+  scans. Geen e2e-test en geen visuele controle met login in deze omgeving
+
 ## Markt: klantonderzoek vanuit stap 1 (11 november)
 
 Opdracht product owner: "Bij marktonderzoek moet je verschillende enquêtes kunnen aanmaken, online interviews kunnen

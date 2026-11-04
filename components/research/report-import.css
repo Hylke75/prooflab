@@ -1,0 +1,12 @@
+/* Blok "Bestaand onderzoek importeren" (components/research/ReportImport.tsx). Zelfde tokens als de rest van de app. */
+.report-mode{border:0;margin:0 0 12px;padding:0;min-width:0}
+.report-mode legend{margin:0 0 4px}
+.report-work{border-top:1px solid var(--color-border);padding-top:20px}
+.report-work-title{font-size:16px;line-height:24px;font-weight:700;font-family:var(--font-heading);color:var(--color-heading);margin-bottom:8px}
+.report-proposals{list-style:none;margin:16px 0 0;padding:0}
+.report-proposal{border:1px solid var(--color-border);border-radius:var(--radius-inner);padding:14px 16px;margin-bottom:12px;background:var(--color-surface)}
+.report-proposal-statement{font-size:15px;line-height:1.5;font-weight:600;color:var(--color-heading);margin:10px 0 6px;overflow-wrap:anywhere}
+.report-proposal .quote{overflow-wrap:anywhere;max-height:200px;overflow:auto}
+.report-manual>summary{list-style:none;display:inline-flex}
+.report-manual>summary::-webkit-details-marker{display:none}
+@media(max-width:560px){.report-proposal{padding:12px}}

@@ -1,13 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { questionDraftText } from "@/lib/domain/ai-draft";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { requireWritableIdea } from "@/lib/data";
 import { contentHash, recomputeClaim } from "@/lib/claims";
+import { ClaimFieldsSchema, insertClaimWithQuote } from "@/lib/claim-insert";
 import { fetchPageText } from "@/lib/fetch-page";
-import { checkQuote, normalizeText, numericFromInput, registrableDomain, valueInQuote } from "@/lib/domain/verify";
+import { checkQuote, normalizeText, numericFromInput, registrableDomain } from "@/lib/domain/verify";
 import { aiConfigured, env } from "@/lib/env";
 import { analyzeSignals, planResearch } from "@/lib/ai/research";
 import { aiSupportCheck, collectCbsFigures } from "@/lib/research-runner";
@@ -23,7 +25,7 @@ import { planSteps, runBudgetUsd } from "@/lib/research-steps";
 import { kickResearchRun } from "@/lib/research-worker";
 import { proposeUncertainty } from "@/lib/research-uncertainty-data";
 import { isProvider, PROVIDER_LABELS, type ProviderId } from "@/lib/ai/providers/config";
-import { isUnknown, normalizeReferenceDate, scopeValue, UNKNOWN } from "@/lib/domain/claim-scope";
+import { isUnknown } from "@/lib/domain/claim-scope";
 
 export type ActionState = { error: string | null; ok?: string | null };
 
@@ -108,7 +110,10 @@ export async function refreshQuestionsFromIntake(ideaId: string, _: ActionState)
   if (await runIsActive(supabase, ideaId)) return { error: "Er loopt nog een onderzoeksrun. Wacht tot die klaar is (of stop hem)." };
   const id = await ensureDecisiveQuestion(ideaId, idea, { refreshTemplates: true });
   if (!id) return { error: "Er zijn nog geen onderzoeksvragen." };
-  return done(ideaId, "De vragen volgen nu de intake; de beslissende vraag is gemarkeerd.");
+  // Systeemcontrole: de knop verdwijnt zodra de vragen de intake volgen, en met hem zijn melding. Daarom een vaste
+  // bevestiging boven de onderzoekskaart (via het adres), die blijft staan tot de pagina opnieuw wordt geopend.
+  revalidatePath(`/app/ideas/${ideaId}`, "layout");
+  redirect(`/app/ideas/${ideaId}/research?vragen=bijgewerkt#onderzoekskaart`);
 }
 
 export async function aiPlan(ideaId: string, _: ActionState): Promise<ActionState> {
@@ -225,31 +230,9 @@ export async function deleteSource(ideaId: string, sourceId: string) {
 // Claims
 // ---------------------------------------------------------------------------
 
-const ClaimSchema = z.object({
-  statement: z.string().trim().min(10, "Formuleer de bevinding in één zin.").max(600),
+// Golf C, punt 7 (populatie, regio, peildatum) en de overige velden: gedeeld met het importeren van rapporten.
+const ClaimSchema = ClaimFieldsSchema.extend({
   excerpt_id: z.string().uuid("Kies het bronfragment waar het citaat uit komt."),
-  quote: z.string().trim().min(8, "Neem een letterlijk citaat over (minimaal 8 tekens).").max(1500),
-  stance: z.enum(["supports", "contradicts"]),
-  evidence_type: z.enum(["official_statistic", "third_party_estimate", "primary_document", "qualitative_observation", "self_reported_intent", "observed_action", "verified_transaction", "verified_commitment", "internal_assumption"]),
-  section: z.enum(["market", "customers", "competition", "pricing", "sizing", "regulation", "other"]),
-  freshness_kind: z.enum(["statistic", "price", "regulation", "product", "general"]),
-  question_id: z.string().optional(),
-  // Golf C, punt 7: verplicht, of expliciet "onbekend".
-  population: z.string().trim().min(1, "Vul de populatie in, of schrijf \"onbekend\".").max(200),
-  region: z.string().trim().min(1, "Vul de regio in, of schrijf \"onbekend\".").max(120),
-  reference_date: z
-    .string()
-    .trim()
-    .min(1, "Vul de peildatum in, of schrijf \"onbekend\".")
-    .max(40)
-    .refine((v) => isUnknown(v) || normalizeReferenceDate(v) !== UNKNOWN, "Schrijf de peildatum als jaartal (2025), maand (2025-06) of datum, of \"onbekend\"."),
-  period: z.string().trim().max(60).optional(),
-  numeric_value: z.string().trim().optional(),
-  unit: z.string().trim().max(40).optional(),
-  definition: z.string().trim().max(400).optional(),
-  supports: z.string().trim().max(400).optional(),
-  does_not_prove: z.string().trim().min(5, "Vul in wat deze bevinding nog níét bewijst.").max(400),
-  limitations: z.string().trim().max(400).optional(),
 });
 
 export async function addClaim(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
@@ -260,56 +243,18 @@ export async function addClaim(ideaId: string, _: ActionState, form: FormData): 
   const supabase = await supabaseServer();
   const { data: excerpt } = await supabase.from("source_excerpts").select("id, text, source_id").eq("id", v.excerpt_id).eq("idea_id", ideaId).single();
   if (!excerpt) return { error: "Bronfragment niet gevonden." };
-  const check = checkQuote(v.quote, excerpt.text, v.stance === "supports" ? v.statement : undefined);
-  const numericRaw = blank(v.numeric_value);
-  const numeric = numericFromInput(numericRaw);
-  if (numericRaw && numeric == null) return { error: "Het getal is niet leesbaar. Schrijf één getal, bijvoorbeeld 41.230 of 1,5 miljoen." };
-  // The stored figure feeds the market sizing, so it must be the figure in the quote.
-  if (numeric != null && !valueInQuote(numeric, v.quote)) return { error: "Het getal staat niet in het citaat. Neem het getal over zoals de bron het noemt." };
-  const { data: claim, error } = await supabase
-    .from("claims")
-    .insert({
-      idea_id: ideaId,
-      question_id: v.question_id && /^[0-9a-f-]{36}$/.test(v.question_id) ? v.question_id : null,
-      section: v.section,
-      statement: v.statement,
-      evidence_type: v.evidence_type,
-      population: scopeValue(v.population, 200),
-      region: scopeValue(v.region),
-      reference_date: normalizeReferenceDate(v.reference_date),
-      period: blank(v.period),
-      numeric_value: numeric,
-      unit: blank(v.unit),
-      definition: blank(v.definition),
-      supports: blank(v.supports),
-      does_not_prove: v.does_not_prove,
-      limitations: blank(v.limitations),
-      freshness_kind: v.freshness_kind,
-      origin: "manual",
-    })
-    .select("id")
-    .single();
-  if (error || !claim) return { error: "De bevinding kon niet worden opgeslagen." };
-  await supabase.from("claim_sources").insert({
-    claim_id: claim.id,
-    idea_id: ideaId,
-    source_id: excerpt.source_id,
-    excerpt_id: excerpt.id,
-    quote: v.quote,
-    stance: v.stance,
-    quote_check: check,
-  });
-  const result = await recomputeClaim(claim.id);
+  const res = await insertClaimWithQuote(ideaId, v, excerpt);
+  if (res.error !== null) return { error: res.error };
   revalidatePath(`/app/ideas/${ideaId}`, "layout");
-  if (check !== "exact") {
+  if (res.check !== "exact") {
     return {
       error:
-        check === "numbers_mismatch"
+        res.check === "numbers_mismatch"
           ? "Opgeslagen als 'Onvoldoende bewijs': de getallen uit je bewering staan niet in het citaat."
           : "Opgeslagen als 'Onvoldoende bewijs': het citaat staat niet letterlijk in het fragment.",
     };
   }
-  return { error: null, ok: `Bevinding opgeslagen: ${result?.reason ?? ""}` };
+  return { error: null, ok: `Bevinding opgeslagen: ${res.reason ?? ""}` };
 }
 
 export async function linkEvidence(ideaId: string, claimId: string, _: ActionState, form: FormData): Promise<ActionState> {

@@ -61,7 +61,7 @@ export async function StepNotes({ ideaId, step }: { ideaId: string; step: NoteSt
 
         <p className="note step-notes-hint">
           Eigen werkmateriaal van het team: gespreksverslagen, ideeën, bestanden. Notities zijn intern en komen niet in het rapport. Een document is
-          geen bron of bewijs vanzelf{step === "market" ? <>: gebruik <strong>Gebruik als bron</strong> en plak het fragment letterlijk, dan controleert ProofLab het citaat zoals bij elke bron.</> : "."}
+          geen bron of bewijs vanzelf{step === "market" ? <>: met <strong>Importeer als onderzoek</strong> leest ProofLab een rapport in als bron met letterlijke tekstblokken; met <strong>Gebruik als bron</strong> plak je zelf een fragment. In beide gevallen controleert ProofLab het citaat zoals bij elke bron.</> : "."}
           {!canWrite && " Je kijkt mee als opdrachtgever: je kunt lezen en downloaden."}
         </p>
 

@@ -125,7 +125,7 @@ describe("snelle check op het testdossier", () => {
     expect(skipped.every((t) => /Budget van deze run reikt niet|zoekstap van deze vraag is niet uitgevoerd|niets om uit te lezen/.test(String(t.detail)))).toBe(true);
     // Melding in de app.
     expect(db.coach_notes.some((n) => String(n.code).startsWith("research_run_done:"))).toBe(true);
-  });
+  }, 20_000); // zware test: een hele run met gemockte aanbieders; op een drukke CI-runner soms boven de standaard 5 s
 
   it("zonder de B2-migratie (geen kolom is_decisive) gaat de prijsvraag toch eerst", async () => {
     const db = testDossier();
