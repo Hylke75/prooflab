@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { createIdeaViaIntake, dutchDate, isoDate } from "./intake";
 
 // Fase B1: de Test Card van een prijs-/aanbodtest. Opslaan geeft altijd een zichtbaar resultaat of een duidelijke
 // fout, en de drempels liggen vast vóórdat ProofLab het aantal deelnemers uitrekent.
@@ -26,30 +27,15 @@ async function login(page: Page) {
   }
 }
 
-// Het makelaarsdossier uit de opdracht, via de huidige intake (fase B3 maakt die korter).
+// Het makelaarsdossier uit de opdracht, via de intake van fase B3 (drie vragen en één bevestiging).
 async function createIdea(page: Page): Promise<string> {
-  await page.goto("/app/ideas/new");
-  await page.getByRole("button", { name: "Lanceren we dit aanbod in het eerste kwartaal met twee consultants, of stoppen we?" }).click();
-  await page.getByLabel("Hoeveel (euro)", { exact: true }).fill("40000");
-  await page.getByLabel("Uiterlijke beslisdatum", { exact: true }).fill(new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10));
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByLabel("Geslaagd als…", { exact: true }).fill("Zes maanden na de lancering betalen minstens 20 makelaarskantoren € 249 per maand.");
-  await page.getByLabel("Wat meet je?", { exact: true }).fill("betalende makelaarskantoren");
-  await page.getByLabel("Doelwaarde", { exact: true }).fill("20");
-  await page.getByLabel("Omzetdoel (€)", { exact: true }).fill("59760");
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByLabel("Korte naam", { exact: true }).fill(`TEST B1 makelaars ${Date.now()}`);
-  await page.getByLabel("Mijn idee", { exact: true }).fill("Een AI-assistent voor zelfstandige NVM-makelaars die woningteksten en klantmails schrijft, voor € 249 per maand.");
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: "Zakelijke klanten (B2B)" }).click();
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: /Nederland/ }).click();
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: "Nieuw product" }).click();
-  await page.getByLabel("Opdrachtgever", { exact: true }).selectOption("none");
-  await page.getByRole("button", { name: "Start de marktverkenning" }).click();
-  await page.waitForURL(/\/research/);
-  return page.url().replace(/\/research.*$/, "");
+  return createIdeaViaIntake(page, {
+    idea: "Een AI-assistent voor zelfstandige NVM-kantoren met 2–15 medewerkers die woningteksten en klantmails schrijft, voor € 249 per maand.",
+    decision: `Lanceren we de assistent met € 40.000, ja of nee, vóór ${dutchDate(60)}?`,
+    uncertainty: "Willen ze € 249 per maand betalen?",
+    fill: { "Korte naam": `TEST B1 makelaars ${Date.now()}`, "Inzet (euro)": "40000", "Uiterlijke beslisdatum": isoDate(60), "Wat meet je?": "betalende makelaarskantoren", "Doelwaarde": "20", "Minimumbedrag per klant (€)": "249" },
+    select: { "Type project": "new_product", "Opdrachtgever": "none" },
+  });
 }
 
 test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-regel starten", async ({ page }) => {

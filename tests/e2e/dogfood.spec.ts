@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { createIdeaViaIntake, dutchDate, isoDate } from "./intake";
 
 // "ProofLab op ProofLab": builds the dogfood dossier through the real UI, so every excerpt goes through
 // the same live page check and quote verification as a consultant's would. Only literal fragments from
@@ -121,42 +122,23 @@ test("dogfood: ProofLab op ProofLab", async ({ page }) => {
     test.skip(true, `"${TITLE}" bestaat al in deze werkruimte`);
   }
 
-  // Intake: the decision first
-  await page.goto("/app/ideas/new");
-  await page.getByRole("button", { name: "Investeren we € 25.000 in een eerste versie, ja of nee, vóór 1 maart?" }).click();
-  await page.getByLabel("De beslisvraag, in je eigen woorden", { exact: true }).fill(
-    "Maken we van ProofLab de vaste werkwijze voor validatiesprints van Link & Lead, en investeren we in een versie voor opdrachtgevers?",
-  );
-  // Inzet en beslisdatum zijn verplicht in de intake.
-  await page.getByLabel("Hoeveel (euro)", { exact: true }).fill("25000");
-  await page.getByLabel("Uiterlijke beslisdatum", { exact: true }).fill(new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10));
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByLabel("Geslaagd als…", { exact: true }).fill(
-    `Link & Lead verkoopt binnen zes maanden na het besluit minstens ${OUTCOME_TARGET} validatiesprints met ProofLab.`,
-  );
-  await page.getByLabel("Wat meet je?", { exact: true }).fill("verkochte validatiesprints met ProofLab");
-  await page.getByLabel("Doelwaarde", { exact: true }).fill(OUTCOME_TARGET);
-  await page.getByLabel("Omzetdoel (€)", { exact: true }).fill("15000");
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByLabel("Korte naam", { exact: true }).fill(TITLE);
-  await page.getByLabel("Mijn idee", { exact: true }).fill(
-    "Een validatiesprint van 4–6 weken waarin de consultant met ProofLab marktonderzoek met controleerbare bronnen, experimenten met echte klanten en een besluit vastlegt dat de opdrachtgever bevestigt.",
-  );
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: "Zakelijke klanten (B2B)" }).click();
-  await page.getByLabel("Specifieker", { exact: true }).fill("Opdrachtgevers van Link & Lead in MKB, events/MICE en media/cultuur");
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: /Nederland/ }).click();
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: "Nieuw product" }).click();
-  await page.getByLabel("Branche", { exact: true }).selectOption("smb");
-  await page.getByLabel("Opdrachtgever", { exact: true }).selectOption("none");
-  await page.getByLabel("Wat is volgens jou de grootste onzekerheid?", { exact: true }).fill(
-    "Of opdrachtgevers een sprint met gemeten bewijs meer waard vinden dan een adviesrapport",
-  );
-  await page.getByRole("button", { name: "Start de marktverkenning" }).click();
-  await page.waitForURL(/\/research/);
-  const ideaUrl = page.url().replace(/\/research.*$/, "");
+  // Intake (fase B3): drie vragen en één bevestiging.
+  const ideaUrl = await createIdeaViaIntake(page, {
+    idea: "Een validatiesprint van 4–6 weken voor opdrachtgevers van Link & Lead in MKB, events/MICE en media/cultuur, waarin de consultant met ProofLab marktonderzoek met controleerbare bronnen, experimenten met echte klanten en een besluit vastlegt dat de opdrachtgever bevestigt.",
+    decision: `Maken we van ProofLab de vaste werkwijze voor validatiesprints van Link & Lead, en investeren we € 25.000 in een versie voor opdrachtgevers, vóór ${dutchDate(60)}?`,
+    uncertainty: "Of opdrachtgevers een sprint met gemeten bewijs meer waard vinden dan een adviesrapport.",
+    fill: {
+      "Korte naam": TITLE,
+      "Doelgroep": "Opdrachtgevers van Link & Lead in MKB, events/MICE en media/cultuur",
+      "Inzet (euro)": "25000",
+      "Uiterlijke beslisdatum": isoDate(60),
+      "Wat meet je?": "verkochte validatiesprints met ProofLab",
+      "Doelwaarde": OUTCOME_TARGET,
+      "Minimumbedrag per klant (€)": "3000",
+      "Geslaagd als…": `Link & Lead verkoopt binnen zes maanden na het besluit minstens ${OUTCOME_TARGET} validatiesprints met ProofLab.`,
+    },
+    select: { "Soort klant": "Zakelijke klanten (B2B)", "Regio": "Nederland", "Branche": "smb", "Type project": "new_product", "Opdrachtgever": "none" },
+  });
 
   // Sources with literal fragments, checked against the live page, and one finding per fragment
   for (const f of FINDINGS) {
