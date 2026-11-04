@@ -22,6 +22,8 @@ export type IntakeFacts = {
   sector_template: string;
   key_uncertainty?: string | null;
   outcome_min_value_per_customer?: number | null;
+  // Fase B3: de prijs uit de bevestigde intake (ideas.offer_price), als die er is.
+  offer_price?: string | null;
 };
 
 // Waar de grootste onzekerheid over gaat.
@@ -61,7 +63,18 @@ const PERIOD_WORD: Record<string, string> = { mnd: "maand", jr: "jaar" };
 // uit de beschrijving (daar alleen met een periode, zodat een investeringsbedrag geen prijs wordt). Het bedrag in de
 // beslisvraag is de inzet, geen prijs. Zonder genoemde prijs: de minimale waarde per klant uit de
 // uitkomstdefinitie, of null.
-export function priceFromIntake(i: Pick<IntakeFacts, "key_uncertainty" | "description" | "outcome_min_value_per_customer">): string | null {
+export function priceFromIntake(i: Pick<IntakeFacts, "key_uncertainty" | "description" | "outcome_min_value_per_customer" | "offer_price">): string | null {
+  // Fase B3: de prijs die de consultant in de intake bevestigde, gaat voor alles.
+  const offer = clean(i.offer_price);
+  if (offer) {
+    for (const re of PRICE_RE) {
+      const m = re.exec(offer);
+      if (!m) continue;
+      const period = m[2] ? (PERIOD_WORD[m[2].toLowerCase()] ?? m[2].toLowerCase()) : null;
+      return `€ ${m[1].replace(/\s/g, ".")}${period ? ` per ${period}` : ""}`;
+    }
+    return offer;
+  }
   for (const [text, needsPeriod] of [
     [i.key_uncertainty, false],
     [i.description, true],
