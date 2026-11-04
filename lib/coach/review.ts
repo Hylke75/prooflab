@@ -3,6 +3,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { getIdea } from "@/lib/data";
 import { loadProgress } from "@/lib/progress";
 import { dossierSummaryForAi, loadDossier, type Dossier } from "@/lib/dossier";
+import { coachContextLines } from "@/lib/coach/context";
 import { sprintStage } from "@/lib/domain/coach";
 import { sprintStatus, todayInNL } from "@/lib/domain/sprint";
 import { aiConfigured } from "@/lib/env";
@@ -283,7 +284,8 @@ export async function runCoachReview(ideaId: string, opts: { force?: boolean } =
           coachReview(
             ideaContext(idea),
             {
-            dossier: dossierSummaryForAi(dossier),
+            // Fase B4/B6: ook intake, experimenten en echte interviews (zonder persoonsgegevens).
+            dossier: [dossierSummaryForAi(dossier), ...coachContextLines(dossier)].join("\n"),
             changes: describeChanges(row?.fingerprint, fingerprint),
             openNotes: open.map((n) => ({ title: n.title, body: n.body })),
             sprint: sprint ? `Week ${sprint.week} van ${sprint.weeks}${sprint.behindReason ? `; ${sprint.behindReason}` : ""}` : "Geen sprint gepland",

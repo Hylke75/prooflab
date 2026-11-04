@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { requireWritableIdea } from "@/lib/data";
-import { TEMPLATE_ASSUMPTIONS } from "@/lib/domain/recommend";
+import { selectionError, TEMPLATE_ASSUMPTIONS } from "@/lib/domain/recommend";
+import { ASSUMPTION_KINDS } from "@/lib/domain/assumption-kind";
 import { aiConfigured } from "@/lib/env";
 import { extractClaims, suggestAssumptions, type ExcerptRef } from "@/lib/ai/research";
 import { searchAcrossProviders, storeExtractedClaims, storeFoundSources } from "@/lib/research-runner";
@@ -40,6 +41,36 @@ export async function setImportance(ideaId: string, assumptionId: string, form: 
   const supabase = await supabaseServer();
   await supabase.from("assumptions").update({ importance: n.data }).eq("id", assumptionId).eq("idea_id", ideaId);
   refresh(ideaId);
+}
+
+// Fase B4: de soort van een aanname (markt, prijs, gedrag, technisch). Leeg = afleiden uit de tekst.
+export async function setKind(ideaId: string, assumptionId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const raw = String(form.get("kind") ?? "");
+  const kind = raw === "" ? null : raw in ASSUMPTION_KINDS ? raw : undefined;
+  if (kind === undefined) return { error: "Kies markt, prijs, gedrag of technisch." };
+  const supabase = await supabaseServer();
+  const { error } = await supabase.from("assumptions").update({ kind }).eq("id", assumptionId).eq("idea_id", ideaId);
+  if (error) return { error: "De soort kon niet worden opgeslagen." };
+  refresh(ideaId);
+  return { error: null, ok: kind ? "Soort opgeslagen; de voorgestelde test en de rangorde zijn bijgewerkt." : "De soort wordt weer afgeleid uit de tekst." };
+}
+
+// Fase B4: maximaal drie aannames gekozen om nu te testen; de rest staat op "later". De database dwingt het
+// maximum ook af (guard_selected_for_test, migratie 20261110140000).
+export async function setSelectedForTest(ideaId: string, assumptionId: string, select: boolean, _: ActionState): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  const { data: rows, error: readError } = await supabase.from("assumptions").select("id, selected_for_test").eq("idea_id", ideaId);
+  if (readError) return { error: "Kiezen kan nog niet: de databasemigratie voor fase B4 is nog niet toegepast." };
+  const current = (rows ?? []).find((r) => r.id === assumptionId);
+  if (!current) return { error: "Aanname niet gevonden." };
+  const problem = selectionError((rows ?? []).filter((r) => r.selected_for_test).length, select, current.selected_for_test);
+  if (problem) return { error: problem };
+  const { error } = await supabase.from("assumptions").update({ selected_for_test: select }).eq("id", assumptionId).eq("idea_id", ideaId);
+  if (error) return { error: error.message.includes("MAX_SELECTED") ? (selectionError(3, true, false) ?? "Kies maximaal drie aannames.") : "Opslaan mislukt." };
+  refresh(ideaId);
+  return { error: null, ok: select ? "Gekozen om nu te testen." : "Op later gezet." };
 }
 
 // De startkans vóór enig bewijs ("hoe waarschijnlijk vonden we dit vooraf?"). Een afwijking van 50% vraagt een

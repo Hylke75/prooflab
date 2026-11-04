@@ -97,6 +97,7 @@ describe("interviewleidraad bij een prijsaanname", () => {
     expect(interviewGuideFor("market", NEUTRAL_INTERVIEW_GUIDE)).toEqual([...NEUTRAL_INTERVIEW_GUIDE]);
   });
   it("de standaardaannames krijgen een soort", () => {
-    expect(TEMPLATE_ASSUMPTIONS.map((a) => assumptionKind(a))).toEqual(["behaviour", "behaviour", "price", "market", "technical", "market"]);
+    // B4: "vaak genoeg om er iets aan te willen doen" gaat over het probleem (markt), niet over gedrag.
+    expect(TEMPLATE_ASSUMPTIONS.map((a) => assumptionKind(a))).toEqual(["market", "behaviour", "price", "market", "technical", "market"]);
   });
 });

@@ -467,7 +467,8 @@ missen we? Onder welke omstandigheden moet het traject stoppen? Wees concreet en
 export async function coachAnswer(idea: IdeaContext, context: string, question: string, provider: ProviderId) {
   return generateText(provider, {
     system: `${RESEARCH_SYSTEM}\nJe bent de ProofLab-coach. Antwoord in hooguit vijf zinnen, met één concrete volgende stap.
-Baseer je alleen op het dossier; zeg het als iets daar niet in staat.`,
+Baseer je alleen op het dossier; zeg het als iets daar niet in staat. Je mag eenvoudige markdown gebruiken (vet, een korte
+lijst, links naar bronnen); geen HTML en geen tabellen. Tel een AI-tekst of mening nooit als klantbewijs.`,
     user: `${ideaBlock(idea)}\n<dossier>\n${context}\n</dossier>\n<vraag>${question}</vraag>`,
     maxTokens: 4000,
     effort: "low",
