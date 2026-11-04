@@ -3,7 +3,10 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { searchQuestion, extractClaims, challengeDossier, checkSupport, type ExcerptRef, type FoundSource, type IdeaContext, type QueryLog, type SearchFocus } from "@/lib/ai/research";
 import { mergeFoundSources } from "@/lib/ai/web-evidence";
 import { providersFor } from "@/lib/ai/settings";
-import { isProvider, PROVIDER_LABELS, type ProviderId } from "@/lib/ai/providers/config";
+import { isProvider, modelFor, PROVIDER_LABELS, PROVIDERS, type ProviderId } from "@/lib/ai/providers/config";
+import { runDoneNote } from "@/lib/research-worker-plan";
+import { FAILURE_TEXT, failureCode, type FailureCode } from "@/lib/research-failures";
+import { fitsBudget, notStartedText, providersForRun, reserveUsd, searchesFor, stepEstimateUsd, type ModelMap, type RunMode } from "@/lib/research-steps";
 import { assertAiBudget, runAi } from "@/lib/ai/guard";
 import { log } from "@/lib/log";
 import { env } from "@/lib/env";
@@ -16,7 +19,9 @@ import { passagesPerRun, twoZeroRunsInARow } from "@/lib/domain/research-health"
 import { CBS_STATLINE_URL, CBS_TABLE, cbsKeywords, cbsLine, fetchCbsCompanyCounts, isSizeQuestion, type JsonFetcher } from "@/lib/integrations/cbs";
 import type { Idea } from "@/lib/data";
 import type { Json } from "@/lib/database.types";
-import { keepAfterSupportCheck, type SupportCheck } from "@/lib/domain/support";
+import { isSupportCheck, keepAfterSupportCheck, type SupportCheck } from "@/lib/domain/support";
+import { decideMerge, knownSupportVerdict, type KnownFinding } from "@/lib/research-dedupe";
+import { proposeUncertainty } from "@/lib/research-uncertainty-data";
 import { groundedScope } from "@/lib/domain/claim-scope";
 
 type RunState = { status: string; done: number; total: number; current: string | null; cost: number; budget: number; error: string | null };
@@ -57,7 +62,9 @@ export async function advanceRun(runId: string): Promise<RunState> {
 
   // The run budget is capped by the server setting, whatever is stored on the run.
   const budget = Math.min(Number(run.budget_usd), env.researchBudgetUsd);
-  let skipReason: string | null = Number(run.cost_usd) >= budget ? "Budget van deze run bereikt." : null;
+  const mode = run.mode as RunMode;
+  const spent = Number(run.cost_usd);
+  let skipReason: string | null = spent >= budget ? "Budget van deze run bereikt." : null;
   if (!skipReason) {
     try {
       await assertAiBudget(run.idea_id);
@@ -67,73 +74,185 @@ export async function advanceRun(runId: string): Promise<RunState> {
   }
   if (skipReason) {
     await supabase.from("research_tasks").update({ status: "skipped", detail: skipReason }).eq("run_id", runId).eq("status", "pending");
+    if (!run.error) await supabase.from("research_runs").update({ error: skipReason.slice(0, 500) }).eq("id", runId);
   }
-  const { data: next } = await supabase.from("research_tasks").select("*").eq("run_id", runId).eq("status", "pending").order("position").limit(1).maybeSingle();
-  // An extraction step only runs once the search for its question has finished.
-  if (next?.kind === "extract") {
-    const { data: search } = await supabase
-      .from("research_tasks")
-      .select("status")
-      .eq("run_id", runId)
-      .eq("kind", "search")
-      .eq("question_id", next.question_id!)
-      .maybeSingle();
-    if (search && !["done", "failed", "skipped"].includes(search.status)) return state();
+
+  // Fase B2, punt 3: het plafond is hard. De volgende stap start alleen als "uitgegeven + bovengrens van de stap ≤
+  // plafond"; een stap die niet past, wordt overgeslagen met de reden, en de run kijkt of een volgende (goedkopere)
+  // stap nog wel past. Een uitleesstap wacht op de zoekstap van zijn vraag en vervalt als die niet is uitgevoerd.
+  let next: TaskRow | null = null;
+  let estimate = 0;
+  let providers: ProviderId[] = [];
+  for (let guard = 0; guard < 50; guard++) {
+    const { data: candidate } = await supabase.from("research_tasks").select("*").eq("run_id", runId).eq("status", "pending").order("position").limit(1).maybeSingle();
+    if (!candidate) break;
+    if (candidate.kind === "extract") {
+      const search = await searchTaskBefore(runId, candidate);
+      if (search && !["done", "failed", "skipped"].includes(search.status)) return state();
+      if (search && search.status !== "done") {
+        await supabase
+          .from("research_tasks")
+          .update({ status: "skipped", detail: "Overgeslagen: de zoekstap van deze vraag is niet uitgevoerd, er is niets om uit te lezen." })
+          .eq("id", candidate.id)
+          .eq("status", "pending");
+        continue;
+      }
+    }
+    providers = await runProviders(run.idea_id, mode, budget, candidate.output);
+    estimate = stepEstimateUsd(candidate.kind, providers, mode, researchModels());
+    // Budget dat vrij moet blijven voor de slotstap "grootste onzekerheid" (punt 6).
+    const { data: pendingKinds } = await supabase.from("research_tasks").select("kind").eq("run_id", runId).eq("status", "pending");
+    const reserve = reserveUsd(candidate.kind, (pendingKinds ?? []).map((t) => t.kind), providers, mode, researchModels());
+    if (!fitsBudget(spent, estimate + reserve, budget)) {
+      const why = notStartedText(estimate + reserve, spent, budget);
+      await supabase.from("research_tasks").update({ status: "skipped", detail: why }).eq("id", candidate.id).eq("status", "pending");
+      if (!run.error) {
+        run.error = `Budget van deze run bereikt: niet elke stap paste binnen max $${budget.toFixed(2)}.`;
+        await supabase.from("research_runs").update({ error: run.error }).eq("id", runId);
+      }
+      continue;
+    }
+    next = candidate as TaskRow;
+    break;
   }
   if (!next) {
-    await supabase.from("research_runs").update({ status: "done", finished_at: new Date().toISOString() }).eq("id", runId);
-    await alertOnZeroSources(run);
+    const { data: finished } = await supabase
+      .from("research_runs")
+      .update({ status: "done", finished_at: new Date().toISOString() })
+      .eq("id", runId)
+      .in("status", ["queued", "running"])
+      .select("id");
+    if (finished?.length) {
+      await alertOnZeroSources(run);
+      // Fase B2, punt 4: een melding in de app, ook als niemand de pagina open heeft.
+      await notifyRunDone(runId, run.idea_id);
+    }
     return state();
   }
+  const task = next;
   // Claim the task; a concurrent request that lost the race simply returns the state.
   const { data: claimed } = await supabase
     .from("research_tasks")
-    .update({ status: "running", attempts: next.attempts + 1, started_at: new Date().toISOString() })
-    .eq("id", next.id)
+    .update({ status: "running", attempts: task.attempts + 1, started_at: new Date().toISOString() })
+    .eq("id", task.id)
     .eq("status", "pending")
     .select("id");
   if (!claimed?.length) return state();
   await supabase.from("research_runs").update({ status: "running" }).eq("id", runId);
 
   const { data: idea } = await supabase.from("ideas").select("*").eq("id", run.idea_id).single();
-  // Every model call of this task reserves its estimated cost against what the run may still spend (lib/ai/budget.ts).
-  const runBudget = new RunBudget(budget, Number(run.cost_usd));
+  // Every model call of this task reserves its estimated cost against what this step may spend: its upper bound,
+  // and never more than the run has left (lib/ai/budget.ts).
+  const runBudget = new RunBudget(Math.min(budget, spent + estimate), spent);
   try {
-    const result = await withRunBudget(runBudget, () => runTask(next, idea as Idea, run.mode as "quick" | "deep"));
+    const result = await withRunBudget(runBudget, () => runTask(task, idea as Idea, mode, providers));
     const detail = runBudget.hit ? `${result.detail} ${runBudget.hit}` : result.detail;
-    await supabase.from("research_tasks").update({ status: "done", output: result.output, detail: detail.slice(0, 1000), finished_at: new Date().toISOString() }).eq("id", next.id);
+    await supabase.from("research_tasks").update({ status: "done", output: result.output, detail: detail.slice(0, 1000), finished_at: new Date().toISOString() }).eq("id", task.id);
     // What the calls really cost (the tracker sees every call, including refused and stopped ones).
     const cost = Math.max(result.cost, runBudget.spent);
-    if (cost > 0) await supabase.rpc("add_research_cost", { p_task: next.id, p_cost: cost });
+    if (cost > 0) await supabase.rpc("add_research_cost", { p_task: task.id, p_cost: cost });
   } catch (e) {
     const refused = e instanceof AiRefusedError;
-    const retry = !refused && !(e instanceof AiBudgetError) && next.attempts + 1 < 3;
+    const retry = !refused && !(e instanceof AiBudgetError) && task.attempts + 1 < 3;
     await log.error(
       "research_task_failed",
-      { runId, taskId: next.id, kind: next.kind, attempt: next.attempts + 1, willRetry: retry, refused, budget: e instanceof AiBudgetError },
+      { runId, taskId: task.id, kind: task.kind, attempt: task.attempts + 1, willRetry: retry, refused, budget: e instanceof AiBudgetError },
       e,
     );
     // Calls that were made still cost money (a refusal uses tokens too); book them on the run so the budget holds.
     const cost = Math.max(runBudget.spent, refused ? (e.usage?.cost ?? 0) : 0);
-    if (cost > 0) await supabase.rpc("add_research_cost", { p_task: next.id, p_cost: cost });
+    if (cost > 0) await supabase.rpc("add_research_cost", { p_task: task.id, p_cost: cost });
     await supabase
       .from("research_tasks")
       .update({
         status: retry ? "pending" : "failed",
-        detail: refused ? "Het model weigerde deze stap." : e instanceof AiBudgetError ? e.message : `Fout: ${e instanceof Error ? e.message.slice(0, 200) : "onbekend"}`,
+        // Fase B2, punt 5: een korte reden; "opnieuw proberen" staat in het paneel.
+        detail: refused
+          ? "Het model weigerde deze stap."
+          : e instanceof AiBudgetError
+            ? e.message
+            : `Mislukt (${FAILURE_TEXT[failureCode(e)]})${retry ? "; ProofLab probeert het automatisch opnieuw." : "."} ${e instanceof Error ? e.message.slice(0, 160) : ""}`.trim(),
+        // De reden ook als code, voor de knop "opnieuw proberen".
+        ...(retry ? {} : { output: { failure: failureCode(e) } }),
       })
-      .eq("id", next.id);
+      .eq("id", task.id);
   }
-  // Budget reached: no further task starts; the run records why.
-  if (runBudget.hit) {
-    await supabase.from("research_tasks").update({ status: "skipped", detail: "Budget van deze run bereikt." }).eq("run_id", runId).eq("status", "pending");
+  // A call inside the step did not fit: the run records why (the next step is checked against the cap again).
+  if (runBudget.hit && !run.error) {
     await supabase.from("research_runs").update({ error: runBudget.hit.slice(0, 500) }).eq("id", runId);
   }
   return state();
 }
 
+// De zoekstap waar een uitleesstap op wacht: de laatste zoekstap van dezelfde vraag vóór deze stap in deze run.
+async function searchTaskBefore(runId: string, task: { question_id: string | null; position: number }) {
+  if (!task.question_id) return null;
+  const supabase = await supabaseServer();
+  const { data } = await supabase
+    .from("research_tasks")
+    .select("id, status, output, position")
+    .eq("run_id", runId)
+    .eq("kind", "search")
+    .eq("question_id", task.question_id)
+    .order("position", { ascending: false });
+  return (data ?? []).find((t) => t.position < task.position) ?? null;
+}
+
+// Het onderzoeksmodel per aanbieder in deze omgeving (voor de bovengrens per stap).
+function researchModels(): ModelMap {
+  return Object.fromEntries(PROVIDERS.map((p) => [p, modelFor(p, process.env, "research")]));
+}
+
+// De aanbieders die in deze run zoeken: de verbonden aanbieders van de organisatie, bij de snelle check zoveel als
+// er passen met de kern binnen het plafond (lib/research-steps.ts). Een herhaalstap (punt 5) noemt zelf zijn
+// aanbieder in output.only_providers.
+export async function runProviders(ideaId: string, mode: RunMode, budget: number, taskOutput?: unknown): Promise<ProviderId[]> {
+  const all = await providersFor(ideaId, "research");
+  const only = (taskOutput as { only_providers?: unknown } | null)?.only_providers;
+  if (Array.isArray(only)) {
+    const pick = all.filter((p) => only.includes(p));
+    if (pick.length) return pick;
+  }
+  return providersForRun(all, mode, budget, researchModels());
+}
+
 // Two consecutive finished runs of the same idea without a single kept passage: an incident for operations
 // (log.error goes to Sentry when SENTRY_DSN is set). Also counted on the system status page.
+// Fase B2, punt 4: een coachnotitie "onderzoeksrun klaar" (het bestaande meldingensysteem: coachpaneel en
+// dashboard). Eerdere open meldingen van een run gaan dicht. Een mislukte melding breekt de run nooit.
+async function notifyRunDone(runId: string, ideaId: string) {
+  const supabase = await supabaseServer();
+  try {
+    const [{ data: r }, { data: tasks }] = await Promise.all([
+      supabase.from("research_runs").select("mode, cost_usd, budget_usd").eq("id", runId).single(),
+      supabase.from("research_tasks").select("kind, status, output").eq("run_id", runId),
+    ]);
+    const list = tasks ?? [];
+    const claimsOf = (kind: string) => list.filter((t) => t.kind === kind && t.status === "done").reduce((s, t) => s + Number((t.output as { claims?: number } | null)?.claims ?? 0), 0);
+    const counterClaims = claimsOf("counter");
+    const note = runDoneNote({
+      runId,
+      ideaId,
+      mode: r?.mode ?? "quick",
+      costUsd: Number(r?.cost_usd ?? 0),
+      budgetUsd: Number(r?.budget_usd ?? 0),
+      claims: claimsOf("extract") + counterClaims,
+      counterClaims,
+      skipped: list.filter((t) => t.status === "skipped").length,
+      failed: list.filter((t) => t.status === "failed").length,
+    });
+    const { data: open } = await supabase.from("coach_notes").select("id, code").eq("idea_id", ideaId).eq("status", "open");
+    const older = (open ?? []).filter((n) => n.code.startsWith("research_run_done:") && n.code !== note.code).map((n) => n.id);
+    if (older.length) await supabase.from("coach_notes").update({ status: "done" }).in("id", older);
+    const row = { idea_id: ideaId, ...note, audience: "consultant" };
+    // Bron 'system' bestaat vanaf de B2-migratie; daarvoor als 'rules' (dan sluit de volgende coachcontrole hem).
+    const { error } = await supabase.from("coach_notes").insert({ ...row, source: "system" });
+    if (error && error.code !== "23505") await supabase.from("coach_notes").insert({ ...row, source: "rules" });
+  } catch (e) {
+    await log.warn("research_done_note_failed", { runId }, e);
+  }
+}
+
 async function alertOnZeroSources(run: { id: string; idea_id: string; created_at: string }) {
   const supabase = await supabaseServer();
   const { data: previous } = await supabase
@@ -154,9 +273,9 @@ async function alertOnZeroSources(run: { id: string; idea_id: string; created_at
   }
 }
 
-type TaskRow = { id: string; kind: string; question_id: string | null; run_id: string; idea_id: string };
+type TaskRow = { id: string; kind: string; question_id: string | null; run_id: string; idea_id: string; position: number; attempts: number; output?: unknown };
 
-async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promise<{ output: Json; detail: string; cost: number }> {
+async function runTask(task: TaskRow, idea: Idea, mode: RunMode, runWith: ProviderId[]): Promise<{ output: Json; detail: string; cost: number }> {
   const supabase = await supabaseServer();
   const ctx = ideaContext(idea);
 
@@ -165,14 +284,14 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
     const question = q!.question;
     // Questions about market size that expect an official statistic: CBS company counts first (free, verbatim rows).
     const cbs = q!.expected_source === "official_statistic" && isSizeQuestion(question) ? await collectCbsFigures(idea, task.run_id, question) : null;
-    const providers = await providersFor(idea.id, "research");
+    const providers = runWith;
     // The same question for the same idea within 7 days: reuse what was found (and paid for) then.
     const cache = await cachedSearch(idea.id, question, providers);
     const fresh = providers.filter((p) => !cache.providers.has(p));
     let res: Awaited<ReturnType<typeof searchAcrossProviders>> | null = null;
     try {
       res = fresh.length
-        ? await searchAcrossProviders(idea.id, "research:search", ctx, question, mode === "quick" ? 3 : 6, { providers: fresh, avoidQueries: cache.recentQueries })
+        ? await searchAcrossProviders(idea.id, "research:search", ctx, question, searchesFor("search", mode), { providers: fresh, avoidQueries: cache.recentQueries })
         : null;
     } catch (e) {
       // Without CBS rows a failed web search fails the step (and is retried); with them the step keeps those.
@@ -200,7 +319,7 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
 
   if (task.kind === "extract") {
     const { data: q } = await supabase.from("research_questions").select("id, question").eq("id", task.question_id!).single();
-    const { data: searchTask } = await supabase.from("research_tasks").select("output").eq("run_id", task.run_id).eq("kind", "search").eq("question_id", task.question_id!).single();
+    const searchTask = await searchTaskBefore(task.run_id, task);
     const ids = ((searchTask?.output as { excerpt_ids?: string[] } | null)?.excerpt_ids ?? []).slice(0, 40);
     if (ids.length === 0) return { output: { claims: 0 }, detail: "Geen bruikbare passages gevonden; vraag blijft open.", cost: 0 };
     const { data: excerpts } = await supabase.from("source_excerpts").select("id, text, source_id, sources(title, url)").in("id", ids);
@@ -232,7 +351,7 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
     }
 
     const stored = await storeExtractedClaims(idea.id, q!.id, byRef, res.data.claims);
-    const { rejected, duplicates, unsupported } = stored;
+    const { rejected, duplicates, unsupported, merged } = stored;
     const kept = stored.claimIds.length;
 
     let competitors = 0;
@@ -260,13 +379,29 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
       competitors++;
     }
     return {
-      output: { claims: kept, rejected, duplicates, unsupported, competitors },
-      detail: `${kept} bevindingen met gecontroleerd citaat${rejected ? `, ${rejected} afgewezen (citaat niet letterlijk teruggevonden)` : ""}${unsupported ? `, ${unsupported} afgewezen (citaat draagt de bewering niet)` : ""}${duplicates ? `, ${duplicates} al bekend` : ""}${competitors ? `, ${competitors} aanbieders` : ""}.`,
+      output: { claims: kept, claim_ids: stored.claimIds, merged_ids: stored.mergedIds, rejected, duplicates, merged, unsupported, competitors },
+      detail: `${kept} bevindingen met gecontroleerd citaat${rejected ? `, ${rejected} afgewezen (citaat niet letterlijk teruggevonden)` : ""}${unsupported ? `, ${unsupported} afgewezen (citaat draagt de bewering niet)` : ""}${merged ? `, ${merged} samengevoegd met een bestaande bevinding (extra vindplaats)` : ""}${duplicates - merged ? `, ${duplicates - merged} al bekend op dezelfde plek` : ""}${competitors ? `, ${competitors} aanbieders` : ""}.`,
       cost: res.usage.cost + stored.cost,
     };
   }
 
-  if (task.kind === "counter") return runCounterTask(task, idea, mode);
+  if (task.kind === "counter") return runCounterTask(task, idea, mode, runWith);
+
+  // Fase B2, punt 6: welke bevindingen de grootste onzekerheid het sterkst raken (AI-voorstel, regel als terugval).
+  if (task.kind === "uncertainty") {
+    const res = await proposeUncertainty(idea, { keepConsultant: true });
+    const risks = res.picks.filter((p) => p.effect === "undermines").length;
+    return {
+      output: { picks: res.picks, origin: res.origin, stored: res.stored } as unknown as Json,
+      detail:
+        res.origin === "consultant"
+          ? res.note
+          : res.picks.length
+            ? `${res.picks.length} bevinding${res.picks.length === 1 ? "" : "en"} geselecteerd${risks ? `, waarvan ${risks} risico` : ""} (${res.origin === "ai" ? "AI-voorstel" : "voorstel op basis van regels"}); pas de selectie gerust aan.`
+            : res.note || "Geen bevinding raakt de grootste onzekerheid.",
+      cost: res.cost,
+    };
+  }
 
   if (task.kind === "reality_check") {
     const { data: claims } = await supabase.from("claims").select("statement, status").eq("idea_id", idea.id).limit(60);
@@ -293,16 +428,16 @@ async function runTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promi
 // research_search_log met kind 'counter'; gevonden passages worden fragmenten in de bronnenbibliotheek en elke
 // tegenbevinding krijgt een koppeling met relatie 'contradicts', met dezelfde citaat- en steuncontrole als
 // gewone bevindingen (storeExtractedClaims). Wat de bronnen niet tegenspreekt, wordt niet bewaard.
-async function runCounterTask(task: TaskRow, idea: Idea, mode: "quick" | "deep"): Promise<{ output: Json; detail: string; cost: number }> {
+async function runCounterTask(task: TaskRow, idea: Idea, mode: RunMode, runWith: ProviderId[]): Promise<{ output: Json; detail: string; cost: number }> {
   const supabase = await supabaseServer();
   const ctx = ideaContext(idea);
   const { data: q } = await supabase.from("research_questions").select("id, question").eq("id", task.question_id!).single();
   const question = q!.question;
-  const providers = await providersFor(idea.id, "research");
+  const providers = runWith;
   const cache = await cachedSearch(idea.id, question, providers, "counter");
   const fresh = providers.filter((p) => !cache.providers.has(p));
   const res = fresh.length
-    ? await searchAcrossProviders(idea.id, "research:counter", ctx, question, mode === "quick" ? 2 : 4, { providers: fresh, avoidQueries: cache.recentQueries, focus: "counter" })
+    ? await searchAcrossProviders(idea.id, "research:counter", ctx, question, searchesFor("counter", mode), { providers: fresh, avoidQueries: cache.recentQueries, focus: "counter" })
     : null;
   const newIds = res ? await storeFoundSources(idea.id, task.run_id, res.sources) : [];
   const excerptIds = [...new Set([...newIds, ...cache.excerptIds])];
@@ -329,14 +464,15 @@ async function runCounterTask(task: TaskRow, idea: Idea, mode: "quick" | "deep")
   cost += stored.cost;
   const n = stored.claimIds.length;
   return {
-    output: { ...base, claims: n, claim_ids: stored.claimIds, rejected: stored.rejected, unsupported: stored.unsupported, duplicates: stored.duplicates, not_counter: skipped },
+    output: { ...base, claims: n, claim_ids: stored.claimIds, merged_ids: stored.mergedIds, rejected: stored.rejected, unsupported: stored.unsupported, duplicates: stored.duplicates, merged: stored.merged, not_counter: skipped },
     detail: [
       res ? `${res.sources.length} bronnen, ${newIds.length} passages bewaard (${res.searches} zoekopdrachten naar tegenbewijs).` : "",
       cache.providers.size ? `${cache.excerptIds.length} passages hergebruikt van een eerdere zoekopdracht naar tegenbewijs.` : "",
       `${n} tegenbevinding${n === 1 ? "" : "en"} met gecontroleerd citaat${[
         stored.rejected ? `, ${stored.rejected} afgewezen (citaat niet letterlijk teruggevonden)` : "",
         stored.unsupported ? `, ${stored.unsupported} afgewezen (citaat draagt de bewering niet)` : "",
-        stored.duplicates ? `, ${stored.duplicates} al bekend` : "",
+        stored.merged ? `, ${stored.merged} samengevoegd met een bestaande bevinding (extra vindplaats)` : "",
+        stored.duplicates - stored.merged ? `, ${stored.duplicates - stored.merged} al bekend op dezelfde plek` : "",
       ].join("")}.`,
     ]
       .filter(Boolean)
@@ -349,7 +485,8 @@ async function runCounterTask(task: TaskRow, idea: Idea, mode: "quick" | "deep")
 // Web search on every provider the organisation uses for research (also used by the red-team search)
 // ---------------------------------------------------------------------------
 
-export type ProviderSearch = { provider: ProviderId; ok: boolean; sources: number; detail: string };
+// reason (fase B2, punt 5): waarom een aanbieder faalde (timeout, quotum, geweigerd …), zie lib/research-failures.ts.
+export type ProviderSearch = { provider: ProviderId; ok: boolean; sources: number; detail: string; reason?: FailureCode };
 
 // Each provider searches independently (its own runAi: own ledger row, cap checked per call); the found
 // sources are merged by URL. A provider that fails does not stop the others; only when all fail is it an error.
@@ -384,7 +521,8 @@ export async function searchAcrossProviders(
     } else {
       // A refusal still used tokens: book them on the run.
       if (r.reason instanceof AiRefusedError) cost += r.reason.usage?.cost ?? 0;
-      perProvider.push({ provider, ok: false, sources: 0, detail: r.reason instanceof AiRefusedError ? "geweigerd" : "mislukt" });
+      const reason = failureCode(r.reason);
+      perProvider.push({ provider, ok: false, sources: 0, detail: `mislukt (${FAILURE_TEXT[reason]})`, reason });
     }
   });
   if (lists.length === 0) {
@@ -654,21 +792,37 @@ type StoredExcerpt = { id: string; text: string; source_id: string };
 
 // Stores extracted claims whose quote is literally in the excerpt (same figures) and that the support
 // check does not reject. `stance` overrides the link direction (red team: the quote carries a counter-finding).
+// Fase B2, punt 7: dezelfde bewering, of hetzelfde cijfer uit dezelfde bron, wordt geen tweede bevinding maar een
+// extra vindplaats (claim_sources) van de bestaande bevinding (lib/research-dedupe.ts). Dezelfde vindplaats voegt
+// niets toe. `duplicates` telt beide; `merged` alleen de extra vindplaatsen.
 export async function storeExtractedClaims(
   ideaId: string,
   questionId: string | null,
   byRef: Map<string, StoredExcerpt>,
   claims: ExtractedClaim[],
   opts: { stance?: "supports" | "contradicts" } = {},
-): Promise<{ claimIds: string[]; rejected: number; duplicates: number; unsupported: number; cost: number }> {
+): Promise<{ claimIds: string[]; mergedIds: string[]; rejected: number; duplicates: number; merged: number; unsupported: number; cost: number }> {
   const supabase = await supabaseServer();
   let rejected = 0;
   let duplicates = 0;
+  let merged = 0;
   let unsupported = 0;
   let cost = 0;
   const claimIds: string[] = [];
-  const { data: knownClaims } = await supabase.from("claims").select("statement").eq("idea_id", ideaId);
-  const seenStatements = new Set((knownClaims ?? []).map((c) => normalizeText(c.statement)));
+  const mergedIds: string[] = [];
+  const [{ data: knownClaims }, { data: knownLinks }] = await Promise.all([
+    supabase.from("claims").select("id, statement, numeric_value, unit").eq("idea_id", ideaId),
+    supabase.from("claim_sources").select("claim_id, source_id, excerpt_id, quote, support_check").eq("idea_id", ideaId),
+  ]);
+  const known: KnownFinding[] = (knownClaims ?? []).map((k) => ({
+    id: k.id,
+    statement: k.statement,
+    numericValue: k.numeric_value == null ? null : Number(k.numeric_value),
+    unit: k.unit,
+    links: (knownLinks ?? [])
+      .filter((l) => l.claim_id === k.id)
+      .map((l) => ({ sourceId: l.source_id, excerptId: l.excerpt_id, quote: l.quote, supportCheck: l.support_check })),
+  }));
   for (const c of claims) {
     const ex = byRef.get(c.excerpt_ref);
     if (!ex) {
@@ -676,25 +830,52 @@ export async function storeExtractedClaims(
       continue;
     }
     const stance = opts.stance ?? c.stance;
-    const check = checkQuote(c.quote, ex.text, stance === "supports" ? c.statement : undefined);
+    const decision = decideMerge({ statement: c.statement, numericValue: c.numeric_value, unit: c.unit, sourceId: ex.source_id, excerptId: ex.id, quote: c.quote }, known);
+    // Bij samenvoegen moet het citaat de bestaande bewering dragen (zelfde cijfers), niet alleen de nieuwe formulering.
+    const statement = decision.action === "new" ? c.statement : decision.into.statement;
+    const check = checkQuote(c.quote, ex.text, stance === "supports" ? statement : undefined);
     // Claims whose quote cannot be found verbatim are not stored: an AI paraphrase is not evidence.
     if (check !== "exact") {
       rejected++;
       continue;
     }
-    // The same finding from a repeated run is not stored again (it would inflate the evidence count).
-    if (seenStatements.has(normalizeText(c.statement))) {
+    // The same finding at the same location (a repeated run) adds nothing (it would inflate the evidence count).
+    if (decision.action === "same_location") {
       duplicates++;
       continue;
     }
-    // Second, independent check: does the literal quote actually carry the statement?
-    const support = await aiSupportCheck(ideaId, c.statement, c.quote);
+    // Second, independent check: does the literal quote actually carry the statement? An earlier verdict on exactly
+    // this quote for this finding is reused.
+    const reused = decision.action === "merge" ? knownSupportVerdict(decision.into, c.quote) : null;
+    const support: { verdict: SupportCheck; reason: string | null; cost: number } =
+      reused && isSupportCheck(reused) ? { verdict: reused, reason: "Zelfde citaat als een eerdere vindplaats.", cost: 0 } : await aiSupportCheck(ideaId, statement, c.quote);
     cost += support.cost;
     if (!keepAfterSupportCheck(support.verdict)) {
       unsupported++;
       continue;
     }
-    seenStatements.add(normalizeText(c.statement));
+    const link = {
+      idea_id: ideaId,
+      source_id: ex.source_id,
+      excerpt_id: ex.id,
+      quote: c.quote,
+      stance,
+      quote_check: check,
+      support_check: support.verdict,
+      ai_support_check: support.verdict === "unchecked" ? null : support.verdict,
+      support_checked_by: support.verdict === "unchecked" ? null : "ai",
+      support_note: support.reason,
+    };
+    if (decision.action === "merge") {
+      const { error } = await supabase.from("claim_sources").insert({ ...link, claim_id: decision.into.id });
+      if (error) continue;
+      decision.into.links.push({ sourceId: ex.source_id, excerptId: ex.id, quote: c.quote, supportCheck: support.verdict });
+      await recomputeClaim(decision.into.id);
+      duplicates++;
+      merged++;
+      if (!mergedIds.includes(decision.into.id)) mergedIds.push(decision.into.id);
+      continue;
+    }
     const { data: claim } = await supabase
       .from("claims")
       .insert({
@@ -720,23 +901,18 @@ export async function storeExtractedClaims(
       .select("id")
       .single();
     if (!claim) continue;
-    await supabase.from("claim_sources").insert({
-      claim_id: claim.id,
-      idea_id: ideaId,
-      source_id: ex.source_id,
-      excerpt_id: ex.id,
-      quote: c.quote,
-      stance,
-      quote_check: check,
-      support_check: support.verdict,
-      ai_support_check: support.verdict === "unchecked" ? null : support.verdict,
-      support_checked_by: support.verdict === "unchecked" ? null : "ai",
-      support_note: support.reason,
-    });
+    await supabase.from("claim_sources").insert({ ...link, claim_id: claim.id });
     await recomputeClaim(claim.id);
     claimIds.push(claim.id);
+    known.push({
+      id: claim.id,
+      statement: c.statement,
+      numericValue: c.numeric_value,
+      unit: c.unit,
+      links: [{ sourceId: ex.source_id, excerptId: ex.id, quote: c.quote, supportCheck: support.verdict }],
+    });
   }
-  return { claimIds, rejected, duplicates, unsupported, cost };
+  return { claimIds, mergedIds, rejected, duplicates, merged, unsupported, cost };
 }
 
 function parsePageAge(age: string | null): string | null {

@@ -17,6 +17,12 @@ import { isSignalSource, painAsAssumption, verifySignalGroups, type SignalExcerp
 import { ideaContext } from "@/lib/idea-context";
 import { aiErrorMessage, runAi } from "@/lib/ai/guard";
 import { EXPECTED_SOURCE_KEYS } from "@/lib/domain/research-plan";
+import { ensureDecisiveQuestion, loadRunQuestions, markDecisive } from "@/lib/research-questions-data";
+import { decisiveFirst } from "@/lib/research-questions";
+import { planSteps, runBudgetUsd } from "@/lib/research-steps";
+import { kickResearchRun } from "@/lib/research-worker";
+import { proposeUncertainty } from "@/lib/research-uncertainty-data";
+import { isProvider, PROVIDER_LABELS, type ProviderId } from "@/lib/ai/providers/config";
 import { isUnknown, normalizeReferenceDate, scopeValue, UNKNOWN } from "@/lib/domain/claim-scope";
 
 export type ActionState = { error: string | null; ok?: string | null };
@@ -85,6 +91,26 @@ export async function deleteQuestion(ideaId: string, questionId: string) {
   revalidatePath(`/app/ideas/${ideaId}`, "layout");
 }
 
+// Fase B2, punt 1: de consultant wijst zelf de beslissende vraag aan (hooguit één per idee).
+export async function setDecisiveQuestion(ideaId: string, questionId: string) {
+  await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  if (await runIsActive(supabase, ideaId)) return;
+  await markDecisive(supabase, ideaId, questionId);
+  revalidatePath(`/app/ideas/${ideaId}`, "layout");
+}
+
+// Fase B2, punt 1: sjabloonvragen met de brede doelgroep opnieuw afleiden uit de intake (zelfde rijen, dus
+// bevindingen blijven aan hun vraag hangen) en de beslissende vraag bepalen.
+export async function refreshQuestionsFromIntake(ideaId: string, _: ActionState): Promise<ActionState> {
+  const { idea } = await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  if (await runIsActive(supabase, ideaId)) return { error: "Er loopt nog een onderzoeksrun. Wacht tot die klaar is (of stop hem)." };
+  const id = await ensureDecisiveQuestion(ideaId, idea, { refreshTemplates: true });
+  if (!id) return { error: "Er zijn nog geen onderzoeksvragen." };
+  return done(ideaId, "De vragen volgen nu de intake; de beslissende vraag is gemarkeerd.");
+}
+
 export async function aiPlan(ideaId: string, _: ActionState): Promise<ActionState> {
   const { idea } = await requireWritableIdea(ideaId);
   if (!aiConfigured()) return { error: "AI is niet verbonden; pas de vragen handmatig aan." };
@@ -102,7 +128,9 @@ export async function aiPlan(ideaId: string, _: ActionState): Promise<ActionStat
       .slice(0, free.length)
       .map((q, i) => ({ ...q, idea_id: ideaId, position: free[i], origin: "ai", ai_original: questionDraftText(q).slice(0, 4000) }));
     if (rows.length) await supabase.from("research_questions").insert(rows);
-    return done(ideaId, "De onderzoekskaart is opnieuw opgesteld. Controleer de vragen.");
+    // Fase B2: de vraag die de grootste onzekerheid raakt, wordt (weer) de beslissende vraag.
+    await ensureDecisiveQuestion(ideaId, idea);
+    return done(ideaId, "De onderzoekskaart is opnieuw opgesteld. Controleer de vragen en de beslissende vraag.");
   } catch (e) {
     return { error: aiErrorMessage(e, "Het onderzoeksplan kon niet worden gemaakt. De huidige vragen blijven staan.") };
   }
@@ -472,30 +500,139 @@ export async function saveUnitEconomics(ideaId: string, _: ActionState, form: Fo
 // Research runs
 // ---------------------------------------------------------------------------
 
+// Fase B2, punten 2 en 3: de beslissende vraag gaat altijd eerst (zoeken, citaten, tegenbewijs); daarna de andere
+// vragen zolang het budget het toelaat. Elke stap start pas als hij binnen het plafond past (lib/research-runner.ts).
 export async function startResearchRun(ideaId: string, mode: "quick" | "deep"): Promise<{ runId?: string; error?: string }> {
-  await requireWritableIdea(ideaId);
+  const { idea } = await requireWritableIdea(ideaId);
   if (!aiConfigured()) return { error: "Live webonderzoek is niet verbonden. Voeg bronnen handmatig toe." };
   const supabase = await supabaseServer();
   const { data: running } = await supabase.from("research_runs").select("id").eq("idea_id", ideaId).in("status", ["queued", "running"]).limit(1);
-  if (running?.length) return { runId: running[0].id };
-  const { data: questions } = await supabase.from("research_questions").select("id, question, position").eq("idea_id", ideaId).order("position");
-  const qs = (questions ?? []).slice(0, mode === "quick" ? 3 : 5);
+  if (running?.length) {
+    // Een lopende run hervatten op de server (stond de keten stil, dan pakt hij hem weer op).
+    await kickResearchRun(running[0].id, { refresh: true });
+    return { runId: running[0].id };
+  }
+  const decisiveId = await ensureDecisiveQuestion(ideaId, idea);
+  // De beslissende vraag eerst, ook als de markering nog niet kan worden opgeslagen (vóór de B2-migratie).
+  const qs = decisiveFirst((await loadRunQuestions(supabase, ideaId)).map((q) => ({ ...q, is_decisive: q.id === decisiveId })));
   if (qs.length === 0) return { error: "Maak eerst een onderzoekskaart." };
-  const budget = mode === "quick" ? Math.min(1.5, env.researchBudgetUsd) : env.researchBudgetUsd;
+  const budget = runBudgetUsd(mode, env.researchBudgetUsd);
   const { data: run, error } = await supabase.from("research_runs").insert({ idea_id: ideaId, mode, budget_usd: budget, status: "queued" }).select("id").single();
   if (error || !run) return { error: "De onderzoeksrun kon niet worden gestart." };
-  const tasks: { run_id: string; idea_id: string; position: number; kind: string; question_id: string | null; label: string }[] = [];
-  let pos = 1;
-  for (const q of qs) {
-    tasks.push({ run_id: run.id, idea_id: ideaId, position: pos++, kind: "search", question_id: q.id, label: `Bronnen zoeken: vraag ${q.position}` });
-    tasks.push({ run_id: run.id, idea_id: ideaId, position: pos++, kind: "extract", question_id: q.id, label: `Citaten controleren: vraag ${q.position}` });
-    // Golf C, punt 10: per vraag een verplichte, aparte zoekopdracht naar tegenbewijs.
-    tasks.push({ run_id: run.id, idea_id: ideaId, position: pos++, kind: "counter", question_id: q.id, label: `Tegenbewijs zoeken: vraag ${q.position}` });
-  }
-  if (mode === "deep") tasks.push({ run_id: run.id, idea_id: ideaId, position: pos++, kind: "reality_check", question_id: null, label: "Tegenbewijs en zwakke plekken zoeken" });
-  await supabase.from("research_tasks").insert(tasks);
+  const tasks = planSteps(qs, mode).map((t, i) => ({ run_id: run.id, idea_id: ideaId, position: i + 1, kind: t.kind, question_id: t.questionId, label: t.label }));
+  // De slotstap "grootste onzekerheid" bestaat pas met de B2-migratie: apart toevoegen, zodat de run zonder werkt.
+  await supabase.from("research_tasks").insert(tasks.filter((t) => t.kind !== "uncertainty"));
+  const last = tasks.filter((t) => t.kind === "uncertainty");
+  if (last.length) await supabase.from("research_tasks").insert(last);
+  // Fase B2, punt 4: de server werkt de stappen af, ook als het tabblad dicht gaat (lib/research-worker.ts).
+  await kickResearchRun(run.id, { refresh: true });
   revalidatePath(`/app/ideas/${ideaId}/research`);
   return { runId: run.id };
+}
+
+// Fase B2, punt 5: een mislukte aanbieder of stap opnieuw proberen. Loopt er een run, dan komen de herhaalstappen
+// achteraan in die run; anders in een nieuwe kleine run met het plafond van de snelle check. Een herhaalde zoekstap
+// krijgt zijn uitleesstap mee (de zoekresultaten van eerder worden binnen 7 dagen hergebruikt, niet opnieuw betaald).
+export async function retryResearchStep(ideaId: string, taskId: string, provider: string | null): Promise<{ error?: string; ok?: string }> {
+  await requireWritableIdea(ideaId);
+  if (!aiConfigured()) return { error: "Live webonderzoek is niet verbonden." };
+  if (provider !== null && !isProvider(provider)) return { error: "Onbekende aanbieder." };
+  const supabase = await supabaseServer();
+  const { data: task } = await supabase.from("research_tasks").select("id, kind, question_id, label").eq("id", taskId).eq("idea_id", ideaId).maybeSingle();
+  if (!task || !task.question_id || !["search", "extract", "counter"].includes(task.kind)) return { error: "Deze stap kan niet opnieuw." };
+  const { data: q } = await supabase.from("research_questions").select("position").eq("id", task.question_id).eq("idea_id", ideaId).maybeSingle();
+  if (!q) return { error: "De onderzoeksvraag bestaat niet meer." };
+  const only = provider ? { only_providers: [provider] } : null;
+  const who = provider ? `${PROVIDER_LABELS[provider as ProviderId].name} ` : "";
+  const steps =
+    task.kind === "counter"
+      ? [{ kind: "counter", label: `Opnieuw: ${who}tegenbewijs zoeken (vraag ${q.position})`, output: only }]
+      : [
+          { kind: "search", label: `Opnieuw: ${who}bronnen zoeken (vraag ${q.position})`, output: only },
+          { kind: "extract", label: `Opnieuw: citaten controleren (vraag ${q.position})`, output: null },
+        ];
+  const { data: active } = await supabase.from("research_runs").select("id").eq("idea_id", ideaId).in("status", ["queued", "running"]).limit(1).maybeSingle();
+  let runId = active?.id ?? null;
+  if (!runId) {
+    const { data: run } = await supabase.from("research_runs").insert({ idea_id: ideaId, mode: "quick", budget_usd: runBudgetUsd("quick", env.researchBudgetUsd), status: "queued" }).select("id").single();
+    runId = run?.id ?? null;
+  }
+  if (!runId) return { error: "De herhaling kon niet worden gestart." };
+  const { data: last } = await supabase.from("research_tasks").select("position").eq("run_id", runId).order("position", { ascending: false }).limit(1).maybeSingle();
+  const start = (last?.position ?? 0) + 1;
+  const { error } = await supabase
+    .from("research_tasks")
+    .insert(steps.map((st, i) => ({ run_id: runId, idea_id: ideaId, position: start + i, kind: st.kind, question_id: task.question_id, label: st.label, output: st.output })));
+  if (error) return { error: "De herhaling kon niet worden gestart." };
+  await kickResearchRun(runId, { refresh: true });
+  revalidatePath(`/app/ideas/${ideaId}/research`);
+  return { ok: "Opnieuw ingepland; de server pakt het meteen op." };
+}
+
+// ---------------------------------------------------------------------------
+// Fase B2, punt 6: "Wat dit betekent voor je grootste onzekerheid" — AI stelt voor, de consultant past aan
+// ---------------------------------------------------------------------------
+
+const NO_TABLE = "Aanpassen kan pas als de B2-migratie (20261109090000_b2_onderzoek.sql) live staat.";
+
+// Na elke aanpassing is de selectie van de consultant: een volgende run overschrijft hem niet.
+async function ownSelection(supabase: Awaited<ReturnType<typeof supabaseServer>>, ideaId: string) {
+  const { data } = await supabase.from("uncertainty_findings").select("id").eq("idea_id", ideaId).order("rank");
+  for (const [i, row] of (data ?? []).entries()) await supabase.from("uncertainty_findings").update({ origin: "consultant", rank: i + 1 }).eq("id", row.id);
+}
+
+export async function proposeUncertaintyNow(ideaId: string, _: ActionState): Promise<ActionState> {
+  const { idea } = await requireWritableIdea(ideaId);
+  if (!aiConfigured()) return { error: "AI is niet verbonden. Kies zelf de bevindingen die de onzekerheid raken." };
+  try {
+    const res = await proposeUncertainty(idea, { keepConsultant: false });
+    if (!res.stored) return { error: NO_TABLE };
+    if (res.picks.length === 0) return done(ideaId, res.note || "Geen bevinding raakt de grootste onzekerheid.");
+    return done(ideaId, `${res.origin === "ai" ? "AI-voorstel" : "Voorstel op basis van regels"}: ${res.picks.length} bevinding${res.picks.length === 1 ? "" : "en"}. Pas de selectie gerust aan.`);
+  } catch (e) {
+    return { error: aiErrorMessage(e, "Het voorstel kon niet worden gemaakt.") };
+  }
+}
+
+export async function removeUncertaintyPick(ideaId: string, claimId: string) {
+  await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  await supabase.from("uncertainty_findings").delete().eq("idea_id", ideaId).eq("claim_id", claimId);
+  await ownSelection(supabase, ideaId);
+  revalidatePath(`/app/ideas/${ideaId}/research`);
+}
+
+export async function setUncertaintyEffect(ideaId: string, claimId: string, effect: "supports" | "undermines") {
+  await requireWritableIdea(ideaId);
+  if (effect !== "supports" && effect !== "undermines") return;
+  const supabase = await supabaseServer();
+  await supabase.from("uncertainty_findings").update({ effect }).eq("idea_id", ideaId).eq("claim_id", claimId);
+  await ownSelection(supabase, ideaId);
+  revalidatePath(`/app/ideas/${ideaId}/research`);
+}
+
+export async function addUncertaintyPick(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const parsed = z
+    .object({ claim_id: z.string().uuid("Kies een bevinding."), effect: z.enum(["supports", "undermines"]), reason: z.string().trim().max(300).optional() })
+    .safeParse(Object.fromEntries(form));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const supabase = await supabaseServer();
+  const current = await supabase.from("uncertainty_findings").select("claim_id").eq("idea_id", ideaId);
+  if (current.error) return { error: NO_TABLE };
+  if ((current.data ?? []).length >= 3) return { error: "Er staan al drie bevindingen bij de grootste onzekerheid. Haal er eerst één weg." };
+  if ((current.data ?? []).some((p) => p.claim_id === parsed.data.claim_id)) return { error: "Deze bevinding staat er al bij." };
+  const { error } = await supabase.from("uncertainty_findings").insert({
+    idea_id: ideaId,
+    claim_id: parsed.data.claim_id,
+    effect: parsed.data.effect,
+    rank: (current.data ?? []).length + 1,
+    reason: parsed.data.reason || "Gekozen door de consultant.",
+    origin: "consultant",
+  });
+  if (error) return { error: "Opslaan mislukt." };
+  await ownSelection(supabase, ideaId);
+  return done(ideaId, "Bevinding toegevoegd aan de grootste onzekerheid.");
 }
 
 export async function cancelResearchRun(ideaId: string, runId: string) {
