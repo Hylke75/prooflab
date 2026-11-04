@@ -21,6 +21,8 @@ import type { DossierStatus } from "@/lib/domain/dossier-status";
 import { getDossierStatus, isConclusiveDecision } from "@/lib/domain/dossier-status";
 import { EVIDENCE_LEVELS, LEVEL_SHORT, type EvidenceLevel } from "@/lib/domain/evidence";
 import type { EvidenceLadder } from "@/lib/domain/dossier-label";
+import { decisionConfirmation, type DecisionConfirmation } from "@/lib/domain/decision-confirmation";
+import { endSentence } from "@/lib/text";
 
 export type SheetVerdict = "continue" | "stop" | "undecidable";
 export const SHEET_VERDICT_LABELS: Record<SheetVerdict, string> = { continue: "Doorgaan", stop: "Stoppen", undecidable: "Nog niet beslisbaar" };
@@ -84,7 +86,7 @@ export function oneSentence(s: string, max = 200): string {
   const m = clean.match(/^(.{20,}?[.!?])(\s|$)/);
   let out = m ? m[1] : clean;
   if (out.length > max) out = `${out.slice(0, max).replace(/\s+\S*$/, "")}…`;
-  else if (!/[.!?…]$/.test(out)) out = `${out}.`;
+  else out = endSentence(out);
   return out;
 }
 
@@ -239,7 +241,7 @@ export type LegacySnapshot = {
 };
 
 // Labels zoals oudere rapporten ze opsloegen, terug naar de actie.
-const LEGACY_ACTIONS: Record<string, string> = {
+export const LEGACY_ACTIONS: Record<string, string> = {
   Doorgaan: "continue",
   Stoppen: "stop",
   Bijsturen: "adjust",
@@ -326,4 +328,92 @@ export function reachableRevenue(s: { somRevenue: number | null; status: string;
   if (s.somRevenue == null || !Number.isFinite(s.somRevenue) || s.somRevenue <= 0)
     return { established: false, value: "Niet vastgesteld", note: "De berekening komt op € 0: een of meer factoren (zoals omzet per klant of het winbare aandeel) staan nog op nul." };
   return { established: true, value: `€ ${Math.round(s.somRevenue).toLocaleString("nl-NL")}`, note: s.status };
+}
+
+// ---------------------------------------------------------------------------
+// Hoofdstuk 09: de tekst bij het besluit (gebruikerstest D1 en D2). Eén helper voor de rapportpagina en de PDF.
+// ---------------------------------------------------------------------------
+
+// Het besluit zoals de momentopname het bewaart. actionCode, extendUntil en confirmation ontbreken in oudere rapporten.
+export type ReportDecision = {
+  action: string; // label, bijv. "Verder testen"
+  actionCode?: string | null; // continue, stop, test_more, extend, adjust, pause
+  rationale: string;
+  nextStep: string | null;
+  at: string;
+  confirmedAt: string | null;
+  confirmation?: DecisionConfirmation;
+  comment: string | null;
+  reviewedAgainst?: boolean;
+  extendWeeks?: number | null;
+  extendUntil?: string | null; // YYYY-MM-DD: einde van de verlengde testfase
+};
+
+// De actie van het besluit: opgeslagen in de momentopname, of voor oudere rapporten afgeleid uit het label.
+export function decisionActionCode(d: Pick<ReportDecision, "action" | "actionCode">): string | null {
+  return d.actionCode ?? LEGACY_ACTIONS[d.action] ?? null;
+}
+
+// De bevestigingstoestand van het besluit in een momentopname. Een tussenbesluit is nooit definitief, ook niet als
+// een ouder rapport "not_needed" opsloeg. hasClient geldt alleen voor rapporten van vóór B1 (zonder confirmation).
+export function reportConfirmation(d: ReportDecision, hasClient = true): DecisionConfirmation {
+  const code = decisionActionCode(d);
+  if (code && !isConclusiveDecision(code)) return "not_final";
+  if (d.confirmation && d.confirmation !== "not_final") return d.confirmation;
+  return decisionConfirmation(d.confirmedAt, hasClient, code ?? "continue");
+}
+
+// Het einde van de verlengde testfase: opgeslagen, of berekend uit de besluitdatum en het aantal weken.
+export function extendUntilOf(d: ReportDecision, extendDecidedOn?: string | null): string | null {
+  if (d.extendUntil) return d.extendUntil;
+  if (!d.extendWeeks) return null;
+  const start = extendDecidedOn ?? (decisionActionCode(d) === "extend" ? d.at : null);
+  return start ? addDaysIso(start.slice(0, 10), d.extendWeeks * 7) : null;
+}
+
+// De alinea bij hoofdstuk 09. today: YYYY-MM-DD, de datum van de momentopname (het rapport is een vast moment).
+export function decisionParagraph(d: ReportDecision, today: string, opts: { hasClient?: boolean } = {}): string {
+  const code = decisionActionCode(d);
+  const conf = reportConfirmation(d, opts.hasClient ?? true);
+  const parts: string[] = [];
+  if (d.rationale?.trim()) parts.push(endSentence(d.rationale.trim()));
+  if (d.nextStep?.trim()) parts.push(`Volgende stap: ${endSentence(d.nextStep.trim())}`);
+  parts.push(`Vastgelegd op ${sheetDate(d.at)}.`);
+  if (conf === "confirmed") parts.push(`Bevestigd door de opdrachtgever op ${sheetDate(d.confirmedAt)}${d.comment ? ` (“${d.comment}”)` : ""}.`);
+  else if (conf === "not_needed") parts.push("Dit dossier heeft geen opdrachtgever: het besluit is direct definitief.");
+  else if (conf === "awaiting") parts.push("Nog niet bevestigd door de opdrachtgever.");
+  else {
+    parts.push(
+      code === "pause"
+        ? "Dit is een tussenbesluit, nog geen definitief besluit: het dossier is gepauzeerd. Doorgaan of stoppen volgt als het dossier terugkomt."
+        : "Dit is een tussenbesluit, nog geen definitief besluit: doorgaan of stoppen volgt na de volgende test.",
+    );
+    if (d.confirmedAt) parts.push(`Gezien door de opdrachtgever op ${sheetDate(d.confirmedAt)}${d.comment ? ` (“${d.comment}”)` : ""}.`);
+  }
+  const until = extendUntilOf(d);
+  if (until) {
+    if (code === "extend") {
+      parts.push(
+        until > today
+          ? `De verlengde testfase loopt tot ${sheetDate(until)}; daarna volgt het definitieve besluit en start de uitkomstklok.`
+          : `De verlengde testfase liep tot ${sheetDate(until)}; het definitieve besluit (doorgaan of stoppen) kan nu worden genomen.`,
+      );
+    } else {
+      parts.push(`Daarvóór liep een verlengde testfase van ${d.extendWeeks} weken, tot ${sheetDate(until)}.`);
+    }
+  } else if (d.extendWeeks) {
+    parts.push(`Er was een verlengde testfase van ${d.extendWeeks} weken.`);
+  }
+  if (conf === "confirmed" && d.reviewedAgainst)
+    parts.push("De opdrachtgever zag daarbij de samenvatting “Wat ging tegen” (mislukte tests, tegenbewijs, begrensde aannames en afwijkingen van de beslisregel).");
+  return parts.join(" ");
+}
+
+// De regel "Bevestiging opdrachtgever" in de audittabel van de PDF.
+export function confirmationAuditLine(d: ReportDecision, hasClient = true): string {
+  const conf = reportConfirmation(d, hasClient);
+  if (conf === "confirmed") return `Bevestigd op ${sheetDate(d.confirmedAt)}${d.reviewedAgainst ? ", na de samenvatting “Wat ging tegen”" : ""}`;
+  if (conf === "not_needed") return "Niet nodig: geen opdrachtgever, het besluit is direct definitief";
+  if (conf === "not_final") return d.confirmedAt ? `Tussenbesluit: nog geen definitief besluit (gezien op ${sheetDate(d.confirmedAt)})` : "Tussenbesluit: nog geen definitief besluit";
+  return "Nog niet bevestigd";
 }

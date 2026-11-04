@@ -8,6 +8,10 @@ export const EXTEND_WEEK_OPTIONS = Array.from({ length: EXTEND_MAX_WEEKS - EXTEN
 
 const FINAL = ["continue", "stop", "pause"];
 
+// Een ISO-datum (YYYY-MM-DD) als Nederlandse datum: "2 december 2026".
+export const nlDay = (iso: string) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T12:00:00Z`).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Amsterdam" }) : iso;
+
 function addDays(date: string, days: number): string {
   const [y, m, d] = date.slice(0, 10).split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
@@ -35,7 +39,7 @@ export function extensionBlocker(action: string, decisions: DecisionLite[], toda
     return null;
   }
   const phase = extendedPhase(decisions, today);
-  if (FINAL.includes(action) && phase?.active) return `De verlengde testfase loopt tot ${phase.end}. Het definitieve besluit en de uitkomstklok starten pas daarna.`;
+  if (FINAL.includes(action) && phase?.active) return `De verlengde testfase loopt tot ${nlDay(phase.end)}. Het definitieve besluit en de uitkomstklok starten pas daarna.`;
   return null;
 }
 
@@ -62,8 +66,9 @@ export function planTestMore(weeks: number, decisions: DecisionLite[], today: st
   };
 }
 
-// De volgende stap bij "Verder testen" zonder verlengde fase: de streefdatum vooraan, dan de eigen tekst.
+// De volgende stap bij "Verder testen" zonder verlengde fase: de streefdatum vooraan, dan de eigen tekst. Een ISO-datum
+// wordt een Nederlandse datum (gebruikerstest D2).
 export function testMoreNextStep(weeks: number, until: string, own: string | null | undefined): string {
-  const head = `Verder testen: ${weeks} weken, tot ${until}.`;
+  const head = `Verder testen: ${weeks} weken, tot ${nlDay(until)}.`;
   return (own?.trim() ? `${head} ${own.trim()}` : head).slice(0, 600);
 }

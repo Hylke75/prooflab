@@ -20,7 +20,7 @@ import { decisionBlocker, outcomeDueForQuestion, outcomeQuestionFor } from "@/li
 import { addDays, todayInNL } from "@/lib/domain/sprint";
 import { deviates, isFinalAction } from "@/lib/domain/decision-rule";
 import { loadRuleCheck } from "@/lib/decision-rule-data";
-import { EXTEND_MAX_WEEKS, EXTEND_MIN_WEEKS, extensionBlocker, planTestMore, testMoreNextStep } from "@/lib/domain/extension";
+import { EXTEND_MAX_WEEKS, EXTEND_MIN_WEEKS, extensionBlocker, nlDay, planTestMore, testMoreNextStep } from "@/lib/domain/extension";
 import { againstFor } from "@/lib/against-data";
 import { isConclusiveDecision } from "@/lib/domain/dossier-status";
 import { DECISIONS } from "@/lib/domain/labels";
@@ -29,7 +29,6 @@ import { fieldErrorsFrom, savedNothing } from "@/lib/domain/form-errors";
 
 export type ActionState = { error: string | null; ok?: string | null; fieldErrors?: Record<string, string> };
 // "2 december 2026" voor een kalenderdatum (YYYY-MM-DD).
-const nlDay = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Amsterdam" });
 const refresh = (id: string) => revalidatePath(`/app/ideas/${id}`, "layout");
 
 const CardSchema = z.object({
@@ -191,7 +190,7 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   const plan = p.data.action === "test_more" ? planTestMore(p.data.extend_weeks!, lites, todayInNL(), !!idea.outcome_clock_start) : null;
   const action = plan ? plan.action : p.data.action;
   const extendWeeks = plan ? plan.extendWeeks : p.data.action === "extend" ? p.data.extend_weeks! : null;
-  const nextStep = plan && !plan.binding ? testMoreNextStep(p.data.extend_weeks!, nlDay(plan.until), p.data.next_step) : p.data.next_step || null;
+  const nextStep = plan && !plan.binding ? testMoreNextStep(p.data.extend_weeks!, plan.until, p.data.next_step) : p.data.next_step || null;
   const extBlock = extensionBlocker(action, lites, todayInNL(), !!idea.outcome_clock_start);
   if (extBlock) return { error: extBlock };
   // Golf B, punt 6: een definitief besluit wordt getoetst aan de beslisregel. Wie afwijkt, motiveert dat.

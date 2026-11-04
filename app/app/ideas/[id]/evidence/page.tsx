@@ -30,6 +30,7 @@ import { ConfirmDecision } from "@/components/evidence/ConfirmDecision";
 import { againstFor } from "@/lib/against-data";
 import { extendedPhase, extensionBlocker } from "@/lib/domain/extension";
 import { todayInNL } from "@/lib/domain/sprint";
+import { isConclusiveDecision } from "@/lib/domain/dossier-status";
 import { Term } from "@/components/ui/Term";
 import { DeskEvidence, type DeskLinkRow } from "@/components/evidence/DeskEvidence";
 import { supabaseServer } from "@/lib/supabase/server";
@@ -365,9 +366,11 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                   <p>
                     {dec.client_confirmed_at
                       ? `Bevestigd door de opdrachtgever op ${new Date(dec.client_confirmed_at).toLocaleDateString("nl-NL")}${dec.client_comment ? `: “${dec.client_comment}”` : ""}`
-                      : idea.client_id
-                        ? "Nog niet bevestigd door de opdrachtgever."
-                        : "Geen opdrachtgever: dit besluit is direct definitief."}
+                      : !isConclusiveDecision(dec.action)
+                        ? "Tussenbesluit: nog geen definitief besluit."
+                        : idea.client_id
+                          ? "Nog niet bevestigd door de opdrachtgever."
+                          : "Geen opdrachtgever: dit besluit is direct definitief."}
                   </p>
                   {isClientDecider && !dec.client_confirmed_at && <ConfirmDecision summary={againstFor(d, dec)} action={confirmDecision.bind(null, id, dec.id)} />}
                   {dec.reviewed_against_summary && <p className="tiny">De opdrachtgever zag bij het bevestigen de samenvatting &ldquo;Wat ging tegen&rdquo;.</p>}

@@ -296,19 +296,27 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
     decision: lastDecision
       ? {
           action: DECISIONS[lastDecision.action as DecisionAction].label,
+          // Gebruikerstest D1: de actie zelf, zodat een tussenbesluit nooit als definitief wordt beschreven.
+          actionCode: lastDecision.action as string | null,
           rationale: lastDecision.rationale,
           nextStep: lastDecision.next_step,
           at: lastDecision.decided_at,
           confirmedAt: lastDecision.client_confirmed_at,
           // B1: zonder opdrachtgever is het besluit direct definitief; oudere rapporten hebben dit veld niet.
-          confirmation: decisionConfirmation(lastDecision.client_confirmed_at, !!d.idea.client_id),
+          // D1: verder testen, bijsturen en pauzeren zijn een tussenbesluit ("not_final"), nooit definitief.
+          confirmation: decisionConfirmation(lastDecision.client_confirmed_at, !!d.idea.client_id, lastDecision.action),
           comment: lastDecision.client_comment,
           // Golf B, punt 6: de toets aan de beslisregel en, bij afwijken, de motivering.
           rule: ruleSummary(lastDecision),
           // Golf B, punt 18: bevestigd na de samenvatting "Wat ging tegen".
           reviewedAgainst: lastDecision.reviewed_against_summary != null,
           // Golf B, punt 20: de verlengde testfase (aantal weken), als dit besluit er een is of erop volgde.
-          extendWeeks: d.decisions.find((x) => x.action === "extend")?.extend_weeks ?? null,
+          extendWeeks: extendOf(d)?.extend_weeks ?? null,
+          // Gebruikerstest D2: einde van de verlengde testfase (besluitdatum + weken × 7), YYYY-MM-DD.
+          extendUntil: (() => {
+            const x = extendOf(d);
+            return x?.extend_weeks ? addDaysIso(todayInNL(new Date(x.decided_at)), x.extend_weeks * 7) : null;
+          })() as string | null,
         }
       : null,
     sources: [...sources.values()].sort((a, b) => a.n - b.n),
@@ -319,6 +327,9 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
     },
   };
 }
+
+// Het (enige) besluit "verlengde testfase" van het dossier, als dat er is.
+const extendOf = (d: Dossier) => d.decisions.find((x) => x.action === "extend") ?? null;
 
 type Footnote = (s: { id: string; title: string; url: string | null; publisher: string | null; published_on: string | null; retrieved_at: string; source_type: string; is_primary: boolean } | null) => number | null;
 

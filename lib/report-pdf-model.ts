@@ -7,12 +7,14 @@ import type { ReportSnapshot } from "@/lib/report";
 import { pct } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { describeMethodology, ruleLabelText } from "@/lib/domain/method/describe";
-import { CALIBRATION_MIN_RESOLVED, formatProbability, formatProbabilityRange } from "@/lib/domain/probability-display";
+import { CALIBRATION_MIN_RESOLVED, UNCALIBRATED_LABEL, formatProbability, formatProbabilityRange } from "@/lib/domain/probability-display";
 import { explainRecruitment } from "@/lib/domain/recruitment";
 import { asEvidenceLevel, outcomeWithLevel } from "@/lib/domain/evidence";
 import { allTestsSummary, type AllTestsPerAssumption, type AllTestsRow } from "@/lib/domain/all-tests";
 import { ladderSummary } from "@/lib/domain/dossier-label";
-import { reachableRevenue, sheetDate, sheetFromSnapshot, type DecisionSheet, type LegacySnapshot } from "@/lib/report-sheet";
+import { confirmationAuditLine, decisionParagraph, extendUntilOf, reachableRevenue, sheetDate, sheetFromSnapshot, type DecisionSheet, type LegacySnapshot } from "@/lib/report-sheet";
+import { todayInNL } from "@/lib/domain/sprint";
+import { endSentence } from "@/lib/text";
 
 export type Tone = "blue" | "green" | "coral" | "lime" | "gray";
 export type Block =
@@ -79,6 +81,31 @@ export function somRevenueCell(s: { somRevenue: number | null; status: string; e
   return k.established ? k.value : s.somRevenue != null && s.somRevenue > 0 ? `${eur(s.somRevenue)} (niet vastgesteld)` : "Niet vastgesteld";
 }
 
+// Gebruikerstest D4: de kans van een aanname als platte tekst, voor rapportpagina en PDF. Geen tooltip, geen "Exacte
+// waarde" en geen bandbreedte die gelijk is aan de kans zelf ("40%–40%"). Het label "niet gekalibreerd" staat één keer
+// in de kolomkop, niet in elke cel; de uitleg staat één keer onder de tabel (calibrationNote).
+type AssumptionProbability = { probability: { point: number; low: number; high: number } | null; recruitment?: { group: string; sources: number }[] };
+
+export function assumptionProbabilityText(a: AssumptionProbability, calibrated: boolean): string {
+  if (!a.probability) return "onbekend";
+  const point = formatProbability(a.probability.point, calibrated).text;
+  const range = formatProbabilityRange(a.probability.low, a.probability.high, calibrated).text;
+  const recruitment = (a.recruitment ?? []).map((x) => ` ${explainRecruitment(x)}`).join("");
+  return `${point}${range !== point ? ` (${range})` : ""}${recruitment}`;
+}
+
+export const probabilityColumnHead = (calibrated: boolean) => (calibrated ? "Geschatte kans" : `Geschatte kans (${UNCALIBRATED_LABEL})`);
+
+export const PROBABILITY_EXPLAIN =
+  "Geschatte kans dat de aanname klopt: een beginwaarde (meestal 50%), bijgewerkt met een vaste factor per soort bewijs. Uitspraken tellen nauwelijks, gedrag en betalingen sterk. Tussen haakjes de bandbreedte als die factoren de helft zwakker of sterker zijn.";
+
+// De uitleg bij niet-gekalibreerde kansen, één keer onder de tabel (het label zelf staat in de kolomkop).
+export function calibrationNote(calibrated: boolean): string {
+  return calibrated
+    ? ""
+    : `Deze kansen zijn nog niet aan uitkomsten getoetst: bij dit rapport had de werkruimte minder dan ${CALIBRATION_MIN_RESOLVED} opgeloste dossiers. Daarom staan ze in banden van 10 procentpunt rond de berekende waarde.`;
+}
+
 // Het beslisblad van deze momentopname: opgeslagen bij het maken van de versie, of afgeleid voor oudere rapporten.
 export function sheetOf(r: ReportSnapshot): DecisionSheet {
   return sheetFromSnapshot(r as unknown as LegacySnapshot, r.observationCounts ? ladderSummary(r.observationCounts) : null);
@@ -105,7 +132,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
     blocks: [
       {
         t: "p",
-        text: `${r.decision?.rationale ?? r.realityCheck?.reason ?? "Het onderzoek loopt nog."} Bewijsniveau: ${r.label}.${r.labelMissing.length ? ` Voor een hoger niveau ontbreekt: ${r.labelMissing.join("; ")}.` : ""}${r.observationCounts ? ` ${ladderSummary(r.observationCounts)}` : ""}`,
+        text: `${r.decision?.rationale ?? r.realityCheck?.reason ?? "Het onderzoek loopt nog."} Bewijsniveau: ${r.label}.${r.labelMissing.length ? ` Voor een hoger niveau ontbreekt: ${endSentence(r.labelMissing.join("; "))}` : ""}${r.observationCounts ? ` ${ladderSummary(r.observationCounts)}` : ""}`,
       },
       {
         t: "kpis",
@@ -210,15 +237,12 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
       ? [
           {
             t: "table",
-            head: ["Aanname", "Belang", withProb ? (calibrated ? "Geschatte kans" : "Geschatte kans (niet gekalibreerd)") : "Bewijs", "Status"],
+            head: ["Aanname", "Belang", withProb ? probabilityColumnHead(calibrated) : "Bewijs", "Status"],
             widths: [54, 10, 18, 18],
             rows: r.assumptions.map((a) => [
               `${a.statement}${a.premortem ? " (uit de pre-mortem)" : ""}`,
               `${a.importance}/5`,
-              withProb && a.probability
-                ? `${formatProbability(a.probability.point, calibrated).text} (${formatProbabilityRange(a.probability.low, a.probability.high, calibrated).text})` +
-                  ((a as { recruitment?: { group: string; sources: number }[] }).recruitment ?? []).map((x) => ` ${explainRecruitment(x)}`).join("")
-                : `${a.evidence}%`,
+              withProb && a.probability ? assumptionProbabilityText(a, calibrated) : `${a.evidence}%`,
               ASSUMPTION_STATUS[a.status] ?? a.status,
             ]),
           },
@@ -228,11 +252,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
                   t: "p" as const,
                   small: true,
                   muted: true,
-                  text:
-                    "Geschatte kans dat de aanname klopt: een beginwaarde (meestal 50%), bijgewerkt met een vaste factor per soort bewijs. Uitspraken tellen nauwelijks, gedrag en betalingen sterk." +
-                    (calibrated
-                      ? ""
-                      : ` Niet gekalibreerd: bij dit rapport had de werkruimte minder dan ${CALIBRATION_MIN_RESOLVED} opgeloste dossiers om deze kansen aan te toetsen. Daarom staan ze in banden van 10 procentpunt rond de berekende waarde.`),
+                  text: `${PROBABILITY_EXPLAIN} ${calibrationNote(calibrated)}`.trim(),
                 },
               ]
             : []),
@@ -315,7 +335,8 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
   // 09 Decision with audit information
   const decision: Block[] = [];
   if (r.decision) {
-    decision.push({ t: "p", text: r.decision.rationale });
+    // Gebruikerstest D1/D2: dezelfde alinea als de rapportpagina; een tussenbesluit is nooit "direct definitief".
+    decision.push({ t: "p", text: decisionParagraph(r.decision, todayInNL(new Date(r.generatedAt)), { hasClient: !!r.client }) });
     decision.push({
       t: "table",
       head: ["Audit", ""],
@@ -323,8 +344,10 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
       rows: [
         ["Besluit", r.decision.action],
         ["Vastgelegd op", nlDate(r.decision.at)],
-        ...(r.decision.extendWeeks ? [["Verder testen (verlengde testfase)", `${r.decision.extendWeeks} weken`]] : []),
-        ["Bevestiging opdrachtgever", r.decision.confirmedAt ? `Bevestigd op ${nlDate(r.decision.confirmedAt)}${r.decision.reviewedAgainst ? ", na de samenvatting “Wat ging tegen”" : ""}` : "Nog niet bevestigd"],
+        ...(r.decision.extendWeeks
+          ? [["Verder testen (verlengde testfase)", `${r.decision.extendWeeks} weken${extendUntilOf(r.decision) ? `, tot ${sheetDate(extendUntilOf(r.decision))}` : ""}`]]
+          : []),
+        ["Bevestiging opdrachtgever", confirmationAuditLine(r.decision, !!r.client)],
         ...(r.decision.comment ? [["Opmerking opdrachtgever", `“${r.decision.comment}”`]] : []),
         ["Rapportversie", `Versie ${meta.version}, momentopname van ${nlDate(r.generatedAt)}`],
         ["Opgesteld door", `${r.preparedBy}${r.createdBy ? ` (${r.createdBy})` : ""}`],
@@ -333,7 +356,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
     });
     // Golf B, punt 6: toets aan de beslisregel en de motivering bij afwijken.
     if (r.decision.rule) {
-      decision.push({ t: "p", text: `Beslisregel: ${r.decision.rule.met ? "gehaald" : "niet gehaald"}. ${r.decision.rule.lines.join("; ")}.` });
+      decision.push({ t: "p", text: `Beslisregel: ${r.decision.rule.met ? "gehaald" : "niet gehaald"}. ${endSentence(r.decision.rule.lines.join("; "))}` });
       if (r.decision.rule.deviation) decision.push({ t: "p", text: `Afwijking van de beslisregel: ${r.decision.rule.deviation.label.toLowerCase()}. Motivering: ${r.decision.rule.deviation.reason}` });
     }
   } else {
@@ -343,11 +366,11 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
 
   // 10 Implementation advice
   const advice: string[] = [];
-  if (r.decision?.nextStep) advice.push(`Volgende stap: ${r.decision.nextStep}.`);
+  if (r.decision?.nextStep) advice.push(`Volgende stap: ${endSentence(r.decision.nextStep)}`);
   for (const c of r.learningCards) if (c.therefore) advice.push(c.therefore);
   if (r.realityCheck && !r.decision) advice.push(`Advies uit de Reality Check: ${r.realityCheck.advice}. ${r.realityCheck.reason}`);
-  if (r.labelMissing.length) advice.push(`Om het bewijs te versterken: ${r.labelMissing.join("; ")}.`);
-  if (r.prediction?.outcome.statement) advice.push(`Toets over zes maanden of het idee slaagde: ${r.prediction.outcome.statement}.`);
+  if (r.labelMissing.length) advice.push(`Om het bewijs te versterken: ${endSentence(r.labelMissing.join("; "))}`);
+  if (r.prediction?.outcome.statement) advice.push(`Toets over zes maanden of het idee slaagde: ${endSentence(r.prediction.outcome.statement)}`);
   chapters.push({
     id: "advice",
     eyebrow: "10 / IMPLEMENTATIEADVIES",
@@ -364,7 +387,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
       p.outcome.statement
         ? {
             t: "p",
-            text: `Geslaagd betekent: ${p.outcome.statement}${p.outcome.target != null ? ` (doel: ${p.outcome.target}${p.outcome.metric ? ` ${p.outcome.metric}` : ""})` : ""}. Gemeten zes maanden na het besluit${p.outcome.due ? `, op ${nlDate(p.outcome.due)}` : ""}.`,
+            text: `Geslaagd betekent: ${endSentence(`${p.outcome.statement.replace(/\.\s*$/, "")}${p.outcome.target != null ? ` (doel: ${p.outcome.target}${p.outcome.metric ? ` ${p.outcome.metric}` : ""})` : ""}`)} Gemeten zes maanden na het besluit${p.outcome.due ? `, op ${nlDate(p.outcome.due)}` : ""}.`,
           }
         : { t: "p", text: "Er is nog niet vastgelegd wanneer dit idee geslaagd is.", muted: true },
     );

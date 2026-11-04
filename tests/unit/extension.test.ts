@@ -24,7 +24,7 @@ describe("verlengde testfase", () => {
   });
 
   it("weigert een definitief besluit tijdens de fase, en een tweede verlenging", () => {
-    expect(extensionBlocker("continue", [extend], "2026-11-20", false)).toMatch(/loopt tot 2026-12-05/);
+    expect(extensionBlocker("continue", [extend], "2026-11-20", false)).toMatch(/loopt tot 5 december 2026/);
     expect(extensionBlocker("stop", [extend], "2026-11-20", false)).toMatch(/loopt tot/);
     expect(extensionBlocker("adjust", [extend], "2026-11-20", false)).toBeNull();
     expect(extensionBlocker("continue", [extend], "2026-12-05", false)).toBeNull();

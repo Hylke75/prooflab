@@ -447,7 +447,7 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     latestDecisionAt: decisionList[0]?.decided_at ?? null,
     latestDecisionAction: decisionList[0]?.action ?? null,
     // B1: zonder opdrachtgever is het besluit direct definitief (afgeleid; client_confirmed_at blijft leeg).
-    latestDecisionConfirmed: decisionSettled(decisionConfirmation(decisionList[0]?.client_confirmed_at, !!ideaRow.data?.client_id)),
+    latestDecisionConfirmed: decisionSettled(decisionConfirmation(decisionList[0]?.client_confirmed_at, !!ideaRow.data?.client_id, decisionList[0]?.action)),
     reports: reports.length,
     latestReportAt: reports[0]?.created_at ?? null,
     latestReportShared: !!reports[0]?.shared_at,
