@@ -310,7 +310,9 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
     .eq("id", expId)
     .eq("idea_id", ideaId);
   if (error) return { error: error.message.includes("EXPERIMENT") ? error.message.replace(/^.*?: /, "") : "De status kon niet worden gewijzigd." };
-  refresh(ideaId);
+  // Gebruikerstest A10: alleen deze testpagina en het testbord opnieuw opbouwen; de stappenbalk staat op de pagina zelf.
+  revalidatePath(`/app/ideas/${ideaId}/experiments/${expId}`);
+  revalidatePath(`/app/ideas/${ideaId}/experiments`);
   const msg: Record<string, string> = {
     ready_for_review: "Klaar voor review. Controleer de Test Card en keur goed.",
     approved: "Goedgekeurd. De hypothese en drempels zijn nu vergrendeld, net als de beslisregel van het dossier (als die er is).",

@@ -52,8 +52,12 @@ export const metadata: Metadata = { title: "Marktverkenning" };
 
 // Systeemcontrole: per onderzoeksvraag eerst de sterkste bevindingen (geverifieerd, dan onderbouwde schatting, …).
 const FIRST_FINDINGS = 3;
-const STATUS_ORDER: Record<string, number> = { verified: 0, estimate: 1, contested: 2, outdated: 3, insufficient: 4 };
+const STATUS_ORDER: Record<string, number> = { verified: 0, estimate: 1, contested: 2, refuted: 3, outdated: 4, insufficient: 5 };
 const byStrength = <T extends { status: string }>(list: T[]): T[] => [...list].sort((a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9));
+// Gebruikerstest A10: van een geïmporteerd rapport (vaak honderden tekstblokken) laadt de pagina alleen het aantal blokken
+// en de eerste paar als voorbeeld; bevindingen uit het rapport legt de consultant vast in het importblok.
+const IMPORT_PREVIEW_BLOCKS = 3;
+type ExcerptRow = { id: string; text: string; location: string | null; source_id: string };
 
 const METHOD = { desk: "Bureauonderzoek", customer: "Klantonderzoek", both: "Bureau- en klantonderzoek" } as const;
 const QSTATUS = { open: ["Open", "gray"], answered: ["Beantwoord", "green"], needs_customer_research: ["Vraagt klantonderzoek", "orange"] } as const;
@@ -71,7 +75,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
       .select("*, claim_sources(id, source_id, quote, stance, quote_check, support_check, support_checked_by, support_note, live_found, live_checked_at, sources(title, url, publisher, published_on, source_type, domain, access_note))")
       .eq("idea_id", id)
       .order("created_at"),
-    supabase.from("sources").select("*, source_excerpts(id, text, location)").eq("idea_id", id).order("created_at", { ascending: false }),
+    supabase.from("sources").select("*").eq("idea_id", id).order("created_at", { ascending: false }),
     supabase.from("competitors").select("*, claims(statement, status, claim_sources(quote, live_found, live_checked_at, sources(url, live_error)))").eq("idea_id", id).order("created_at"),
     supabase.from("segments").select("*").eq("idea_id", id).order("created_at"),
     supabase.from("sizing_scenarios").select("*, sizing_factors(*)").eq("idea_id", id),
@@ -146,7 +150,25 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
       source: e.sources ? { ...e.sources, source_type: e.sources.source_type as SourceType } : null,
     })),
   }));
-  const sources = sourcesRes.data ?? [];
+  // Gebruikerstest A10: fragmenttekst alleen voor gewone bronnen (en klantsignalen); van geïmporteerde rapporten alleen het
+  // aantal blokken en een kort voorbeeld. Dat scheelt bij een rapport van 300 blokken ~300 tekstblokken in elke paginalading.
+  const sourceRows = sourcesRes.data ?? [];
+  const isHeavy = (s: (typeof sourceRows)[number]) => isImportedReport(s.access_note) && !isSignalSource(s);
+  const plainIds = sourceRows.filter((s) => !isHeavy(s)).map((s) => s.id);
+  const importedIds = sourceRows.filter(isHeavy).map((s) => s.id);
+  const [plainExcerpts, importedCounts, ...previews] = await Promise.all([
+    plainIds.length ? supabase.from("source_excerpts").select("id, text, location, source_id").in("source_id", plainIds).order("created_at") : Promise.resolve({ data: [] as ExcerptRow[] }),
+    importedIds.length ? supabase.from("source_excerpts").select("source_id").in("source_id", importedIds) : Promise.resolve({ data: [] as { source_id: string }[] }),
+    ...importedIds.map((sid) => supabase.from("source_excerpts").select("id, text, location, source_id").eq("source_id", sid).order("created_at").limit(IMPORT_PREVIEW_BLOCKS)),
+  ]);
+  const excerptsBySource = new Map<string, ExcerptRow[]>();
+  for (const e of [...(plainExcerpts.data ?? []), ...previews.flatMap((p) => p.data ?? [])]) excerptsBySource.set(e.source_id, [...(excerptsBySource.get(e.source_id) ?? []), e]);
+  const blockCount = new Map<string, number>();
+  for (const e of importedCounts.data ?? []) blockCount.set(e.source_id, (blockCount.get(e.source_id) ?? 0) + 1);
+  const sources = sourceRows.map((s) => {
+    const source_excerpts = excerptsBySource.get(s.id) ?? [];
+    return { ...s, source_excerpts, excerptCount: blockCount.get(s.id) ?? source_excerpts.length };
+  });
   // Geïmporteerde rapporten hebben veel tekstblokken: daarvoor legt de consultant bevindingen vast in het importblok,
   // waar ProofLab zelf het blok bij het citaat zoekt. Het gewone formulier toont de overige fragmenten.
   const excerpts = sources
@@ -216,7 +238,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
 
   const importedReports: ImportedReport[] = sources
     .filter((s) => isImportedReport(s.access_note))
-    .map((s) => ({ id: s.id, title: s.title, blocks: (s.source_excerpts ?? []).length, findings: claims.filter((c) => c.evidence.some((e) => e.source_id === s.id)).length }));
+    .map((s) => ({ id: s.id, title: s.title, blocks: s.excerptCount, findings: claims.filter((c) => c.evidence.some((e) => e.source_id === s.id)).length }));
 
   const tab = typeof sp.tab === "string" ? sp.tab : "overview";
   const evidenceActions = (claim: (typeof claims)[number]) =>
@@ -275,7 +297,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
         uncertainty={uncertaintyText(idea.key_uncertainty, decisiveQuestion?.question)}
         picks={uncertaintyPicks}
         candidates={claims
-          .filter((c) => ["verified", "estimate", "contested"].includes(c.status) && !uncertaintyPicks.some((p) => p.claimId === c.id))
+          .filter((c) => ["verified", "estimate", "contested", "refuted"].includes(c.status) && !uncertaintyPicks.some((p) => p.claimId === c.id))
           .map((c) => ({ id: c.id, statement: c.statement }))}
         canWrite={canWrite}
         editable={uncertainty.editable}
@@ -284,6 +306,9 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
 
       <Tabs
         initial={tab}
+        // Gebruikerstest A10: concurrenten, klantonderzoek en marktpotentieel (zware interactieve panelen) pas opbouwen bij
+        // het openen. Marktbeeld en Bronnen niet: daar springen zoekresultaten en "Voeg toe als bron" direct naartoe.
+        lazy={["competitors", "klantonderzoek", "sizing"]}
         tabs={[
           { key: "overview", label: "Marktbeeld" },
           { key: "competitors", label: "Concurrenten" },
@@ -702,7 +727,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                     <p>
                       {SOURCE_TYPES[s.source_type as SourceType]}
                       {s.publisher ? ` · ${s.publisher}` : ""} · {s.published_on ? new Date(s.published_on).toLocaleDateString("nl-NL") : "datum onbekend"} · opgehaald{" "}
-                      {new Date(s.retrieved_at).toLocaleDateString("nl-NL")} · {(s.source_excerpts ?? []).length} fragment(en) · {used} bevinding(en)
+                      {new Date(s.retrieved_at).toLocaleDateString("nl-NL")} · {s.excerptCount} fragment(en) · {used} bevinding(en)
                     </p>
                     {s.access_note && <p style={{ whiteSpace: "pre-line" }}>{s.access_note}</p>}
                     {(s.found_by ?? []).length > 0 && (
@@ -721,10 +746,16 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                       </p>
                     )}
                     <details>
-                      <summary className="text-link">{isImportedReport(s.access_note) ? `Uitgelezen tekst (${(s.source_excerpts ?? []).length} blokken)` : "Bewaarde fragmenten"}</summary>
+                      <summary className="text-link">{isImportedReport(s.access_note) ? `Uitgelezen tekst (${s.excerptCount} blokken)` : "Bewaarde fragmenten"}</summary>
                       {(s.source_excerpts ?? []).map((e) => (
                         <blockquote className="quote" key={e.id}>{e.text}{e.location ? <span className="tiny"> ({e.location})</span> : null}</blockquote>
                       ))}
+                      {s.excerptCount > s.source_excerpts.length && (
+                        <p className="tiny">
+                          De eerste {s.source_excerpts.length} van {s.excerptCount} blokken. Leg een bevinding uit dit rapport vast in het importblok hieronder: ProofLab zoekt daar
+                          zelf het blok bij je citaat.
+                        </p>
+                      )}
                     </details>
                   </div>
                   <div className="stack" style={{ justifyItems: "end" }}>

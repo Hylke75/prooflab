@@ -92,7 +92,7 @@ export function ExperimentBuilder({
   initialType,
   researcher = "",
   surveyDraftAction,
-  method = "2026-11-d",
+  method = "2026-11-e",
   priors = {},
   intake = { description: "", texts: [] },
   goRuleMissing = false,

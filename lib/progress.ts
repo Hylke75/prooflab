@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { supabaseServer } from "@/lib/supabase/server";
-import { assumptionEvidence, type AssumptionProbability, type ObservationDims } from "@/lib/domain/evidence";
+import { assumptionEvidence, deskTally, type AssumptionProbability, type ObservationDims } from "@/lib/domain/evidence";
 import { METHODS, type MethodVersion } from "@/lib/domain/method";
 import { dedupeByPerson } from "@/lib/domain/per-person";
 import { excludedTests, experimentFromSourceKey, isStarted, testOutcomesFrom, withoutExcludedTests, type TestExclusion } from "@/lib/domain/test-counts";
@@ -20,6 +20,7 @@ import { withPracticeFlag } from "@/lib/domain/practice";
 import { loadRealInterviewIds, realObservationFilter } from "@/lib/practice-data";
 import { decisionConfirmation, decisionSettled } from "@/lib/domain/decision-confirmation";
 import { isExploratory } from "@/lib/domain/customer-research";
+import { loadDecisionRule } from "@/lib/decision-rule-data";
 
 export type AssumptionWithEvidence = {
   id: string;
@@ -44,6 +45,8 @@ export type AssumptionWithEvidence = {
   excludedTests: TestExclusion[];
   // Fase B4: door de consultant gekozen om nu te testen (maximaal 3 per idee); de rest staat op "later".
   selectedForTest?: boolean;
+  // Gebruikerstest A2: gekoppelde bevindingen die (nog) niet meetellen in bewijsas en kans, met de reden.
+  deskNotCounted?: { claimId: string; reason: string }[];
 };
 
 type ObsLink = {
@@ -180,6 +183,7 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
       .map((l) => {
         const ref = refs.get(`claim:${l.claim_id}`);
         return {
+          claimId: l.claim_id,
           status: l.claims!.status as ClaimStatus,
           relation: l.relation as "supports" | "contradicts",
           sourceKey: ref?.key ?? null,
@@ -194,7 +198,10 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
       obsLinks.filter((l) => l.assumption_id === a.id && l.observations),
       (l) => ({ interviewId: l.observations!.interview_id, kind: l.observations!.kind, relation: l.relation, dims: obsDims(l.observations!) }),
     ).map((l) => ({ ...obsDims(l.observations!), relation: l.relation as "supports" | "contradicts" }));
-    const e = assumptionEvidence(claims, observations);
+    // Gebruikerstest A2/A5: welke gekoppelde bevindingen meetellen, volgt de methodeversie (weerlegd telt vanaf 2026-11-e).
+    const deskOpts = { refutedCounts: method.refutedCounts };
+    const e = assumptionEvidence(claims, observations, deskOpts);
+    const desk = deskTally(claims, deskOpts);
     const probability = method.probability(
       claims,
       obsLinks
@@ -233,6 +240,7 @@ export function computeAssumptions(inputs: AssumptionInputs, version: MethodVers
       kind: a.kind ?? null,
       // Fase B4: de kolom bestaat pas na migratie 20261110100000; zonder kolom is niets gekozen.
       selectedForTest: a.selected_for_test === true,
+      deskNotCounted: desk.notCounted.map((c) => ({ claimId: c.claimId, reason: c.reasonText })),
       excludedTests: inputs.tests
         .filter((t) => t.assumptionId === a.id && isStarted(t.state))
         .map((t) => excluded.get(t.experimentId))
@@ -363,7 +371,10 @@ const maxIso = (list: (string | null | undefined)[]) => list.filter((x): x is st
 export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> => {
   const supabase = await supabaseServer();
   const count = { count: "exact" as const, head: true };
+  // Gebruikerstest A10: onafhankelijke ladingen starten meteen en lopen parallel (geen waterval).
   const forecastState = loadForecastState(ideaId);
+  const assumptionList = loadAssumptions(ideaId);
+  const decisionRule = loadDecisionRule(ideaId);
   // B0: waarnemingen uit oefen- of niet-aangegeven gesprekken tellen niet mee.
   const realObs = realObservationFilter(await loadRealInterviewIds(ideaId));
   const [questions, claims, verified, weak, competitors, alternatives, segments, experiments, cards, checks, decisions, behaviour, sizing, reports, ideaRow] = await Promise.all([
@@ -394,8 +405,8 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
       : Promise.resolve({ count: 0 }),
     supabase.from("observations").select("id", count).eq("idea_id", ideaId).eq("is_synthetic", false).not("experiment_id", "is", null).or(realObs),
   ]);
-  const forecast = await forecastState;
-  const assumptions = rankAssumptions(await loadAssumptions(ideaId));
+  const [forecast, rawAssumptions, rule] = await Promise.all([forecastState, assumptionList, decisionRule]);
+  const assumptions = rankAssumptions(rawAssumptions);
   const cardList = cards.data ?? [];
   const approvedCards = cardList.filter((c) => c.status === "approved");
   // Verkennend klantonderzoek vanuit Markt telt niet als test: het krijgt geen Learning Card en beslist niets.
@@ -457,6 +468,8 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
       realTestObservations: realTestObs.count ?? 0,
       decisions: decisionList.length,
       latestDecisionAction: decisionList[0]?.action ?? null,
+      // Gebruikerstest A6: zonder vastgelegde beslisregel is stap Aannames niet klaar.
+      decisionRule: rule === undefined ? "unknown" : rule ? "saved" : "missing",
     },
     forecast,
   };

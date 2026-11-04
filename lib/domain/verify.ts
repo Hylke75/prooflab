@@ -165,8 +165,10 @@ export function computeClaimStatus(
   const supporting = passing.filter((e) => e.stance === "supports");
   const contradicting = passing.filter((e) => e.stance === "contradicts");
 
+  // Gebruikerstest A5: alleen tegensprekende gecontroleerde bronnen en geen enkele bevestigende = weerlegd. "Tegenstrijdig"
+  // (contested) blijft voor het geval dat bronnen elkaar echt tegenspreken: minstens één bevestigt en minstens één niet.
   if (supporting.length === 0 && contradicting.length > 0) {
-    return { status: "contested", reason: `${contradicting.length} gecontroleerde bron(nen) spreken dit tegen; geen bron ondersteunt het.` };
+    return { status: "refuted", reason: `${contradicting.length} gecontroleerde bron(nen) spreken dit tegen; geen bron ondersteunt het.` };
   }
   if (supporting.length === 0) {
     const failed = evidence.filter((e) => e.quoteCheck === "not_found" || e.quoteCheck === "numbers_mismatch");

@@ -514,12 +514,23 @@ details:not([open])>.sprint-pop{display:none}
 .workspace{overflow-x:clip}
 /* Systeemcontrole 4 nov (3): een kop die na een stap de focus krijgt, toont geen focusrand (het is geen knop). */
 .focus-target:focus{outline:none}
-/* Testbord: in een smalle kolom stonden icoon, titel en status naast elkaar en brak de titel per letter af.
-   In het bord staan ze onder elkaar: icoon en status op één regel, de titel eronder over de volle breedte. */
-#bord .assumption-item{flex-wrap:wrap;align-items:center;gap:6px 10px}
-#bord .assumption-item>span:not(.count){order:3;flex:1 1 100%;min-width:0;overflow-wrap:break-word;hyphens:auto;font-size:13.5px;line-height:1.4}
+/* Lijstregels van aannames en tests (testbord, prioriteiten op de risicokaart, "Wat test je eerst?").
+   Oorzaak van het afbreken per letter: .card{overflow-wrap:anywhere} plus een flexregel waarin de tekst (flex:1) naast
+   een metaregel (small) moest passen; in een smalle kolom kreeg de tekst bijna geen breedte. Gebruikerstest A1: overal
+   staan nummer/icoon en status op één regel, de titel eronder over de volle breedte en alleen tussen woorden afgebroken. */
+.assumption-item{flex-wrap:wrap;align-items:center;gap:6px 10px}
+.assumption-item>span:not(.count){order:3;flex:1 1 100%;min-width:0;overflow-wrap:break-word;word-break:normal;hyphens:auto;line-height:1.4}
+.assumption-item>small{flex:1 1 auto;min-width:0;overflow-wrap:break-word}
+#bord .assumption-item>span:not(.count){font-size:13.5px}
 @media (max-width:560px){#bord{grid-template-columns:1fr}}
-#bord .assumption-item>small{flex:1 1 auto;min-width:0}
+/* Gebruikerstest A8: een link van de coach naar een stap op de testpagina (#ter-review, #goedkeuren, #publiceren) springt
+   naar die stap, onder de vaste bovenbalk, met een korte markering. Zonder animatie bij reduced-motion. */
+.coach-target{scroll-margin-top:100px;border-radius:var(--radius-inner)}
+.coach-target:target{outline:2px solid var(--color-primary);outline-offset:6px}
+@media (prefers-reduced-motion:no-preference){.coach-target:target{animation:coach-flash 1.6s ease-out 1 both}}
+@keyframes coach-flash{0%{background:var(--color-surface-soft);outline-color:var(--color-primary)}100%{background:transparent;outline-color:transparent}}
+/* Clusterpopup op de risicokaart: lange aannames breken tussen woorden, niet per letter. */
+.risk-pop button>span:not(.count){min-width:0;overflow-wrap:break-word;word-break:normal;hyphens:auto;line-height:1.4}
 
 /* Klantonderzoek (Markt): lijst van enquêtes en interviews. Elke regel is één link (min. 44px), metadata loopt
    door op smalle schermen zodat er nooit horizontaal gescrold hoeft te worden. */

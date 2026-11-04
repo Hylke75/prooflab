@@ -522,3 +522,33 @@ de migratie toont het tabblad de bestaande enquêtes en interviews en meldt dat 
   geloofwaardig tellen niet; zelfrapportage, geen gedrag. Live interviews: alleen echte gesprekken met toestemming
 - ✅ Tests: `tests/unit/customer-research.test.ts`; e2e `tests/e2e/klantonderzoek.spec.ts` (niet gedraaid)
 - 🟡 Migratie toepassen; daarna de e2e draaien en visueel controleren op 1440 px en 390 px
+
+## Gebruikerstest: verbeterpunten A/B/C (12 november)
+
+Bevindingen uit de gebruikerstest met het dossier "AI-communicatie voor sportclubs", geanalyseerd en goedgekeurd door de
+product owner. Drie commits (A bugs, B betrouwbaarheid besluit, C gebruiksvriendelijkheid) en één migratie
+`20261112090000_gebruikerstest.sql` (**nog niet toegepast**; zonder de migratie valt de app terug, zie per punt).
+
+### A. Bugs
+- ✅ **A1** Prioriteitenlijst leesbaar: nummer en soort op één regel, de aanname eronder over de volle breedte; ook in het
+  testbord, "Wat test je eerst?" en de clusterpopup (`app/globals.css`, DESIGN_DIFF_LOG #49)
+- ✅ **A2** Gekoppeld bureauonderzoek dat niet meetelt, staat apart met de reden en een link naar de bevinding
+  (risicokaart, melding na koppelen, blok "Bureauonderzoek per aanname" op Bewijs & besluit). Eén regel voor alles:
+  `deskTally`/`deskVerdict` in `lib/domain/evidence.ts`
+- ✅ **A3** "bewijsas" vervangen door gewone taal ("Kans en rangorde zijn opnieuw berekend")
+- ✅ **A4** Bevindingstatus als Nederlands label bij het koppelen en in de AI-prompts
+- ✅ **A5** Nieuwe status **Weerlegd** (alleen gecontroleerde tegensprekende bronnen); "Tegenstrijdig" alleen bij pro én
+  contra. Methode **2026-11-e** (nieuwe dossiers): een weerlegde bevinding waarop een aanname leunt telt als tegenbewijs,
+  conservatief met de factor van één secundaire bron (× 1,2; bewijsas 0,6). Een weerlegde tegenbevinding telt niet als
+  steun. Dossiers op 2026-11-a t/m d rekenen ongewijzigd. Migratie: check op `claims.status` vervangen, tegenstrijdige
+  bevindingen zonder enige gecontroleerde bevestigende bron herberekend naar weerlegd, methodeversie e (check, standaard,
+  volgorde). Zonder migratie: `recomputeClaim` valt bij "weerlegd" terug op "tegenstrijdig"
+- ✅ **A6** Stap Aannames is pas klaar met een hoofdtest én een vastgelegde beslisregel ("Loopt · Leg de beslisregel vast")
+- ✅ **A7** "Kies om nu te testen" werkt direct (`useOptimistic`), en vernieuwt alleen de aannamepagina
+- ✅ **A8** Coachlinks springen naar `#ter-review`, `#goedkeuren` en `#publiceren` op de testpagina (DESIGN_DIFF_LOG #50)
+- ✅ **A9** `/app/ideas/:id/decision` stuurt door naar Bewijs & besluit (`next.config.ts`)
+- ✅ **A10** Prestaties: `revalidatePath` alleen het eigen pad bij koppelen, bevinding toevoegen, kiezen en
+  teststatus; Markt laadt van geïmporteerde rapporten alleen het aantal blokken plus 3 voorbeeldblokken (was: alle
+  tekst); de tabs Concurrenten, Klantonderzoek en Marktpotentieel worden pas bij openen opgebouwd; de run-voortgang
+  ververst niet opnieuw zolang de vorige verversing loopt en vertraagt tot 30 s zonder wijziging; parallelle queries in
+  `recomputeClaim`, `loadProgress` en de testpagina (zie het rapport bij de commit voor de tellingen)

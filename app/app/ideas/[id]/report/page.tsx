@@ -596,7 +596,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             <MethodSection m={"methodology" in r ? r.methodology : null} />
             <p className="tiny mt-12">
               Methode: elke bevinding steunt op een letterlijk citaat dat automatisch is teruggevonden in de bewaarde bronpassage; de status
-              (geverifieerd, onderbouwde schatting, onvoldoende bewijs, tegenstrijdig, verouderd) wordt berekend, niet gekozen. Experimentdrempels
+              (geverifieerd, onderbouwde schatting, onvoldoende bewijs, tegenstrijdig, weerlegd, verouderd) wordt berekend, niet gekozen. Experimentdrempels
               zijn vóór de start vergrendeld. {r.method.aiCalls ? `AI is ${r.method.aiCalls}× gebruikt (${r.method.models.join(", ")}; kosten $${r.method.aiCostUsd}). AI-uitvoer telt nooit als bewijs.` : "Er is geen AI gebruikt."}
             </p>
           </section>

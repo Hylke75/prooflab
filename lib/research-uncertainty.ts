@@ -36,9 +36,9 @@ export type Candidate = {
 
 export type Pick = { claimId: string; effect: UncertaintyEffect; reason: string; rank: number };
 
-// Alleen bevindingen met een gecontroleerd citaat die (nog) iets zeggen: geverifieerd, schatting of betwist.
+// Alleen bevindingen met een gecontroleerd citaat die (nog) iets zeggen: geverifieerd, schatting, betwist of weerlegd.
 export function uncertaintyCandidates<C extends Candidate>(claims: C[]): C[] {
-  return claims.filter((c) => c.status === "verified" || c.status === "estimate" || c.status === "contested");
+  return claims.filter((c) => c.status === "verified" || c.status === "estimate" || c.status === "contested" || c.status === "refuted");
 }
 
 const FREE = /\bgratis\b|\bfree\b|kosteloos|zonder kosten|€\s?0\b|0 euro/i;

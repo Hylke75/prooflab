@@ -97,8 +97,9 @@ describe("methode 2026-11-d: tegenbewijs per bron", () => {
 });
 
 describe("methodeversie 2026-11-d", () => {
-  it("is de versie voor nieuwe dossiers en alleen vooruit bereikbaar", () => {
-    expect(CURRENT_METHOD).toBe("2026-11-d");
+  it("is alleen vooruit bereikbaar (nieuwe dossiers starten sinds de gebruikerstest op 2026-11-e)", () => {
+    expect(CURRENT_METHOD).toBe("2026-11-e");
+    expect(isLaterMethod("2026-11-d", "2026-11-e")).toBe(true);
     expect(isLaterMethod("2026-11-c", "2026-11-d")).toBe(true);
     expect(isLaterMethod("2026-11-d", "2026-11-c")).toBe(false);
     expect(changesBetween("2026-11-c", "2026-11-d")).toEqual([expect.stringMatching(/^2026-11-d: Ook tegenbewijs telt per bron één keer/)]);

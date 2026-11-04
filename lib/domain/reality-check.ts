@@ -136,6 +136,12 @@ export function runRealityCheck(f: DossierFacts): RealityCheckResult {
       add("contested_claims", "warning", `${contested} bewering(en) met tegenstrijdige bronnen`,
         "Los de tegenstrijdigheid op of neem beide waarden mee in de scenario's.");
     }
+    // Gebruikerstest A5: een weerlegde bevinding (alleen tegensprekende gecontroleerde bronnen) is geen steun meer.
+    const refuted = f.claims.filter((c) => c.status === "refuted").length;
+    if (refuted) {
+      add("refuted_claims", "warning", `${refuted} bewering(en) weerlegd door gecontroleerde bronnen`,
+        "Geen enkele gecontroleerde bron bevestigt deze beweringen. Bouw er niet op, of zoek een bron die ze wel bevestigt.");
+    }
   }
   if (f.competitors.length > 0 && !f.competitors.some((c) => c.kind === "alternative" || c.kind === "status_quo")) {
     add("missing_alternatives", "warning", "Huidige alternatieven ontbreken",

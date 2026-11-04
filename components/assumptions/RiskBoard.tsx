@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useOptimistic, useRef, useState } from "react";
 import { layoutRiskPoints } from "@/lib/domain/risk-layout";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
-import { ASSUMPTION_CATEGORIES, ASSUMPTION_STATUS, type AssumptionCategory, type AssumptionStatus } from "@/lib/domain/labels";
-import { applyCap, bandFromShift, capReason, explainContribution, explainMerged, probabilityFromShift, type AssumptionProbability } from "@/lib/domain/evidence";
+import { ASSUMPTION_CATEGORIES, ASSUMPTION_STATUS, CLAIM_STATUS, type AssumptionCategory, type AssumptionStatus, type ClaimStatus } from "@/lib/domain/labels";
+import { applyCap, bandFromShift, capReason, deskVerdict, DESK_SKIP_REASON, explainContribution, explainMerged, notCountedLine, probabilityFromShift, type AssumptionProbability } from "@/lib/domain/evidence";
 import { MAX_SELECTED_FOR_TEST, splitBySelection, type VoiResult } from "@/lib/domain/recommend";
 import { ASSUMPTION_KINDS, type AssumptionKind } from "@/lib/domain/assumption-kind";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
@@ -37,7 +37,12 @@ export type BoardAssumption = {
   kind: AssumptionKind;
   kindStored: boolean;
   selectedForTest: boolean;
+  // Gebruikerstest A2: gekoppelde bevindingen die (nog) niet meetellen, met de reden.
+  deskNotCounted?: { claimId: string; reason: string }[];
 };
+
+// Nederlands label van een bevindingstatus (gebruikerstest A4); onbekende waarden ongewijzigd.
+const claimStatusLabel = (status: string) => (status in CLAIM_STATUS ? CLAIM_STATUS[status as ClaimStatus].label : status);
 
 type Action = (s: FormState, f: FormData) => Promise<FormState>;
 
@@ -64,7 +69,10 @@ export function RiskBoard({
   selectActions = {},
   selectionAvailable = true,
   calibrated = false,
+  refutedCounts = false,
 }: {
+  // Methode 2026-11-e: een weerlegde bevinding telt als tegenbewijs (bepaalt de uitleg bij het koppelen).
+  refutedCounts?: boolean;
   kindActions?: Record<string, Action>;
   selectActions?: Record<string, Action>;
   // False zolang de migratie voor fase B4 niet is toegepast: dan kan er (nog) niet gekozen worden.
@@ -90,7 +98,14 @@ export function RiskBoard({
   const [prior, setPrior] = useState(storedPrior(firstId));
   const popRef = useRef<HTMLDivElement>(null);
   const clusterBtn = useRef<HTMLButtonElement | null>(null);
-  const current = assumptions.find((a) => a.id === sel) ?? assumptions[0];
+  // Gebruikerstest A7: kiezen of op later zetten is direct zichtbaar (teller, lijsten, knop); bij een fout valt de keuze
+  // vanzelf terug naar wat de server bewaarde.
+  const [optimisticSel, setOptimisticSel] = useOptimistic(
+    Object.fromEntries(assumptions.map((a) => [a.id, a.selectedForTest])) as Record<string, boolean>,
+    (state: Record<string, boolean>, change: { id: string; value: boolean }) => ({ ...state, [change.id]: change.value }),
+  );
+  const withSelection = assumptions.map((a) => (optimisticSel[a.id] === a.selectedForTest ? a : { ...a, selectedForTest: optimisticSel[a.id] }));
+  const current = withSelection.find((a) => a.id === sel) ?? withSelection[0];
   const select = (id: string) => {
     setSel(id);
     setPrior(storedPrior(id));
@@ -115,7 +130,7 @@ export function RiskBoard({
 
   if (!current) return null;
   const rank = new Map(assumptions.map((a, i) => [a.id, i + 1]));
-  const { now: chosen, later } = splitBySelection(assumptions);
+  const { now: chosen, later } = splitBySelection(withSelection);
   const item = (a: BoardAssumption) => (
     <button type="button" className={`assumption-item${a.id === current.id ? " active" : ""}`} onClick={() => select(a.id)} aria-pressed={a.id === current.id}>
       <span className="count">{rank.get(a.id)}</span>
@@ -269,7 +284,10 @@ export function RiskBoard({
         {canWrite && selectionAvailable && selectActions[current.id] && (
           <ActionForm
             key={`sel-${current.id}`}
-            action={selectActions[current.id]}
+            action={async (state, form) => {
+              setOptimisticSel({ id: current.id, value: !current.selectedForTest });
+              return selectActions[current.id](state, form);
+            }}
             submitLabel={current.selectedForTest ? "Zet op later" : "Kies om nu te testen"}
             submitClass={current.selectedForTest ? "btn white sm" : "btn primary sm"}
             className="mt-8"
@@ -284,9 +302,24 @@ export function RiskBoard({
           </ActionForm>
         )}
         <p className="sub mt-12">
-          {current.supporting} ondersteunend en {current.contradicting} tegensprekend bewijs gekoppeld (waarnemingen per persoon geteld).
+          {current.supporting} ondersteunend en {current.contradicting} tegensprekend bewijs telt mee (waarnemingen per persoon geteld).
           {current.probability.counted === 0 ? " We weten hier nog weinig van." : ""}
         </p>
+        {(current.deskNotCounted ?? []).length > 0 && (
+          <div className="tiny mt-8" data-testid="niet-meetellend">
+            <p style={{ margin: 0 }}>{notCountedLine(current.deskNotCounted!.map((c) => c.reason))}.</p>
+            <ul style={{ margin: "4px 0 0 18px", lineHeight: 1.6 }} aria-label="Gekoppelde bevindingen die nog niet meetellen">
+              {current.deskNotCounted!.map((c) => {
+                const claim = current.claims.find((x) => x.id === c.claimId);
+                return (
+                  <li key={c.claimId}>
+                    <Link className="text-link" href={`/app/ideas/${ideaId}/research?tab=overview#claim-${c.claimId}`}>{claim ? truncate(claim.statement, 90) : "Bevinding"}</Link>: {c.reason}.
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
         {(current.excludedTests ?? []).length > 0 && (
           <ul className="tiny" style={{ margin: "6px 0 0 18px", lineHeight: 1.6 }} aria-label="Tests die niet meetellen in kans en rangorde">
             {current.excludedTests!.map((t) => (
@@ -300,7 +333,10 @@ export function RiskBoard({
           <div className="mt-12">
             {current.claims.map((c) => (
               <div className="row between" key={c.id} style={{ fontSize: 14, padding: "6px 0", borderBottom: "1px solid var(--color-border)" }}>
-                <span>{c.relation === "contradicts" ? "✕ " : "✓ "}{c.statement}</span>
+                <span>
+                  {c.relation === "contradicts" ? "✕ " : "✓ "}{c.statement}{" "}
+                  <span className={`pill ${c.status in CLAIM_STATUS ? CLAIM_STATUS[c.status as ClaimStatus].pill : "gray"}`}>{claimStatusLabel(c.status)}</span>
+                </span>
                 {canWrite && (
                   <form action={unlinkActions[current.id]?.[c.id]}><button className="text-link">Ontkoppel</button><FormPendingOverlay /></form>
                 )}
@@ -312,15 +348,7 @@ export function RiskBoard({
           <>
             <details className="mt-12">
               <summary className="text-link">Bevinding koppelen als bewijs</summary>
-              <ActionForm key={current.id} action={linkActions[current.id]} submitLabel="Koppelen" submitClass="btn white sm">
-                <select className="field mt-8" name="claim_id" aria-label="Bevinding">
-                  {claims.map((c) => <option key={c.id} value={c.id}>[{c.status}] {c.statement.slice(0, 80)}</option>)}
-                </select>
-                <select className="field mt-8" name="relation" aria-label="Relatie" defaultValue="supports">
-                  <option value="supports">Ondersteunt deze aanname</option>
-                  <option value="contradicts">Spreekt deze aanname tegen</option>
-                </select>
-              </ActionForm>
+              <LinkClaimForm key={current.id} action={linkActions[current.id]} claims={claims} refutedCounts={refutedCounts} />
             </details>
             <form action={importanceActions[current.id]} className="row mt-12" key={`imp-${current.id}`}>
               <label className="tiny" htmlFor="imp">Belangrijkheid</label>
@@ -466,4 +494,39 @@ function ProbabilityDetail({
       </p>
     </div>
   );
+}
+
+const truncate = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1).replace(/\s+\S*$/, "")}…`);
+
+// Bevinding koppelen (gebruikerstest A4/A5): statussen als Nederlands label, en vooraf in gewone taal wat de gekozen
+// bevinding met de aanname doet. Er zijn twee richtingen: of de bronnen de bevinding bevestigen (de status) en of de
+// bevinding de aanname steunt of tegenspreekt (de koppeling). Een weerlegde bevinding die de aanname zou steunen, spreekt
+// haar dus tegen.
+function LinkClaimForm({ action, claims, refutedCounts }: { action: Action; claims: { id: string; statement: string; status: string }[]; refutedCounts: boolean }) {
+  const [claimId, setClaimId] = useState(claims[0]?.id ?? "");
+  const [relation, setRelation] = useState<"supports" | "contradicts">("supports");
+  const claim = claims.find((c) => c.id === claimId);
+  const effect = claim && claim.status in CLAIM_STATUS ? linkEffect(claim.status as ClaimStatus, relation, refutedCounts) : null;
+  return (
+    <ActionForm action={action} submitLabel="Koppelen" submitClass="btn white sm">
+      <label className="field-label" htmlFor="link-claim">Bevinding</label>
+      <select className="field" id="link-claim" name="claim_id" value={claimId} onChange={(e) => setClaimId(e.target.value)}>
+        {claims.map((c) => <option key={c.id} value={c.id}>{claimStatusLabel(c.status)} · {c.statement.slice(0, 80)}</option>)}
+      </select>
+      <label className="field-label" htmlFor="link-relation">Als de bevinding klopt, wat betekent dat voor deze aanname?</label>
+      <select className="field" id="link-relation" name="relation" value={relation} onChange={(e) => setRelation(e.target.value as "supports" | "contradicts")} aria-describedby="link-effect">
+        <option value="supports">Dan klopt de aanname eerder (ondersteunt)</option>
+        <option value="contradicts">Dan klopt de aanname minder (spreekt tegen)</option>
+      </select>
+      {effect && <p className="field-hint" id="link-effect" role="status">{effect}</p>}
+    </ActionForm>
+  );
+}
+
+function linkEffect(status: ClaimStatus, relation: "supports" | "contradicts", refutedCounts: boolean): string {
+  const v = deskVerdict({ status, relation }, { refutedCounts });
+  const what = `Deze bevinding is ${CLAIM_STATUS[status].label.toLowerCase()}`;
+  if (!v.counts) return `${what}: ze telt nog niet mee (${DESK_SKIP_REASON[v.reason]}).`;
+  if (status === "refuted") return `${what}: de bronnen spreken haar tegen, dus ze telt als tegenbewijs voor deze aanname.`;
+  return `${what}: ze telt als ${v.direction === "supports" ? "steun voor" : "tegenbewijs tegen"} deze aanname.`;
 }

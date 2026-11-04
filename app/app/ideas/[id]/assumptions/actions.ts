@@ -12,10 +12,20 @@ import { searchAcrossProviders, storeExtractedClaims, storeFoundSources } from "
 import { ideaContext } from "@/lib/idea-context";
 import { aiErrorMessage, runAi } from "@/lib/ai/guard";
 import { NEUTRAL_PRIOR, priorChangeError, priorDbError } from "@/lib/domain/prior";
+import { deskVerdict, DESK_SKIP_REASON } from "@/lib/domain/evidence";
+import { CLAIM_STATUS, type ClaimStatus } from "@/lib/domain/labels";
+import { METHODS } from "@/lib/domain/method";
+import { ideaMethodVersion } from "@/lib/method-data";
 
 export type ActionState = { error: string | null; ok?: string | null };
 
 const refresh = (id: string) => revalidatePath(`/app/ideas/${id}`, "layout");
+// Gebruikerstest A7/A10: alleen de aannamepagina zelf opnieuw opbouwen waar de wijziging niets elders verandert (kiezen
+// om nu te testen, een bevinding koppelen). Andere dossierpagina's zijn dynamisch en laden bij de volgende navigatie vers.
+const refreshAssumptions = (id: string) => revalidatePath(`/app/ideas/${id}/assumptions`);
+
+// Nederlands label van een bevindingstatus, ook in AI-prompts (gebruikerstest A4).
+const statusLabel = (status: string) => (status in CLAIM_STATUS ? CLAIM_STATUS[status as ClaimStatus].label : status);
 
 const Schema = z.object({
   statement: z.string().trim().min(10, "Formuleer de aanname als één toetsbare bewering.").max(400),
@@ -69,7 +79,8 @@ export async function setSelectedForTest(ideaId: string, assumptionId: string, s
   if (problem) return { error: problem };
   const { error } = await supabase.from("assumptions").update({ selected_for_test: select }).eq("id", assumptionId).eq("idea_id", ideaId);
   if (error) return { error: error.message.includes("MAX_SELECTED") ? (selectionError(3, true, false) ?? "Kies maximaal drie aannames.") : "Opslaan mislukt." };
-  refresh(ideaId);
+  // De keuze verandert alleen deze pagina (de stappenbalk en het menu rekenen niet met de keuze).
+  refreshAssumptions(ideaId);
   return { error: null, ok: select ? "Gekozen om nu te testen." : "Op later gezet." };
 }
 
@@ -107,10 +118,20 @@ export async function linkClaim(ideaId: string, assumptionId: string, _: ActionS
   const p = z.object({ claim_id: z.string().uuid(), relation: z.enum(["supports", "contradicts"]) }).safeParse(Object.fromEntries(form));
   if (!p.success) return { error: "Kies een bevinding." };
   const supabase = await supabaseServer();
-  const { error } = await supabase.from("assumption_claims").upsert({ assumption_id: assumptionId, claim_id: p.data.claim_id, idea_id: ideaId, relation: p.data.relation });
+  const [{ error }, { data: claim }, version] = await Promise.all([
+    supabase.from("assumption_claims").upsert({ assumption_id: assumptionId, claim_id: p.data.claim_id, idea_id: ideaId, relation: p.data.relation }),
+    supabase.from("claims").select("status").eq("id", p.data.claim_id).eq("idea_id", ideaId).maybeSingle(),
+    ideaMethodVersion(ideaId),
+  ]);
   if (error) return { error: "Koppelen mislukt." };
-  refresh(ideaId);
-  return { error: null, ok: "Bevinding gekoppeld; de bewijsas is bijgewerkt." };
+  // Kans en rangorde staan op de aannamepagina; de stappenbalk hangt niet af van gekoppeld bureauonderzoek.
+  refreshAssumptions(ideaId);
+  const done = "Bevinding gekoppeld. Kans en rangorde zijn opnieuw berekend.";
+  // Gebruikerstest A2/A3: telt de bevinding (nog) niet mee, dan zegt de melding waarom.
+  const v = claim && claim.status in CLAIM_STATUS ? deskVerdict({ status: claim.status as ClaimStatus, relation: p.data.relation }, { refutedCounts: METHODS[version].refutedCounts }) : null;
+  if (v && !v.counts) return { error: null, ok: `${done} Deze bevinding telt nog niet mee: ${DESK_SKIP_REASON[v.reason]}.` };
+  if (v && claim?.status === "refuted") return { error: null, ok: `${done} De bevinding is weerlegd en telt daarom als tegenbewijs voor deze aanname.` };
+  return { error: null, ok: done };
 }
 
 export async function unlinkClaim(ideaId: string, assumptionId: string, claimId: string) {
@@ -127,7 +148,7 @@ export async function seedAssumptions(ideaId: string, _: ActionState): Promise<A
     const { data: claims } = await supabase.from("claims").select("statement, status").eq("idea_id", ideaId).neq("status", "insufficient").limit(40);
     try {
       const res = await runAi(ideaId, "assumptions", (p) =>
-        suggestAssumptions(ideaContext(idea), (claims ?? []).map((c) => `${c.statement} [${c.status}]`), p),
+        suggestAssumptions(ideaContext(idea), (claims ?? []).map((c) => `${c.statement} [${statusLabel(c.status)}]`), p),
       );
       await supabase.from("assumptions").insert(res.data.assumptions.map((a) => ({ ...a, idea_id: ideaId, origin: "ai" })));
       refresh(ideaId);

@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { cancelResearchRun, retryResearchStep, startResearchRun } from "@/app/app/ideas/[id]/research/actions";
 import { openSourceForm } from "./source-prefill";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
+// Gebruikerstest A10: geen nieuwe verversing zolang de vorige loopt, met een groeiend interval (lib/domain/refresh.ts).
+import { nextRefreshDelay, REFRESH_MIN_MS } from "@/lib/domain/refresh";
 
 // Tabelnummer van CBS StatLine (zie lib/integrations/cbs.ts; hier los omdat dat bestand server-only is).
 const CBS_TABLE = "81589NED";
@@ -158,6 +160,17 @@ export function ResearchRunPanel({
   const [pending, start] = useTransition();
   const active = run && (run.status === "queued" || run.status === "running");
   const runId = run?.id ?? null;
+  const [refreshing, startRefresh] = useTransition();
+  const refreshingRef = useRef(false);
+  const delay = useRef(REFRESH_MIN_MS);
+  // Verandert de voortgang (status, stappen of kosten), dan weer snel verversen.
+  const progressKey = run ? `${run.status}|${run.cost}|${run.tasks.map((t) => `${t.status}:${t.detail ?? ""}`).join(",")}` : "";
+  useEffect(() => {
+    refreshingRef.current = refreshing;
+  }, [refreshing]);
+  useEffect(() => {
+    delay.current = nextRefreshDelay(delay.current, true);
+  }, [progressKey]);
 
   useEffect(() => {
     if (!active || !canWrite || !runId) return;
@@ -167,10 +180,19 @@ export function ResearchRunPanel({
         .then((res) => setError(res.ok ? null : "De server kon de run nu niet oppakken; ProofLab probeert het zo opnieuw."))
         .catch(() => setError("Geen verbinding; de run loopt op de server door."));
     resume();
-    const refresh = setInterval(() => router.refresh(), 5000);
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      // Geen nieuwe verversing zolang de vorige nog loopt (anders stapelen trage antwoorden zich op).
+      if (!refreshingRef.current) {
+        delay.current = nextRefreshDelay(delay.current, false);
+        startRefresh(() => router.refresh());
+      }
+      timer = setTimeout(tick, delay.current);
+    };
+    timer = setTimeout(tick, delay.current);
     const again = setInterval(resume, 60_000);
     return () => {
-      clearInterval(refresh);
+      clearTimeout(timer);
       clearInterval(again);
     };
   }, [active, canWrite, runId, router]);

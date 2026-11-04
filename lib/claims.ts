@@ -16,21 +16,28 @@ export function contentHash(text: string): string {
 // the live page (competitor recheck) makes the finding outdated.
 export async function recomputeClaim(claimId: string) {
   const supabase = await supabaseServer();
-  const { data: claim } = await supabase
-    .from("claims")
-    .select("id, idea_id, statement, evidence_type, freshness_kind, population, region, reference_date")
-    .eq("id", claimId)
-    .single();
+  // Gebruikerstest A10: bevinding en bronkoppelingen tegelijk laden; de intakevergelijking loopt parallel met de
+  // citaatcontroles, en gewijzigde controles worden samen bijgewerkt.
+  const [{ data: claim }, { data: links }] = await Promise.all([
+    supabase
+      .from("claims")
+      .select("id, idea_id, statement, evidence_type, freshness_kind, population, region, reference_date")
+      .eq("id", claimId)
+      .single(),
+    supabase
+      .from("claim_sources")
+      .select("id, quote, stance, quote_check, support_check, excerpt_id, source_excerpts(text), live_found, sources(source_type, is_primary, domain, publisher, published_on, content_hash)")
+      .eq("claim_id", claimId),
+  ]);
   if (!claim) return;
-  const { data: links } = await supabase
-    .from("claim_sources")
-    .select("id, quote, stance, quote_check, support_check, excerpt_id, source_excerpts(text), live_found, sources(source_type, is_primary, domain, publisher, published_on, content_hash)")
-    .eq("claim_id", claimId);
+  // Golf C, punt 7: wijken populatie, regio of peildatum af van de intake, dan telt de bevinding als indirect.
+  const relevancePromise = claimRelevance(claim);
   const evidence: EvidenceWithSupport[] = [];
+  const updates: PromiseLike<unknown>[] = [];
   for (const l of links ?? []) {
     const excerpt = l.source_excerpts?.text ?? "";
     const check = excerpt ? checkQuote(l.quote, excerpt, l.stance === "supports" ? claim.statement : undefined) : "not_found";
-    if (check !== l.quote_check) await supabase.from("claim_sources").update({ quote_check: check }).eq("id", l.id);
+    if (check !== l.quote_check) updates.push(supabase.from("claim_sources").update({ quote_check: check }).eq("id", l.id));
     if (!l.sources) continue;
     evidence.push({
       sourceType: l.sources.source_type as SourceType,
@@ -49,12 +56,15 @@ export async function recomputeClaim(claimId: string) {
     { evidenceType: claim.evidence_type as EvidenceType, freshness: claim.freshness_kind as FreshnessKind },
     evidence,
   );
-  // Golf C, punt 7: wijken populatie, regio of peildatum af van de intake, dan telt de bevinding als indirect.
-  const relevance = await claimRelevance(claim);
-  await supabase
-    .from("claims")
-    .update({ status: result.status, status_reason: result.reason, ...(relevance ? { relevance } : {}) })
-    .eq("id", claimId);
+  const [relevance] = await Promise.all([relevancePromise, ...updates]);
+  const extra = relevance ? { relevance } : {};
+  const { error } = await supabase.from("claims").update({ status: result.status, status_reason: result.reason, ...extra }).eq("id", claimId);
+  // Gebruikerstest A5: zolang migratie 20261112090000 niet live staat, kent de database "refuted" niet. Dan valt de
+  // bevinding terug op de oude status voor dit geval (tegenstrijdig), zodat ze niet op een verouderde status blijft staan.
+  if (error && result.status === "refuted") {
+    await supabase.from("claims").update({ status: "contested", status_reason: result.reason, ...extra }).eq("id", claimId);
+    return { status: "contested" as const, reason: result.reason };
+  }
   return result;
 }
 

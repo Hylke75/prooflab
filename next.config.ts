@@ -13,6 +13,10 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  // Gebruikerstest A9: "besluit" staat op de pagina Bewijs & besluit; een oud of zelf getypt adres komt daar uit.
+  async redirects() {
+    return [{ source: "/app/ideas/:id/decision", destination: "/app/ideas/:id/evidence", permanent: false }];
+  },
   async headers() {
     return [
       {

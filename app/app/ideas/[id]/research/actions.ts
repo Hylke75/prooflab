@@ -245,7 +245,9 @@ export async function addClaim(ideaId: string, _: ActionState, form: FormData): 
   if (!excerpt) return { error: "Bronfragment niet gevonden." };
   const res = await insertClaimWithQuote(ideaId, v, excerpt);
   if (res.error !== null) return { error: res.error };
-  revalidatePath(`/app/ideas/${ideaId}`, "layout");
+  // Gebruikerstest A10: alleen de Markt-pagina opnieuw opbouwen (daar staan bevinding, telling en stappenbalk); andere
+  // dossierpagina's zijn dynamisch en laden bij de volgende navigatie vers.
+  revalidatePath(`/app/ideas/${ideaId}/research`);
   if (res.check !== "exact") {
     return {
       error:

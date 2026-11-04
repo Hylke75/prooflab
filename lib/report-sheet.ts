@@ -273,6 +273,8 @@ export function sheetFromSnapshot(r: LegacySnapshot, ladderLine: string | null):
     realTestObservations: measured.length,
     decisions: r.decision ? 1 : 0,
     latestDecisionAction: action,
+    // Oudere momentopnamen leggen de beslisregel niet vast; de hoofdtests zijn hier toch onbekend.
+    decisionRule: "unknown",
   });
   const src = new Map(r.sources.map((s) => [s.n, s]));
   return buildDecisionSheet(

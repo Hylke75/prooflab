@@ -36,6 +36,7 @@ export const METHOD_CHANGES: Record<MethodVersion, string> = {
   "2026-11-b": "Een beslisregel per testtype (kansregel of vast aantal), bewijs per bron één keer meetellen en een plafond per bewijsniveau.",
   "2026-11-c": "Herhaling binnen dezelfde wervingsgroep telt afnemend mee, AI-codering telt pas na beoordeling, alleen de hoofdtest per aanname beslist over de status van de aanname en indirect bewijs (een bevinding over een andere populatie, regio of een te oude peildatum) telt half.",
   "2026-11-d": "Ook tegenbewijs telt per bron één keer: vijf bezwaren van één geïnterviewde verlagen de kans één keer, bezwaren van verschillende geïnterviewden tellen elk mee.",
+  "2026-11-e": "Een weerlegde bevinding (gecontroleerde bronnen spreken haar tegen, geen enkele bevestigt haar) waarop een aanname leunt, telt als tegenbewijs, conservatief gewogen als één secundaire bron. Een weerlegde tegenbevinding is geen steun.",
 };
 
 // De veranderingen tussen twee versies (alle versies na `from` tot en met `to`).

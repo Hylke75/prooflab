@@ -17,6 +17,7 @@ const empty: DossierInput = {
   realTestObservations: 0,
   decisions: 0,
   latestDecisionAction: null,
+  decisionRule: "unknown",
 };
 const status = (over: Partial<DossierInput>) => getDossierStatus({ ...empty, ...over });
 const step = (over: Partial<DossierInput>, key: string) => status(over).steps.find((s) => s.key === key)!;
@@ -52,6 +53,24 @@ describe("getDossierStatus: aannames (B1c)", () => {
   it("is pas klaar met een kritieke aanname met hoofdtest", () => {
     expect(step({ assumptions: 6 }, "assumptions").state).toBe("running");
     expect(step({ assumptions: 6, criticalWithPrimaryTest: 1 }, "assumptions").state).toBe("done");
+  });
+
+  it("gebruikerstest A6: met hoofdtest maar zonder beslisregel loopt de stap nog", () => {
+    const s = step({ assumptions: 6, criticalWithPrimaryTest: 1, decisionRule: "missing" }, "assumptions");
+    expect(s.state).toBe("running");
+    expect(s.statusLabel).toBe("Loopt");
+    expect(s.why).toBe("Leg de beslisregel vast.");
+    expect(status({ decisiveQuestion: { status: "answered", verifiedClaims: 1 }, assumptions: 6, criticalWithPrimaryTest: 1, decisionRule: "missing" }).current).toBe("assumptions");
+  });
+
+  it("gebruikerstest A6: met hoofdtest en vastgelegde beslisregel is de stap klaar", () => {
+    const s = step({ assumptions: 6, criticalWithPrimaryTest: 1, decisionRule: "saved" }, "assumptions");
+    expect(s.state).toBe("done");
+    expect(s.why).toMatch(/beslisregel ligt vast/);
+  });
+
+  it("gebruikerstest A6: een beslisregel zonder hoofdtest maakt de stap niet klaar", () => {
+    expect(step({ assumptions: 6, decisionRule: "saved" }, "assumptions").state).toBe("running");
   });
 });
 

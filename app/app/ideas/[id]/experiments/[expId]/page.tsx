@@ -60,39 +60,45 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
   if (!h) notFound();
   const type = exp.type as ExperimentType;
   const state = exp.state as ExperimentState;
-  const m = await experimentMetrics(exp, h);
-  const { data: cards } = await supabase.from("learning_cards").select("id").eq("experiment_id", expId);
-  // Hoofdtest of verkennend (golf A, punt 11).
-  const { data: primaryOf } = await supabase.from("assumptions").select("id, primary_experiment_id").eq("id", h.assumption_id).maybeSingle();
+  // Gebruikerstest A10: alle onafhankelijke ladingen tegelijk in plaats van na elkaar (was een waterval van ~10 stappen).
+  const [m, { data: cards }, { data: primaryOf }, surveyDraft, interviews, quality, interviewerNames, exclusions, rule] = await Promise.all([
+    experimentMetrics(exp, h),
+    supabase.from("learning_cards").select("id").eq("experiment_id", expId),
+    // Hoofdtest of verkennend (golf A, punt 11).
+    supabase.from("assumptions").select("id, primary_experiment_id").eq("id", h.assumption_id).maybeSingle(),
+    // AI-opzet van de enquête (golf A, punt 17): wat heeft de mens eraan veranderd?
+    (async () => {
+      if (type !== "survey" || !exp.ai_draft_id) return null;
+      const { data: d } = await supabase.from("ai_drafts").select("content").eq("id", exp.ai_draft_id).maybeSingle();
+      const original = d ? surveyConfigOf(d.content) : null;
+      const current = surveyConfigOf(exp.config);
+      return original && current ? draftEdit(surveyDraftText(original), surveyDraftText(current)) : null;
+    })(),
+    type === "interview" && canWrite
+      ? supabase.from("interviews").select("*, observations(*)").eq("experiment_id", expId).order("held_on").then((r) => r.data ?? [])
+      : Promise.resolve([]),
+    canWrite ? loadAiQuality() : Promise.resolve(null),
+    (async (): Promise<string[]> => {
+      if (type !== "interview" || !canWrite) return [];
+      const ws = await getWorkspace();
+      const { data: me } = await supabase.from("profiles").select("full_name").eq("user_id", ws.user.id).maybeSingle();
+      const full = me?.full_name?.trim();
+      return full ? [full, full.split(/\s+/)[0]] : [];
+    })(),
+    // Fase B0, punt 4: telt deze test mee in kans en rangorde? Zelfde regel en gegevens als de risicokaart.
+    isStarted(state) ? loadTestExclusions(id) : Promise.resolve(null),
+    // B5: de go-regel van het dossier. Een hoofdtest start pas als die vastligt; zonder regel stelt ProofLab hem voor.
+    loadDecisionRule(id),
+  ]);
   const role = testRole(exp.id, h.assumption_id, primaryOf ? [primaryOf] : []);
   const { data: currentPrimary } =
     primaryOf?.primary_experiment_id && role !== "primary"
       ? await supabase.from("experiments").select("state").eq("id", primaryOf.primary_experiment_id).maybeSingle()
       : { data: null };
   const designate = canDesignatePrimary(exp, currentPrimary);
-  // AI-opzet van de enquête (golf A, punt 17): wat heeft de mens eraan veranderd?
-  const surveyDraft = await (async () => {
-    if (type !== "survey" || !exp.ai_draft_id) return null;
-    const { data: d } = await supabase.from("ai_drafts").select("content").eq("id", exp.ai_draft_id).maybeSingle();
-    const original = d ? surveyConfigOf(d.content) : null;
-    const current = surveyConfigOf(exp.config);
-    return original && current ? draftEdit(surveyDraftText(original), surveyDraftText(current)) : null;
-  })();
-  const interviews =
-    type === "interview" && canWrite
-      ? (await supabase.from("interviews").select("*, observations(*)").eq("experiment_id", expId).order("held_on")).data ?? []
-      : [];
-  const quality = canWrite ? await loadAiQuality() : null;
   const guideLines = type === "interview" ? ((exp.config as InterviewConfig).guide ?? []) : [];
   const productNames = [idea.title, (exp.config as LandingConfig).product_name ?? ""];
   const guideAudit = auditGuide(guideLines, { productNames });
-  let interviewerNames: string[] = [];
-  if (type === "interview" && canWrite) {
-    const ws = await getWorkspace();
-    const { data: me } = await supabase.from("profiles").select("full_name").eq("user_id", ws.user.id).maybeSingle();
-    const full = me?.full_name?.trim();
-    interviewerNames = full ? [full, full.split(/\s+/)[0]] : [];
-  }
   const channels = (exp.channels as { channel: string; expected_reach: number | null }[]) ?? [];
   const publicUrl = exp.public_slug ? `${env.appUrl}/t/${exp.public_slug}` : null;
   const running = state === "live" || state === "paused";
@@ -112,11 +118,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
     ) : null;
   // B0 punt 6: afronden onder de minimale steekproef vraagt een reden en een bevestiging.
   const endBelowSample = belowMinSample(m.n, h.min_sample);
-  // Fase B0, punt 4: telt deze test mee in kans en rangorde? Zelfde regel en gegevens als de risicokaart.
-  const exclusion = isStarted(state) ? (await loadTestExclusions(id)).get(expId) ?? null : null;
-
-  // B5: de go-regel van het dossier. Een hoofdtest start pas als die vastligt; zonder regel stelt ProofLab hem voor.
-  const rule = await loadDecisionRule(id);
+  const exclusion = exclusions?.get(expId) ?? null;
   const goBlock = goRuleBlock({ isPrimary: role === "primary", rule: rule === undefined ? "unknown" : rule ? "saved" : "missing" });
   const goProposal =
     canWrite && h.assumptions && ["draft", "ready_for_review", "approved"].includes(state)
@@ -273,15 +275,16 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
           {!canWrite && <p className="sub">Je kijkt mee. Het onderzoeksteam beheert dit experiment.</p>}
           {goProposal && <GoRuleProposalCard ideaId={id} proposal={goProposal} />}
           {canWrite && state === "draft" && (
-            <>
+            <div id="ter-review" className="coach-target">
               <p className="sub">Controleer de Test Card. Daarna bied je het experiment aan voor review.</p>
               {blockNote("Ter review aanbieden kan niet: deze Test Card kan zo niet worden goedgekeurd. Maak een nieuwe Test Card.")}
               <ActionForm action={transitionExperiment.bind(null, id, expId, "ready_for_review")} submitLabel="Ter review aanbieden" disabled={blocked} describedBy={blocked ? "approval-block" : undefined} footer={<button formAction={deleteDraft.bind(null, id, expId)} className="text-link" style={{ color: "var(--color-risk-text)" }}>Concept verwijderen</button>}>
                 <span />
               </ActionForm>
-            </>
+            </div>
           )}
           {canWrite && state === "ready_for_review" && (
+            <div id="goedkeuren" className="coach-target">
             <ActionForm action={transitionExperiment.bind(null, id, expId, "approved")} submitLabel="Akkoord: keur goed en vergrendel" disabled={blocked} describedBy={blocked ? "approval-block" : undefined}>
               {blockNote("Goedkeuren kan niet:")}
               <p className="sub">Goedkeuren vergrendelt de hypothese en drempels. Bevestig:</p>
@@ -304,9 +307,10 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                 </>
               )}
             </ActionForm>
+            </div>
           )}
           {canWrite && state === "approved" && (
-            <>
+            <div id="publiceren" className="coach-target">
               {type !== "interview" && !trackingConfigured() && <div className="form-error">Meting is niet geconfigureerd (INGEST_SECRET en TRACKING_SALT ontbreken). De test kan nog niet live.</div>}
               {publicUrl && type !== "survey" && <p className="sub">Bekijk eerst het <a className="text-link" href={`/t/${exp.public_slug}`} target="_blank">voorbeeld</a> (metingen staan nog uit).</p>}
               {goBlock && (
@@ -322,7 +326,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
               >
                 <span />
               </ActionForm>
-            </>
+            </div>
           )}
           {canWrite && running && (
             <div className="row">
