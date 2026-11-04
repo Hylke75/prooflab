@@ -1,7 +1,7 @@
 "use client";
 
 import { startTransition, useActionState, useMemo, useRef, useState, useTransition } from "react";
-import { type FormState } from "@/components/ui/ActionForm";
+import { RequiredMark, type FormState } from "@/components/ui/ActionForm";
 import { SavingOverlay } from "@/components/ui/SavingOverlay";
 import { Icon } from "@/components/Icon";
 import { EXPERIMENT_TYPES, HONEST_REVEAL, NEUTRAL_INTERVIEW_GUIDE, type ExperimentType } from "@/lib/domain/labels";
@@ -29,6 +29,8 @@ type Assumption = { id: string; statement: string; kind?: AssumptionKind; primar
 type SaveState = FormState & { fieldErrors?: Record<string, string> };
 type Action = (s: SaveState, f: FormData) => Promise<SaveState>;
 
+// B1: verplichte velden van de Test Card (zie validateTestCard); ze tonen "(verplicht)" en dragen aria-required.
+const REQUIRED_FIELDS = new Set(["title", "we_believe", "target_group", "test_method", "metric_label", "metric_numerator", "success_threshold_pct", "fail_threshold_pct", "success_count", "min_sample", "max_duration_days", "channels", "headline", "price_points"]);
 const CTA_DEFAULT: Record<ExperimentType, string> = { interview: "Plan een gesprek", pricing: "Kies dit aanbod", landing: "Vraag een demo aan", survey: "Vraag een demo aan" };
 
 // Veld → element dat focus krijgt bij een fout (B1a).
@@ -274,7 +276,8 @@ export function ExperimentBuilder({
     startTransition(() => saveAction(fd));
   };
   const fieldError = (f: string) => (shown[f] ? <p className="field-error" id={`err-${f}`} role="alert">{shown[f]}</p> : null);
-  const aria = (f: string) => (shown[f] ? { "aria-invalid": true as const, "aria-describedby": `err-${f}` } : {});
+  // B1: verplichte velden dragen aria-required, ook zonder fout.
+  const aria = (f: string) => ({ "aria-required": REQUIRED_FIELDS.has(f) || undefined, ...(shown[f] ? { "aria-invalid": true as const, "aria-describedby": `err-${f}` } : {}) });
   const reachN = Number(reach) || 0;
   const set = (k: keyof typeof card, v: string) => setCard((c) => ({ ...c, [k]: v }));
 
@@ -333,14 +336,14 @@ export function ExperimentBuilder({
         <div className="card" style={{ marginTop: 18 }}>
           <div className="section-title"><h2 className="as-h3">Jouw Test Card</h2><span className="pill gray">Concept</span></div>
           <p className="explain" style={{ marginTop: -8, marginBottom: 14 }}>Een Test Card legt vóór de start vast wat je denkt, hoe je het toetst, wat je meet en wanneer het klopt. Na goedkeuring kan dat niet meer stil veranderen.</p>
-          <div className="form-line"><label htmlFor="tc-title">Naam van het experiment</label><input className="field" id="tc-title" name="title" value={title} onChange={(e) => setTitle(e.target.value)} {...aria("title")} />{fieldError("title")}</div>
-          <div className="form-line"><label htmlFor="tc-believe">Wij denken dat…</label><textarea className="field" id="tc-believe" name="we_believe" rows={3} value={card.we_believe} onChange={(e) => set("we_believe", e.target.value)} {...aria("we_believe")} />{fieldError("we_believe")}</div>
-          <div className="form-line"><label htmlFor="tc-target">Bij wie?</label><input className="field" id="tc-target" name="target_group" value={card.target_group} onChange={(e) => set("target_group", e.target.value)} {...aria("target_group")} />{fieldError("target_group")}</div>
-          <div className="form-line"><label htmlFor="tc-method">Dat toetsen we door…</label><input className="field" id="tc-method" name="test_method" value={card.test_method} onChange={(e) => set("test_method", e.target.value)} {...aria("test_method")} />{fieldError("test_method")}</div>
-          <div className="form-line"><label htmlFor="tc-metric">En we meten…</label><input className="field" id="tc-metric" name="metric_label" value={card.metric_label} onChange={(e) => set("metric_label", e.target.value)} {...aria("metric_label")} />{fieldError("metric_label")}</div>
+          <div className="form-line"><label htmlFor="tc-title">Naam van het experiment<RequiredMark /></label><input className="field" id="tc-title" name="title" value={title} onChange={(e) => setTitle(e.target.value)} {...aria("title")} />{fieldError("title")}</div>
+          <div className="form-line"><label htmlFor="tc-believe">Wij denken dat…<RequiredMark /></label><textarea className="field" id="tc-believe" name="we_believe" rows={3} value={card.we_believe} onChange={(e) => set("we_believe", e.target.value)} {...aria("we_believe")} />{fieldError("we_believe")}</div>
+          <div className="form-line"><label htmlFor="tc-target">Bij wie?<RequiredMark /></label><input className="field" id="tc-target" name="target_group" value={card.target_group} onChange={(e) => set("target_group", e.target.value)} {...aria("target_group")} />{fieldError("target_group")}</div>
+          <div className="form-line"><label htmlFor="tc-method">Dat toetsen we door…<RequiredMark /></label><input className="field" id="tc-method" name="test_method" value={card.test_method} onChange={(e) => set("test_method", e.target.value)} {...aria("test_method")} />{fieldError("test_method")}</div>
+          <div className="form-line"><label htmlFor="tc-metric">En we meten…<RequiredMark /></label><input className="field" id="tc-metric" name="metric_label" value={card.metric_label} onChange={(e) => set("metric_label", e.target.value)} {...aria("metric_label")} />{fieldError("metric_label")}</div>
           <div className="double-field">
-            <div className="form-line"><label htmlFor="tc-num">Teller</label><input className="field" id="tc-num" name="metric_numerator" value={card.metric_numerator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_numerator", e.target.value)} {...aria("metric_numerator")} /></div>
-            <div className="form-line"><label htmlFor="tc-den">Noemer</label><input className="field" id="tc-den" name="metric_denominator" value={card.metric_denominator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_denominator", e.target.value)} /></div>
+            <div className="form-line"><label htmlFor="tc-num">Teller<RequiredMark /></label><input className="field" id="tc-num" name="metric_numerator" value={card.metric_numerator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_numerator", e.target.value)} {...aria("metric_numerator")} /></div>
+            <div className="form-line"><label htmlFor="tc-den">Noemer<RequiredMark /></label><input className="field" id="tc-den" name="metric_denominator" value={card.metric_denominator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_denominator", e.target.value)} aria-required /></div>
           </div>
           {fieldError("metric_numerator")}
           {type === "survey" && <p className="field-hint" id="tc-metric-hint" style={{ marginTop: -8, marginBottom: 12 }}>Teller en noemer volgen uit de kernvraag en de succesopties in de enquête hiernaast.</p>}
@@ -372,14 +375,14 @@ export function ExperimentBuilder({
             <>
               <input type="hidden" name="success_threshold_pct" value={thresholdPct || ""} />
               <div className="double-field">
-                <div className="form-line"><label htmlFor="tc-count">Geslaagd bij minimaal (aantal)</label><input className="field num" id="tc-count" name="success_count" type="number" min={1} value={successCount} readOnly={locked} onChange={(e) => setSuccessCount(e.target.value)} {...aria("success_count")} />{fieldError("success_count")}</div>
-                <div className="form-line"><label htmlFor="tc-n">Uit (minimale steekproef)</label><input className="field num" id="tc-n" name="min_sample" type="number" min={5} value={card.min_sample} readOnly={locked} onChange={(e) => set("min_sample", e.target.value)} {...aria("min_sample")} />{fieldError("min_sample")}</div>
+                <div className="form-line"><label htmlFor="tc-count">Geslaagd bij minimaal (aantal)<RequiredMark /></label><input className="field num" id="tc-count" name="success_count" type="number" min={1} value={successCount} readOnly={locked} onChange={(e) => setSuccessCount(e.target.value)} {...aria("success_count")} />{fieldError("success_count")}</div>
+                <div className="form-line"><label htmlFor="tc-n">Uit (minimale steekproef)<RequiredMark /></label><input className="field num" id="tc-n" name="min_sample" type="number" min={5} value={card.min_sample} readOnly={locked} onChange={(e) => set("min_sample", e.target.value)} {...aria("min_sample")} />{fieldError("min_sample")}</div>
               </div>
             </>
           ) : (
             <div className="double-field">
-              <div className="form-line"><label htmlFor="tc-succ">Het klopt als ≥ (%)</label><input className="field num" id="tc-succ" name="success_threshold_pct" type="number" min={1} max={100} value={card.success_threshold_pct} readOnly={locked} onChange={(e) => set("success_threshold_pct", e.target.value)} {...aria("success_threshold_pct")} />{fieldError("success_threshold_pct")}</div>
-              <div className="form-line"><label htmlFor="tc-fail">Het klopt niet als &lt; (%)</label><input className="field num" id="tc-fail" name="fail_threshold_pct" type="number" min={0} max={100} value={card.fail_threshold_pct ?? ""} readOnly={locked} onChange={(e) => set("fail_threshold_pct", e.target.value)} {...aria("fail_threshold_pct")} />{fieldError("fail_threshold_pct")}</div>
+              <div className="form-line"><label htmlFor="tc-succ">Het klopt als ≥ (%)<RequiredMark /></label><input className="field num" id="tc-succ" name="success_threshold_pct" type="number" min={1} max={100} value={card.success_threshold_pct} readOnly={locked} onChange={(e) => set("success_threshold_pct", e.target.value)} {...aria("success_threshold_pct")} />{fieldError("success_threshold_pct")}</div>
+              <div className="form-line"><label htmlFor="tc-fail">Het klopt niet als &lt; (%)<RequiredMark /></label><input className="field num" id="tc-fail" name="fail_threshold_pct" type="number" min={0} max={100} value={card.fail_threshold_pct ?? ""} readOnly={locked} onChange={(e) => set("fail_threshold_pct", e.target.value)} {...aria("fail_threshold_pct")} />{fieldError("fail_threshold_pct")}</div>
             </div>
           )}
           {v2 && (
@@ -462,7 +465,7 @@ export function ExperimentBuilder({
           <div className="double-field">
             {activeRule !== "absolute" && (
               <div className="form-line">
-                <label htmlFor="tc-n">Minimale steekproef</label>
+                <label htmlFor="tc-n">Minimale steekproef<RequiredMark /></label>
                 <input className="field num" id="tc-n" name="min_sample" type="number" min={5} value={card.min_sample} onChange={(e) => set("min_sample", e.target.value)} {...aria("min_sample")} />
                 {fieldError("min_sample")}
                 {band?.requiredN != null && band.requiredN !== n && (
@@ -470,7 +473,7 @@ export function ExperimentBuilder({
                 )}
               </div>
             )}
-            <div className="form-line"><label htmlFor="tc-days">Maximale looptijd (dagen)</label><input className="field num" id="tc-days" name="max_duration_days" type="number" min={1} max={180} value={card.max_duration_days} onChange={(e) => set("max_duration_days", e.target.value)} {...aria("max_duration_days")} />{fieldError("max_duration_days")}</div>
+            <div className="form-line"><label htmlFor="tc-days">Maximale looptijd (dagen)<RequiredMark /></label><input className="field num" id="tc-days" name="max_duration_days" type="number" min={1} max={180} value={card.max_duration_days} onChange={(e) => set("max_duration_days", e.target.value)} {...aria("max_duration_days")} />{fieldError("max_duration_days")}</div>
           </div>
           {v2 && (
             <div className="form-line">
@@ -511,7 +514,7 @@ export function ExperimentBuilder({
             </p>
           </fieldset>
           <fieldset className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }}>
-            <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Wervingskanalen</legend>
+            <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Wervingskanalen<RequiredMark /></legend>
             <div className="row">
               {Object.entries(CHANNELS).filter(([k]) => k !== "direct").map(([k, v], i) => (
                 <label key={k} className="check-row" style={{ margin: "2px 10px 2px 0" }}>
@@ -582,8 +585,8 @@ export function ExperimentBuilder({
           ) : type === "interview" ? (
             <>
               <div className="form-line">
-                <label htmlFor="tc-guide">Gespreksleidraad (één vraag per regel)</label>
-                <textarea className="field" id="tc-guide" name="guide" rows={9} value={guide} onChange={(e) => setGuide(e.target.value)} aria-describedby={shown.guide ? "err-guide tc-guide-audit" : "tc-guide-audit"} aria-invalid={shown.guide ? true : undefined} />
+                <label htmlFor="tc-guide">Gespreksleidraad (één vraag per regel)<RequiredMark /></label>
+                <textarea className="field" id="tc-guide" name="guide" rows={9} value={guide} onChange={(e) => setGuide(e.target.value)} aria-describedby={shown.guide ? "err-guide tc-guide-audit" : "tc-guide-audit"} aria-invalid={shown.guide ? true : undefined} aria-required />
                 {fieldError("guide")}
                 <p className="field-hint">Vragen over gedrag in het verleden. Geen pitch en geen &quot;zou je dit kopen?&quot;.</p>
               </div>
@@ -663,14 +666,14 @@ export function ExperimentBuilder({
                 )}
               </div>
               <div className="form-line mt-12"><label htmlFor="pg-name">Naam van het aanbod (merkneutraal)</label><input className="field" id="pg-name" name="product_name" value={page.product_name} onChange={(e) => setPage({ ...page, product_name: e.target.value })} /></div>
-              <div className="form-line"><label htmlFor="pg-head">Kop</label><input className="field" id="pg-head" name="headline" value={page.headline} onChange={(e) => setPage({ ...page, headline: e.target.value })} {...aria("headline")} />{fieldError("headline")}</div>
+              <div className="form-line"><label htmlFor="pg-head">Kop<RequiredMark /></label><input className="field" id="pg-head" name="headline" value={page.headline} onChange={(e) => setPage({ ...page, headline: e.target.value })} {...aria("headline")} />{fieldError("headline")}</div>
               <div className="form-line"><label htmlFor="pg-sub">Ondertitel</label><input className="field" id="pg-sub" name="subline" value={page.subline} onChange={(e) => setPage({ ...page, subline: e.target.value })} /></div>
               <div className="form-line"><label htmlFor="pg-offer">Aanbod (wat krijgt iemand precies?)</label><textarea className="field" id="pg-offer" name="offer" rows={3} value={page.offer} onChange={(e) => setPage({ ...page, offer: e.target.value })} /></div>
               <div className="form-line"><label htmlFor="pg-cta">Knoptekst</label><input className="field" id="pg-cta" name="cta_label" value={page.cta_label} onChange={(e) => setPage({ ...page, cta_label: e.target.value })} /></div>
               {type === "pricing" &&
                 prices.map((p, i) => (
                   <div className="double-field" key={i}>
-                    <div className="form-line"><label htmlFor={`pp-l-${i}`}>Prijspunt {i + 1}: naam</label><input className="field" id={`pp-l-${i}`} name={`price_label_${i}`} {...(i === 0 ? aria("price_points") : {})} value={p.label} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} /></div>
+                    <div className="form-line"><label htmlFor={`pp-l-${i}`}>Prijspunt {i + 1}: naam{i === 0 && <RequiredMark />}</label><input className="field" id={`pp-l-${i}`} name={`price_label_${i}`} {...(i === 0 ? aria("price_points") : {})} value={p.label} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} /></div>
                     <div className="form-line"><label htmlFor={`pp-a-${i}`}>Bedrag (€) en periode</label>
                       <div className="row" style={{ flexWrap: "nowrap" }}>
                         <input className="field num" id={`pp-a-${i}`} name={`price_amount_${i}`} inputMode="decimal" value={p.amount} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} />

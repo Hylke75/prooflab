@@ -10,11 +10,13 @@ import type { AssumptionCategory, ClaimStatus } from "@/lib/domain/labels";
 import { rankByInformationValue, type VoiResult } from "@/lib/domain/recommend";
 import type { IdeaProgress } from "@/lib/domain/coach";
 import { getUser } from "@/lib/data";
+import { testsWithVerdict } from "@/lib/domain/dossier-status";
 import { FORECAST_MOMENTS, type ForecastMoment, type ForecastState } from "@/lib/domain/forecast";
 import { todayInNL } from "@/lib/domain/sprint";
 import { loadIdeaWeights } from "@/lib/learning-data";
 import { withPracticeFlag } from "@/lib/domain/practice";
 import { loadRealInterviewIds, realObservationFilter } from "@/lib/practice-data";
+import { decisionConfirmation, decisionSettled } from "@/lib/domain/decision-confirmation";
 
 export type AssumptionWithEvidence = {
   id: string;
@@ -325,7 +327,7 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
   const forecastState = loadForecastState(ideaId);
   // B0: waarnemingen uit oefen- of niet-aangegeven gesprekken tellen niet mee.
   const realObs = realObservationFilter(await loadRealInterviewIds(ideaId));
-  const [questions, claims, verified, weak, competitors, alternatives, segments, experiments, cards, checks, decisions, behaviour, sizing, reports] = await Promise.all([
+  const [questions, claims, verified, weak, competitors, alternatives, segments, experiments, cards, checks, decisions, behaviour, sizing, reports, ideaRow] = await Promise.all([
     supabase.from("research_questions").select("id, status, position").eq("idea_id", ideaId).order("position").order("created_at"),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId).eq("status", "verified"),
@@ -334,12 +336,14 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     supabase.from("competitors").select("id", count).eq("idea_id", ideaId).in("kind", ["alternative", "status_quo"]),
     supabase.from("segments").select("id", count).eq("idea_id", ideaId),
     supabase.from("experiments").select("id, title, state, started_at, ends_at, created_at").eq("idea_id", ideaId).order("created_at"),
-    supabase.from("learning_cards").select("experiment_id, status, approved_at").eq("idea_id", ideaId),
+    supabase.from("learning_cards").select("experiment_id, status, approved_at, verdict").eq("idea_id", ideaId),
     supabase.from("reality_checks").select("created_at").eq("idea_id", ideaId).order("created_at", { ascending: false }).limit(1),
-    supabase.from("decisions").select("decided_at, client_confirmed_at").eq("idea_id", ideaId).order("decided_at", { ascending: false }),
+    supabase.from("decisions").select("action, decided_at, client_confirmed_at").eq("idea_id", ideaId).order("decided_at", { ascending: false }),
     supabase.from("observations").select("id", count).eq("idea_id", ideaId).eq("is_behaviour", true).eq("is_synthetic", false).or(realObs),
     supabase.from("sizing_factors").select("key, claims(status)").eq("idea_id", ideaId).eq("key", "base_count"),
     loadReportMeta(ideaId),
+    // B1: zonder opdrachtgever wacht een besluit niet op bevestiging.
+    supabase.from("ideas").select("client_id").eq("id", ideaId).maybeSingle(),
   ]);
   // B1c: de beslissende vraag (tot fase B2: de eerste vraag) en echte waarnemingen uit tests.
   const questionList = questions.data ?? [];
@@ -389,7 +393,9 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     latestRealityCheckAt: checks.data?.[0]?.created_at ?? null,
     decisions: decisionList.length,
     latestDecisionAt: decisionList[0]?.decided_at ?? null,
-    latestDecisionConfirmed: !!decisionList[0]?.client_confirmed_at,
+    latestDecisionAction: decisionList[0]?.action ?? null,
+    // B1: zonder opdrachtgever is het besluit direct definitief (afgeleid; client_confirmed_at blijft leeg).
+    latestDecisionConfirmed: decisionSettled(decisionConfirmation(decisionList[0]?.client_confirmed_at, !!ideaRow.data?.client_id)),
     reports: reports.length,
     latestReportAt: reports[0]?.created_at ?? null,
     latestReportShared: !!reports[0]?.shared_at,
@@ -405,8 +411,11 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
       experiments: expList.length,
       experimentsLive: states.filter((s) => s === "live" || s === "paused").length,
       experimentsEnded: states.filter((s) => ["ended", "analyzed", "decided"].includes(s)).length,
+      // B1: alleen een afgeronde test met uitslag geslaagd of niet geslaagd (onbeslist telt niet).
+      testsWithVerdict: testsWithVerdict(expList, cardList),
       realTestObservations: realTestObs.count ?? 0,
       decisions: decisionList.length,
+      latestDecisionAction: decisionList[0]?.action ?? null,
     },
     forecast,
   };

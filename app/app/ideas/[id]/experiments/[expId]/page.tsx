@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageFrame } from "@/components/shell/PageFrame";
-import { ActionForm } from "@/components/ui/ActionForm";
+import { ActionForm, CheckField, Field } from "@/components/ui/ActionForm";
 import { RuleSummary, ruleName } from "@/components/experiments/RuleSummary";
 import { ResultMeter } from "@/components/experiments/ResultMeter";
 import { GuideAuditList, TranscriptAuditList } from "@/components/experiments/InterviewAudit";
@@ -25,6 +25,7 @@ import { DMU_ROLES, EXPERIMENT_STATES, EXPERIMENT_TYPES, OBSERVATION_KINDS, type
 import { addInterview, addObservation, analyzeInterviewWithAi, createLearningCard, deleteDraft, deleteInterview, deleteObservation, reviewObservation, setInterviewPractice, setPrimaryTest, transitionExperiment } from "../actions";
 import { fictionSignals, fictionWarning, PRACTICE_LABELS, practiceStatus } from "@/lib/domain/practice";
 import { PracticeChoice } from "@/components/experiments/PracticeChoice";
+import { truncateWords } from "@/lib/domain/truncate";
 import { canDesignatePrimary, TEST_ROLES, testRole } from "@/lib/domain/primary-test";
 import { isStarted } from "@/lib/domain/test-counts";
 import { loadTestExclusions } from "@/lib/progress";
@@ -33,6 +34,8 @@ import { assumptionKind, assumptionKindLabel, metricFitsAssumption } from "@/lib
 import { belowMinSample, END_BELOW_SAMPLE_CONFIRM, END_REASON_MAX, END_REASON_MIN, thresholdBlock } from "@/lib/domain/experiment-gates";
 
 export const metadata: Metadata = { title: "Experiment" };
+
+const TITLE_MAX = 90;
 
 export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[id]/experiments/[expId]">) {
   const { id, expId } = await params;
@@ -98,12 +101,14 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
   // Fase B0, punt 4: telt deze test mee in kans en rangorde? Zelfde regel en gegevens als de risicokaart.
   const exclusion = isStarted(state) ? (await loadTestExclusions(id)).get(expId) ?? null : null;
 
+  const shortTitle = truncateWords(exp.title, TITLE_MAX);
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Experimenten", exp.title]} coach="experiments" ideaId={id}>
       <div className="section-row">
         <div>
           <div className="eyebrow">{EXPERIMENT_TYPES[type].label} · {EXPERIMENT_TYPES[type].phase}</div>
-          <h1>{exp.title}</h1>
+          {/* B1: een lange titel stopt op een woordgrens met "…"; de volledige titel staat in de tooltip. */}
+          <h1 title={shortTitle !== exp.title ? exp.title : undefined}>{shortTitle}</h1>
           <p className="sub">Toetst: {h.assumptions?.statement}</p>
         </div>
         <span className={`pill ${EXPERIMENT_STATES[state].pill}`}>{EXPERIMENT_STATES[state].label}</span>
@@ -466,39 +471,41 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           {running && (
             <div className="card mt-18">
               <h3>Interview toevoegen</h3>
-              <ActionForm action={addInterview.bind(null, id, expId)} submitLabel="Interview opslaan" resetOnSuccess>
+              <ActionForm action={addInterview.bind(null, id, expId)} submitLabel="Interview opslaan" pendingLabel="Interview opslaan…" resetOnSuccess noValidate>
                 <div className="double-field mt-12">
-                  <div className="form-line"><label htmlFor="iv-l">Pseudoniem</label><input className="field" id="iv-l" name="participant_label" placeholder="Bijv. Eventmanager A" /></div>
-                  <div className="form-line"><label htmlFor="iv-d">Datum gesprek</label><input className="field" id="iv-d" name="held_on" type="date" /></div>
+                  <Field name="participant_label" id="iv-l" label="Pseudoniem" required><input className="field" placeholder="Bijv. Eventmanager A" maxLength={80} /></Field>
+                  <Field name="held_on" id="iv-d" label="Datum gesprek" required><input className="field" type="date" /></Field>
                 </div>
                 <div className="double-field">
-                  <div className="form-line">
-                    <label htmlFor="iv-r">Rol in het koopproces</label>
-                    <select className="field" id="iv-r" name="dmu_role" defaultValue="user">{Object.entries(DMU_ROLES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-                  </div>
-                  <div className="form-line">
-                    <label htmlFor="iv-c">Geworven via</label>
-                    <select className="field" id="iv-c" name="recruited_via" defaultValue="network">{Object.entries(CHANNELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-                  </div>
+                  <Field name="dmu_role" id="iv-r" label="Rol in het koopproces" required>
+                    <select className="field" defaultValue="user">{Object.entries(DMU_ROLES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+                  </Field>
+                  <Field name="recruited_via" id="iv-c" label="Geworven via" required>
+                    <select className="field" defaultValue="network">{Object.entries(CHANNELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+                  </Field>
                 </div>
                 <div className="double-field">
-                  <div className="form-line"><label htmlFor="iv-s">Segment</label><input className="field" id="iv-s" name="segment" /></div>
-                  <div className="form-line">
-                    <label htmlFor="iv-t">Soort verslag</label>
-                    <select className="field" id="iv-t" name="record_type" defaultValue="transcript"><option value="transcript">Transcript (bijv. uit Teams, Zoom of Fathom)</option><option value="notes">Eigen notities</option></select>
-                  </div>
+                  <Field name="segment" id="iv-s" label="Segment (optioneel)"><input className="field" maxLength={160} /></Field>
+                  <Field name="record_type" id="iv-t" label="Soort verslag" required>
+                    <select className="field" defaultValue="transcript"><option value="transcript">Transcript (bijv. uit Teams, Zoom of Fathom)</option><option value="notes">Eigen notities</option></select>
+                  </Field>
                 </div>
                 <PracticeChoice />
-                <div className="form-line"><label htmlFor="iv-x">Transcript of notities</label><textarea className="field" id="iv-x" name="transcript" rows={8} /></div>
-                <div className="form-line">
-                  <label htmlFor="iv-g">Wervingsgroep</label>
-                  <select className="field" id="iv-g" name="recruitment_group" defaultValue={exp.recruitment_group ?? "unknown"} aria-describedby="iv-g-hint">
+                <Field name="transcript" id="iv-x" label="Transcript of notities" required hint="Minimaal 50 tekens.">
+                  <textarea className="field" rows={8} />
+                </Field>
+                <Field
+                  name="recruitment_group"
+                  id="iv-g"
+                  label="Wervingsgroep"
+                  hint="Is het een bekende? Vink dat hieronder aan: dan telt het gesprek als eigen netwerk. Gesprekken uit dezelfde groep tellen afnemend mee."
+                >
+                  <select className="field" defaultValue={exp.recruitment_group ?? "unknown"}>
                     {RECRUITMENT_KEYS.filter((k) => k !== "own_network").map((k) => <option key={k} value={k}>{RECRUITMENT_GROUPS[k].label}</option>)}
                   </select>
-                  <p className="field-hint" id="iv-g-hint">Is het een bekende? Vink dat hieronder aan: dan telt het gesprek als eigen netwerk. Gesprekken uit dezelfde groep tellen afnemend mee.</p>
-                </div>
+                </Field>
                 <label className="check-row"><input type="checkbox" name="is_acquaintance" /> Deze persoon is een bekende (vriend, collega, bestaande klant): wervingsgroep eigen netwerk</label>
-                <label className="check-row"><input type="checkbox" name="consent_recorded" /> Toestemming voor verwerking is gegeven en vastgelegd (bewaartermijn 12 maanden)</label>
+                <CheckField name="consent_recorded" id="iv-consent" label="Toestemming voor verwerking is gegeven en vastgelegd (bewaartermijn 12 maanden)" required />
               </ActionForm>
             </div>
           )}

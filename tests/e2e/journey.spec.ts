@@ -113,12 +113,12 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   expect(fitting, "een markt- of gedragsaanname").toBeTruthy();
   await page.getByLabel("Aanname die je toetst", { exact: true }).selectOption({ label: fitting! });
   await page.getByRole("radio", { name: /Landingpage-test/ }).click();
-  await page.getByLabel("Kop", { exact: true }).fill("Vind de perfecte eventlocatie in minuten.");
+  await page.getByLabel("Kop (verplicht)", { exact: true }).fill("Vind de perfecte eventlocatie in minuten.");
   await page.getByLabel("Ondertitel", { exact: true }).fill("Een persoonlijke selectie, zonder eindeloos zoeken.");
   // Fase B1b: eerst de drempels vastleggen; daarna rekent ProofLab het aantal deelnemers uit.
   await page.getByRole("button", { name: "Leg drempels vast" }).click();
   await expect(page.getByText(/Je hebt ongeveer \d+ deelnemers nodig/)).toBeVisible();
-  await page.getByLabel("Minimale steekproef", { exact: true }).fill("5");
+  await page.getByLabel("Minimale steekproef (verplicht)", { exact: true }).fill("5");
   await page.getByRole("radio", { name: "Koud", exact: true }).check();
   await page.getByRole("button", { name: /Test Card opslaan als concept/ }).click();
   // Fase B1a: na opslaan terug op het bord met een bevestiging; daarvandaan naar het concept.
@@ -175,7 +175,7 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   // The form makes way for the recorded forecast (and the others for this moment).
   await expect(page.getByRole("heading", { name: "Jouw voorspelling" })).toBeVisible();
   await page.getByRole("radio", { name: /Verder testen/ }).click();
-  await page.getByLabel("Waarom? (komt in het rapport)", { exact: true }).fill("De steekproef was klein en betaalbereidheid is nog niet getest.");
+  await page.getByLabel("Waarom? (komt in het rapport) (verplicht)", { exact: true }).fill("De steekproef was klein en betaalbereidheid is nog niet getest.");
   await page.getByRole("button", { name: "Bewaar mijn keuze" }).click();
   await expect(page.getByText(/Besluit vastgelegd/)).toBeVisible();
 

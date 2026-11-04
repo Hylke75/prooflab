@@ -6,8 +6,10 @@
 // - Markt is "klaar" als de beslissende onderzoeksvraag is beantwoord met minstens één geverifieerde bevinding.
 //   Tot fase B2 een vraag als beslissend markeert, is dat de eerste vraag (laagste positie). Anders: "Verkenning".
 // - Aannames zijn "klaar" als er minstens één kritieke aanname (belang ≥ 4) met een aangewezen hoofdtest is.
-// - Testen is "klaar" als er een afgeronde test is; "loopt" als er een test live of gepauzeerd is.
-// - Besluit is "klaar" als er een besluit is vastgelegd.
+// - Testen is "klaar" als er een afgeronde test is met een uitslag: een Learning Card met geslaagd of niet geslaagd.
+//   Onbeslist telt niet. "Loopt" als er een test live of gepauzeerd is of nog op een uitslag wacht.
+// - Besluit is "klaar" als het laatste besluit definitief is: doorgaan of stoppen. Na "verder testen", "verlengde
+//   testfase" of "bijsturen" is Testen weer de huidige stap; na "pauzeren" staat het dossier op Besluit · gepauzeerd.
 // - "Stappen met bewijs" telt alleen stappen met echte (niet-synthetische) waarnemingen of geverifieerde bronnen.
 //   Een ingevuld veld, een AI-tekst of een concepttest telt niet.
 
@@ -25,9 +27,33 @@ export type DossierInput = {
   experiments: number;
   experimentsLive: number;
   experimentsEnded: number;
+  testsWithVerdict: number; // afgeronde tests met een Learning Card met uitslag geslaagd of niet geslaagd
   realTestObservations: number; // niet-synthetische waarnemingen uit tests
   decisions: number;
+  latestDecisionAction: string | null; // actie van het laatste besluit (decisions.action), null zonder besluit
 };
+
+// Besluiten die stap Besluit afronden. Let op: voor de uitkomstklok telt pauzeren ook als definitief
+// (FINAL_ACTIONS in decision-rule.ts); het dossier zelf is na een pauze niet afgerond, het komt later terug.
+export const CONCLUSIVE_DECISIONS = ["continue", "stop"] as const;
+export const isConclusiveDecision = (a: string | null | undefined): boolean => !!a && (CONCLUSIVE_DECISIONS as readonly string[]).includes(a);
+
+// Na deze besluiten gaat het dossier terug naar testen.
+const BACK_TO_TEST = ["test_more", "extend", "adjust"];
+
+const OPEN_DECISION_LABELS: Record<string, string> = {
+  test_more: "Verder testen",
+  extend: "Verlengde testfase",
+  adjust: "Bijsturen",
+  pause: "Gepauzeerd",
+};
+
+// Aantal afgeronde tests (ended, analyzed, decided) met een Learning Card met uitslag geslaagd of niet geslaagd.
+export function testsWithVerdict(experiments: { id: string; state: string }[], cards: { experiment_id: string; verdict: string }[]): number {
+  return experiments.filter(
+    (e) => ["ended", "analyzed", "decided"].includes(e.state) && cards.some((c) => c.experiment_id === e.id && (c.verdict === "pass" || c.verdict === "fail")),
+  ).length;
+}
 
 export type DossierStep = {
   key: StepKey;
@@ -82,34 +108,71 @@ export function getDossierStatus(d: DossierInput): DossierStatus {
         : "Er zijn nog geen aannames.",
   };
 
-  const testDone = d.experimentsEnded > 0;
+  const testDone = d.testsWithVerdict > 0;
+  const endedWithoutVerdict = !testDone && d.experimentsEnded > 0;
   const test: DossierStep = {
     key: "test",
     number: 3,
     label: STEP_LABELS.test,
     state: testDone ? "done" : d.experimentsLive > 0 || d.experiments > 0 ? "running" : "empty",
-    statusLabel: testDone ? "Klaar" : d.experimentsLive > 0 ? "Test loopt" : d.experiments > 0 ? "In voorbereiding" : "Nog niet gestart",
+    statusLabel: testDone
+      ? "Klaar"
+      : d.experimentsLive > 0
+        ? "Test loopt"
+        : endedWithoutVerdict
+          ? "Nog geen uitslag"
+          : d.experiments > 0
+            ? "In voorbereiding"
+            : "Nog niet gestart",
     hasEvidence: d.realTestObservations > 0,
-    why: testDone ? "Er is minstens één afgeronde test." : d.experimentsLive > 0 ? "Er loopt een test; de uitkomst volgt na de eindconditie." : "Er is nog geen afgeronde test.",
+    why: testDone
+      ? "Er is minstens één afgeronde test met een uitslag: geslaagd of niet geslaagd."
+      : d.experimentsLive > 0
+        ? "Er loopt een test; de uitkomst volgt na de eindconditie."
+        : endedWithoutVerdict
+          ? "Er is een afgeronde test, maar nog zonder uitslag geslaagd of niet geslaagd. Onbeslist telt niet."
+          : "Er is nog geen afgeronde test met een uitslag.",
   };
 
-  const decideDone = d.decisions > 0;
+  const decideDone = d.decisions > 0 && isConclusiveDecision(d.latestDecisionAction);
+  // Een besluit dat het traject gaande houdt (verder testen, bijsturen, pauzeren): vastgelegd, maar niet afgerond.
+  const openDecision = d.decisions > 0 && !decideDone ? (d.latestDecisionAction ?? null) : null;
+  const openLabel = openDecision ? (OPEN_DECISION_LABELS[openDecision] ?? "Nog niet definitief") : null;
   const decide: DossierStep = {
     key: "decide",
     number: 4,
     label: STEP_LABELS.decide,
-    state: decideDone ? "done" : "empty",
-    statusLabel: decideDone ? "Klaar" : "Nog niet besloten",
-    hasEvidence: decideDone && (d.verifiedClaims > 0 || d.realTestObservations > 0),
-    why: decideDone ? "Er is een besluit vastgelegd." : "Er is nog geen besluit vastgelegd.",
+    state: decideDone ? "done" : openDecision ? "running" : "empty",
+    statusLabel: decideDone ? "Klaar" : (openLabel ?? "Nog niet besloten"),
+    hasEvidence: d.decisions > 0 && (d.verifiedClaims > 0 || d.realTestObservations > 0),
+    why: decideDone
+      ? "Er is een definitief besluit vastgelegd (doorgaan of stoppen)."
+      : openDecision
+        ? `Het laatste besluit is "${openLabel}". Het definitieve besluit (doorgaan of stoppen) volgt nog.`
+        : "Er is nog geen besluit vastgelegd.",
   };
 
   const steps = [market, assumptions, test, decide];
-  // Huidige stap: loopt er een test, dan is dat de huidige stap (niet "Onderzoek"). Anders de eerste stap die
-  // nog niet klaar is.
-  const current: StepKey | "done" = !decideDone && d.experimentsLive > 0 ? "test" : (steps.find((s) => s.state !== "done")?.key ?? "done");
+  // Huidige stap: loopt er een test, dan is dat de huidige stap (niet "Onderzoek"). Na verder testen, bijsturen of
+  // een verlengde testfase ook Testen. Na een pauze Besluit (gepauzeerd). Anders de eerste stap die nog niet klaar is.
+  const backToTest = !!openDecision && BACK_TO_TEST.includes(openDecision);
+  const current: StepKey | "done" =
+    !decideDone && (d.experimentsLive > 0 || backToTest)
+      ? "test"
+      : openDecision === "pause"
+        ? "decide"
+        : (steps.find((s) => s.state !== "done")?.key ?? "done");
   const currentStep = steps.find((s) => s.key === current);
-  const currentLabel = current === "done" ? "Besloten" : current === "test" && d.experimentsLive > 0 ? "Test loopt" : STEP_LABELS[current];
+  const currentLabel =
+    current === "done"
+      ? "Besloten"
+      : current === "test" && d.experimentsLive > 0
+        ? "Test loopt"
+        : current === "test" && backToTest
+          ? openLabel!
+          : current === "decide" && openDecision === "pause"
+            ? "Besluit · gepauzeerd"
+            : STEP_LABELS[current];
   return {
     steps,
     current,
