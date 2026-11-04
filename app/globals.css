@@ -423,6 +423,22 @@ details.quickline[open]>summary::after{transform:rotate(180deg)}
 .tc-need{font-size:18px;font-weight:600;color:var(--color-heading);margin:0 0 8px}
 .tc-need strong{font-size:24px}
 .tc-save{margin-top:8px}
+/* Fase B5: statusbalk (Concept → Klaar voor goedkeuring → Loopt) en het uitklapbare deel "Details" van de Test Card. */
+.tc-status-steps{list-style:none;margin:0 0 28px;padding:6px 4px;flex-wrap:wrap;overflow:visible;gap:6px 8px}
+.tc-status-steps .connector{width:16px}
+.tc-status-steps li{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:500;color:var(--color-text-muted);white-space:nowrap;min-height:44px}
+.tc-status-steps li.current{color:var(--color-heading);font-weight:600}
+.tc-status-steps .step-no{height:32px;width:32px;display:grid;place-items:center;border-radius:var(--radius-pill);background:var(--color-surface-muted);color:var(--color-text-muted);font-size:14px;font-weight:600;flex:none}
+.tc-status-steps li.current .step-no{background:var(--color-primary);color:var(--color-on-dark);box-shadow:0 0 0 3px var(--color-surface),0 0 0 5px var(--color-accent)}
+.tc-status-steps li.complete .step-no{background:var(--color-primary);color:var(--color-on-dark)}
+.tc-details{border-top:1px solid var(--color-border);margin-top:8px;padding-top:12px}
+.tc-details>summary{cursor:pointer;min-height:44px;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-weight:600;color:var(--color-heading);list-style:none}
+.tc-details>summary>strong{flex:none}
+.tc-details>summary::-webkit-details-marker{display:none}
+.tc-details>summary:before{content:'▸';color:var(--color-primary);transition:transform var(--dur) ease-out}
+.tc-details[open]>summary:before{transform:rotate(90deg)}
+.tc-details>summary small{font-weight:400;color:var(--color-text-muted)}
+@media(prefers-reduced-motion:reduce){.tc-details>summary:before{transition:none}}
 .field[aria-invalid="true"]{border-color:var(--color-risk-text)}
 .assumption-item.just-saved{outline:2px solid var(--color-primary);outline-offset:2px}
 @media (prefers-reduced-motion:no-preference){.assumption-item.just-saved{animation:appear var(--dur) ease-out both}}

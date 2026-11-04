@@ -21,6 +21,7 @@ import { evidenceLadder } from "@/lib/domain/dossier-label";
 import { perPersonLabel } from "@/lib/domain/per-person";
 import { ladderObservation } from "@/lib/dossier";
 import { addPremortem, approveLearningCard, confirmDecision, runCheck, saveDecision, updateLearningCard } from "./actions";
+import { LearningProposalNote } from "@/components/experiments/LearningProposalNote";
 import { RuleCheckCard } from "@/components/decision/DecisionRule";
 import { loadRuleCheck } from "@/lib/decision-rule-data";
 import { deviationLabel } from "@/lib/domain/decision-rule";
@@ -268,6 +269,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
               <RuleSummary o={outcomeFromCard(c.metrics, c.verdict, exp?.hypotheses ?? null)} />
               {canWrite ? (
                 <>
+                  <LearningProposalNote card={c} />
                   <ActionForm action={updateLearningCard.bind(null, id, c.id)} submitLabel="Learning Card opslaan" pendingLabel="Learning Card opslaan…" submitClass="btn white sm" noValidate>
                     <Field className="" labelClassName="field-label" name="we_learned" id={`lc-l-${c.id}`} label="Daaruit leren we" required>
                       <textarea className="field" rows={3} defaultValue={c.we_learned} minLength={10} maxLength={1500} />

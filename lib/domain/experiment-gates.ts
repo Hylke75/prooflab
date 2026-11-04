@@ -32,3 +32,14 @@ export function checkEnd(input: { n: number; minSample: number | null | undefine
   if (!input.confirmed) return { ok: false, error: "Bevestig dat je afrondt onder de minimale steekproef en dat de uitkomst niet meetelt." };
   return { ok: true, endReason: reason.slice(0, END_REASON_MAX) };
 }
+
+// Fase B5: één beslisregel per dossier. Een hoofdtest start pas (approved → live) als de go-regel van het dossier is
+// vastgelegd: anders kan de regel achteraf op de uitkomst worden afgestemd. Verkennende tests beslissen niets en
+// worden niet geblokkeerd. rule: "saved" = er is een regel, "missing" = nog niet, "unknown" = de database kent de
+// tabel nog niet (oudere omgeving): dan blokkeert ProofLab niet.
+export const GO_RULE_MISSING =
+  "Leg eerst de go-regel van het dossier vast. Een hoofdtest start pas als vaststaat wanneer je doorgaat, zodat niemand de regel achteraf op de uitkomst afstemt.";
+
+export function goRuleBlock(input: { isPrimary: boolean; rule: "saved" | "missing" | "unknown" }): string | null {
+  return input.isPrimary && input.rule === "missing" ? GO_RULE_MISSING : null;
+}
