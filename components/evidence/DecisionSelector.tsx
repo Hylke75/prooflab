@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
-import { ActionForm, type FormState } from "@/components/ui/ActionForm";
+import { ActionForm, Field, type FormState } from "@/components/ui/ActionForm";
 import { DECISIONS, type DecisionAction } from "@/lib/domain/labels";
 import { DEVIATION_MIN_CHARS, deviates, deviationLabel } from "@/lib/domain/decision-rule";
 import { EXTEND_WEEK_OPTIONS } from "@/lib/domain/extension";
@@ -27,7 +27,16 @@ export function DecisionSelector({
   const deviation = deviates(choice, ruleMet);
   const choiceBlocked = blocked[choice] ?? null;
   return (
-    <ActionForm action={action} submitLabel="Bewaar mijn keuze ✓" submitClass="btn primary hidden">
+    <ActionForm
+      action={action}
+      submitLabel="Bewaar mijn keuze"
+      submitIcon={<Icon name="check" size="sm" />}
+      pendingLabel="Besluit opslaan…"
+      submitStyle={{ width: "100%", marginTop: 8 }}
+      disabled={!!disabledReason || !!choiceBlocked}
+      describedBy={disabledReason || choiceBlocked ? "dec-blocked" : undefined}
+      noValidate
+    >
       <input type="hidden" name="action" value={choice} />
       <div role="radiogroup" aria-label="Besluit">
         {(Object.keys(DECISIONS) as DecisionAction[]).map((k) => (
@@ -40,15 +49,16 @@ export function DecisionSelector({
           </button>
         ))}
       </div>
-      <label className="field-label" htmlFor="dec-why">Waarom? (komt in het rapport)</label>
-      <textarea className="field" id="dec-why" name="rationale" rows={3} required minLength={15} />
+      <Field className="" labelClassName="field-label" name="rationale" id="dec-why" label="Waarom? (komt in het rapport)" required hint="Minstens één zin (15 tekens).">
+        <textarea className="field" rows={3} minLength={15} maxLength={2000} />
+      </Field>
       {choice === "extend" && !choiceBlocked && (
         <>
-          <label className="field-label" htmlFor="dec-weeks">Hoeveel weken extra testen?</label>
-          <select className="field" id="dec-weeks" name="extend_weeks" defaultValue="4">
-            {EXTEND_WEEK_OPTIONS.map((w) => <option key={w} value={w}>{w} weken</option>)}
-          </select>
-          <p className="field-hint">Het definitieve besluit en de uitkomstklok starten pas na deze verlengde testfase.</p>
+          <Field className="" labelClassName="field-label" name="extend_weeks" id="dec-weeks" label="Hoeveel weken extra testen?" required hint="Het definitieve besluit en de uitkomstklok starten pas na deze verlengde testfase.">
+            <select className="field" defaultValue="4">
+              {EXTEND_WEEK_OPTIONS.map((w) => <option key={w} value={w}>{w} weken</option>)}
+            </select>
+          </Field>
         </>
       )}
       {deviation && ruleMet != null && (
@@ -57,17 +67,16 @@ export function DecisionSelector({
             <strong>{deviationLabel(choice, ruleMet)}.</strong> Je wijkt af van de beslisregel die vooraf is vastgelegd. Motiveer waarom; de motivering komt in het
             auditspoor en in het rapport, en de opdrachtgever ziet haar bij het bevestigen.
           </div>
-          <label className="field-label" htmlFor="dec-deviation">Waarom wijk je af van de beslisregel?</label>
-          <textarea className="field" id="dec-deviation" name="rule_deviation_reason" rows={3} required minLength={DEVIATION_MIN_CHARS} maxLength={2000} />
+          <Field className="" labelClassName="field-label" name="rule_deviation_reason" id="dec-deviation" label="Waarom wijk je af van de beslisregel?" required hint={`Minstens ${DEVIATION_MIN_CHARS} tekens.`}>
+            <textarea className="field" rows={3} minLength={DEVIATION_MIN_CHARS} maxLength={2000} />
+          </Field>
         </>
       )}
-      <label className="field-label" htmlFor="dec-next">Concrete volgende stap</label>
-      <input className="field" id="dec-next" name="next_step" placeholder="Bijv. prijs-/aanbodtest met drie prijspunten in november" />
-      {disabledReason && <div className="note">{disabledReason}</div>}
-      {!disabledReason && choiceBlocked && <div className="note">{choiceBlocked}</div>}
-      <button className="btn primary" style={{ width: "100%", marginTop: 20 }} disabled={!!disabledReason || !!choiceBlocked}>
-        Bewaar mijn keuze <Icon name="check" size="sm" />
-      </button>
+      <Field className="" labelClassName="field-label" name="next_step" id="dec-next" label="Concrete volgende stap (optioneel)">
+        <input className="field" placeholder="Bijv. prijs-/aanbodtest met drie prijspunten in november" maxLength={600} />
+      </Field>
+      {disabledReason && <div className="note" id="dec-blocked">{disabledReason}</div>}
+      {!disabledReason && choiceBlocked && <div className="note" id="dec-blocked">{choiceBlocked}</div>}
     </ActionForm>
   );
 }

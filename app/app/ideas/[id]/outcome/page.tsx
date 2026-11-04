@@ -23,7 +23,7 @@ export default async function OutcomePage({ params }: PageProps<"/app/ideas/[id]
   const { idea, canWrite } = access;
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Voorspelling & uitkomst"]} coach="outcome" ideaId={id}>
+    <PageFrame crumbs={["Werkruimte", idea.title, "Voorspelling & uitkomst"]} coach="outcome" ideaId={id} section="/outcome">
       <div className="section-row">
         <div>
           <div className="eyebrow">Voorspellen · Meten · Leren</div>

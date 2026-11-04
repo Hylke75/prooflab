@@ -95,7 +95,7 @@ d("golf A", () => {
   });
 
   it("methode 2026-11-c: overstappen van a of b naar c, nooit terug", async () => {
-    // Sinds methode 2026-11-d (supabase/migrations/20261108090000_method_d.sql) starten nieuwe dossiers op 2026-11-d.
+    // Sinds methode 2026-11-d (supabase/migrations/20261109100000_method_d.sql) starten nieuwe dossiers op 2026-11-d.
     expect((await db.query("select method_version from public.ideas where id = $1", [A.idea])).rows[0].method_version).toBe("2026-11-d");
     const a = await newIdea(owner);
     const b = await newIdea(owner);

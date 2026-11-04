@@ -5,6 +5,7 @@
 import { OWN_BASE_RATE_MIN, openMoment } from "@/lib/domain/forecast";
 import { OVERCONFIDENT_GAP, overconfidence } from "@/lib/domain/calibration";
 import { extendedPhase } from "@/lib/domain/extension";
+import { dedupeByPerson } from "@/lib/domain/per-person";
 
 export type NoteKind = "tip" | "warning" | "question" | "praise";
 export type NoteAudience = "consultant" | "everyone";
@@ -62,7 +63,8 @@ export type CoachFacts = {
     assumptionId?: string | null;
   }[];
   interviews: { isAcquaintance: boolean }[];
-  observations: { kind: string; isBehaviour: boolean; isSynthetic: boolean; createdAt: string }[];
+  // interviewId: om per persoon te tellen (fase B0, punt 1); zonder interview telt elke waarneming apart.
+  observations: { kind: string; isBehaviour: boolean; isSynthetic: boolean; createdAt: string; interviewId?: string | null }[];
   learningCards: { id: string; status: string; approvedAt: string | null }[];
   realityCheck: { id: string; createdAt: string } | null;
   // oldest first; action en extendWeeks voor de verlengde testfase (golf B, punt 20; optioneel voor oudere aanroepers)
@@ -201,13 +203,14 @@ export const RULES: Record<string, Rule> = {
 
   opinions_no_behaviour: (f, base) => {
     const real = f.observations.filter((o) => !o.isSynthetic);
-    const opinions = real.filter((o) => o.kind === "opinion").length;
+    // Per persoon: meerdere meningen uit één interview tellen als één (fase B0, punt 1).
+    const opinions = dedupeByPerson(real, (o) => ({ interviewId: o.interviewId, kind: o.kind, dims: { isBehaviour: o.isBehaviour } })).filter((o) => o.kind === "opinion").length;
     if (opinions < 3 || real.some((o) => o.isBehaviour)) return null;
     return {
       code: "opinions_no_behaviour",
       kind: "warning",
       title: "Veel meningen, nog geen gedrag",
-      body: `Er zijn ${opinions} meningen vastgelegd maar nog geen waargenomen handeling. Mensen zijn vriendelijk over ideeën; een aanvraag, aanmelding of aanbetaling zegt veel meer.`,
+      body: `Er zijn ${opinions} meningen vastgelegd (per persoon geteld) maar nog geen waargenomen handeling. Mensen zijn vriendelijk over ideeën; een aanvraag, aanmelding of aanbetaling zegt veel meer.`,
       href: `${base}/experiments`,
       audience: "consultant",
     };

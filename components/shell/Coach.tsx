@@ -10,12 +10,22 @@ import type { CoachData } from "@/lib/domain/coach";
 import { useShell } from "./ShellProvider";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
-export function Coach({ data, aiConnected, notes }: { data: CoachData; aiConnected: boolean; notes?: FeedNote[] }) {
+// collapsed: het paneel staat ingeklapt (ook op brede schermen) en opent als slide-over via de coachknop. Voor
+// pagina's die zelf al een coachblok tonen, zoals Nieuw idee, zodat er maar één coach zichtbaar is.
+export function Coach({ data, aiConnected, notes, collapsed = false }: { data: CoachData; aiConnected: boolean; notes?: FeedNote[]; collapsed?: boolean }) {
   const { coachOpen, openCoach, close } = useShell();
   const [state, action, pending] = useActionState<CoachAnswerState, FormData>(askCoach, { answer: null, error: null });
   return (
     <>
-      <Drawer as="aside" open={coachOpen} onClose={close} modalQuery="(max-width: 1160px)" className={`coach${coachOpen ? " open" : ""}`} id="coach" label="Onderzoekscoach">
+      <Drawer
+        as="aside"
+        open={coachOpen}
+        onClose={close}
+        modalQuery={collapsed ? undefined : "(max-width: 1160px)"}
+        className={`coach${collapsed ? " collapsed" : ""}${coachOpen ? " open" : ""}`}
+        id="coach"
+        label="Onderzoekscoach"
+      >
         <div className="coach-top">
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span className="orb" aria-hidden="true">✳</span>
@@ -39,7 +49,7 @@ export function Coach({ data, aiConnected, notes }: { data: CoachData; aiConnect
             </div>
             <div className="chat-suggestions">
               {data.suggestions.map((s) => (
-                <Link key={s.href + s.label} className="suggestion" href={s.href} onClick={close}>
+                <Link key={s.href + s.label} className="suggestion" href={s.href} prefetch={false} onClick={close}>
                   <Icon name={s.icon} size="sm" /> {s.label} →
                 </Link>
               ))}

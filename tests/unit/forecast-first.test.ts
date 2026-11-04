@@ -29,6 +29,7 @@ function progress(forecast: Partial<ForecastState> | undefined, over: Partial<Id
     latestRealityCheckAt: null,
     decisions: 0,
     latestDecisionAt: null,
+    latestDecisionAction: null,
     latestDecisionConfirmed: false,
     reports: 0,
     latestReportAt: null,

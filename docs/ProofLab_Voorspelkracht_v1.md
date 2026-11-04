@@ -841,7 +841,7 @@ overstappagina noemen de regel bij de methode (`describe.ts`, `changesBetween`).
 
 ### 13.4 Methodeversie, migratie en reproduceerbaarheid
 
-- Migratie `20261108090000_method_d.sql` (akkoord product owner, 4 november 2026): `ideas.method_version` staat
+- Migratie `20261109100000_method_d.sql` (akkoord product owner, 4 november 2026): `ideas.method_version` staat
   `'2026-11-d'` toe en dat is de standaard voor **nieuwe** dossiers; `method_version_rank` en `guard_method_version`
   kennen de nieuwe versie.
 - **Bestaande dossiers houden hun versie**: de migratie wijzigt geen rijen, zodat elke eerder getoonde kans en elk

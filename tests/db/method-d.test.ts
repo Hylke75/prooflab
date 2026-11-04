@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Client } from "pg";
 import { randomUUID } from "node:crypto";
 
-// Methode 2026-11-d (supabase/migrations/20261108090000_method_d.sql): nieuwe dossiers starten op 2026-11-d,
+// Methode 2026-11-d (supabase/migrations/20261109100000_method_d.sql): nieuwe dossiers starten op 2026-11-d,
 // bestaande dossiers houden hun versie en stappen alleen vooruit over, met audit. Draait tegen een
 // wegwerp-Postgres (scripts/test-db.sh); overgeslagen zonder TEST_DATABASE_URL.
 const url = process.env.TEST_DATABASE_URL;

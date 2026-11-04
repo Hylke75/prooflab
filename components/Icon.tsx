@@ -1,7 +1,8 @@
 // Line icons from the reference mock-up, rendered from one inline SVG sprite.
 export type IconName =
   | "home" | "compass" | "layers" | "flask" | "shield" | "file" | "plus" | "arrow" | "check"
-  | "spark" | "menu" | "close" | "trend" | "clock" | "info" | "users" | "settings" | "logout";
+  | "spark" | "menu" | "close" | "trend" | "clock" | "info" | "users" | "settings" | "logout"
+  | "layout-dashboard" | "scale" | "lightbulb" | "chevron";
 
 export function Icon({ name, size, className }: { name: IconName; size?: "sm" | "lg"; className?: string }) {
   return (
@@ -32,6 +33,10 @@ export function IconSprite() {
         <symbol id="ic-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></symbol>
         <symbol id="ic-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.8-3.4 3.4-5.5 6.5-5.5s5.7 2.1 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c1.9.8 3.1 2.6 3.5 5.2" /></symbol>
         <symbol id="ic-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1" /></symbol>
+        <symbol id="ic-layout-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" /></symbol>
+        <symbol id="ic-scale" viewBox="0 0 24 24"><path d="M12 3v18M8 21h8M5 7h14M12 3v4" /><path d="M5 7 2 14a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z" /></symbol>
+        <symbol id="ic-lightbulb" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4" /><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.5 1.1 1.3 1.1 2.2h5c0-.9.4-1.7 1.1-2.2A6 6 0 0 0 12 3Z" /></symbol>
+        <symbol id="ic-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></symbol>
         <symbol id="ic-logout" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11" /></symbol>
       </defs>
     </svg>

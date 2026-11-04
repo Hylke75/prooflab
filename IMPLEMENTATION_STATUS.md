@@ -367,12 +367,26 @@ Uit `docs/VERBETERPLAN_WERKWIJZE.md`, golf B (punten 1, 2, 6, 15, 18 en 20). Mig
 - 🟡 Het voorspelmoment "bij het besluit" is één moment: wie vóór de verlengde testfase voorspelde, voorspelt na afloop niet opnieuw
 - [ ] Migratie nog toepassen op de live Supabase; e2e-journey en visuele controle van de nieuwe kaarten in de browser
 
+## Fase 3: menu en afronding (3 november)
+
+- ✅ **Menu**: ideekiezer bovenaan (huidig idee, andere ideeën, + Nieuw idee) in plaats van "Huidig idee", ideekaart en "Dossieroverzicht"; daaronder Overzicht van dit idee, 1 Markt, 2 Aannames, 3 Testen, 4 Besluit, Rapport; onder een scheidingslijn Alle ideeën en Klanten. Consultant op een ideepagina: 9 zichtbare items (ideekiezer + 8 links). Eén gedeelde `STEPS`-definitie in `lib/steps.ts` voor menu en stappenbalk; status per stap uit `getDossierStatus()` (✓ klaar, • loopt, leeg). Elk item een eigen icoon (nieuw: layout-dashboard, scale, lightbulb). Opdrachtgevers zien geen overzicht en geen Klanten
+- ✅ **Tabbladen** als links tussen bestaande adressen: Markt (Marktverkenning | Bronnen & koppelingen, alleen team) en Besluit (Bewijs & besluit | Voorspelling & uitkomst); adressen ongewijzigd, geen redirects nodig
+- ✅ **Avatarmenu**: Voorspelkwaliteit (team), Privacyverzoeken en Systeemstatus (alleen eigenaren), Uitloggen
+- ✅ **Eén kop** op alle ideepagina's (ook /outcome): sprintbalk, stappenbalk en tabbladen in `PageFrame` (prop `section`)
+- ✅ /evidence: `loading.tsx` met skelet voor inhoud én coachpaneel
+- ✅ Coach: op werkruimtepagina's het lopende idee; eigen `integrations`-tekst; op /ideas/new is het paneel rechts ingeklapt (één coach)
+- ✅ Klanten: alleen "Komt de uitnodiging niet aan? Kopieer de link." met kopieerknop; e-mailuitleg op Systeemstatus
+- ✅ Rapport: één knop "Download als PDF"; delen met de opdrachtgever via een bevestigingsvenster ("kan niet worden teruggedraaid")
+- ✅ Intake: per vraag welke velden optioneel en later aan te vullen zijn
+- ✅ Tests: `tests/unit/menu.test.ts`, uitbreiding `tests/unit/coach.test.ts`; e2e-journey vergelijkt menu en stappenbalk en opent Systeemstatus via het avatarmenu. Visueel gecontroleerd op 1440 px en 390 px tegen de live omgeving (alleen lezen)
+- 🟡 De menustatus komt na het laden van de pagina (de layout kent het open idee niet); tot dan staan de stappen zonder teken. De e2e-journey is niet gedraaid
+
 ## Methode 2026-11-d: tegenbewijs per bron (4 november)
 
 Methodedocument hoofdstuk 13. Bestaande dossiers op 2026-11-a t/m 2026-11-c rekenen ongewijzigd; nieuwe dossiers starten op 2026-11-d.
 
 - ✅ **Tegenbewijs per bron** (`assumptionProbabilityV4`, optie `contraPerSource` in `lib/domain/evidence.ts`; `lib/domain/method/2026-11-d.ts`): per bron telt alleen het sterkste tegensignaal; over bronnen heen afnemend per soort; plafonds ongewijzigd; geen wervingsgroep-demping voor tegenbewijs
 - ✅ **Weergave**: samengevoegde tegensignalen apart op aannamepagina, methodepagina en rapport (`explainMerged`, `mergedShort`); helptekst "Methodeversie" bijgewerkt
-- ✅ Migratie `20261108090000_method_d.sql` (akkoord product owner): `'2026-11-d'` toegestaan en standaard voor nieuwe dossiers, rangorde en overstapbewaking bijgewerkt, geen bestaande rijen gewijzigd
+- ✅ Migratie `20261109100000_method_d.sql` (akkoord product owner): `'2026-11-d'` toegestaan en standaard voor nieuwe dossiers, rangorde en overstapbewaking bijgewerkt, geen bestaande rijen gewijzigd
 - ✅ Tests `tests/unit/evidence-v4.test.ts`, `method.test.ts`; `tests/db/method-d.test.ts`, bijgewerkt `golf-a.test.ts` en `method-v2.test.ts`
 - 🟡 Migratie nog toe te passen op de live database (Supabase); tot dan geeft overstappen naar 2026-11-d een fout en starten nieuwe dossiers op 2026-11-c

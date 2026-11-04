@@ -401,6 +401,9 @@ const InterviewSchema = z.object({
       relation: z.enum(["supports", "contradicts", "neutral"]),
     }),
   ),
+  // B0: lijkt het transcript verzonnen, een oefening of een test? Alleen een waarschuwing; de mens beslist.
+  looks_fictional: z.boolean().describe("true als het transcript verzonnen, een oefening, rollenspel of test lijkt"),
+  reason: z.string().describe("Korte reden bij looks_fictional, anders een lege tekst"),
 });
 
 export async function analyzeInterview(assumption: string, transcript: string, provider: ProviderId) {
@@ -415,7 +418,10 @@ ${transcript}
 </${tag}>
 Markeer concrete gebeurtenissen en gedrag in het verleden, huidige werkwijze en uitgaven, tegenvoorbeelden en
 bezwaren. Neem ook uitspraken op die de aanname tegenspreken. Meningen over het idee ("leuk", "zou ik gebruiken")
-markeer je als opinion. Elk citaat is letterlijk uit het transcript overgenomen.`,
+markeer je als opinion. Elk citaat is letterlijk uit het transcript overgenomen.
+Geef met looks_fictional aan of het transcript verzonnen, een oefening, een rollenspel of een test lijkt (bijv.
+woorden als "fictief", "test" of "voorbeeld", plaatshoudernamen als "John Doe" of "Jan Jansen", lorem ipsum of een
+onnatuurlijk perfect gesprek), met in reason een korte reden. Twijfel je niet, dan false en een lege reason.`,
     "medium",
   );
 }

@@ -16,7 +16,6 @@ export default async function AppLayout({ children }: LayoutProps<"/app">) {
         <Sidebar
           workspaceName={ws.org?.name ?? "Opdrachtgever"}
           isConsultant={!!ws.org}
-          isOwner={ws.org?.role === "owner"}
           ideas={ideas ?? []}
           aiConnected={aiConfigured()}
         />

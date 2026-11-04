@@ -6,6 +6,7 @@ import { ideaMethodVersion } from "@/lib/method-data";
 import { QUALITY_VALUES, SurveyConfigSchema, type Answers, type Quality, type SurveyConfig, type SurveyCountRow } from "@/lib/domain/survey";
 import { surveySplitFromCounts, type ExportRow, type SurveySplit } from "@/lib/domain/survey-results";
 import { interviewRecruitment, type RecruitmentGroup } from "@/lib/domain/recruitment";
+import { countsAsEvidence } from "@/lib/domain/practice";
 
 export type LandingConfig = {
   headline: string;
@@ -134,26 +135,49 @@ type Exp = {
 // (row level security): the measured n and successes on their approved Learning Cards.
 async function earlierTests(exp: Exp): Promise<{ n: number; successes: number }[]> {
   if (!exp.idea_id) return [];
+  return earlierTestsOfType(exp.idea_id, exp.type, { excludeId: exp.id, before: exp.ended_at ?? undefined });
+}
+
+// Ook gebruikt door de Test Card (fase B1b): het benodigde aantal deelnemers volgt uit eerdere tests van dit type.
+export async function earlierTestsOfType(
+  ideaId: string,
+  type: string,
+  opts: { excludeId?: string; before?: string } = {},
+): Promise<{ n: number; successes: number }[]> {
   const supabase = await supabaseServer();
-  const { data: idea } = await supabase.from("ideas").select("org_id").eq("id", exp.idea_id).maybeSingle();
+  const { data: idea } = await supabase.from("ideas").select("org_id").eq("id", ideaId).maybeSingle();
   if (!idea?.org_id) return [];
-  const before = exp.ended_at ?? new Date().toISOString();
-  const { data } = await supabase
+  let q = supabase
     .from("learning_cards")
     .select("metrics, experiments!inner(id, type, state, ended_at, ideas!inner(org_id))")
     .eq("status", "approved")
-    .eq("experiments.type", exp.type)
+    .eq("experiments.type", type)
     .eq("experiments.ideas.org_id", idea.org_id)
     .in("experiments.state", ["ended", "analyzed", "decided"])
-    .lt("experiments.ended_at", before)
-    .neq("experiment_id", exp.id)
-    .limit(500);
+    .lt("experiments.ended_at", opts.before ?? new Date().toISOString());
+  if (opts.excludeId) q = q.neq("experiment_id", opts.excludeId);
+  const { data } = await q.limit(500);
   return (data ?? [])
     .map((c) => {
       const m = c.metrics as { n?: unknown; successes?: unknown } | null;
       return { n: Number(m?.n), successes: Number(m?.successes) };
     })
     .filter((t) => Number.isInteger(t.n) && Number.isInteger(t.successes) && t.n > 0);
+}
+
+// Prior per testtype voor de Test Card; zonder schema of rechten valt hij terug op de vlakke prior.
+export async function priorsByType(ideaId: string, types: readonly string[]): Promise<Record<string, BetaPrior>> {
+  const out: Record<string, BetaPrior> = {};
+  await Promise.all(
+    types.map(async (t) => {
+      try {
+        out[t] = empiricalPrior(await earlierTestsOfType(ideaId, t));
+      } catch {
+        out[t] = FLAT_PRIOR;
+      }
+    }),
+  );
+  return out;
 }
 
 export async function priorFor(exp: Exp): Promise<BetaPrior> {
@@ -206,10 +230,12 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
     }
   } else if (exp.type === "interview") {
     const [{ data: interviews }, { data: obs }] = await Promise.all([
-      supabase.from("interviews").select("id, consent_recorded, is_acquaintance, dmu_role, recruited_via, recruitment_group").eq("experiment_id", exp.id),
+      supabase.from("interviews").select("id, consent_recorded, is_acquaintance, dmu_role, recruited_via, recruitment_group, is_practice").eq("experiment_id", exp.id),
       supabase.from("observations").select("interview_id, kind, review_status").eq("experiment_id", exp.id).eq("is_synthetic", false),
     ]);
-    const valid = (interviews ?? []).filter((i) => i.consent_recorded);
+    // B0: alleen echte gesprekken met vastgelegde toestemming tellen; oefeningen en niet-aangegeven gesprekken niet.
+    const consented = (interviews ?? []).filter((i) => i.consent_recorded);
+    const valid = consented.filter((i) => countsAsEvidence(i.is_practice));
     n = valid.length;
     // Aantalregel: een gesprek telt alleen met een vastgelegde aanbetaling of herhaalaankoop (afgekeurde
     // AI-codering telt niet). Anders: het probleem herkend in eigen recent gedrag.
@@ -234,8 +260,12 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
       groups.set(g, row);
     }
     byRecruitment = [...groups.values()];
-    const excluded = (interviews ?? []).length - valid.length;
+    const excluded = (interviews ?? []).length - consented.length;
     if (excluded) warnings.push(`${excluded} interview(s) zonder vastgelegde toestemming tellen niet mee.`);
+    const practice = consented.filter((i) => i.is_practice === true).length;
+    const unmarked = consented.filter((i) => i.is_practice == null).length;
+    if (practice) warnings.push(`${practice} interview(s) zijn een oefening of fictief en tellen niet als bewijs.`);
+    if (unmarked) warnings.push(`${unmarked} interview(s) zijn nog niet aangegeven als echt gesprek of oefening en tellen niet mee tot dat gebeurt.`);
     if (valid.length && valid.filter((i) => i.is_acquaintance).length / valid.length > 0.5) warnings.push("Meer dan de helft van de geïnterviewden zijn bekenden.");
   } else {
     // Distinct visitors are counted in the database: a page of rows would silently cap large tests.

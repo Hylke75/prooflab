@@ -22,25 +22,32 @@ import { deviates, isFinalAction } from "@/lib/domain/decision-rule";
 import { loadRuleCheck } from "@/lib/decision-rule-data";
 import { EXTEND_MAX_WEEKS, EXTEND_MIN_WEEKS, extensionBlocker } from "@/lib/domain/extension";
 import { againstFor } from "@/lib/against-data";
+import { isConclusiveDecision } from "@/lib/domain/dossier-status";
+import { DECISIONS } from "@/lib/domain/labels";
 
-export type ActionState = { error: string | null; ok?: string | null };
+import { fieldErrorsFrom, savedNothing } from "@/lib/domain/form-errors";
+
+export type ActionState = { error: string | null; ok?: string | null; fieldErrors?: Record<string, string> };
 const refresh = (id: string) => revalidatePath(`/app/ideas/${id}`, "layout");
 
 const CardSchema = z.object({
-  we_learned: z.string().trim().min(10).max(1500),
-  therefore: z.string().trim().min(5).max(1500),
-  data_reliability: z.enum(["low", "medium", "high"]),
+  we_learned: z.string().trim().min(10, "Daaruit leren we: schrijf minstens één korte zin (10 tekens).").max(1500, "Daaruit leren we: maximaal 1500 tekens."),
+  therefore: z.string().trim().min(5, "Daarom gaan we: schrijf op wat je nu gaat doen (minstens 5 tekens).").max(1500, "Daarom gaan we: maximaal 1500 tekens."),
+  data_reliability: z.enum(["low", "medium", "high"], { error: "Kies hoe betrouwbaar de data is." }),
 });
 
 export async function updateLearningCard(ideaId: string, cardId: string, _: ActionState, form: FormData): Promise<ActionState> {
   await requireWritableIdea(ideaId);
   const p = CardSchema.safeParse(Object.fromEntries(form));
-  if (!p.success) return { error: "Vul in wat je hebt geleerd en wat je daarom gaat doen." };
+  if (!p.success) {
+    const fieldErrors = fieldErrorsFrom(p.error.issues);
+    return { error: savedNothing("De Learning Card", fieldErrors), fieldErrors };
+  }
   const supabase = await supabaseServer();
   const { error } = await supabase.from("learning_cards").update(p.data).eq("id", cardId).eq("idea_id", ideaId).eq("status", "draft");
-  if (error) return { error: "Opslaan mislukt." };
+  if (error) return { error: "De Learning Card is niet opgeslagen. Probeer het opnieuw." };
   refresh(ideaId);
-  return { error: null, ok: "Learning Card bijgewerkt." };
+  return { error: null, ok: "Learning Card opgeslagen." };
 }
 
 // Human approval is required before a result changes the status of an assumption.
@@ -145,15 +152,18 @@ export async function addPremortem(ideaId: string, _: ActionState, form: FormDat
 const DecisionSchema = z.object({
   action: z.enum(["continue", "adjust", "test_more", "extend", "pause", "stop"]),
   extend_weeks: z.coerce.number().int().min(EXTEND_MIN_WEEKS).max(EXTEND_MAX_WEEKS).optional(),
-  rationale: z.string().trim().min(15, "Leg in minstens één zin uit waarom.").max(2000),
-  next_step: z.string().trim().max(600).optional(),
+  rationale: z.string().trim().min(15, "Waarom: leg in minstens één zin uit waarom (15 tekens).").max(2000, "Waarom: maximaal 2000 tekens."),
+  next_step: z.string().trim().max(600, "Volgende stap: maximaal 600 tekens.").optional(),
   rule_deviation_reason: z.string().trim().max(2000).optional(),
 });
 
 export async function saveDecision(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
   const { idea } = await requireWritableIdea(ideaId);
   const p = DecisionSchema.safeParse(Object.fromEntries(form));
-  if (!p.success) return { error: p.error.issues[0].message };
+  if (!p.success) {
+    const fieldErrors = fieldErrorsFrom(p.error.issues, { action: "Kies een besluit.", extend_weeks: `Kies hoeveel weken extra testen (${EXTEND_MIN_WEEKS} tot ${EXTEND_MAX_WEEKS}).` });
+    return { error: savedNothing("Het besluit", fieldErrors), fieldErrors };
+  }
   const supabase = await supabaseServer();
   const { data: check } = await supabase.from("reality_checks").select("id, created_at, findings").eq("idea_id", ideaId).order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (!check) return { error: "Doe eerst de Reality Check. Een besluit zonder tegenspraak is niet toegestaan." };
@@ -167,7 +177,10 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   const blocker = decisionBlocker(progress);
   if (blocker) return { error: blocker };
   // Golf B, punt 20: één verlengde testfase van 2 tot 8 weken; tijdens die fase geen definitief besluit.
-  if (p.data.action === "extend" && !p.data.extend_weeks) return { error: `Kies hoeveel weken extra testen (${EXTEND_MIN_WEEKS} tot ${EXTEND_MAX_WEEKS}).` };
+  if (p.data.action === "extend" && !p.data.extend_weeks) {
+    const fieldErrors = { extend_weeks: `Kies hoeveel weken extra testen (${EXTEND_MIN_WEEKS} tot ${EXTEND_MAX_WEEKS}).` };
+    return { error: savedNothing("Het besluit", fieldErrors), fieldErrors };
+  }
   const { data: earlier } = await supabase.from("decisions").select("action, decided_at, extend_weeks").eq("idea_id", ideaId);
   const extBlock = extensionBlocker(
     p.data.action,
@@ -179,7 +192,11 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   // Golf B, punt 6: een definitief besluit wordt getoetst aan de beslisregel. Wie afwijkt, motiveert dat.
   const ruleCheck = isFinalAction(p.data.action) ? await loadRuleCheck(ideaId) : null;
   const deviation = ruleCheck ? deviates(p.data.action, ruleCheck.evaluation.met) : false;
-  if (deviation && (p.data.rule_deviation_reason ?? "").length < 15) return { error: "Dit besluit wijkt af van de beslisregel. Motiveer in minstens één zin waarom." };
+  if (deviation && (p.data.rule_deviation_reason ?? "").length < 15)
+    return {
+      error: "Het besluit is nog niet opgeslagen: het wijkt af van de beslisregel.",
+      fieldErrors: { rule_deviation_reason: "Waarom wijk je af: motiveer in minstens één zin (15 tekens)." },
+    };
   // The decision links the most recently ended analysed experiment; all analysed ones become decided.
   const { data: exps } = await supabase.from("experiments").select("id").eq("idea_id", ideaId).eq("state", "analyzed").order("ended_at", { ascending: false });
   const { error } = await supabase.from("decisions").insert({
@@ -223,6 +240,17 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   refresh(ideaId);
   if (p.data.action === "extend")
     return { error: null, ok: `Verlengde testfase van ${p.data.extend_weeks} weken vastgelegd. Het definitieve besluit en de uitkomstklok volgen daarna.` };
+  // B1: na verder testen, bijsturen of pauzeren is het dossier niet besloten; de bevestiging zegt wat nu volgt.
+  if (!isConclusiveDecision(p.data.action))
+    return {
+      error: null,
+      ok:
+        p.data.action === "pause"
+          ? "Besluit vastgelegd: pauzeren. Het definitieve besluit (doorgaan of stoppen) volgt als het dossier terugkomt."
+          : `Besluit vastgelegd: ${DECISIONS[p.data.action].label.toLowerCase()}. Ontwerp de volgende test; het definitieve besluit volgt daarna.`,
+    };
+  // B1: zonder opdrachtgever is het besluit direct definitief; er wacht geen bevestiging.
+  if (!idea.client_id) return { error: null, ok: "Besluit vastgelegd. Dit dossier heeft geen opdrachtgever: het besluit is direct definitief. Werk nu het rapport bij." };
   return { error: null, ok: "Besluit vastgelegd. De opdrachtgever kan het nu bevestigen; werk daarna het rapport bij." };
 }
 

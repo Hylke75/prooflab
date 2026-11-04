@@ -108,7 +108,7 @@ export default async function StatusPage() {
             </div>
             <div className="card tight">
               <div className="tiny">Opschoontaak persoonsgegevens</div>
-              <div className="mini-kpi num">{s.purge_last_run_at ? when(s.purge_last_run_at) : "Onbekend"}</div>
+              <div className="mini-kpi num kpi-word">{s.purge_last_run_at ? when(s.purge_last_run_at) : "Onbekend"}</div>
               {!s.cron_available
                 ? pill("orange", "pg_cron niet beschikbaar: plan de taak elders")
                 : s.purge_job_scheduled === false
@@ -119,7 +119,7 @@ export default async function StatusPage() {
             </div>
             <div className="card tight">
               <div className="tiny">Gecontroleerd</div>
-              <div className="mini-kpi num">{when(s.checked_at)}</div>
+              <div className="mini-kpi num kpi-word">{when(s.checked_at)}</div>
               {pill("gray", "Bij elke paginalading")}
             </div>
           </div>
@@ -192,6 +192,18 @@ export default async function StatusPage() {
           </div>
         </>
       )}
+      <div className="card" style={{ marginTop: 22 }}>
+        <div className="section-title">
+          <h3>E-mail en inloglinks</h3>
+        </div>
+        <p className="sub">
+          Uitnodigingen aan opdrachtgevers gaan via Resend als die is gekoppeld. Inloglinks die een opdrachtgever zelf aanvraagt, verstuurt Supabase
+          Auth. Zolang het project de standaard-e-mailserver van Supabase gebruikt, komen die mails alleen aan bij adressen van het eigen
+          Supabase-team en geldt een laag limiet van enkele mails per uur. Voor externe opdrachtgevers is een eigen SMTP-server nodig (Supabase:
+          Authentication → Emails → SMTP), bijvoorbeeld Resend-SMTP; zie <code>docs/OPERATIONS.md</code>. Komt een mail niet aan, dan kopieert het
+          team op Klanten de link en laat de opdrachtgever zelf een inloglink aanvragen met hetzelfde e-mailadres.
+        </p>
+      </div>
       <div style={{ marginTop: 22 }}>
         <AiProviderSettings settings={aiSettings} connected={connected} models={models} />
         <AiConnectionTest />

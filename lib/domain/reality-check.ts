@@ -3,6 +3,7 @@
 // critical questions on top, but these rules always run and cannot be switched off.
 
 import type { ClaimStatus, DecisionAction } from "./labels";
+import { dedupeByPerson } from "./per-person";
 
 export type Severity = "blocker" | "warning" | "info";
 
@@ -34,7 +35,9 @@ export type DossierFacts = {
     channels: string[];
   }[];
   interviews: { dmuRole: string; isAcquaintance: boolean; consent: boolean }[];
-  observations: { kind: string; isBehaviour: boolean; isSynthetic: boolean; isCostly: boolean }[];
+  // Fase B0, punt 1: interviewId (en optioneel isFact/isRealContext) om per persoon te tellen. Zonder interviewId
+  // telt elke waarneming apart (landingpagina, prijstest en enquête tellen al per bezoeker of respondent).
+  observations: { kind: string; isBehaviour: boolean; isSynthetic: boolean; isCostly: boolean; interviewId?: string | null; isFact?: boolean; isRealContext?: boolean }[];
   learningCards: { status: "draft" | "approved"; verdict: "pass" | "fail" | "inconclusive" }[];
   decisionsAfterLastLearning: number;
   isB2B: boolean;
@@ -54,7 +57,13 @@ export function runRealityCheck(f: DossierFacts): RealityCheckResult {
   const add = (code: string, severity: Severity, title: string, detail: string) => out.push({ code, severity, title, detail });
 
   const started = f.experiments.filter((e) => !["draft", "ready_for_review", "approved"].includes(e.state));
-  const behaviour = f.observations.filter((o) => o.isBehaviour && !o.isSynthetic);
+  // Per persoon: één interview levert per bewijsniveau en richting maximaal één waarneming (lib/domain/per-person.ts).
+  const perPerson = dedupeByPerson(f.observations, (o) => ({
+    interviewId: o.interviewId,
+    kind: o.kind,
+    dims: { isFact: o.isFact, isBehaviour: o.isBehaviour, isRealContext: o.isRealContext, isCostly: o.isCostly, isSynthetic: o.isSynthetic },
+  }));
+  const behaviour = perPerson.filter((o) => o.isBehaviour && !o.isSynthetic);
   const costly = behaviour.filter((o) => o.isCostly);
   const synthetic = f.observations.filter((o) => o.isSynthetic);
 
@@ -71,7 +80,7 @@ export function runRealityCheck(f: DossierFacts): RealityCheckResult {
     add("weak_data", "warning", "Alleen wat mensen zeggen",
       "Alle observaties zijn meningen of uitspraken. Er is nog geen waargenomen gedrag.");
   }
-  const interviewObs = f.observations.filter((o) => ["problem_confirmed", "problem_absent", "counter_example", "objection", "current_behaviour", "current_spend"].includes(o.kind));
+  const interviewObs = perPerson.filter((o) => ["problem_confirmed", "problem_absent", "counter_example", "objection", "current_behaviour", "current_spend"].includes(o.kind));
   const negatives = interviewObs.filter((o) => ["problem_absent", "counter_example", "objection"].includes(o.kind));
   if (f.interviews.length >= 5 && negatives.length === 0) {
     add("confirmation_bias", "warning", "Geen enkel tegengeluid",

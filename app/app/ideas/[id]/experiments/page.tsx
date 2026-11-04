@@ -2,17 +2,18 @@ import type { Metadata } from "next";
 import { asMethodVersion } from "@/lib/domain/method";
 import Link from "next/link";
 import { PageFrame } from "@/components/shell/PageFrame";
-import { Stepper } from "@/components/ui/Stepper";
 import { ExperimentBuilder } from "@/components/experiments/ExperimentBuilder";
 import { getIdea, getWorkspace } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
-import { loadInformationValue, loadProgress } from "@/lib/progress";
-import { stepsDone } from "@/lib/steps";
+import { loadInformationValue } from "@/lib/progress";
+import { priorsByType } from "@/lib/experiment-metrics";
 import { recommend } from "@/lib/domain/recommend";
 import { EXPERIMENT_STATES, EXPERIMENT_TYPES, type AssumptionCategory, type ExperimentState, type ExperimentType } from "@/lib/domain/labels";
 import { createExperiment, draftSurveyWithCoach, proposeCopyVariants } from "./actions";
 import { aiConfigured } from "@/lib/env";
 import { TEST_ROLES, testRole } from "@/lib/domain/primary-test";
+import { assumptionKind } from "@/lib/domain/assumption-kind";
+import { countRealInterviewObservations } from "@/lib/practice-data";
 
 export const metadata: Metadata = { title: "Experimenten" };
 
@@ -30,13 +31,18 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
   const ws = await getWorkspace();
   const supabase = await supabaseServer();
   // Ordered by information value (research 3.9): the default suggestion is the test that can change the decision most per euro and week.
-  const [assumptions, progress, { data: experiments }, { count: interviewObs }] = await Promise.all([
+  // B0: alleen waarnemingen uit echte gesprekken tellen als ontdekkingsbewijs.
+  const [assumptions, { data: experiments }, interviewObs] = await Promise.all([
     loadInformationValue(id),
-    loadProgress(id),
     supabase.from("experiments").select("id, title, type, state, ends_at, hypotheses(assumption_id, assumptions(statement))").eq("idea_id", id).order("created_at", { ascending: false }),
-    supabase.from("observations").select("id", { count: "exact", head: true }).eq("idea_id", id).not("interview_id", "is", null),
+    countRealInterviewObservations(id),
   ]);
   const wanted = typeof sp.assumption === "string" ? sp.assumption : null;
+  // Na opslaan (B1a) komt de gebruiker hier terug met ?opgeslagen=<id>: bevestiging en het concept gemarkeerd op het bord.
+  const savedId = typeof sp.opgeslagen === "string" ? sp.opgeslagen : null;
+  const saved = savedId ? (experiments ?? []).find((e) => e.id === savedId) : undefined;
+  // B1b: het benodigde aantal deelnemers volgt uit eerdere tests van hetzelfde type in de organisatie.
+  const priors = canWrite ? await priorsByType(id, Object.keys(EXPERIMENT_TYPES)) : {};
   // ?type=survey (from the coach's survey suggestion) preselects that test type.
   const wantedType = typeof sp.type === "string" && sp.type in EXPERIMENT_TYPES ? (sp.type as ExperimentType) : undefined;
   const selected = assumptions.find((a) => a.id === wanted) ?? assumptions[0];
@@ -44,27 +50,38 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
   const primaries = assumptions.map((a) => ({ id: a.id, primary_experiment_id: a.primaryExperimentId }));
   const stateOf = (expId: string | null) => (experiments ?? []).find((e) => e.id === expId)?.state ?? null;
   const rec = selected
-    ? recommend({ category: selected.category as AssumptionCategory, evidence: selected.evidence, hasDiscoveryEvidence: (interviewObs ?? 0) > 0 })
+    ? recommend({ category: selected.category as AssumptionCategory, evidence: selected.evidence, hasDiscoveryEvidence: interviewObs > 0 })
     : null;
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Experimenten"]} coach="experiments" ideaId={id}>
+    <PageFrame crumbs={["Werkruimte", idea.title, "Testen"]} coach="experiments" ideaId={id} section="/experiments">
       <div className="section-row">
         <div>
-          <div className="eyebrow">Stap 4 van 5 · Testen</div>
+          <div className="eyebrow">Stap 3 van 4 · Testen</div>
           <h1>Niet raden. Testen.</h1>
           <p className="sub">Kies een kleine proef waarmee je snel echt gedrag kunt observeren.</p>
         </div>
       </div>
-      <Stepper current="test" ideaId={id} done={stepsDone(progress)} />
 
+      {saved && (
+        <div className="form-ok" role="status" style={{ marginBottom: 16 }}>
+          <strong>Test Card opgeslagen als concept.</strong> &quot;{saved.title}&quot; staat op het bord onder Voorbereiden.{" "}
+          <Link className="text-link" href={`/app/ideas/${id}/experiments/${saved.id}`}>Open het concept →</Link>
+        </div>
+      )}
       {(experiments ?? []).length > 0 && (
-        <div className="kpi-row" style={{ marginBottom: 20 }}>
+        <div className="kpi-row" id="bord" style={{ marginBottom: 20 }}>
           {COLUMNS.map((col) => (
             <div key={col.label} className="card tight">
               <div className="tiny" style={{ fontWeight: 600 }}>{col.label}</div>
               {(experiments ?? []).filter((e) => col.states.includes(e.state as ExperimentState)).map((e) => (
-                <Link key={e.id} href={`/app/ideas/${id}/experiments/${e.id}`} className="assumption-item" style={{ textDecoration: "none", marginTop: 10 }}>
+                <Link
+                  key={e.id}
+                  href={`/app/ideas/${id}/experiments/${e.id}`}
+                  className={`assumption-item${e.id === savedId ? " active just-saved" : ""}`}
+                  style={{ textDecoration: "none", marginTop: 10 }}
+                  aria-current={e.id === savedId ? "true" : undefined}
+                >
                   <span className="count">{EXPERIMENT_TYPES[e.type as ExperimentType].icon}</span>
                   <span>{e.title}</span>
                   <small>
@@ -115,7 +132,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
         <ExperimentBuilder
           assumptions={assumptions.map((a) => {
             const state = stateOf(a.primaryExperimentId);
-            return { id: a.id, statement: a.statement, primary: a.primaryExperimentId ? { locked: !!state && !["draft", "ready_for_review"].includes(state) } : null };
+            return { id: a.id, statement: a.statement, kind: assumptionKind(a), primary: a.primaryExperimentId ? { locked: !!state && !["draft", "ready_for_review"].includes(state) } : null };
           })}
           initialAssumption={selected.id}
           options={rec.options}
@@ -129,6 +146,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           initialType={wantedType}
           researcher={ws.org?.name ?? ""}
           surveyDraftAction={draftSurveyWithCoach.bind(null, id)}
+          priors={priors}
           key={`${selected.id}|${wantedType ?? ""}`}
         />
       ) : (

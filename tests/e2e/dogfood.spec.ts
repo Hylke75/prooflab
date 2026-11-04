@@ -224,8 +224,11 @@ test("dogfood: ProofLab op ProofLab", async ({ page }) => {
 
   await page.goto(`${ideaUrl}/experiments`);
   await page.getByRole("radio", { name: /interview/i }).click();
-  await page.getByLabel("Bij wie?", { exact: true }).fill("Vijf huidige of recente opdrachtgevers van Link & Lead (directie of eigenaar)");
+  await page.getByLabel("Bij wie? (verplicht)", { exact: true }).fill("Vijf huidige of recente opdrachtgevers van Link & Lead (directie of eigenaar)");
+  await page.getByRole("button", { name: "Leg drempels vast" }).click();
   await page.getByRole("button", { name: /Test Card opslaan als concept/ }).click();
+  await page.waitForURL(/\/experiments\?opgeslagen=/);
+  await page.getByRole("link", { name: "Open het concept →" }).click();
   await page.waitForURL(/\/experiments\/[0-9a-f-]{36}/);
   await expect(page.getByRole("button", { name: "Ter review aanbieden" })).toBeVisible();
 

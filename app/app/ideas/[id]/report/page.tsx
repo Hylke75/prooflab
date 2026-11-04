@@ -2,21 +2,23 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { ActionForm } from "@/components/ui/ActionForm";
+import { ConfirmDialogForm } from "@/components/ui/ConfirmDialog";
 import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
+import { CONFIRMATION_LABELS, decisionConfirmation } from "@/lib/domain/decision-confirmation";
 import type { ReportSnapshot } from "@/lib/report";
 import { pct } from "@/lib/domain/stats";
 import { describeWeights } from "@/lib/domain/calibration";
 import { describeMethodology, ruleLabelText } from "@/lib/domain/method/describe";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { createReportVersion, shareReportVersion } from "./actions";
-import { PrintButton } from "./PrintButton";
 import { Icon } from "@/components/Icon";
 import { Probability } from "@/components/ui/Probability";
 import { explainRecruitment } from "@/lib/domain/recruitment";
 import { asEvidenceLevel, mergedShort, outcomeWithLevel } from "@/lib/domain/evidence";
 import { allTestsSummary } from "@/lib/domain/all-tests";
 import { formatGroups } from "@/lib/domain/report-counts";
+import { ladderSummary } from "@/lib/domain/dossier-label";
 import { CALIBRATION_MIN_RESOLVED } from "@/lib/domain/probability-display";
 
 export const metadata: Metadata = { title: "Rapportage" };
@@ -68,6 +70,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
     supabase.from("decisions").select("decided_at, client_confirmed_at").eq("idea_id", id).order("decided_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const r = row?.snapshot as ReportSnapshot | undefined;
+  // B1: zonder opdrachtgever wacht het besluit niet op bevestiging.
+  const confirmation = lastDecision ? decisionConfirmation(lastDecision.client_confirmed_at, !!idea.client_id) : null;
   // Rapporten van vóór golf A hebben geen kalibratie: dan de voorzichtige weergave (banden).
   const calibrated = !!(r && "calibration" in r && r.calibration?.calibrated);
   // A client opening a shared version marks it as seen (once; the database keeps the first moment).
@@ -77,7 +81,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   const newest = all[0];
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Rapportage"]} coach="report" ideaId={id}>
+    <PageFrame crumbs={["Werkruimte", idea.title, "Rapport"]} coach="report" ideaId={id} section="/report">
       <div className="section-row report-controls">
         <div>
           <div className="eyebrow">Uitkomst · Onderzoeksdossier</div>
@@ -91,10 +95,10 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
         <div className="stack" style={{ justifyItems: "end" }}>
           {r && current && (
             <div className="row" style={{ justifyContent: "flex-end" }}>
-              <a className="btn white" href={`/app/ideas/${id}/report/pdf?v=${current.version}`} download>
-                <Icon name="file" /> Download PDF
+              {/* Eén knop: de server-PDF van deze versie. Printen kan via de browser; de printstylesheet blijft. */}
+              <a className="btn primary" href={`/app/ideas/${id}/report/pdf?v=${current.version}`} download>
+                <Icon name="file" /> Download als PDF
               </a>
-              <PrintButton />
             </div>
           )}
           {canWrite && (
@@ -127,9 +131,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                   </span>
                 )}
                 {v.id === newest?.id && lastDecision && (
-                  <span className={`pill ${lastDecision.client_confirmed_at ? "green" : "orange"}`}>
-                    {lastDecision.client_confirmed_at ? "Besluit bevestigd" : "Besluit wacht op bevestiging"}
-                  </span>
+                  <span className={`pill ${confirmation === "awaiting" ? "orange" : "green"}`}>{CONFIRMATION_LABELS[confirmation!]}</span>
                 )}
                 <span className="version-links">
                   {!isCurrent && (
@@ -143,9 +145,18 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 </span>
                 {canWrite && isCurrent && !v.shared_at && (
                   <div style={{ flexBasis: "100%" }}>
-                    <ActionForm action={shareReportVersion.bind(null, id, v.id)} submitLabel={`Deel versie ${v.version} met opdrachtgever`} submitClass="btn primary sm" pendingLabel="Delen…">
-                      <p className="tiny">Delen is eenmalig en kan niet worden teruggedraaid. De opdrachtgever ziet daarna deze versie, zonder ruwe interviewcitaten of gegevens van testdeelnemers.</p>
-                    </ActionForm>
+                    <ConfirmDialogForm
+                      action={shareReportVersion.bind(null, id, v.id)}
+                      triggerLabel={`Deel versie ${v.version} met opdrachtgever`}
+                      title={`Versie ${v.version} delen met de opdrachtgever?`}
+                      confirmLabel="Ja, deel definitief"
+                      pendingLabel="Delen…"
+                    >
+                      <p>
+                        <strong>Dit kan niet worden teruggedraaid.</strong> Na het delen ziet de opdrachtgever deze versie blijvend, zonder ruwe
+                        interviewcitaten of gegevens van testdeelnemers. Wil je iets aanpassen, maak dan eerst een nieuwe versie.
+                      </p>
+                    </ConfirmDialogForm>
                   </div>
                 )}
               </div>
@@ -183,6 +194,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             <p>
               {r.decision?.rationale ?? r.realityCheck?.reason ?? "Het onderzoek loopt nog."} Bewijsniveau: <strong>{r.label}</strong>.
               {r.labelMissing.length ? ` Voor een hoger niveau ontbreekt: ${r.labelMissing.join("; ")}.` : ""}
+              {r.observationCounts ? ` ${ladderSummary(r.observationCounts)}` : ""}
             </p>
             <div className="grid-3" style={{ margin: "20px 0" }}>
               <div style={{ background: "var(--color-surface-soft)", padding: 16, borderRadius: "var(--radius-inner)" }}>
@@ -462,7 +474,11 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               <p>
                 {r.decision.rationale}
                 {r.decision.nextStep ? ` Volgende stap: ${r.decision.nextStep}.` : ""} Vastgelegd op {date(r.decision.at)}.{" "}
-                {r.decision.confirmedAt ? `Bevestigd door de opdrachtgever op ${date(r.decision.confirmedAt)}${r.decision.comment ? ` (“${r.decision.comment}”)` : ""}.` : "Nog niet bevestigd door de opdrachtgever."}
+                {r.decision.confirmedAt
+                  ? `Bevestigd door de opdrachtgever op ${date(r.decision.confirmedAt)}${r.decision.comment ? ` (“${r.decision.comment}”)` : ""}.`
+                  : r.decision.confirmation === "not_needed"
+                    ? "Dit dossier heeft geen opdrachtgever: het besluit is direct definitief."
+                    : "Nog niet bevestigd door de opdrachtgever."}
                 {r.decision.extendWeeks ? ` Na de sprint volgde een verlengde testfase van ${r.decision.extendWeeks} weken; het definitieve besluit en de uitkomstklok kwamen daarna.` : ""}
                 {r.decision.confirmedAt && r.decision.reviewedAgainst ? " De opdrachtgever zag daarbij de samenvatting “Wat ging tegen” (mislukte tests, tegenbewijs, begrensde aannames en afwijkingen van de beslisregel)." : ""}
               </p>

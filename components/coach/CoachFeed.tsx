@@ -105,7 +105,7 @@ export function CoachFeed({ ideaId, notes, canWrite, onNavigate }: { ideaId: str
                 <p>{n.body}</p>
                 <div className="coach-note-actions">
                   {n.href && (
-                    <Link className="text-link" href={n.href} onClick={onNavigate}>
+                    <Link className="text-link" href={n.href} prefetch={false} onClick={onNavigate}>
                       Bekijken →
                     </Link>
                   )}

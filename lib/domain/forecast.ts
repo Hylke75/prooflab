@@ -60,6 +60,24 @@ export function brier(probability: number, achieved: Achieved): number {
   return d * d;
 }
 
+// Fase B0, punt 5: invoer van een menselijke voorspelling. Het veld accepteert 0–100; 0% en 100% zijn zekerheid
+// en die kan de database niet vastleggen (check 0,01–0,99), dus daar volgt een eigen melding. Geen afronding naar
+// een andere waarde: wat de gebruiker ziet, wordt vastgelegd.
+export const HUMAN_PROBABILITY_MIN = 1;
+export const HUMAN_PROBABILITY_MAX = 99;
+export function checkProbabilityInput(raw: string): { ok: true; pct: number } | { ok: false; message: string } {
+  const t = raw.trim().replace(",", ".");
+  if (t === "") return { ok: false, message: "Vul de kans in procenten in." };
+  const n = Number(t);
+  if (!Number.isFinite(n)) return { ok: false, message: "Vul een getal in, bijvoorbeeld 35." };
+  if (n < 0 || n > 100) return { ok: false, message: "Een kans ligt tussen 0 en 100%." };
+  if (!Number.isInteger(n)) return { ok: false, message: "Gebruik een heel getal, bijvoorbeeld 35." };
+  if (n < HUMAN_PROBABILITY_MIN || n > HUMAN_PROBABILITY_MAX) {
+    return { ok: false, message: "0% of 100% betekent zekerheid; die bestaat niet bij een voorspelling. Kies een getal tussen 1 en 99%." };
+  }
+  return { ok: true, pct: n };
+}
+
 export function clampProbability(p: number): number {
   return Math.min(PROBABILITY_MAX, Math.max(PROBABILITY_MIN, p));
 }

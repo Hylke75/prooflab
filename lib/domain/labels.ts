@@ -165,14 +165,6 @@ export const DMU_ROLES = {
 } as const;
 export type DmuRole = keyof typeof DMU_ROLES;
 
-export const STEPS = [
-  { key: "idea", label: "Idee", path: "" },
-  { key: "market", label: "Markt", path: "/research" },
-  { key: "assumptions", label: "Aannames", path: "/assumptions" },
-  { key: "test", label: "Testen", path: "/experiments" },
-  { key: "decide", label: "Besluiten", path: "/evidence" },
-] as const;
-
 // Shown after every call-to-action on a public test page; cannot be removed (fake-door rule).
 export const HONEST_REVEAL =
   "Dit aanbod is nog in ontwikkeling. Je hebt niets gekocht of besteld en er is niets afgerekend. Met je klik help je onderzoeken of hier behoefte aan is.";

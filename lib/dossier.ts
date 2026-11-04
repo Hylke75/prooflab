@@ -5,13 +5,14 @@ import { loadAssumptions, rankAssumptions } from "@/lib/progress";
 import { experimentMetrics } from "@/lib/experiment-metrics";
 import { breakEvenRevenue, computeSizing, computeUnitEconomics, factorConsistency, SCENARIO_LABELS, simulateSizing, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import { explainContribution } from "@/lib/domain/evidence";
-import { dossierLabel } from "@/lib/domain/dossier-label";
+import { dossierLabel, type LadderObservation } from "@/lib/domain/dossier-label";
 import type { DossierFacts } from "@/lib/domain/reality-check";
 import type { ClaimStatus } from "@/lib/domain/labels";
 import type { Idea } from "@/lib/data";
 import { loadIdeaWeights } from "@/lib/learning-data";
 import { asMethodVersion, METHODS } from "@/lib/domain/method";
 import { loadCalibration, loadIdeaCaps } from "@/lib/method-data";
+import { countsAsEvidence, realInterviewIds, withPracticeFlag } from "@/lib/domain/practice";
 
 // Collects everything about one idea in a single pass. Used by the Reality Check and as the
 // immutable snapshot behind every report version.
@@ -31,7 +32,7 @@ export async function loadDossier(idea: Idea) {
       supabase.from("sizing_scenarios").select("*, sizing_factors(*, claims(status, statement, numeric_value))").eq("idea_id", id),
       supabase.from("unit_economics").select("*").eq("idea_id", id).maybeSingle(),
       supabase.from("experiments").select("*, hypotheses(*, assumptions(statement, category))").eq("idea_id", id).order("created_at"),
-      supabase.from("interviews").select("id, experiment_id, dmu_role, is_acquaintance, consent_recorded, record_type, recruited_via").eq("idea_id", id),
+      supabase.from("interviews").select("id, experiment_id, dmu_role, is_acquaintance, consent_recorded, record_type, recruited_via, is_practice").eq("idea_id", id),
       // Clients get the same rows without literal interview quotes (enforced in the database).
       supabase.rpc("observations_for_idea", { p_idea: id }),
       supabase.from("learning_cards").select("*").eq("idea_id", id).order("created_at"),
@@ -44,6 +45,10 @@ export async function loadDossier(idea: Idea) {
     ]);
 
   const assumptions = rankAssumptions(await loadAssumptions(id));
+  // B0: waarnemingen uit een oefengesprek of een nog niet aangegeven gesprek tellen als synthetisch (is_practice
+  // houdt de reden zichtbaar), zodat ze nergens als bewijs meetellen: niet in de Reality Check, de coach of het rapport.
+  const realIds = realInterviewIds(interviews.data ?? []);
+  const observationList = (observations.data ?? []).map((o) => withPracticeFlag(o, realIds));
   // Which evidence factors those probabilities used (default or learned), for the report.
   const weights = (await loadIdeaWeights(id)).inUse;
   // The method version of this dossier, with its rules and (2026-11-b) the caps per evidence level.
@@ -196,7 +201,7 @@ export async function loadDossier(idea: Idea) {
     assumptions,
     experiments: expList.map((e, i) => ({ ...e, metrics: metrics[i] })),
     interviews: interviews.data ?? [],
-    observations: observations.data ?? [],
+    observations: observationList,
     learningCards: cards.data ?? [],
     realityCheck: checks.data?.[0] ?? null,
     decisions: decisions.data ?? [],
@@ -215,6 +220,16 @@ export async function loadDossier(idea: Idea) {
 }
 
 export type Dossier = Awaited<ReturnType<typeof loadDossier>>;
+
+// Een waarneming zoals de bewijsladder (lib/domain/dossier-label.ts) haar per persoon telt.
+export function ladderObservation(o: Dossier["observations"][number]): LadderObservation {
+  return {
+    interviewId: o.interview_id,
+    kind: o.kind,
+    isSynthetic: o.is_synthetic,
+    dims: { isFact: o.is_fact, isBehaviour: o.is_behaviour, isRealContext: o.is_real_context, isCostly: o.is_costly },
+  };
+}
 
 export function factsFrom(d: Dossier): DossierFacts {
   const lastApproved = d.learningCards.filter((c) => c.status === "approved").map((c) => c.approved_at ?? c.created_at).sort().pop();
@@ -250,8 +265,18 @@ export function factsFrom(d: Dossier): DossierFacts {
       endedEarly: e.ended_early,
       channels: ((e.channels as { channel: string }[]) ?? []).map((c) => c.channel),
     })),
-    interviews: d.interviews.map((i) => ({ dmuRole: i.dmu_role, isAcquaintance: i.is_acquaintance, consent: i.consent_recorded })),
-    observations: d.observations.map((o) => ({ kind: o.kind, isBehaviour: o.is_behaviour, isSynthetic: o.is_synthetic, isCostly: o.is_costly })),
+    // B0: alleen echte gesprekken tellen mee; oefeningen en niet-aangegeven gesprekken niet.
+    interviews: d.interviews.filter((i) => countsAsEvidence(i.is_practice)).map((i) => ({ dmuRole: i.dmu_role, isAcquaintance: i.is_acquaintance, consent: i.consent_recorded })),
+    // Fase B0, punt 1: met interview en dimensies, zodat de Reality Check per persoon telt.
+    observations: d.observations.map((o) => ({
+      kind: o.kind,
+      interviewId: o.interview_id,
+      isFact: o.is_fact,
+      isBehaviour: o.is_behaviour,
+      isRealContext: o.is_real_context,
+      isSynthetic: o.is_synthetic,
+      isCostly: o.is_costly,
+    })),
     learningCards: d.learningCards.map((c) => ({ status: c.status as "draft" | "approved", verdict: c.verdict as "pass" | "fail" | "inconclusive" })),
     decisionsAfterLastLearning: lastApproved ? d.decisions.filter((x) => x.decided_at > lastApproved).length : d.decisions.length,
     isB2B: /zakelijk|b2b|organisatie|bedrijf|publieke/i.test(d.idea.target_audience) || d.idea.project_type === "internal_innovation",

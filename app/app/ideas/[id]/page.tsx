@@ -10,21 +10,18 @@ import { loadOpenNotes } from "@/lib/coach/review";
 import { NOTE_KINDS, type NoteKind } from "@/lib/coach/rules";
 import { nextAction, predictionTip, sprintStage } from "@/lib/domain/coach";
 import { SPRINT_PHASES, sprintStatus, todayInNL } from "@/lib/domain/sprint";
-import { currentStepLabel, stepOverview } from "@/lib/steps";
+import { dossierStatus, IDEA_OVERVIEW, IDEA_REPORT, STEPS, stepOverview } from "@/lib/steps";
 
-export const metadata: Metadata = { title: "Dossieroverzicht" };
+export const metadata: Metadata = { title: IDEA_OVERVIEW.label };
 
+// Snelkoppelingen met dezelfde namen als het menu: de vier stappen, het rapport en de tabbladen onder Markt en Besluit.
 const SHORTCUTS: { suffix: string; label: string; icon: IconName }[] = [
-  { suffix: "/research", label: "Marktverkenning", icon: "compass" },
-  { suffix: "/assumptions", label: "Aannames", icon: "layers" },
-  { suffix: "/experiments", label: "Experimenten", icon: "flask" },
-  { suffix: "/evidence", label: "Bewijs & besluit", icon: "shield" },
-  { suffix: "/report", label: "Rapportage", icon: "file" },
-  { suffix: "/outcome", label: "Voorspelling & uitkomst", icon: "trend" },
-  { suffix: "/integrations", label: "Bronnen & koppelingen", icon: "users" },
+  ...STEPS.map((s) => ({ suffix: s.path, label: `${s.number} ${s.label}`, icon: s.icon })),
+  { suffix: IDEA_REPORT.path, label: IDEA_REPORT.label, icon: IDEA_REPORT.icon },
+  ...STEPS.flatMap((s) => (s.tabs ?? []).filter((t) => t.path !== s.path).map((t) => ({ suffix: t.path, label: `${s.label} · ${t.label}`, icon: s.icon }))),
 ];
 
-// Dossieroverzicht: beslisvraag, sprintweek en stap, voortgang per stap, de volgende actie en de open coachtips.
+// Overzicht van dit idee (voorheen dossieroverzicht): beslisvraag, sprintweek en stap, voortgang per stap, de volgende actie en de open coachtips.
 // Opdrachtgevers gaan zoals voorheen direct naar het rapport.
 export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id]">) {
   const { id } = await params;
@@ -50,13 +47,15 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
       : s.state === "finished"
         ? "Sprint afgerond"
         : `Sprint start over ${s.daysToStart} ${s.daysToStart === 1 ? "dag" : "dagen"}`;
-  const done = steps.filter((x) => x.done).length;
+  // B1c: één huidige stap, en apart hoeveel stappen echt bewijs hebben (niet hetzelfde als "klaar").
+  const status = dossierStatus(progress);
+  const withEvidence = status.stepsWithEvidence;
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Overzicht"]} coach="overview" ideaId={id}>
+    <PageFrame crumbs={["Werkruimte", idea.title, IDEA_OVERVIEW.label]} coach="overview" ideaId={id} section="">
       <div className="section-row">
         <div>
-          <div className="eyebrow">Dossieroverzicht</div>
+          <div className="eyebrow">{IDEA_OVERVIEW.label}</div>
           <h1>{idea.title}</h1>
           <p className="sub">{idea.decision_question}</p>
         </div>
@@ -70,8 +69,8 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
         </div>
         <div className="card tight">
           <div className="eyebrow">Huidige stap</div>
-          <strong>{currentStepLabel(progress)}</strong>
-          <p className="tiny mt-8">{done} van 5 stappen met bewijs</p>
+          <strong>{status.currentLabel}</strong>
+          <p className="tiny mt-8">{status.steps.find((x) => x.key === status.current)?.why ?? "Alle stappen zijn afgerond."}</p>
         </div>
         <div className="card tight">
           <div className="eyebrow">Beslisdatum en inzet</div>
@@ -87,12 +86,12 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
         </div>
         <p style={{ fontSize: 16, fontWeight: 700 }}>{next.title}</p>
         <p className="sub">{next.detail}</p>
-        <Link className="btn primary mt-12" href={next.href}>
+        <Link className="btn primary mt-12" href={next.href} prefetch={false}>
           <Icon name={next.icon} /> {next.title} <Icon name="arrow" size="sm" />
         </Link>
         {tip && tip.href !== next.href && (
           <p className="tiny mt-12">
-            Ook nuttig: <Link className="text-link" href={tip.href}>{tip.title}</Link>. {tip.detail}
+            Ook nuttig: <Link className="text-link" href={tip.href} prefetch={false}>{tip.title}</Link>. {tip.detail}
           </p>
         )}
       </div>
@@ -101,21 +100,22 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
         <div className="card">
           <div className="section-title">
             <h2 className="as-h3">Voortgang per stap</h2>
-            <span className="pill gray num">{done}/5</span>
+            <span className="pill gray num" title="Stappen met echte waarnemingen of geverifieerde bronnen">{withEvidence} van 4 met bewijs</span>
           </div>
           <ol className="stack" style={{ listStyle: "none", padding: 0, margin: 0 }} aria-label="Stappen van het dossier">
-            {steps.map((step, i) => (
+            {steps.map((step) => (
               <li key={step.key} className="quickline" aria-current={step.current ? "step" : undefined}>
                 <span className="num" style={step.done ? { background: "var(--color-primary)", color: "var(--color-on-dark)" } : undefined} aria-hidden="true">
-                  {step.done ? <Icon name="check" size="sm" /> : i + 1}
+                  {step.done ? <Icon name="check" size="sm" /> : step.number}
                 </span>
                 <div>
                   <strong>
-                    <Link href={step.href}>{step.label}</Link>
+                    <Link href={step.href} prefetch={false}>{step.label}</Link>
                   </strong>
                   <span>{step.counts}</span>
+                  <span>{step.why}{step.hasEvidence ? "" : " Nog geen echt bewijs in deze stap."}</span>
                 </div>
-                <span className={`pill ${step.done ? "green" : step.current ? "blue" : "gray"}`}>{step.done ? "Klaar" : step.current ? "Nu" : "Later"}</span>
+                <span className={`pill ${step.done ? "green" : step.current ? "blue" : step.state === "running" ? "orange" : "gray"}`}>{step.current && !step.done ? `Nu · ${step.statusLabel}` : step.statusLabel}</span>
               </li>
             ))}
           </ol>
@@ -138,7 +138,7 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
                     <strong>{n.title}</strong>
                     <span>{k.label}{n.source === "ai" ? " · AI-coach, advies" : ""}</span>
                   </div>
-                  {n.href && <Link className="text-link" href={n.href} aria-label={`Bekijken: ${n.title}`}>Bekijken →</Link>}
+                  {n.href && <Link className="text-link" href={n.href} prefetch={false} aria-label={`Bekijken: ${n.title}`}>Bekijken →</Link>}
                 </div>
               );
             })
@@ -150,7 +150,7 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
       <div className="section-title mt-24"><h2>Snelkoppelingen</h2></div>
       <div className="chat-suggestions" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
         {SHORTCUTS.map((sc) => (
-          <Link key={sc.suffix} className="suggestion card tight" href={`/app/ideas/${id}${sc.suffix}`}>
+          <Link key={sc.suffix} className="suggestion card tight" href={`/app/ideas/${id}${sc.suffix}`} prefetch={false}>
             <Icon name={sc.icon} /> {sc.label}
           </Link>
         ))}

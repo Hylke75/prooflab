@@ -8,7 +8,7 @@ const base = `/app/ideas/${ID}`;
 
 // A dossier with research and assumptions done, no tests yet.
 function progress(over: Partial<IdeaProgress> = {}): IdeaProgress {
-  return {
+  const base: IdeaProgress = {
     ideaId: ID,
     questions: 4,
     claims: 6,
@@ -32,12 +32,37 @@ function progress(over: Partial<IdeaProgress> = {}): IdeaProgress {
     latestRealityCheckAt: null,
     decisions: 0,
     latestDecisionAt: null,
+    latestDecisionAction: null,
     latestDecisionConfirmed: false,
     reports: 0,
     latestReportAt: null,
     latestReportShared: false,
     behaviourObservations: 0,
     ...over,
+  };
+  // Zonder opgegeven actie is een besluit in deze testdata definitief (doorgaan).
+  if (over.latestDecisionAction === undefined) base.latestDecisionAction = base.decisions > 0 ? "continue" : null;
+  // Fase B1c: de dossierstatus volgt uit dezelfde tellers. Markt is klaar met een beantwoorde beslissende vraag
+  // met geverifieerde bron; aannames zijn klaar zodra er een hoofdtest is (hier: zodra er een test bestaat).
+  return {
+    ...base,
+    dossier: over.dossier ?? {
+      questions: base.questions,
+      claims: base.claims,
+      verifiedClaims: base.verifiedClaims,
+      decisiveQuestion: base.claims > 0 && base.verifiedClaims > 0 ? { status: "answered", verifiedClaims: 1 } : base.questions > 0 ? { status: "open", verifiedClaims: 0 } : null,
+      assumptions: base.assumptions,
+      criticalWithPrimaryTest: base.experiments.length > 0 ? 1 : 0,
+      assumptionsWithEvidence: base.assumptions - base.assumptionsWithoutEvidence,
+      experiments: base.experiments.length,
+      experimentsLive: base.experimentsLive,
+      experimentsEnded: base.experimentsEnded,
+      // In deze testdata heeft een afgeronde test met goedgekeurde Learning Card een uitslag.
+      testsWithVerdict: base.learningCardsApproved,
+      realTestObservations: base.behaviourObservations,
+      decisions: base.decisions,
+      latestDecisionAction: base.latestDecisionAction,
+    },
   };
 }
 
@@ -132,6 +157,43 @@ describe("nextAction", () => {
     };
     expect(nextAction(learned(done)).title).toBe("Wacht op bevestiging van het besluit");
     expect(nextAction(learned({ ...done, latestDecisionConfirmed: true })).title).toBe("Kies de volgende aanname om te toetsen");
+  });
+});
+
+describe("nextAction na een niet-definitief besluit (B1)", () => {
+  const decided = {
+    latestRealityCheckAt: "2026-10-21T10:00:00Z",
+    decisions: 1,
+    latestDecisionAt: "2026-10-22T10:00:00Z",
+    reports: 1,
+    latestReportAt: "2026-10-23T09:00:00Z",
+    latestReportShared: false,
+  };
+
+  it.each(["test_more", "extend", "adjust", "pause"])("zegt na %s niet 'Deel het rapport' en niet 'Besloten'", (action) => {
+    const p = learned({ ...decided, latestDecisionAction: action });
+    expect(nextAction(p).title).not.toMatch(/Deel het rapport|rapport/);
+    expect(sprintStage(p)).toBeLessThan(5);
+  });
+
+  it("wijst na verder testen naar een nieuwe test voor de grootste onzekerheid", () => {
+    expect(nextAction(learned({ ...decided, latestDecisionAction: "test_more" }))).toMatchObject({ title: "Ontwerp de volgende test", href: `${base}/experiments?assumption=a1` });
+    expect(sprintStage(learned({ ...decided, latestDecisionAction: "test_more" }))).toBe(3);
+  });
+
+  it("wijst na bijsturen naar de aannames en na pauzeren naar het besluit", () => {
+    expect(nextAction(learned({ ...decided, latestDecisionAction: "adjust" })).href).toBe(`${base}/assumptions`);
+    expect(nextAction(learned({ ...decided, latestDecisionAction: "pause" })).title).toBe("Het dossier is gepauzeerd");
+  });
+
+  it("gaat na doorgaan wel naar het rapport", () => {
+    expect(nextAction(learned({ ...decided, latestDecisionAction: "continue" })).title).toBe("Deel het rapport met de opdrachtgever");
+  });
+
+  it("laat een lopende vervolgtest voorgaan", () => {
+    expect(nextAction(learned({ ...decided, latestDecisionAction: "test_more", experiments: [exp("analyzed", { hasApprovedCard: true }), exp("live")] })).title).toBe(
+      "Werf deelnemers voor je lopende test",
+    );
   });
 });
 
@@ -278,13 +340,33 @@ describe("sprint", () => {
 });
 
 describe("dossieroverzicht", () => {
-  it("toont vijf stappen met aantallen en markeert de eerste open stap", async () => {
+  it("toont vier stappen met aantallen en markeert één huidige stap", async () => {
     const { stepOverview } = await import("@/lib/steps");
     const steps = stepOverview(progress());
-    expect(steps.map((s) => s.key)).toEqual(["idea", "market", "assumptions", "test", "decide"]);
-    expect(steps.filter((s) => s.current).map((s) => s.key)).toEqual(["test"]);
-    expect(steps[1].counts).toBe("6 bevindingen (3 onderbouwd) · 3 concurrenten en alternatieven");
-    expect(steps[3]).toMatchObject({ done: false, counts: "0 tests · 0 lopend · 0 afgerond", href: `${base}/experiments` });
+    expect(steps.map((s) => s.key)).toEqual(["market", "assumptions", "test", "decide"]);
+    expect(steps.filter((s) => s.current).map((s) => s.key)).toEqual(["assumptions"]);
+    expect(steps[0].counts).toBe("4 onderzoeksvragen · 6 bevindingen (3 geverifieerd)");
+    expect(steps[2]).toMatchObject({ done: false, counts: "0 tests · 0 lopend · 0 afgerond", href: `${base}/experiments` });
     expect(stepOverview(progress({ claims: 0 })).find((s) => s.current)?.key).toBe("market");
+  });
+});
+
+describe("coach per pagina (fase 3)", () => {
+  it("verwijst op werkruimtepagina's naar het lopende idee in plaats van 'Begin met één idee'", () => {
+    const c = coachFor("clients", null, { currentIdea: { id: ID, title: "AI-locatieadvies" } });
+    expect(c.insight).toContain("AI-locatieadvies");
+    expect(c.insight).not.toContain("Begin met één idee");
+    expect(c.suggestions[0]).toMatchObject({ label: "Verder met AI-locatieadvies", href: base });
+    // Zonder ideeën blijft het startadvies.
+    expect(coachFor("clients", null).insight).toContain("Begin met één idee");
+  });
+
+  it("heeft voor Bronnen & koppelingen een eigen tekst en eigen suggesties", () => {
+    const research = coachFor("research", progress());
+    const integrations = coachFor("integrations", progress());
+    expect(integrations.title).not.toBe(research.title);
+    expect(integrations.copy).not.toBe(research.copy);
+    expect(integrations.suggestions.map((s) => s.href)).toContain(`${base}/integrations#bulk-import`);
+    expect(coachFor("integrations", progress(), { audience: "client" }).title).toBe("Wat zeggen klanten zelf?");
   });
 });

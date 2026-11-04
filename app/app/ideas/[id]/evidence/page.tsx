@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PageFrame } from "@/components/shell/PageFrame";
-import { Stepper } from "@/components/ui/Stepper";
-import { ActionForm } from "@/components/ui/ActionForm";
+import { ActionForm, Field } from "@/components/ui/ActionForm";
 import { DecisionSelector } from "@/components/evidence/DecisionSelector";
 import { LABEL_PILL, RuleSummary, outcomeFromCard, ruleLine } from "@/components/experiments/RuleSummary";
 import { asMethodVersion, METHODS } from "@/lib/domain/method";
@@ -15,10 +14,12 @@ import { loadDossier } from "@/lib/dossier";
 import { loadProgress } from "@/lib/progress";
 import { loadCalibration } from "@/lib/method-data";
 import { Probability } from "@/components/ui/Probability";
-import { stepsDone } from "@/lib/steps";
 import { asEvidenceLevel, explainStrength, outcomeWithLevel, strength, strengthLabel, testEvidenceLevel, type EvidenceLevel } from "@/lib/domain/evidence";
 import { ASSUMPTION_CATEGORIES, DECISIONS, OBSERVATION_KINDS, type DecisionAction, type ObservationKind } from "@/lib/domain/labels";
 import type { Finding } from "@/lib/domain/reality-check";
+import { evidenceLadder } from "@/lib/domain/dossier-label";
+import { perPersonLabel } from "@/lib/domain/per-person";
+import { ladderObservation } from "@/lib/dossier";
 import { addPremortem, approveLearningCard, confirmDecision, runCheck, saveDecision, updateLearningCard } from "./actions";
 import { RuleCheckCard } from "@/components/decision/DecisionRule";
 import { loadRuleCheck } from "@/lib/decision-rule-data";
@@ -36,14 +37,6 @@ function cardLevel(metrics: unknown, exp: { type: string; hypotheses: { decision
   return stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule }) : null);
 }
 
-const LADDER: { kinds: ObservationKind[]; label: string }[] = [
-  { kinds: ["opinion"], label: "Uitgesproken belangstelling" },
-  { kinds: ["problem_confirmed", "current_behaviour", "current_spend"], label: "Probleem in eigen gedrag" },
-  { kinds: ["waitlist_signup"], label: "Kleine handeling (aanmelding)" },
-  { kinds: ["demo_request", "quote_request"], label: "Concrete aanvraag of keuze bij prijs" },
-  { kinds: ["deposit"], label: "Aanbetaling" },
-  { kinds: ["repeat_purchase"], label: "Herhaalde aankoop" },
-];
 const SEV = { blocker: ["Blokkerend", "coral"], warning: ["Let op", "orange"], info: ["Ter info", "gray"] } as const;
 
 export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id]/evidence">) {
@@ -55,15 +48,14 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
   const lock = forecastFirstLock(progress);
   if (lock) {
     return (
-      <PageFrame crumbs={["Werkruimte", idea.title, "Bewijs & besluit"]} coach="evidence" ideaId={id}>
+      <PageFrame crumbs={["Werkruimte", idea.title, "Bewijs & besluit"]} coach="evidence" ideaId={id} section="/evidence">
         <div className="section-row">
           <div>
-            <div className="eyebrow">Stap 5 van 5 · Leren en beslissen</div>
+            <div className="eyebrow">Stap 4 van 4 · Besluit</div>
             <h1>Wat weten we nu echt?</h1>
             <p className="sub">Eerst je eigen voorspelling; daarna alle signalen op één plek, inclusief tegenbewijs.</p>
           </div>
         </div>
-        <Stepper current="decide" ideaId={id} done={stepsDone(progress)} />
         <div className="grid-2">
           <ForecastFirstLock ideaId={id} moment={lock} what="de bewijspagina met de sterkte van het bewijs, de kansen per aanname en de Reality Check" client={!canWrite} />
           {lock === "decision" && <DecisionForecast ideaId={id} />}
@@ -73,9 +65,13 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
   }
   const [d, ruleCheck, calibration] = await Promise.all([loadDossier(idea), loadRuleCheck(id), loadCalibration(id)]);
   const obs = d.observations.filter((o) => !o.is_synthetic).sort((a, b) => strength({ isFact: b.is_fact, isBehaviour: b.is_behaviour, isRealContext: b.is_real_context, isCostly: b.is_costly, isSynthetic: false }) - strength({ isFact: a.is_fact, isBehaviour: a.is_behaviour, isRealContext: a.is_real_context, isCostly: a.is_costly, isSynthetic: false }));
-  const reached = LADDER.map((r) => ({ ...r, count: obs.filter((o) => r.kinds.includes(o.kind as ObservationKind)).length }));
-  const highest = [...reached].reverse().find((r) => r.count > 0);
-  const missingPayment = !reached.slice(4).some((r) => r.count > 0);
+  // B0: waarnemingen uit oefengesprekken of nog niet aangegeven gesprekken (in loadDossier als synthetisch gemarkeerd).
+  const practiceObs = d.observations.filter((o) => o.is_practice).length;
+  // Fase B0, punt 1: per persoon tellen. Eén interview levert per bewijsniveau maximaal één waarneming.
+  const ladder = evidenceLadder(d.observations.map(ladderObservation));
+  const reached = ladder.rungs;
+  const highest = ladder.highest;
+  const missingPayment = !ladder.paymentShown;
   const check = d.realityCheck;
   const checkFindings = ((check?.findings as { findings?: (Finding & { source?: string })[] } | null)?.findings ?? []);
   const investorQuestions = ((check?.findings as { investorQuestions?: string[] } | null)?.investorQuestions ?? []);
@@ -97,16 +93,15 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
   ) as Partial<Record<DecisionAction, string>>;
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Bewijs & besluit"]} coach="evidence" ideaId={id}>
+    <PageFrame crumbs={["Werkruimte", idea.title, "Bewijs & besluit"]} coach="evidence" ideaId={id} section="/evidence">
       <div className="section-row">
         <div>
-          <div className="eyebrow">Stap 5 van 5 · Leren en beslissen</div>
+          <div className="eyebrow">Stap 4 van 4 · Besluit</div>
           <h1>Wat weten we nu echt?</h1>
           <p className="sub">Alle signalen op één plek. Inclusief tegenbewijs en de beperkingen van je tests.</p>
         </div>
         <Link className="btn white" href={`/app/ideas/${id}/report`}>Bekijk rapport →</Link>
       </div>
-      <Stepper current="decide" ideaId={id} done={stepsDone(progress)} />
 
       {phase && (
         <div className="note" role="status">
@@ -121,7 +116,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
         <div>
           <span className="pill green">{d.label.label}</span>
           <h2 className="as-h3" style={{ margin: "10px 0 5px" }}>
-            {highest ? `Sterkste bewijs tot nu toe: ${highest.label.toLowerCase()} (${highest.count}×).` : "Nog geen waargenomen klantgedrag."}
+            {highest ? `Sterkste bewijs tot nu toe: ${highest.label.toLowerCase()} (${highest.count}× per persoon geteld).` : "Nog geen waargenomen klantgedrag."}
             {missingPayment ? " Betaling nog niet aangetoond." : ""}
           </h2>
           <p>
@@ -132,11 +127,16 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
 
       <div className="grid-2">
         <div className="card">
-          <div className="section-title"><h3>Bewijs op een rij</h3><span className="pill gray">{obs.length} observaties</span></div>
+          <div className="section-title"><h3>Bewijs op een rij</h3><span className="pill gray">{perPersonLabel(ladder)}</span></div>
           <div className="row" style={{ gap: 6, marginBottom: 6 }}>
             {reached.map((r) => <span key={r.label} className={`pill ${r.count ? "green" : "gray"}`}>{r.label}{r.count ? ` · ${r.count}` : ""}</span>)}
           </div>
           {obs.length === 0 && <p className="sub mt-12">Nog geen observaties. Die ontstaan uit interviews en afgeronde experimenten.</p>}
+          {ladder.quotes > ladder.counted && (
+            <p className="tiny mt-8">
+              Per persoon geteld: uit {ladder.people} {ladder.people === 1 ? "interview" : "interviews"} telt per bewijsniveau één uitspraak mee (de sterkste; steun en tegenspraak apart). Alle {ladder.quotes} citaten blijven hieronder zichtbaar.
+            </p>
+          )}
           {obs.slice(0, 12).map((o) => {
             const dims = { isFact: o.is_fact, isBehaviour: o.is_behaviour, isRealContext: o.is_real_context, isCostly: o.is_costly, isSynthetic: o.is_synthetic };
             const s = strengthLabel(strength(dims));
@@ -151,7 +151,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
               </div>
             );
           })}
-          <div className="note">Een goed bewijsdossier laat ook helder zien wat een test níét aantoont. Synthetische of AI-gegenereerde data telt nooit mee.</div>
+          <div className="note">Een goed bewijsdossier laat ook helder zien wat een test níét aantoont. Synthetische of AI-gegenereerde data telt nooit mee.{practiceObs > 0 && ` ${practiceObs === 1 ? "1 observatie komt" : `${practiceObs} observaties komen`} uit een oefengesprek of een gesprek dat nog niet als echt is aangegeven en ${practiceObs === 1 ? "telt" : "tellen"} daarom niet als bewijs.`}</div>
         </div>
 
         <div className="stack">
@@ -267,15 +267,18 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
               <RuleSummary o={outcomeFromCard(c.metrics, c.verdict, exp?.hypotheses ?? null)} />
               {canWrite ? (
                 <>
-                  <ActionForm action={updateLearningCard.bind(null, id, c.id)} submitLabel="Opslaan" submitClass="btn white sm">
-                    <label className="field-label" htmlFor={`lc-l-${c.id}`}>Daaruit leren we</label>
-                    <textarea className="field" id={`lc-l-${c.id}`} name="we_learned" rows={3} defaultValue={c.we_learned} />
-                    <label className="field-label" htmlFor={`lc-t-${c.id}`}>Daarom gaan we</label>
-                    <textarea className="field" id={`lc-t-${c.id}`} name="therefore" rows={2} defaultValue={c.therefore} />
-                    <label className="field-label" htmlFor={`lc-r-${c.id}`}>Betrouwbaarheid van de data</label>
-                    <select className="field" id={`lc-r-${c.id}`} name="data_reliability" defaultValue={c.data_reliability}>
-                      <option value="low">Laag</option><option value="medium">Middel</option><option value="high">Hoog</option>
-                    </select>
+                  <ActionForm action={updateLearningCard.bind(null, id, c.id)} submitLabel="Learning Card opslaan" pendingLabel="Learning Card opslaan…" submitClass="btn white sm" noValidate>
+                    <Field className="" labelClassName="field-label" name="we_learned" id={`lc-l-${c.id}`} label="Daaruit leren we" required>
+                      <textarea className="field" rows={3} defaultValue={c.we_learned} minLength={10} maxLength={1500} />
+                    </Field>
+                    <Field className="" labelClassName="field-label" name="therefore" id={`lc-t-${c.id}`} label="Daarom gaan we" required>
+                      <textarea className="field" rows={2} defaultValue={c.therefore} minLength={5} maxLength={1500} />
+                    </Field>
+                    <Field className="" labelClassName="field-label" name="data_reliability" id={`lc-r-${c.id}`} label="Betrouwbaarheid van de data" required>
+                      <select className="field" defaultValue={c.data_reliability}>
+                        <option value="low">Laag</option><option value="medium">Middel</option><option value="high">Hoog</option>
+                      </select>
+                    </Field>
                   </ActionForm>
                   <ActionForm action={approveLearningCard.bind(null, id, c.id)} submitLabel="Keur goed: werk de aanname bij" submitClass="btn primary sm"><span /></ActionForm>
                 </>
@@ -339,7 +342,9 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                   <p>
                     {dec.client_confirmed_at
                       ? `Bevestigd door de opdrachtgever op ${new Date(dec.client_confirmed_at).toLocaleDateString("nl-NL")}${dec.client_comment ? `: “${dec.client_comment}”` : ""}`
-                      : "Nog niet bevestigd door de opdrachtgever."}
+                      : idea.client_id
+                        ? "Nog niet bevestigd door de opdrachtgever."
+                        : "Geen opdrachtgever: dit besluit is direct definitief."}
                   </p>
                   {isClientDecider && !dec.client_confirmed_at && <ConfirmDecision summary={againstFor(d, dec)} action={confirmDecision.bind(null, id, dec.id)} />}
                   {dec.reviewed_against_summary && <p className="tiny">De opdrachtgever zag bij het bevestigen de samenvatting &ldquo;Wat ging tegen&rdquo;.</p>}

@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
+import { assumptionKind } from "../../lib/domain/assumption-kind";
 
 const email = process.env.E2E_EMAIL ?? "";
 const password = process.env.E2E_PASSWORD ?? "";
@@ -17,6 +18,25 @@ async function login(page: Page) {
     await ws.fill("E2E Bureau");
     await page.getByRole("button", { name: "Werkruimte aanmaken" }).click();
     await expect(hero).toBeVisible();
+  }
+}
+
+// Fase 3: het menu heeft hooguit 9 zichtbare items zonder dubbele namen, en de stappen in het menu hebben dezelfde
+// namen en status als de stappenbalk (de menustatus volgt na het laden van de pagina, vandaar de wachtende checks).
+async function expectMenuMatchesStepper(page: Page) {
+  const sidebar = page.locator("#sidebar");
+  expect(await sidebar.locator(".idea-switch-btn, .side-nav a.nav-link").count()).toBeLessThanOrEqual(9);
+  const names = await sidebar.locator(".side-nav a.nav-link .nav-label").allTextContents();
+  expect(new Set(names).size).toBe(names.length);
+  const menuSteps = sidebar.locator("a.nav-link[data-step]");
+  const stepper = page.locator(".stepper [data-step]");
+  await expect(menuSteps).toHaveCount(4);
+  await expect(stepper).toHaveCount(4);
+  for (let i = 0; i < 4; i++) {
+    const s = stepper.nth(i);
+    await expect(menuSteps.nth(i)).toHaveAttribute("data-step", (await s.getAttribute("data-step")) ?? "");
+    await expect(menuSteps.nth(i)).toHaveAttribute("data-step-state", (await s.getAttribute("data-step-state")) ?? "");
+    await expect(menuSteps.nth(i).locator(".nav-label")).toContainText((await s.locator(".step-name").textContent()) ?? "");
   }
 }
 
@@ -67,6 +87,7 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.getByRole("button", { name: "Start de marktverkenning" }).click();
   await page.waitForURL(/\/research/);
   await expect(page.getByRole("heading", { name: "Begrijp je markt." })).toBeVisible();
+  await expectMenuMatchesStepper(page);
   const ideaUrl = page.url().replace(/\/research.*$/, "");
   // Het dossieroverzicht toont de volgende stap (week 1: onderzoek, niet de voorspelling).
   await page.goto(ideaUrl);
@@ -105,15 +126,25 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
 
   // 4. Landing page experiment
   await page.goto(`${ideaUrl}/experiments`);
+  // B0 punt 3: een landingpage met demo-aanvragen past niet bij een prijs- of technische aanname (dan is goedkeuren
+  // geblokkeerd). Kies daarom expliciet een markt- of gedragsaanname.
+  const statements = await page.locator("#as-select option").allTextContents();
+  const fitting = statements.find((st) => ["market", "behaviour"].includes(assumptionKind({ statement: st, category: "" })));
+  expect(fitting, "een markt- of gedragsaanname").toBeTruthy();
+  await page.getByLabel("Aanname die je toetst", { exact: true }).selectOption({ label: fitting! });
   await page.getByRole("radio", { name: /Landingpage-test/ }).click();
-  await page.getByLabel("Kop", { exact: true }).fill("Vind de perfecte eventlocatie in minuten.");
+  await page.getByLabel("Kop (verplicht)", { exact: true }).fill("Vind de perfecte eventlocatie in minuten.");
   await page.getByLabel("Ondertitel", { exact: true }).fill("Een persoonlijke selectie, zonder eindeloos zoeken.");
-  await page.getByLabel("Minimale steekproef", { exact: true }).fill("5");
-  // Methode 2026-11-b: de verwachte uitkomst is verplicht; daarmee rekent ProofLab vooraf het benodigde aantal uit.
-  await page.getByLabel("Verwachte uitkomst (%)", { exact: true }).fill("30");
-  await expect(page.getByText(/Benodigd: \d+ deelnemers/)).toBeVisible();
+  // Fase B1b: eerst de drempels vastleggen; daarna rekent ProofLab het aantal deelnemers uit.
+  await page.getByRole("button", { name: "Leg drempels vast" }).click();
+  await expect(page.getByText(/Je hebt ongeveer \d+ deelnemers nodig/)).toBeVisible();
+  await page.getByLabel("Minimale steekproef (verplicht)", { exact: true }).fill("5");
   await page.getByRole("radio", { name: "Koud", exact: true }).check();
   await page.getByRole("button", { name: /Test Card opslaan als concept/ }).click();
+  // Fase B1a: na opslaan terug op het bord met een bevestiging; daarvandaan naar het concept.
+  await page.waitForURL(/\/experiments\?opgeslagen=/);
+  await expect(page.getByText("Test Card opgeslagen als concept.")).toBeVisible();
+  await page.getByRole("link", { name: "Open het concept →" }).click();
   await page.waitForURL(/\/experiments\/[0-9a-f-]{36}/);
   await page.getByRole("button", { name: "Ter review aanbieden" }).click();
   await expect(page.getByRole("button", { name: "Akkoord: keur goed en vergrendel" })).toBeVisible();
@@ -154,14 +185,23 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   // Eerst voorspellen (golf B, punt 15): de bewijspagina blijft vergrendeld tot de eigen voorspelling er is.
   await expect(page.getByRole("link", { name: /Geef eerst je voorspelling/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Bewaar mijn keuze" })).toHaveCount(0);
+  // B0 punt 5: het veld is leeg; na invullen staat er wat er wordt vastgelegd.
+  const forecast = page.getByLabel("Kans dat het doel wordt gehaald (%)", { exact: true });
+  await expect(forecast).toHaveValue("");
+  await forecast.fill("30");
+  await expect(page.getByText("Je legt 30% vast. Dit kan daarna niet meer veranderen.")).toBeVisible();
   await page.getByLabel("Waarom? (één zin)", { exact: true }).fill("Weinig gedragsbewijs, dus dicht bij het basispercentage.");
   await page.getByRole("button", { name: "Leg mijn voorspelling vast" }).click();
   // The form makes way for the recorded forecast (and the others for this moment).
   await expect(page.getByRole("heading", { name: "Jouw voorspelling" })).toBeVisible();
   await page.getByRole("radio", { name: /Verder testen/ }).click();
-  await page.getByLabel("Waarom? (komt in het rapport)", { exact: true }).fill("De steekproef was klein en betaalbereidheid is nog niet getest.");
+  await page.getByLabel("Waarom? (komt in het rapport) (verplicht)", { exact: true }).fill("De steekproef was klein en betaalbereidheid is nog niet getest.");
   await page.getByRole("button", { name: "Bewaar mijn keuze" }).click();
   await expect(page.getByText(/Besluit vastgelegd/)).toBeVisible();
+  await page.reload();
+  await expectMenuMatchesStepper(page);
+  // B1-vervolg: "Verder testen" is geen definitief besluit; de stap Besluit krijgt dan geen vinkje.
+  await expect(page.locator("#sidebar a.nav-link[data-step=decide]")).not.toHaveAttribute("data-step-state", "done");
 
   // 7. Report snapshot with source footnote and decision
   await page.goto(`${ideaUrl}/report`);
@@ -179,6 +219,8 @@ test("beheer: systeemstatus voor de eigenaar, zonder CSP-schendingen", async ({ 
     if (/Content Security Policy|Refused to (load|execute|apply|connect)/i.test(m.text())) violations.push(m.text());
   });
   await login(page);
+  // Fase 3: Systeemstatus staat in het avatarmenu, alleen voor eigenaren.
+  await page.getByRole("button", { name: /^Account:/ }).click();
   await page.getByRole("link", { name: "Systeemstatus" }).click();
   await page.waitForURL(/\/app\/status/);
   await expect(page.getByRole("heading", { name: "Systeemstatus", level: 1 })).toBeVisible();

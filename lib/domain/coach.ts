@@ -4,7 +4,7 @@ import type { IconName } from "@/components/Icon";
 import type { SprintStage } from "@/lib/domain/sprint";
 import { followUpFor, forecastDue, MOMENT_LABELS, openMomentFor, type ForecastState } from "@/lib/domain/forecast";
 
-export type CoachPage = "dashboard" | "overview" | "intake" | "research" | "assumptions" | "experiments" | "evidence" | "report" | "outcome" | "forecasts" | "clients" | "other";
+export type CoachPage = "dashboard" | "overview" | "intake" | "research" | "integrations" | "assumptions" | "experiments" | "evidence" | "report" | "outcome" | "forecasts" | "clients" | "other";
 
 export type ExperimentSummary = {
   id: string;
@@ -14,6 +14,9 @@ export type ExperimentSummary = {
   endsAt: string | null;
   hasApprovedCard: boolean;
 };
+
+import { getDossierStatus, isConclusiveDecision, type DossierInput } from "./dossier-status";
+import { dossierInput } from "@/lib/steps";
 
 export type IdeaProgress = {
   ideaId: string;
@@ -39,11 +42,16 @@ export type IdeaProgress = {
   latestRealityCheckAt: string | null;
   decisions: number;
   latestDecisionAt: string | null;
+  // Actie van het laatste besluit (decisions.action): alleen doorgaan of stoppen rondt stap Besluit af.
+  latestDecisionAction: string | null;
+  // Bevestigd door de opdrachtgever, of geen bevestiging nodig (dossier zonder opdrachtgever, zie decision-confirmation.ts).
   latestDecisionConfirmed: boolean;
   reports: number;
   latestReportAt: string | null;
   latestReportShared: boolean;
   behaviourObservations: number;
+  // Fase B1c: invoer voor getDossierStatus(); ontbreekt in oudere testdata, dan rekent lib/steps met de tellers hierboven.
+  dossier?: DossierInput;
   // Prediction loop; absent when the database has no prediction schema yet (the coach then ignores it).
   forecast?: ForecastState;
 };
@@ -67,6 +75,7 @@ const PAGE_COPY: Record<CoachPage, [string, string]> = {
   overview: ["Waar staat dit dossier?", "Eén volgende stap tegelijk. Hier zie je hoe ver elke stap is en wat de coach opviel."],
   intake: ["Begin bij de beslissing.", "Welke beslissing moet dit onderzoek ondersteunen? Daarmee krijgt elk onderzoek een doel en een moment waarop het genoeg is."],
   research: ["Kijk verder dan de concurrent.", "Ook Excel, je eigen netwerk of helemaal niets doen kan de grootste concurrent zijn."],
+  integrations: ["Hoor de klant in zijn eigen woorden.", "Reviews, forumdraden, enquête-antwoorden en LinkedIn-reacties laten zien welke problemen klanten zelf noemen. Haal ze hier binnen; ze verschijnen bij Doelgroepen."],
   assumptions: ["Begin met je grootste risico.", "Welke aanname zou het hele idee onderuit halen als die niet klopt? Daar beginnen we."],
   experiments: ["Test gedrag, geen complimenten.", "Een enthousiaste reactie is prettig. Een echte afspraak of betaling zegt vaak meer."],
   evidence: ["Wat zegt dit bewijs echt?", "Het doel is leren, niet gelijk krijgen. Kijk ook naar wat een resultaat niet aantoont."],
@@ -82,6 +91,7 @@ const CLIENT_COPY: Record<CoachPage, [string, string, string]> = {
   dashboard: ["Welkom bij uw dossier.", "Hier volgt u het onderzoek dat voor u wordt uitgevoerd. U kijkt mee; het onderzoeksteam doet het werk.", "U ziet per dossier in welke sprintweek het onderzoek zit, het laatst gedeelde rapport en of er een besluit op uw bevestiging wacht."],
   overview: ["Uw dossier.", "Hier volgt u het onderzoek.", "Het onderzoeksteam werkt stap voor stap van marktverkenning naar besluit."],
   intake: ["Begin bij de beslissing.", "Elk onderzoek start met de beslissing die u wilt nemen.", "Het onderzoeksteam legt de beslisvraag met u vast."],
+  integrations: ["Wat zeggen klanten zelf?", "Het onderzoeksteam verzamelt hier reacties uit reviews, forums en LinkedIn.", "Klantreacties zijn kwalitatieve signalen: ze maken vragen scherper, maar bewijzen geen gedrag."],
   research: ["Wat weten we over de markt?", "Elke bevinding verwijst naar een bron met een letterlijk citaat. ProofLab controleert dat citaat zelf.", "Een bevinding met 'onvoldoende bewijs' is een open vraag, geen feit. Een AI-tekst telt nooit als bron."],
   assumptions: ["Wat moet waar zijn?", "De risicokaart zet af hoe belangrijk een aanname is tegen hoeveel bewijs er al voor is.", "Rechtsboven staan de aannames die het meest belangrijk zijn en het minst bewezen. Die worden als eerste getest."],
   experiments: ["Hoe wordt er getest?", "Elke test heeft vooraf vastgelegde drempels. Na goedkeuring kunnen die niet meer stil worden aangepast.", "Tijdens een lopende test ziet u voortgang, maar nog geen conclusie. Een uitspraak volgt pas na de afgesproken eindconditie."],
@@ -165,6 +175,10 @@ export function nextAction(p: IdeaProgress): NextAction {
     if (atDecision) return atDecision;
   }
   if (decisionDue(p)) return { title: "Neem het besluit", detail: "Doorgaan, bijsturen, verder testen, pauzeren of stoppen. Jij beslist, de check adviseert.", href: `${base}/evidence`, icon: "shield" };
+  // Na verder testen, bijsturen, een verlengde testfase of pauzeren is het dossier niet besloten: eerst de volgende
+  // test (of de terugkeer na de pauze), pas na een definitief besluit het rapport delen.
+  const open = openDecisionAction(p);
+  if (open) return open;
   if (p.reports === 0) return { title: "Maak het eerste rapport", detail: "Bundel beslisvraag, bronnen, tests en besluit in een vaste rapportversie.", href: `${base}/report`, icon: "file" };
   if (reportStale(p)) return { title: "Werk het rapport bij", detail: "Er is een besluit genomen na de laatste rapportversie. Maak een nieuwe versie.", href: `${base}/report`, icon: "file" };
   if (!p.latestReportShared) return { title: "Deel het rapport met de opdrachtgever", detail: "De laatste versie is nog niet gedeeld. De opdrachtgever ziet alleen gedeelde versies.", href: `${base}/report`, icon: "file" };
@@ -175,6 +189,24 @@ export function nextAction(p: IdeaProgress): NextAction {
     href: `${base}/assumptions`,
     icon: "layers",
   };
+}
+
+// De volgende stap na een besluit dat het traject gaande houdt; null zonder besluit of na doorgaan/stoppen.
+export function openDecisionAction(p: IdeaProgress): NextAction | null {
+  if (p.decisions === 0 || isConclusiveDecision(p.latestDecisionAction)) return null;
+  const base = `/app/ideas/${p.ideaId}`;
+  const risk = p.topAssumption ? `Grootste resterende risico: "${p.topAssumption.statement}".` : "Kies de aanname die het besluit nu tegenhoudt.";
+  const testHref = p.topAssumption ? `${base}/experiments?assumption=${p.topAssumption.id}` : `${base}/experiments`;
+  switch (p.latestDecisionAction) {
+    case "adjust":
+      return { title: "Stuur bij en ontwerp een nieuwe test", detail: `Het besluit was bijsturen. Pas aanbod, doelgroep of belofte aan en toets opnieuw. ${risk}`, href: `${base}/assumptions`, icon: "layers" };
+    case "pause":
+      return { title: "Het dossier is gepauzeerd", detail: "Leg vast wat er moet veranderen om terug te komen. Na nieuw bewijs volgt het definitieve besluit: doorgaan of stoppen.", href: `${base}/evidence`, icon: "clock" };
+    case "extend":
+      return { title: "Verzamel gedragsbewijs in de verlengde testfase", detail: `Start of loop de vervolgtest. Het definitieve besluit volgt na de verlengde testfase. ${risk}`, href: testHref, icon: "flask" };
+    default:
+      return { title: "Ontwerp de volgende test", detail: `Het besluit was verder testen: het bewijs is nog te zwak of onbeslist. ${risk}`, href: testHref, icon: "flask" };
+  }
 }
 
 // Opvolging van de uitkomst: de tussenstand na drie maanden en de uitkomst na zes maanden (of op de meetdatum).
@@ -223,12 +255,13 @@ export function predictionAction(p: IdeaProgress): NextAction | null {
 }
 
 // Where the dossier is on the sprint path (used for "loopt achter").
+// Waar het dossier echt staat (fase B1c): de huidige stap uit getDossierStatus(). Een lopende test zet het dossier
+// in de testfase. Na het besluit telt het rapport nog mee: zonder (actueel) rapport is de sprint niet rond.
 export function sprintStage(p: IdeaProgress): SprintStage {
-  if (p.claims === 0 || !p.hasAlternatives) return 1;
-  if (p.assumptions === 0 || p.experiments.length === 0) return 2;
-  if (p.experimentsEnded === 0) return 3;
-  if (p.decisions === 0 || p.reports === 0 || reportStale(p)) return 4;
-  return 5;
+  const s = getDossierStatus(dossierInput(p));
+  const stage = ({ market: 1, assumptions: 2, test: 3, decide: 4, done: 5 } as const)[s.current];
+  if (stage === 5 && (p.reports === 0 || reportStale(p))) return 4;
+  return stage;
 }
 
 function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSuggestion[]; insight?: [string, string] } {
@@ -249,6 +282,13 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
       if (p.weakClaims > 0) insight = ["Let hierop", `${p.weakClaims} bevinding(en) hebben nog onvoldoende bewijs. Zoekcijfers en AI-conclusies zijn geen bewijs dat klanten willen betalen.`];
       else if (!p.sizingEstablished) insight = ["Let hierop", "Het basisaantal van de marktomvang heeft nog geen bron. Tot die tijd is de omvang een verkenning, geen feit."];
       if (items.length === 0) add("Ga door naar de aannames", `${base}/assumptions`, "layers");
+      break;
+    }
+    case "integrations": {
+      add("Importeer reviews of forumdraden in bulk", `${base}/integrations#bulk-import`, "users");
+      add("Haal één pagina met klantreacties op", `${base}/integrations#pagina-ophalen`, "compass");
+      add("Bekijk de klantsignalen bij Doelgroepen", `${base}/research?tab=customers#klantsignalen`, "users");
+      insight = ["Goed om te weten", "Klantsignalen tellen als kwalitatieve observatie, niet als gedrag. Gebruik ze om aannames en interviewvragen scherper te maken; voor bewijs is een test nodig."];
       break;
     }
     case "assumptions": {
@@ -319,10 +359,29 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
   return { items, insight };
 }
 
-export function coachFor(page: CoachPage, p: IdeaProgress | null, opts: { audience?: "consultant" | "client"; isClientDecider?: boolean } = {}): CoachData {
+export function coachFor(
+  page: CoachPage,
+  p: IdeaProgress | null,
+  opts: { audience?: "consultant" | "client"; isClientDecider?: boolean; currentIdea?: { id: string; title: string } | null } = {},
+): CoachData {
   const audience = opts.audience ?? "consultant";
   if (audience === "client") return clientCoach(page, p, !!opts.isClientDecider);
   const [title, copy] = PAGE_COPY[page];
+  // Werkruimtepagina's (geen idee open): verwijs naar het lopende idee. Alleen zonder ideeën: begin met één idee.
+  if (!p && opts.currentIdea) {
+    const href = `/app/ideas/${opts.currentIdea.id}`;
+    return {
+      title,
+      copy,
+      insightTitle: "Je lopende idee",
+      insight: `Je werkt aan "${opts.currentIdea.title}". Ga verder waar je gebleven was; het overzicht van dit idee toont de volgende stap.`,
+      suggestions: [
+        { label: `Verder met ${opts.currentIdea.title}`, href, icon: "arrow" },
+        { label: "Nieuw idee onderzoeken", href: "/app/ideas/new", icon: "plus" },
+      ],
+      audience,
+    };
+  }
   if (!p) {
     return {
       title,
