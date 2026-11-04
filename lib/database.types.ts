@@ -598,6 +598,20 @@ export type Database = {
         Update: { idea_id?: string; reason?: string; excluded_by?: string; excluded_at?: string }
         Relationships: []
       }
+      // Eigen notities per stap (migratie 20261110130000). Auteur en tijden zet de database.
+      step_notes: {
+        Row: { id: string; idea_id: string; step: string; title: string; body: string; author_name: string; created_by: string | null; created_at: string; updated_at: string }
+        Insert: { id?: string; idea_id: string; step: string; title?: string; body: string; author_name?: string; created_by?: string | null; created_at?: string; updated_at?: string }
+        Update: { id?: string; idea_id?: string; step?: string; title?: string; body?: string; author_name?: string; created_by?: string | null; created_at?: string; updated_at?: string }
+        Relationships: []
+      }
+      // Documenten per stap (migratie 20261110130000); het bestand staat in de privé bucket step-documents.
+      step_documents: {
+        Row: { id: string; idea_id: string; step: string; storage_path: string; file_name: string; mime_type: string; size_bytes: number; description: string | null; author_name: string; created_by: string | null; created_at: string }
+        Insert: { id?: string; idea_id: string; step: string; storage_path: string; file_name: string; mime_type: string; size_bytes: number; description?: string | null; author_name?: string; created_by?: string | null; created_at?: string }
+        Update: { id?: string; idea_id?: string; step?: string; storage_path?: string; file_name?: string; mime_type?: string; size_bytes?: number; description?: string | null; author_name?: string; created_by?: string | null; created_at?: string }
+        Relationships: []
+      }
       // Golf B (punt 1): "Was stoppen achteraf terecht?"
       stop_reviews: {
         Row: { idea_id: string; justified: string; evidence: string; reviewed_by: string; reviewed_at: string }
@@ -2871,6 +2885,8 @@ export type Database = {
     Functions: {
       can_read_idea: { Args: { p_idea: string }; Returns: boolean }
       can_write_idea: { Args: { p_idea: string }; Returns: boolean }
+      can_edit_step_item: { Args: { p_idea: string; p_created_by: string | null }; Returns: boolean }
+      step_document_idea: { Args: { p_name: string }; Returns: string | null }
       enqueue_job: { Args: { p_idea: string; p_kind: string; p_payload: Json; p_dedupe: string | null }; Returns: Json }
       cancel_job: { Args: { p_job: string }; Returns: boolean }
       claim_jobs: {
