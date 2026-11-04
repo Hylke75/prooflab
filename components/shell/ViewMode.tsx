@@ -72,10 +72,10 @@ export function useViewMode(): { level: DetailLevel; canWrite: boolean; pending:
 // "Eén keer per pagina": het eerste exemplaar met deze sleutel (in de volgorde van de pagina) krijgt true.
 // Tijdens het renderen (ook op de server) telt de volgorde van renderen; na het laden de volgorde in het document,
 // zodat een onderdeel dat later verschijnt of verdwijnt (bijv. een andere aanname kiezen) de juiste uitkomst geeft.
-export function useFirstOnPage(key: string): { first: boolean; ref: React.RefObject<HTMLSpanElement | null> } {
+export function useFirstOnPage<T extends HTMLElement = HTMLSpanElement>(key: string): { first: boolean; ref: React.RefObject<T | null> } {
   const ctx = useContext(ViewModeContext);
   const id = useId();
-  const ref = useRef<HTMLSpanElement>(null);
+  const ref = useRef<T>(null);
   const [domFirst, setDomFirst] = useState<boolean | null>(null);
   const store = ctx?.once;
   if (store && !store.claims.has(key)) store.claims.set(key, id);

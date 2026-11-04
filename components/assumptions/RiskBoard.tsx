@@ -13,6 +13,7 @@ import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 import { DirectionField } from "@/components/ui/DirectionField";
 import { Probability } from "@/components/ui/Probability";
 import { Term } from "@/components/ui/Term";
+import { Explain } from "@/components/ui/Explain";
 import { formatProbability } from "@/lib/domain/probability-display";
 import { explainRecruitment } from "@/lib/domain/recruitment";
 import { explainIndirect } from "@/lib/domain/claim-scope";
@@ -248,8 +249,8 @@ export function RiskBoard({
         </div>
         <p className="tiny">
           Horizontaal staat de geschatte kans dat de aanname klopt: start op 50% en bijgewerkt met een vaste factor per soort bewijs. Rood = <Term k="kritieke-aanname">kritieke aanname</Term> met een kans onder 70%. Tik op een punt om de aanname te bekijken.
-          {/* Gebruikerstest C6: de kalibratie-uitleg één keer per kaart, niet bij elke kans. */}
-          {calibrated ? "" : " Kansen zijn nog niet gekalibreerd en staan als band van 10 procentpunt rond de berekende waarde."}
+          {/* Gebruikerstest C6: de kalibratie-uitleg één keer per kaart, niet bij elke kans. Fase 1 · punt 1: in Snel één keer per pagina. */}
+          {calibrated ? "" : <> <Explain k="kalibratie" term="Niet gekalibreerd">Kansen zijn nog niet gekalibreerd en staan als band van 10 procentpunt rond de berekende waarde.</Explain></>}
         </p>
       </div>
       <div className="card">
@@ -417,9 +418,14 @@ function ProbabilityDetail({
       </div>
       <p className="explain" style={{ marginTop: 2 }}>
         Geschatte kans dat deze aanname klopt. De bandbreedte laat zien wat er gebeurt als de factoren per bewijssoort 50% zwakker of sterker zijn.
-        {calibrated
-          ? ""
-          : " Niet gekalibreerd: je werkruimte heeft nog te weinig opgeloste dossiers om deze kansen te toetsen, daarom tonen we een band van 10 procentpunt rond de berekende waarde. De exacte waarde staat in de tooltip."}
+        {calibrated ? "" : (
+          <>
+            {" "}
+            <Explain k="kalibratie" term="Niet gekalibreerd">
+              Niet gekalibreerd: je werkruimte heeft nog te weinig opgeloste dossiers om deze kansen te toetsen, daarom tonen we een band van 10 procentpunt rond de berekende waarde. De exacte waarde staat in de tooltip.
+            </Explain>
+          </>
+        )}
       </p>
       {capped && cap && (
         <p className="tiny mt-8">

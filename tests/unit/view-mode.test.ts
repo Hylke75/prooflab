@@ -3,6 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { asDetailLevel, cleanDefaultedFields, defaultedLabels, explainShowsText, isShown, parseDetailLevel, visibleCount } from "@/lib/view-mode";
 import { Detail, ViewModeProvider } from "@/components/shell/ViewMode";
+import { DetailLevelSwitch } from "@/components/shell/DetailLevelSwitch";
+import { Explain } from "@/components/ui/Explain";
 
 // Fase 1 · punt 1: Snel en Grondig. De stand is alleen weergave; hier de regels voor wat wel en niet in beeld komt.
 
@@ -80,5 +82,58 @@ describe("<Detail>", () => {
 
   it("zonder provider geldt Grondig", () => {
     expect(renderToStaticMarkup(h(Detail, null, h("p", null, "Alles")))).toContain("Alles");
+  });
+});
+
+describe("<Explain>", () => {
+  const page = (level: "quick" | "thorough") =>
+    renderToStaticMarkup(
+      h(ViewModeProvider, {
+        level,
+        canWrite: true,
+        children: h(
+          "div",
+          null,
+          h(Explain, { k: "kalibratie", as: "p", term: "Niet gekalibreerd", children: "Uitleg A over kalibratie." }),
+          h(Explain, { k: "kalibratie", as: "p", term: "Niet gekalibreerd", children: "Uitleg B over kalibratie." }),
+          h(Explain, { k: "ai-drempel", children: "Drempeluitleg." }),
+        ),
+      }),
+    );
+
+  it("Snel: de eerste keer per pagina de uitleg, daarna alleen de term met tooltip", () => {
+    const html = page("quick");
+    expect(html).toContain("Uitleg A over kalibratie.");
+    expect(html).not.toContain("Uitleg B over kalibratie.");
+    expect(html).toContain('class="term"');
+    expect(html).toContain("Niet gekalibreerd");
+    // Een andere term telt los: ook die krijgt de eerste keer de uitleg.
+    expect(html).toContain("Drempeluitleg.");
+  });
+
+  it("Grondig: overal de uitleg", () => {
+    const html = page("thorough");
+    expect(html).toContain("Uitleg A over kalibratie.");
+    expect(html).toContain("Uitleg B over kalibratie.");
+    expect(html).not.toContain('class="term"');
+  });
+});
+
+describe("schakelaar Snel | Grondig", () => {
+  const sw = (level: "quick" | "thorough", canWrite: boolean) => renderToStaticMarkup(h(ViewModeProvider, { level, canWrite, children: h(DetailLevelSwitch) }));
+
+  it("schrijvers: een radiogroep met twee keuzes, de huidige gekozen en als enige in de tabvolgorde", () => {
+    const html = sw("quick", true);
+    expect(html).toContain('role="radiogroup"');
+    expect(html.match(/role="radio"/g)).toHaveLength(2);
+    expect(html).toMatch(/aria-checked="true" tabindex="0"[^>]*>Snel</);
+    expect(html).toMatch(/aria-checked="false" tabindex="-1"[^>]*>Grondig</);
+    expect(html).toContain("Weergave van dit dossier");
+  });
+
+  it("opdrachtgevers: alleen de stand, geen knoppen", () => {
+    const html = sw("thorough", false);
+    expect(html).not.toContain("<button");
+    expect(html).toContain("Weergave: Grondig");
   });
 });

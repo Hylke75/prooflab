@@ -12,7 +12,7 @@ import { AiQualityCard } from "@/components/research/AiQualityCard";
 import { SurveyResults } from "@/components/survey/SurveyResults";
 import { Distribution } from "@/components/survey/Distribution";
 import { PerPostResults } from "@/components/survey/PerPostResults";
-import { getIdea, getWorkspace } from "@/lib/data";
+import { getIdea, getViewMode, getWorkspace } from "@/lib/data";
 import { loadAiQuality } from "@/lib/ai-quality";
 import { auditGuide, auditTranscript, guideSummary } from "@/lib/domain/interview-audit";
 import { codingIsProposalOnly } from "@/lib/domain/ai-quality";
@@ -51,6 +51,8 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
   const { id, expId } = await params;
   const sp = await searchParams;
   const { idea, canWrite } = await getIdea(id);
+  // Fase 1 · punt 1: Snel of Grondig (alleen weergave; de meting en het oordeel zijn in beide standen gelijk).
+  const level = await getViewMode(id);
   const supabase = await supabaseServer();
   const { data: exp } = await supabase.from("experiments").select("*, hypotheses(*, assumptions(statement, category, kind))").eq("id", expId).eq("idea_id", id).maybeSingle();
   if (!exp || !exp.hypotheses) notFound();
@@ -507,7 +509,10 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                             ? `AI-codering, geaccepteerd door consultant${o.reviewed_at ? ` op ${new Date(o.reviewed_at).toLocaleDateString("nl-NL")}` : ""}`
                             : o.review_status === "rejected"
                               ? `AI-codering, afgewezen door consultant${o.reviewed_at ? ` op ${new Date(o.reviewed_at).toLocaleDateString("nl-NL")}` : ""}; telt niet mee`
-                              : `AI-voorstel, citaat letterlijk gecontroleerd; nog niet beoordeeld${quality && codingIsProposalOnly(quality.coding) ? " (AI-codering blijft een voorstel)" : ""}`}
+                              : level === "quick"
+                                ? // Fase 1 · punt 1: in Snel per observatie alleen de pil; de uitleg staat in de tooltip.
+                                  <span className="pill blue"><Term k="ai-voorstel">voorstel</Term></span>
+                                : `AI-voorstel, citaat letterlijk gecontroleerd; nog niet beoordeeld${quality && codingIsProposalOnly(quality.coding) ? " (AI-codering blijft een voorstel)" : ""}`}
                       </p>
                       {o.origin === "ai" && !o.review_status && (
                         <div className="row mt-8">

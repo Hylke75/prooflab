@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CERTAINTY_LABEL, type Certainty, type EvidenceStanding as Standing } from "@/lib/domain/evidence-standing";
 import { EvidenceScale } from "@/components/evidence/EvidenceScale";
 import { Probability } from "@/components/ui/Probability";
+import { Explain } from "@/components/ui/Explain";
 
 const CERTAINTY_PILL: Record<Certainty, string> = { low: "coral", medium: "orange", high: "green" };
 
@@ -88,10 +89,11 @@ export function EvidenceStanding({ standing, ideaId, links = true, className = "
         </p>
       )}
       {!s.calibrated && (
-        <p className="explain mt-8">
+        // Fase 1 · punt 1: in Snel één keer per pagina de uitleg, daarna alleen de term met tooltip.
+        <Explain k="kalibratie" term="Niet gekalibreerd" as="p" className="explain mt-8">
           Kansen zijn niet gekalibreerd: de werkruimte heeft nog te weinig afgeronde dossiers om ze te toetsen. Ze staan als band van 10 procentpunt; de exacte waarde en
           de bandbreedte staan in de tooltip.
-        </p>
+        </Explain>
       )}
     </section>
   );

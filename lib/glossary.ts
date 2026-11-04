@@ -157,6 +157,16 @@ export const GLOSSARY = {
     uitleg:
       "Meet achteraf hoe goed een voorspelde kans was: het kwadraat van het verschil tussen de kans en wat er gebeurde. 0 is perfect, 0,25 haal je door steeds 50% te zeggen en 1 is stellig en fout.",
   },
+  "ai-voorstel": {
+    term: "Voorstel (AI)",
+    uitleg:
+      "Een AI-codering waarvan het citaat letterlijk in het transcript staat, maar die nog niemand heeft beoordeeld. Hij telt pas als bewijs na akkoord van een consultant; afgewezen telt hij nooit.",
+  },
+  "ai-drempel": {
+    term: "Drempel voor AI-kwaliteit",
+    uitleg:
+      "ProofLab meet hoe vaak consultants het eens zijn met de AI, over minstens 10 beoordelingen. Onder de drempel blijft elk AI-oordeel een voorstel dat een mens moet bevestigen.",
+  },
   kalibratie: {
     term: "Kalibratie",
     uitleg:
