@@ -67,7 +67,7 @@ export default async function SurveyPage({ params, searchParams }: PageProps<"/s
       {!live && <div className="banner-preview" role="status">Voorbeeld: deze enquête is nog niet geopend. Antwoorden worden niet opgeslagen.</div>}
       <main className="tp-main" id="inhoud" style={{ placeItems: "start center" }}>
         <div className="tp-card" style={{ textAlign: "left" }}>
-          <div className="eyebrow">Enquête · Ongeveer {c.estimated_minutes} {c.estimated_minutes === 1 ? "minuut" : "minuten"}</div>
+          <div className="eyebrow">{c.format === "interview" ? "Online interview (schriftelijk)" : "Enquête"} · Ongeveer {c.estimated_minutes} {c.estimated_minutes === 1 ? "minuut" : "minuten"}</div>
           <h1 style={{ fontSize: "clamp(30px,4.5vw,44px)" }}>{c.title}</h1>
           <p style={{ whiteSpace: "pre-line" }}>{c.intro}</p>
           <dl style={{ display: "grid", gap: 6, fontSize: 14, margin: "0 0 18px" }}>

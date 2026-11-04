@@ -1,4 +1,5 @@
 import "server-only";
+import { decisive } from "@/lib/domain/customer-research";
 import { PROPOSAL_REFERENCE_PREFIX } from "@/lib/domain/reference-proposal";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadAssumptions, rankAssumptions } from "@/lib/progress";
@@ -58,7 +59,11 @@ export async function loadDossier(idea: Idea) {
   const calibration = await loadCalibration(id);
   const method = { version, label: METHODS[version].label, rules: METHODS[version].rules, caps: METHODS[version].usesCaps ? caps.caps : null, capsCustom: caps.custom };
   const expList = experiments.data ?? [];
-  const metrics = await Promise.all(expList.map((e) => (e.hypotheses ? experimentMetrics(e, e.hypotheses, version) : null)));
+  // Verkennend klantonderzoek (zonder drempel) krijgt geen oordeel: het beslist niets.
+  const metrics = await Promise.all(expList.map((e) => {
+    const h = decisive(e.hypotheses);
+    return h ? experimentMetrics(e, h, version) : null;
+  }));
 
   const sizing = (scenarios.data ?? [])
     .map((s) => {

@@ -39,18 +39,25 @@ import { describeRule } from "@/lib/domain/decision-rule";
 import { GoRuleProposalCard } from "@/components/experiments/GoRuleProposal";
 import { TestCardStatus } from "@/components/experiments/TestCardStatus";
 import { deadlineFromDays, isoDay } from "@/lib/domain/test-card";
+import { decisive, isExploratory } from "@/lib/domain/customer-research";
+import { StudyView } from "./StudyView";
 
 export const metadata: Metadata = { title: "Experiment" };
 
 const TITLE_MAX = 90;
 
-export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[id]/experiments/[expId]">) {
+export default async function ExperimentPage({ params, searchParams }: PageProps<"/app/ideas/[id]/experiments/[expId]">) {
   const { id, expId } = await params;
+  const sp = await searchParams;
   const { idea, canWrite } = await getIdea(id);
   const supabase = await supabaseServer();
   const { data: exp } = await supabase.from("experiments").select("*, hypotheses(*, assumptions(statement, category, kind))").eq("id", expId).eq("idea_id", id).maybeSingle();
   if (!exp || !exp.hypotheses) notFound();
-  const h = exp.hypotheses;
+  // Verkennend klantonderzoek vanuit Markt (geen drempels, geen aanname): een eigen, eenvoudiger weergave zonder
+  // oordeel, Learning Card of hoofdtest. Tests uit stap 3 lopen ongewijzigd verder hieronder.
+  if (isExploratory(exp.hypotheses)) return <StudyView ideaId={id} idea={idea} canWrite={canWrite} exp={exp} h={exp.hypotheses} isNew={typeof sp.nieuw === "string" ? sp.nieuw : undefined} />;
+  const h = decisive(exp.hypotheses);
+  if (!h) notFound();
   const type = exp.type as ExperimentType;
   const state = exp.state as ExperimentState;
   const m = await experimentMetrics(exp, h);

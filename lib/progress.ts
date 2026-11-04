@@ -19,6 +19,7 @@ import { loadIdeaWeights } from "@/lib/learning-data";
 import { withPracticeFlag } from "@/lib/domain/practice";
 import { loadRealInterviewIds, realObservationFilter } from "@/lib/practice-data";
 import { decisionConfirmation, decisionSettled } from "@/lib/domain/decision-confirmation";
+import { isExploratory } from "@/lib/domain/customer-research";
 
 export type AssumptionWithEvidence = {
   id: string;
@@ -373,7 +374,7 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     supabase.from("competitors").select("id", count).eq("idea_id", ideaId),
     supabase.from("competitors").select("id", count).eq("idea_id", ideaId).in("kind", ["alternative", "status_quo"]),
     supabase.from("segments").select("id", count).eq("idea_id", ideaId),
-    supabase.from("experiments").select("id, title, state, started_at, ends_at, created_at").eq("idea_id", ideaId).order("created_at"),
+    supabase.from("experiments").select("id, title, state, started_at, ends_at, created_at, hypotheses(assumption_id, success_threshold_pct)").eq("idea_id", ideaId).order("created_at"),
     supabase.from("learning_cards").select("experiment_id, status, approved_at, verdict").eq("idea_id", ideaId),
     supabase.from("reality_checks").select("created_at").eq("idea_id", ideaId).order("created_at", { ascending: false }).limit(1),
     supabase.from("decisions").select("action, decided_at, client_confirmed_at").eq("idea_id", ideaId).order("decided_at", { ascending: false }),
@@ -397,7 +398,8 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
   const assumptions = rankAssumptions(await loadAssumptions(ideaId));
   const cardList = cards.data ?? [];
   const approvedCards = cardList.filter((c) => c.status === "approved");
-  const expList = (experiments.data ?? []).map((e) => ({
+  // Verkennend klantonderzoek vanuit Markt telt niet als test: het krijgt geen Learning Card en beslist niets.
+  const expList = (experiments.data ?? []).filter((e) => !isExploratory(e.hypotheses)).map((e) => ({
     id: e.id,
     title: e.title,
     state: e.state,

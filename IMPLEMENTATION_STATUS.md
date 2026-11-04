@@ -495,3 +495,30 @@ geïmporteerd rapport is een gewone bron (`sources`) met de uitgelezen tekst als
   scan, voorstellen filteren, bevinding vastleggen en weigeren)
 - 🟡 AI-voorstellen worden niet bewaard tot ze geaccepteerd zijn (herladen = opnieuw laten voorstellen). Geen OCR voor
   scans. Geen e2e-test en geen visuele controle met login in deze omgeving
+
+## Markt: klantonderzoek vanuit stap 1 (11 november)
+
+Opdracht product owner: "Bij marktonderzoek moet je verschillende enquêtes kunnen aanmaken, online interviews kunnen
+maken", direct vanuit stap 1 Markt. Migratie `20261111090000_markt_klantonderzoek.sql` (**nog niet toegepast**; zonder
+de migratie toont het tabblad de bestaande enquêtes en interviews en meldt dat nieuw verkennend onderzoek wacht).
+
+- ✅ **Tabblad "Klantonderzoek"** op Markt (`?tab=klantonderzoek`, `components/research/CustomerResearchPanel.tsx`):
+  alle enquêtes en interviews van het idee (status, ontvangen/bruikbare antwoorden, onderzoeksvraag, rol verkennend of
+  test uit stap 3), "Nieuwe enquête" en "Nieuw online interview" (`NewStudyForm`), en "Live interview vastleggen" naar
+  de lopende interviewronde of, zonder ronde, naar een nieuwe interview-Test Card in stap 3
+- ✅ **Verkennend onderzoek** (`lib/domain/customer-research.ts`, `app/app/ideas/[id]/research/study-actions.ts`): een
+  experiment van het type `survey` met een hypothese `exploratory = true`, gekoppeld aan een onderzoeksvraag, zonder
+  aanname, drempel of beslisregel. Begint met een AI-voorstel (dezelfde coach als de Test Card, `lib/survey-coach.ts`),
+  het sjabloon of leeg; daarna de bestaande enquête-editor op de onderzoekspagina (`StudyView`, `StudyEditor`).
+  Meerdere per idee. Kernvraag optioneel (zonder drempel)
+- ✅ **Online interview (schriftelijk)**: zelfde engine, toestemmingsvraag bovenaan (screening: wie "nee" kiest stopt en
+  telt niet), daarna alleen open vragen uit een leidraad over recent gedrag; de leidraadcontrole van
+  `interview-audit.ts` waarschuwt bij sturende, hypothetische of dubbele vragen. Publieke pagina toont het label
+- ✅ **Poorten**: tests uit stap 3 ongewijzigd (zelfde controlepunten, go-regel, steekproefregels). Verkennend: geen
+  pretest-vinkje, geen go-regelblokkade, afronden zonder reden, geen Learning Card, geen oordeel (`decisive()` sluit
+  het uit van metingen, methodevergelijking, rapportoordeel en voortgang). Goedkeuren vergrendelt de go-regel van het
+  dossier niet en maakt hem niet "achteraf vastgelegd" (migratie)
+- ✅ **Telregels**: per persoon (één antwoord per uitnodiging/bezoeker), buiten doelgroep/zonder toestemming en niet
+  geloofwaardig tellen niet; zelfrapportage, geen gedrag. Live interviews: alleen echte gesprekken met toestemming
+- ✅ Tests: `tests/unit/customer-research.test.ts`; e2e `tests/e2e/klantonderzoek.spec.ts` (niet gedraaid)
+- 🟡 Migratie toepassen; daarna de e2e draaien en visueel controleren op 1440 px en 390 px

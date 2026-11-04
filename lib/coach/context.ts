@@ -84,7 +84,7 @@ export function experimentLines(experiments: CoachContextInput["experiments"], c
     ...experiments.slice(0, 20).map((e) => {
       const h = e.hypotheses;
       const card = cards.find((c) => c.experiment_id === e.id && c.status === "approved");
-      const thresholds = h ? `geslaagd bij ≥ ${pct(h.success_threshold_pct)}, niet geslaagd bij ≤ ${pct(h.fail_threshold_pct)}${h.min_sample ? `, minimaal ${h.min_sample} deelnemers` : ""}` : "geen drempels vastgelegd";
+      const thresholds = h && h.success_threshold_pct == null ? "verkennend onderzoek zonder drempels (beslist niets)" : h ? `geslaagd bij ≥ ${pct(h.success_threshold_pct)}, niet geslaagd bij ≤ ${pct(h.fail_threshold_pct)}${h.min_sample ? `, minimaal ${h.min_sample} deelnemers` : ""}` : "geen drempels vastgelegd";
       const measured = e.metrics ? `${e.metrics.successes} van ${e.metrics.n}, ${VERDICT[e.metrics.verdict.kind] ?? e.metrics.verdict.kind}` : "nog geen meting";
       const outcome = card?.verdict ? `; Learning Card goedgekeurd: ${VERDICT[card.verdict] ?? card.verdict}` : "";
       const about = h?.assumptions?.statement ? ` — toetst: ${clean(h.assumptions.statement, 140)}` : "";

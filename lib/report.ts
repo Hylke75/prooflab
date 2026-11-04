@@ -17,6 +17,7 @@ import type { DossierStatus } from "@/lib/domain/dossier-status";
 import { observationDirection, observationLevel } from "@/lib/domain/per-person";
 import { addDaysIso, buildDecisionSheet, sheetDate, type DecisionSheet } from "@/lib/report-sheet";
 import { todayInNL } from "@/lib/domain/sprint";
+import { isExploratory } from "@/lib/domain/customer-research";
 
 // "AI · Gemini" for an AI forecast whose provider is known; null otherwise.
 function aiName(kind: string, model: string | null): string | null {
@@ -205,7 +206,7 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         state: e.state,
         hypothesis: e.hypotheses?.we_believe ?? "",
         metric: e.hypotheses ? `${e.hypotheses.metric_numerator} / ${e.hypotheses.metric_denominator}` : "",
-        threshold: e.hypotheses ? `≥ ${e.hypotheses.success_threshold_pct}% succes${e.hypotheses.fail_threshold_pct != null ? `, < ${e.hypotheses.fail_threshold_pct}% faal` : ""}, n ≥ ${e.hypotheses.min_sample}` : "",
+        threshold: isExploratory(e.hypotheses) ? "Geen drempel: verkennend onderzoek (beslist niets)" : e.hypotheses ? `≥ ${e.hypotheses.success_threshold_pct}% succes${e.hypotheses.fail_threshold_pct != null ? `, < ${e.hypotheses.fail_threshold_pct}% faal` : ""}, n ≥ ${e.hypotheses.min_sample}` : "",
         lockedAt: e.hypotheses?.locked_at ?? null,
         n: e.metrics?.n ?? 0,
         successes: e.metrics?.successes ?? 0,
