@@ -9,6 +9,9 @@ import { Tabs } from "@/components/research/Tabs";
 import { ResearchRunPanel, SearchLogList, type QuestionLog, type SearchLogUrl } from "@/components/research/ResearchRunPanel";
 import { EXPECTED_SOURCES, isExpectedSource } from "@/lib/domain/research-plan";
 import { AddClaimForm, AddSourceForm } from "@/components/research/SourceForms";
+import { ReportImport, type ImportableDoc, type ImportedReport } from "@/components/research/ReportImport";
+import { importExt, isImportedReport } from "@/lib/domain/report-import";
+import { isNoteStep } from "@/lib/domain/step-files";
 import { CompetitorPanel, type CompetitorView } from "@/components/research/CompetitorPanel";
 import { SizingPanel } from "@/components/research/SizingPanel";
 import { SupportControls } from "@/components/research/SupportControls";
@@ -73,6 +76,13 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     supabase.from("research_runs").select("*").eq("idea_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("customer_signals").select("*").eq("idea_id", id).order("mentions", { ascending: false }),
   ]);
+  // Documenten die als onderzoek te importeren zijn (zonder de migratie voor documenten: geen lijst, wel uploaden-melding).
+  const { data: docRows } = canWrite
+    ? await supabase.from("step_documents").select("id, file_name, size_bytes, description, step").eq("idea_id", id).order("created_at", { ascending: false })
+    : { data: [] };
+  const importableDocs: ImportableDoc[] = (docRows ?? []).flatMap((d) =>
+    importExt(d.file_name) && isNoteStep(d.step) ? [{ id: d.id, fileName: d.file_name, size: Number(d.size_bytes), description: d.description, step: d.step }] : [],
+  );
   const quality = canWrite ? await loadAiQuality() : null;
   const run = runRes.data;
   const { data: tasks } = run
@@ -132,7 +142,11 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     })),
   }));
   const sources = sourcesRes.data ?? [];
-  const excerpts = sources.flatMap((s) => (s.source_excerpts ?? []).map((e) => ({ id: e.id, text: e.text, sourceTitle: s.title })));
+  // Geïmporteerde rapporten hebben veel tekstblokken: daarvoor legt de consultant bevindingen vast in het importblok,
+  // waar ProofLab zelf het blok bij het citaat zoekt. Het gewone formulier toont de overige fragmenten.
+  const excerpts = sources
+    .filter((s) => !isImportedReport(s.access_note))
+    .flatMap((s) => (s.source_excerpts ?? []).map((e) => ({ id: e.id, text: e.text, sourceTitle: s.title })));
   const competitors: CompetitorView[] = (compRes.data ?? []).map((c) => ({
     ...c,
     kind: c.kind as CompetitorKind,
@@ -194,6 +208,10 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     const sources = [...new Set(c.evidence.map((e) => e.source?.publisher || e.source?.title || "").filter(Boolean))];
     return [{ claimId: p.claimId, effect: p.effect, reason: p.reason, origin: p.origin, statement: c.statement, status: c.status, sources }];
   });
+
+  const importedReports: ImportedReport[] = sources
+    .filter((s) => isImportedReport(s.access_note))
+    .map((s) => ({ id: s.id, title: s.title, blocks: (s.source_excerpts ?? []).length, findings: claims.filter((c) => c.evidence.some((e) => e.source_id === s.id)).length }));
 
   const tab = typeof sp.tab === "string" ? sp.tab : "overview";
   const evidenceActions = (claim: (typeof claims)[number]) =>
@@ -678,7 +696,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                       </p>
                     )}
                     <details>
-                      <summary className="text-link">Bewaarde fragmenten</summary>
+                      <summary className="text-link">{isImportedReport(s.access_note) ? `Uitgelezen tekst (${(s.source_excerpts ?? []).length} blokken)` : "Bewaarde fragmenten"}</summary>
                       {(s.source_excerpts ?? []).map((e) => (
                         <blockquote className="quote" key={e.id}>{e.text}{e.location ? <span className="tiny"> ({e.location})</span> : null}</blockquote>
                       ))}
@@ -694,6 +712,17 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               );
             })}
           </div>
+          {canWrite && (
+            <ReportImport
+              ideaId={id}
+              supabaseUrl={env.supabaseUrl}
+              supabaseKey={env.supabaseKey}
+              documents={importableDocs}
+              reports={importedReports}
+              questions={questions.map((q) => ({ id: q.id, position: q.position, question: q.question }))}
+              aiAvailable={aiConfigured()}
+            />
+          )}
           {canWrite && (
             <div className="grid-2 mt-18">
               <div className="card">

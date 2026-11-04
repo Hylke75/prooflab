@@ -6,6 +6,8 @@ import { ActionForm, Field, type FormState } from "@/components/ui/ActionForm";
 import { ConfirmDialogForm } from "@/components/ui/ConfirmDialog";
 import { SavingOverlay } from "@/components/ui/SavingOverlay";
 import { openSourceForm } from "@/components/research/source-prefill";
+import { openReportImport, REPORT_IMPORT_ANCHOR, REPORT_IMPORT_PARAM } from "@/components/research/report-import-event";
+import { importExt } from "@/lib/domain/report-import";
 import { parseMarkdown, type Inline } from "@/lib/domain/simple-markdown";
 import { ACCEPT_ATTR, ALLOWED_LABEL, DOC_DESCRIPTION_MAX, MAX_DOC_BYTES, formatBytes, validateFile, type NoteStep } from "@/lib/domain/step-files";
 import { prepareStepUpload, recordStepDocument } from "@/app/app/ideas/[id]/step-notes-actions";
@@ -174,6 +176,15 @@ export function DocumentItem({ doc, ideaId, useAsSource }: { doc: DocView; ideaI
     }
     router.push(`/app/ideas/${ideaId}/research?tab=sources&bron_titel=${encodeURIComponent(title)}`);
   };
+  // Een rapport (PDF, DOCX, TXT, MD, CSV) kan in zijn geheel worden ingelezen als bron met letterlijke tekstblokken.
+  const canImport = useAsSource && importExt(doc.fileName) !== null;
+  const importAsResearch = () => {
+    if (document.getElementById(REPORT_IMPORT_ANCHOR)) {
+      openReportImport(doc.id);
+      return;
+    }
+    router.push(`/app/ideas/${ideaId}/research?tab=sources&${REPORT_IMPORT_PARAM}=${encodeURIComponent(doc.id)}#${REPORT_IMPORT_ANCHOR}`);
+  };
   return (
     <li className="step-doc">
       <div className="step-doc-main">
@@ -191,6 +202,11 @@ export function DocumentItem({ doc, ideaId, useAsSource }: { doc: DocView; ideaI
       </div>
       {(useAsSource || doc.canDelete) && (
         <div className="row step-note-actions">
+          {canImport && (
+            <button type="button" className="btn white sm" onClick={importAsResearch} aria-label={`Importeer ${doc.fileName} als onderzoek`}>
+              Importeer als onderzoek
+            </button>
+          )}
           {useAsSource && (
             <button type="button" className="btn white sm" onClick={asSource}>
               Gebruik als bron
