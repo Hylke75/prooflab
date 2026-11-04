@@ -1764,7 +1764,7 @@ export type Database = {
           consent_recorded: boolean
           created_at: string
           dmu_role: string
-          experiment_id: string
+          experiment_id: string | null
           held_on: string
           id: string
           idea_id: string
@@ -1777,13 +1777,19 @@ export type Database = {
           segment: string | null
           transcript: string
           is_practice: boolean | null
+          source_format: string
+          source_hash: string | null
+          segments: Json | null
+          pseudonymized_at: string | null
+          pseudonymized_by: string | null
+          pseudonym_labels: Json | null
         }
         Insert: {
           defaulted_fields?: string[]
           consent_recorded: boolean
           created_at?: string
           dmu_role: string
-          experiment_id: string
+          experiment_id?: string | null
           held_on: string
           id?: string
           idea_id: string
@@ -1796,13 +1802,19 @@ export type Database = {
           segment?: string | null
           transcript: string
           is_practice?: boolean | null
+          source_format?: string
+          source_hash?: string | null
+          segments?: Json | null
+          pseudonymized_at?: string | null
+          pseudonymized_by?: string | null
+          pseudonym_labels?: Json | null
         }
         Update: {
           defaulted_fields?: string[]
           consent_recorded?: boolean
           created_at?: string
           dmu_role?: string
-          experiment_id?: string
+          experiment_id?: string | null
           held_on?: string
           id?: string
           idea_id?: string
@@ -1815,6 +1827,12 @@ export type Database = {
           segment?: string | null
           transcript?: string
           is_practice?: boolean | null
+          source_format?: string
+          source_hash?: string | null
+          segments?: Json | null
+          pseudonymized_at?: string | null
+          pseudonymized_by?: string | null
+          pseudonym_labels?: Json | null
         }
         Relationships: [
           {
@@ -1902,6 +1920,108 @@ export type Database = {
           },
         ]
       }
+      interview_codes: {
+        Row: {
+          id: string
+          idea_id: string
+          label: string
+          description: string | null
+          origin: string
+          status: string
+          reviewed_by: string | null
+          reviewed_at: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          idea_id: string
+          label: string
+          description?: string | null
+          origin?: string
+          status?: string
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          idea_id?: string
+          label?: string
+          description?: string | null
+          origin?: string
+          status?: string
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interview_codes_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "ideas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      observation_codes: {
+        Row: {
+          observation_id: string
+          code_id: string
+          idea_id: string
+          origin: string
+          review_status: string | null
+          reviewed_by: string | null
+          reviewed_at: string | null
+          created_at: string
+        }
+        Insert: {
+          observation_id: string
+          code_id: string
+          idea_id: string
+          origin?: string
+          review_status?: string | null
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          observation_id?: string
+          code_id?: string
+          idea_id?: string
+          origin?: string
+          review_status?: string | null
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "observation_codes_observation_id_fkey"
+            columns: ["observation_id"]
+            isOneToOne: false
+            referencedRelation: "observations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "observation_codes_code_id_fkey"
+            columns: ["code_id"]
+            isOneToOne: false
+            referencedRelation: "interview_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "observation_codes_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "ideas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       observations: {
         Row: {
           review_status: string | null
@@ -1923,6 +2043,10 @@ export type Database = {
           quote_check: string
           recruitment_group: string | null
           summary: string
+          quote_start: number | null
+          quote_end: number | null
+          segment_index: number | null
+          theme_only: boolean
         }
         Insert: {
           review_status?: string | null
@@ -1944,6 +2068,10 @@ export type Database = {
           quote_check?: string
           recruitment_group?: string | null
           summary: string
+          quote_start?: number | null
+          quote_end?: number | null
+          segment_index?: number | null
+          theme_only?: boolean
         }
         Update: {
           review_status?: string | null
@@ -1965,6 +2093,10 @@ export type Database = {
           quote_check?: string
           recruitment_group?: string | null
           summary?: string
+          quote_start?: number | null
+          quote_end?: number | null
+          segment_index?: number | null
+          theme_only?: boolean
         }
         Relationships: [
           {
@@ -3156,6 +3288,22 @@ export type Database = {
       coach_note_stats: {
         Args: { p_org: string }
         Returns: { idea_id: string; rule: string; status: string; days_to_resolve: number | null; helpful: boolean | null; decision_brier: number | null }[]
+      }
+      interview_theme_counts: {
+        Args: { p_idea: string }
+        Returns: { item_type: string; item_id: string; label: string; dimension: string; bucket: string; mentioned: number; total: number }[]
+      }
+      transcript_settings_status: {
+        Args: { p_org: string }
+        Returns: { fathom_connected: boolean; fathom_key_hint: string | null; updated_at: string }[]
+      }
+      set_fathom_api_key: {
+        Args: { p_org: string; p_key: string | null }
+        Returns: undefined
+      }
+      fathom_api_key_for_idea: {
+        Args: { p_idea: string }
+        Returns: string | null
       }
       real_interview_ids: {
         Args: { p_idea: string }

@@ -163,9 +163,11 @@ export const OBSERVATION_KINDS = {
 } as const;
 export type ObservationKind = keyof typeof OBSERVATION_KINDS;
 
+// Fase 1 · punt 3: betaler los van inkoper (wie betaalt is niet altijd wie inkoopt, bijv. de penningmeester).
 export const DMU_ROLES = {
   user: "Gebruiker",
-  buyer: "Inkoper / betaler",
+  buyer: "Inkoper",
+  payer: "Betaler",
   decider: "Beslisser / budgethouder",
   influencer: "Beïnvloeder",
   other: "Anders",

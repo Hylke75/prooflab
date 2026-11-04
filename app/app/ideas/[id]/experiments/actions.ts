@@ -446,7 +446,7 @@ export async function deleteDraft(ideaId: string, expId: string) {
 
 const InterviewSchema = z.object({
   participant_label: text(80).min(2, "Gebruik een pseudoniem, bijv. 'Deelnemer A'."),
-  dmu_role: z.enum(["user", "buyer", "decider", "influencer", "other"]),
+  dmu_role: z.enum(["user", "buyer", "payer", "decider", "influencer", "other"]),
   segment: text(160).optional(),
   recruited_via: z.enum(Object.keys(CHANNELS) as [string, ...string[]]),
   held_on: z.string().date("Vul de datum van het gesprek in."),
@@ -465,6 +465,8 @@ const INTERVIEW_MESSAGES: Partial<Record<string, string>> = {
   record_type: "Kies het soort verslag.",
   recruitment_group: "Kies een wervingsgroep.",
 };
+
+const PAYER_SCHEMA_MISSING = "De rol Betaler vraagt een database-update (migratie 20261115090000_interviews_import). Kies tot die tijd Inkoper.";
 
 export async function addInterview(ideaId: string, expId: string, _: ActionState, form: FormData): Promise<ActionState> {
   await requireWritableIdea(ideaId);
@@ -499,6 +501,8 @@ export async function addInterview(ideaId: string, expId: string, _: ActionState
   // Fase 1 · punt 1: zonder eigen keuze is de wervingsgroep afgeleid uit het kanaal (een standaardwaarde, in het auditspoor).
   const defaulted = p.data.recruitment_group ? [] : ["recruitment_group"];
   const { error } = await withDefaultedFallback((w) => supabase.from("interviews").insert(withFields(interview, defaulted, w)));
+  // Fase 1 · punt 3: de rol "Betaler" bestaat pas na migratie 20261115090000_interviews_import.
+  if (error && p.data.dmu_role === "payer" && /dmu_role/.test(error.message ?? "")) return { error: PAYER_SCHEMA_MISSING, fieldErrors: { dmu_role: PAYER_SCHEMA_MISSING } };
   if (error) return { error: "Het interview is niet opgeslagen. Probeer het opnieuw." };
   refresh(ideaId);
   // B0: een als echt aangegeven gesprek met woorden als "fictief" of "test": opgeslagen, maar controleer de keuze.
