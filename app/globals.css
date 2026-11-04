@@ -483,3 +483,12 @@ dialog.modal::backdrop{background:var(--color-overlay)}
    Breedte relatief aan de sprintbalk, en een dichte <details> neemt geen ruimte in. */
 .sprint-pop{width:min(440px,100%);max-width:calc(100vw - 32px)}
 details:not([open])>.sprint-pop{display:none}
+/* Systeemcontrole 4 nov (2): op 390 px waren de vier stapnamen samen breder dan het scherm en liep de pagina
+   zijwaarts. Op mobiel tonen we alleen de nummers plus de naam van de huidige stap; de andere namen blijven
+   voor schermlezers beschikbaar. */
+@media (max-width:560px){
+  .stepper{max-width:100%;min-width:0;justify-content:space-between}
+  .stepper a:not(.current) .step-name{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+  .stepper .connector{flex:1 1 8px;min-width:6px}
+}
+.workspace{overflow-x:clip}
