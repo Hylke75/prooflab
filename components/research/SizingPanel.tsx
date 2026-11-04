@@ -5,6 +5,7 @@ import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { computeSizing, factorConsistency, MODEL_FACTORS, SCENARIO_LABELS, simulateSizing, type FactorUnit, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import { CLAIM_STATUS, type ClaimStatus } from "@/lib/domain/labels";
 import { numericFromInput } from "@/lib/domain/verify";
+import { Term } from "@/components/ui/Term";
 
 type Factor = {
   key: string;
@@ -201,9 +202,9 @@ export function SizingPanel({
           <div className="num" style={{ font: "700 39px var(--font-heading),sans-serif", letterSpacing: "-.06em" }}>{eur(result.somRevenue)}</div>
           <div className="divider" />
           <div className="kpi-row" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>
-            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}>TAM (aantal)</p><strong className="num">{int(result.tamCount)}</strong></div>
-            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}>SAM (aantal)</p><strong className="num">{int(result.samCount)}</strong></div>
-            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}>SOM (klanten)</p><strong className="num">{int(result.somCount)}</strong></div>
+            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="tam">TAM</Term> (aantal)</p><strong className="num">{int(result.tamCount)}</strong></div>
+            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="sam">SAM</Term> (aantal)</p><strong className="num">{int(result.samCount)}</strong></div>
+            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="som">SOM</Term> (klanten)</p><strong className="num">{int(result.somCount)}</strong></div>
           </div>
           <p style={{ color: "var(--color-on-dark-muted)", fontSize: 14, marginTop: 16 }}>Formule</p>
           <div className="calc-formula">{result.formula} = {eur(result.somRevenue)}</div>

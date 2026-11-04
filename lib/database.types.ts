@@ -873,6 +873,7 @@ export type Database = {
           prior_locked_at: string | null
           primary_experiment_id: string | null
           kind: string | null
+          selected_for_test: boolean
         }
         Insert: {
           prior?: number | null
@@ -888,6 +889,7 @@ export type Database = {
           prior_locked_at?: string | null
           primary_experiment_id?: string | null
           kind?: string | null
+          selected_for_test?: boolean
         }
         Update: {
           prior?: number | null
@@ -903,6 +905,7 @@ export type Database = {
           prior_locked_at?: string | null
           primary_experiment_id?: string | null
           kind?: string | null
+          selected_for_test?: boolean
         }
         Relationships: [
           {

@@ -4,6 +4,7 @@
 
 import type { ClaimStatus, DecisionAction } from "./labels";
 import { dedupeByPerson } from "./per-person";
+import { isUnknown } from "./claim-scope";
 
 export type Severity = "blocker" | "warning" | "info";
 
@@ -119,10 +120,16 @@ export function runRealityCheck(f: DossierFacts): RealityCheckResult {
       add("no_independent_source", "warning", "Geen onafhankelijke marktbron",
         "Alle bevindingen steunen op bedrijfswebsites, nieuws of blogs. Voeg een officiële statistiek of onderzoeksrapport toe.");
     }
-    const elsewhere = f.claims.filter((c) => c.region && regionMismatch(f.ideaRegion, c.region)).length;
+    // B6: "regio onbekend" is geen andere regio. Een onbekende regio telt niet als afwijkend, maar staat apart als
+    // onbekend: niet bevestigd, ook niet weerlegd.
+    const { other: elsewhere, unknown: regionUnknown } = regionTally(f.ideaRegion, f.claims);
     if (elsewhere) {
       add("other_region", "warning", `${elsewhere} bevinding(en) over een andere regio`,
         `Het onderzoek gaat over ${f.ideaRegion}. Cijfers uit een andere regio zijn hooguit een analogie, geen marktbewijs.`);
+    }
+    if (regionUnknown) {
+      add("unknown_region", "info", `${regionUnknown} bevinding(en) met onbekende regio`,
+        `Bij deze bevindingen staat niet over welke regio ze gaan. Ze tellen niet als afwijkend, maar ook niet als bevestigd voor ${f.ideaRegion}; vul de regio aan als de bron die noemt.`);
     }
     const contested = f.claims.filter((c) => c.status === "contested").length;
     if (contested) {
@@ -247,8 +254,23 @@ const REGION_GROUPS: Record<string, string[]> = {
   wereldwijd: ["wereldwijd", "global", "worldwide"],
 };
 
-// A finding about another market (e.g. US figures for a Dutch idea) does not count as evidence.
+// Hoeveel bevindingen over een andere regio gaan en hoeveel een onbekende regio hebben (leeg, "onbekend",
+// "unknown", "n.v.t." en zo verder: isUnknown uit claim-scope.ts). Een bevinding zonder regioveld telt nergens.
+export function regionTally(ideaRegion: string, claims: { region?: string | null }[]): { other: number; unknown: number } {
+  let other = 0;
+  let unknown = 0;
+  for (const c of claims) {
+    if (c.region === undefined) continue;
+    if (isUnknown(c.region)) unknown++;
+    else if (regionMismatch(ideaRegion, c.region!)) other++;
+  }
+  return { other, unknown };
+}
+
+// A finding about another market (e.g. US figures for a Dutch idea) does not count as evidence. Een onbekende regio
+// is geen andere markt.
 export function regionMismatch(ideaRegion: string, claimRegion: string): boolean {
+  if (isUnknown(claimRegion)) return false;
   const idea = ideaRegion.toLowerCase();
   const claim = claimRegion.toLowerCase();
   const key = Object.keys(REGION_GROUPS).find((k) => idea.includes(k));

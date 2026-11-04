@@ -1,4 +1,5 @@
 import { ActionForm } from "@/components/ui/ActionForm";
+import { Term } from "@/components/ui/Term";
 import { calendarDate } from "@/components/sprint/SprintCard";
 import { excludeFromCalibration, includeInCalibration, resolveOutcome, resolveStopReview, saveCheckin } from "@/app/app/ideas/[id]/outcome/actions";
 import { effortSummary, insufficientReason } from "@/lib/domain/effort";
@@ -210,7 +211,7 @@ function ForecastScores({ view, achieved }: { view: ForecastView; achieved: Achi
     <div className="card" style={{ gridColumn: "1 / -1" }}>
       <div className="section-title">
         <h3>Hoe goed waren de voorspellingen?</h3>
-        <span className="pill gray">Brier-score: 0 is perfect, 0,25 is gokken</span>
+        <span className="pill gray"><Term k="brier-score">Brier-score</Term>: 0 is perfect, 0,25 is gokken</span>
       </div>
       {rows.length === 0 ? (
         <p className="sub">Voor dit dossier zijn geen voorspellingen gegeven.</p>

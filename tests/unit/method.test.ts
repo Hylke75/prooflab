@@ -9,12 +9,13 @@ const obs = (kind: string, sourceKey: string): ProbabilityObservation => ({ kind
 const input = { successes: 6, n: 20, successThresholdPct: 20, failThresholdPct: null, minSample: 20, endConditionReached: true };
 
 describe("methodeversies", () => {
-  it("onbekende of lege versie = 2026-11-a; nieuwe dossiers 2026-11-c", () => {
+  it("onbekende of lege versie = 2026-11-a; nieuwe dossiers 2026-11-d", () => {
     expect(asMethodVersion(undefined)).toBe("2026-11-a");
     expect(asMethodVersion("2099-01-z")).toBe(LEGACY_METHOD);
     expect(asMethodVersion("2026-11-b")).toBe("2026-11-b");
-    expect(CURRENT_METHOD).toBe("2026-11-c");
+    expect(CURRENT_METHOD).toBe("2026-11-d");
     expect(asMethodVersion("2026-11-c")).toBe("2026-11-c");
+    expect(asMethodVersion("2026-11-d")).toBe("2026-11-d");
     expect(methodOf(null).version).toBe("2026-11-a");
   });
 

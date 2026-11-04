@@ -21,6 +21,7 @@ import { evidenceLadder } from "@/lib/domain/dossier-label";
 import { perPersonLabel } from "@/lib/domain/per-person";
 import { ladderObservation } from "@/lib/dossier";
 import { addPremortem, approveLearningCard, confirmDecision, runCheck, saveDecision, updateLearningCard } from "./actions";
+import { LearningProposalNote } from "@/components/experiments/LearningProposalNote";
 import { RuleCheckCard } from "@/components/decision/DecisionRule";
 import { loadRuleCheck } from "@/lib/decision-rule-data";
 import { deviationLabel } from "@/lib/domain/decision-rule";
@@ -28,6 +29,7 @@ import { ConfirmDecision } from "@/components/evidence/ConfirmDecision";
 import { againstFor } from "@/lib/against-data";
 import { extendedPhase, extensionBlocker } from "@/lib/domain/extension";
 import { todayInNL } from "@/lib/domain/sprint";
+import { Term } from "@/components/ui/Term";
 
 export const metadata: Metadata = { title: "Bewijs & besluit" };
 
@@ -105,9 +107,10 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
 
       {phase && (
         <div className="note" role="status">
-          <strong>Verlengde testfase{phase.active ? "" : " afgelopen"}:</strong> {phase.weeks} weken, van {phase.start} tot {phase.end}.{" "}
+          {/* B6: verder testen en de verlengde testfase zijn één keuze met een duur. */}
+          <strong>Verder testen{phase.active ? "" : ": periode afgelopen"}:</strong> {phase.weeks} weken, van {phase.start} tot {phase.end}.{" "}
           {phase.active
-            ? "Verzamel nu het extra gedragsbewijs. Het definitieve besluit en de uitkomstklok volgen na deze fase."
+            ? "Verzamel nu het extra gedragsbewijs. Het definitieve besluit en de uitkomstklok volgen na deze periode."
             : "Neem nu het definitieve besluit: doorgaan, stoppen of pauzeren. Daarmee start de uitkomstklok."}
         </div>
       )}
@@ -120,7 +123,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
             {missingPayment ? " Betaling nog niet aangetoond." : ""}
           </h2>
           <p>
-            {d.label.missing.length ? `Voor het volgende niveau ontbreekt: ${d.label.missing.join("; ")}.` : "Het dossier voldoet aan het hoogste bewijsniveau."}
+            {d.label.missing.length ? <>Voor het volgende <Term k="bewijsniveau">bewijsniveau</Term> ontbreekt: {d.label.missing.join("; ")}.</> : <>Het dossier voldoet aan het hoogste <Term k="bewijsniveau">bewijsniveau</Term>.</>}
           </p>
         </div>
       </div>
@@ -134,7 +137,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
           {obs.length === 0 && <p className="sub mt-12">Nog geen observaties. Die ontstaan uit interviews en afgeronde experimenten.</p>}
           {ladder.quotes > ladder.counted && (
             <p className="tiny mt-8">
-              Per persoon geteld: uit {ladder.people} {ladder.people === 1 ? "interview" : "interviews"} telt per bewijsniveau één uitspraak mee (de sterkste; steun en tegenspraak apart). Alle {ladder.quotes} citaten blijven hieronder zichtbaar.
+              <Term k="per-persoon">Per persoon geteld</Term>: uit {ladder.people} {ladder.people === 1 ? "interview" : "interviews"} telt per bewijsniveau één uitspraak mee (de sterkste; steun en tegenspraak apart). Alle {ladder.quotes} citaten blijven hieronder zichtbaar.
             </p>
           )}
           {obs.slice(0, 12).map((o) => {
@@ -151,12 +154,12 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
               </div>
             );
           })}
-          <div className="note">Een goed bewijsdossier laat ook helder zien wat een test níét aantoont. Synthetische of AI-gegenereerde data telt nooit mee.{practiceObs > 0 && ` ${practiceObs === 1 ? "1 observatie komt" : `${practiceObs} observaties komen`} uit een oefengesprek of een gesprek dat nog niet als echt is aangegeven en ${practiceObs === 1 ? "telt" : "tellen"} daarom niet als bewijs.`}</div>
+          <div className="note">Een goed bewijsdossier laat ook helder zien wat een test níét aantoont. Synthetische of AI-gegenereerde data telt nooit mee.{practiceObs > 0 && <> {practiceObs === 1 ? "1 observatie komt" : `${practiceObs} observaties komen`} uit een <Term k="oefengesprek">oefengesprek</Term> of een gesprek dat nog niet als echt is aangegeven en {practiceObs === 1 ? "telt" : "tellen"} daarom niet als bewijs.</>}</div>
         </div>
 
         <div className="stack">
           <div className="card">
-            <div className="section-title"><h3>Reality Check</h3><span className="pill coral">Verplicht vóór elk besluit</span></div>
+            <div className="section-title"><h3><Term k="reality-check">Reality Check</Term></h3><span className="pill coral">Verplicht vóór elk besluit</span></div>
             {!check ? (
               <p className="sub">Nog niet uitgevoerd. De check zoekt naar valkuilen, zwakke data en conclusies die het bewijs niet draagt.</p>
             ) : (
@@ -255,7 +258,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
         </div>
       </div>
 
-      {(drafts.length > 0 || approved.length > 0) && <div className="section-title mt-24"><h2>Learning Cards</h2></div>}
+      {(drafts.length > 0 || approved.length > 0) && <div className="section-title mt-24"><h2><Term k="learning-card">Learning Cards</Term></h2></div>}
       <div className="grid-2">
         {drafts.map((c) => {
           const exp = d.experiments.find((e) => e.id === c.experiment_id);
@@ -267,6 +270,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
               <RuleSummary o={outcomeFromCard(c.metrics, c.verdict, exp?.hypotheses ?? null)} />
               {canWrite ? (
                 <>
+                  <LearningProposalNote card={c} />
                   <ActionForm action={updateLearningCard.bind(null, id, c.id)} submitLabel="Learning Card opslaan" pendingLabel="Learning Card opslaan…" submitClass="btn white sm" noValidate>
                     <Field className="" labelClassName="field-label" name="we_learned" id={`lc-l-${c.id}`} label="Daaruit leren we" required>
                       <textarea className="field" rows={3} defaultValue={c.we_learned} minLength={10} maxLength={1500} />
@@ -332,10 +336,10 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                   <strong>{DECISIONS[dec.action as DecisionAction].label} · {new Date(dec.decided_at).toLocaleDateString("nl-NL")}</strong>
                   <p>{dec.rationale}</p>
                   {dec.next_step && <p>Volgende stap: {dec.next_step}</p>}
-                  {dec.action === "extend" && dec.extend_weeks != null && <p>Verlengde testfase van {dec.extend_weeks} weken; het definitieve besluit volgt daarna.</p>}
+                  {dec.action === "extend" && dec.extend_weeks != null && <p>Testperiode van {dec.extend_weeks} weken; het definitieve besluit volgt daarna.</p>}
                   {dec.rule_met != null && (
                     <p>
-                      Beslisregel: {dec.rule_met ? "gehaald" : "niet gehaald"}.
+                      <Term k="go-regel">Beslisregel</Term>: {dec.rule_met ? "gehaald" : "niet gehaald"}.
                       {dec.rule_deviation_reason ? ` ${deviationLabel(dec.action, dec.rule_met)}. Motivering: ${dec.rule_deviation_reason}` : ""}
                     </p>
                   )}

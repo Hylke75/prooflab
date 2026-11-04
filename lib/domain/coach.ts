@@ -76,7 +76,7 @@ const PAGE_COPY: Record<CoachPage, [string, string]> = {
   intake: ["Drie vragen, één bevestiging.", "Het idee en voor wie, de beslissing met inzet en datum, en je grootste onzekerheid. Daarna stelt ProofLab de rest voor; jij controleert en past aan."],
   research: ["Kijk verder dan de concurrent.", "Ook Excel, je eigen netwerk of helemaal niets doen kan de grootste concurrent zijn."],
   integrations: ["Hoor de klant in zijn eigen woorden.", "Reviews, forumdraden, enquête-antwoorden en LinkedIn-reacties laten zien welke problemen klanten zelf noemen. Haal ze hier binnen; ze verschijnen bij Doelgroepen."],
-  assumptions: ["Begin met je grootste risico.", "Welke aanname zou het hele idee onderuit halen als die niet klopt? Daar beginnen we."],
+  assumptions: ["Begin met je grootste risico.", "Welke aanname zou het hele idee onderuit halen als die niet klopt? Daar beginnen we. Kies er hooguit drie om nu te testen; de rest wacht op later."],
   experiments: ["Test gedrag, geen complimenten.", "Een enthousiaste reactie is prettig. Een echte afspraak of betaling zegt vaak meer."],
   evidence: ["Wat zegt dit bewijs echt?", "Het doel is leren, niet gelijk krijgen. Kijk ook naar wat een resultaat niet aantoont."],
   report: ["Maak je verhaal controleerbaar.", "Goede directierapporten maken duidelijk wat bekend is, wat geschat is en welke beslissing volgt."],

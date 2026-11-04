@@ -37,7 +37,7 @@ export async function methodPreview(ideaId: string, from: MethodVersion, to: Met
       from: a.probability.probability,
       to: b.probability.probability,
       capReason: b.probability.cap?.active ? b.probability.cap.reason : null,
-      merged: (b.probability.merged ?? []).map((m) => ({ label: m.label, signals: m.signals })),
+      merged: (b.probability.merged ?? []).map((m) => ({ label: m.label, signals: m.signals, ...(m.direction ? { direction: m.direction } : {}) })),
       recruitment: b.probability.recruitment ?? [],
     };
   });

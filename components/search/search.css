@@ -1,0 +1,38 @@
+/* Zoeken binnen een dossier (components/search/DossierSearch.tsx). Eigen bestand, zodat globals.css ongemoeid blijft. */
+.dossier-search-bar{display:flex;justify-content:flex-end;margin:-18px 0 18px}
+.dossier-search-open{gap:8px}
+.dossier-search-open kbd{font:600 12px/1 var(--font-body);border:1px solid var(--color-border-strong);border-radius:6px;padding:3px 6px;color:var(--color-text-muted);background:var(--color-surface-muted)}
+.dossier-search{padding:0;width:min(640px,calc(100vw - 32px));max-height:min(720px,calc(100vh - 40px));overflow:hidden}
+.dossier-search[open]{display:flex;flex-direction:column}
+.dossier-search-inner{padding:24px;display:flex;flex-direction:column;min-height:0;max-height:inherit}
+.dossier-search-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.dossier-search-close{width:44px;height:44px;flex:none;border:0;border-radius:var(--radius-pill);background:var(--color-surface-muted);display:grid;place-items:center;color:var(--color-primary);transition:background-color var(--dur) ease-out}
+.dossier-search-close:hover{background:var(--color-surface-soft)}
+.dossier-search-field{position:relative}
+.dossier-search-field>.i{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--color-text-muted);pointer-events:none}
+.dossier-search-field .field{padding-left:44px}
+.dossier-search-status{display:flex;align-items:center;gap:8px;min-height:22px;margin:10px 0 6px;font-size:13px;color:var(--color-text-muted)}
+.dossier-search-spinner{width:14px;height:14px;border-radius:50%;border:2px solid var(--color-border);border-top-color:var(--color-primary);animation:dossier-spin .8s linear infinite;flex:none}
+@keyframes dossier-spin{to{transform:rotate(360deg)}}
+.dossier-search-results{overflow-y:auto;min-height:0;flex:1;margin:0 -8px;padding:0 8px}
+.dossier-search-group{margin-top:12px}
+.dossier-search-group .eyebrow{font-size:10px;line-height:16px;text-transform:uppercase;letter-spacing:.14em;font-weight:800;margin:0 0 6px}
+.dossier-search-hit{display:block;width:100%;text-align:left;border:1.5px solid var(--color-border);border-radius:var(--radius-input);padding:10px 12px;margin-bottom:6px;min-height:44px;cursor:pointer;background:var(--color-surface);transition:border-color var(--dur) ease-out,background-color var(--dur) ease-out}
+.dossier-search-hit.active{border-color:var(--color-primary);background:var(--color-surface-soft)}
+.dossier-search-hit strong{display:block;font-size:14px;line-height:1.45;color:var(--color-heading);overflow-wrap:anywhere}
+.dossier-search-hit small{display:block;margin-top:4px;font-size:12px;line-height:1.45;color:var(--color-text-muted);overflow-wrap:anywhere}
+.dossier-search-hit small .pill{font-size:11px;padding:2px 8px}
+.dossier-search mark{background:var(--color-warning-soft);color:inherit;border-radius:3px;padding:0 1px}
+.dossier-search-foot{margin-top:12px}
+/* Het doel van een zoekresultaat: niet onder de vaste bovenbalk, en kort gemarkeerd op dezelfde pagina. */
+[id^="claim-"],[id^="bron-"]{scroll-margin-top:110px}
+.search-flash{box-shadow:0 0 0 3px var(--color-accent);border-radius:var(--radius-inner);transition:box-shadow var(--dur) ease-out}
+@media(max-width:560px){
+  .dossier-search-bar{margin:-10px 0 14px}
+  .dossier-search-open{width:100%;justify-content:center}
+  .dossier-search-open kbd{display:none}
+  .dossier-search{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;margin:0;border-radius:0}
+  .dossier-search-inner{padding:16px;height:100%}
+}
+@media (prefers-reduced-motion:reduce){.dossier-search-spinner{animation:none}}
+@media print{.dossier-search-bar{display:none}}

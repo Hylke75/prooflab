@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Term } from "@/components/ui/Term";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { ProbabilityField } from "./ProbabilityField";
 import { BaseRateSummary } from "./BaseRate";
@@ -102,7 +103,7 @@ export function ForecastPanel({ view, compact = false }: { view: ForecastView; c
   } else if (!view.baseRate) {
     body = (
       <p className="sub">
-        Elke voorspelling start bij een basispercentage.{" "}
+        Elke voorspelling start bij een <Term k="basispercentage">basispercentage</Term>.{" "}
         {view.canWrite ? <Link className="text-link" href={`${base}/outcome#basispercentage`}>Kies het basispercentage →</Link> : "Het onderzoeksteam kiest dat eerst."}
       </p>
     );

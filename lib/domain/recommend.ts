@@ -2,6 +2,7 @@
 // why. Discovery (understand) comes before validation (prove), as in the method.
 
 import type { AssumptionCategory, ExperimentType } from "./labels";
+import { assumptionKind, type AssumptionKind } from "./assumption-kind";
 
 export type Option = {
   tier: "Snel" | "Sterker bewijs" | "Meest overtuigend" | "Breder beeld";
@@ -136,10 +137,17 @@ export function recommend(input: RecommendInput): { options: Option[]; warning: 
 //           ÷ cost index of the cheapest suitable test
 //
 // p⁺ and p⁻ are the probability after a clear positive or negative result of that test (one
-// update with TEST_LR). A test is suitable when p⁺ and p⁻ lie on different sides of the decision
-// boundary (50%: above it you act as if the assumption holds); without discovery evidence only the
-// quick option counts (first understand, then prove). Cost index = weeks of duration + € / 500.
-// Deterministic; the weights are starting assumptions, to be calibrated like the LRs.
+// update with the factor of that test for this kind of assumption). A test is suitable when p⁺ and p⁻
+// lie on different sides of the decision boundary (50%: above it you act as if the assumption holds).
+// Cost index = weeks of duration + € / 500. Deterministic; the weights are starting assumptions, to be
+// calibrated like the LRs.
+//
+// Fase B4: de kandidaat-tests hangen af van de soort aanname (markt, prijs, gedrag, technisch). Vóór B4 kreeg
+// elke aanname zonder ontdekkend bewijs dezelfde test (klantinterviews), terwijl elke aanname zonder bewijs op het
+// plafond van 40% staat (startkans 50%, begrensd op het laagste bewijsniveau). Belang 5, kans 40%, dezelfde test:
+// exact dezelfde score, dus drie keer "IW 100, 40%, 21% of 63%". Nu: een test per soort (met een eigen factor en
+// eigen kosten), sorteren op de onafgeronde score, en bij gelijke score beslist eerst de directe relatie met de
+// beslissende vraag, dan de laagste testkosten, dan het belang en ten slotte de invoervolgorde (stabiel).
 // ---------------------------------------------------------------------------
 
 export const DECISION_BOUNDARY = 0.5;
@@ -153,6 +161,70 @@ export function costIndex(o: Pick<Option, "days" | "costEur">): number {
   return o.days / 7 + o.costEur / EUR_PER_COST_UNIT;
 }
 
+// Een test zoals de rangorde hem voorstelt. type "prototype": een technische proef buiten ProofLab (geen klanttest;
+// de uitkomst wordt als bron vastgelegd).
+export type VoiTestType = ExperimentType | "prototype";
+export type VoiTest = {
+  type: VoiTestType;
+  label: string; // in een zin: "Met {label} (…)"
+  duration: string;
+  cost: string;
+  days: number;
+  costEur: number;
+  lr: number; // factor van één duidelijke uitkomst, voor deze soort aanname
+  external: boolean; // buiten ProofLab uit te voeren
+  note?: string; // aanvulling, alleen in het uitklapdeel
+};
+
+const fromOption = (o: Pick<Option, "type" | "duration" | "cost" | "days" | "costEur">, label: string, lr = TEST_LR[o.type]): VoiTest => ({
+  type: o.type,
+  label,
+  duration: o.duration,
+  cost: o.cost,
+  days: o.days,
+  costEur: o.costEur,
+  lr,
+  external: false,
+});
+
+// Bij een prijsaanname meten interviews wat mensen nu uitgeven en wie over het budget beslist (gedrag in het
+// verleden): een indirect anker voor een prijs, dus een iets zwakkere factor (2,25) dan bij een probleemaanname (2,5).
+export const PRICE_INTERVIEW_LR = 2.25;
+// Een werkende technische proef (koppeling, prototype) zegt veel over haalbaarheid: factor 4. Kosten zijn een
+// startaanname: twee weken en € 1.000 aan ontwikkeltijd.
+export const PROTOTYPE_LR = 4;
+export const PROTOTYPE_TEST: VoiTest = {
+  type: "prototype",
+  label: "een technische proef of prototype buiten ProofLab",
+  duration: "1–2 weken",
+  cost: "€ 0–1.000 (ontwikkeltijd)",
+  days: 14,
+  costEur: 1000,
+  lr: PROTOTYPE_LR,
+  external: true,
+};
+
+// De tests die bij een soort aanname passen. Zonder ontdekkend bewijs (nog geen echte interviews) eerst begrijpen,
+// dan bewijzen: bij markt en prijs alleen de interviews. Gedrag meet je aan wat mensen doen (landingpage,
+// enquête), techniek met een technische proef: nooit met klantinterviews.
+export function testsForKind(kind: AssumptionKind, hasDiscoveryEvidence: boolean): VoiTest[] {
+  const iv = interview("dit");
+  switch (kind) {
+    case "technical":
+      return [PROTOTYPE_TEST];
+    case "behaviour":
+      return [fromOption(landing, "een landingpage-test"), fromOption(survey(hasDiscoveryEvidence), "een enquête")];
+    case "price": {
+      const first = fromOption(iv, "klantinterviews met betaalvragen", PRICE_INTERVIEW_LR);
+      return hasDiscoveryEvidence ? [first, fromOption(pricing, "een prijs-/aanbodtest")] : [first];
+    }
+    default: {
+      const first = { ...fromOption(iv, "klantinterviews"), note: "Vul aan met bureauonderzoek: bronnen met een letterlijk citaat onder Marktverkenning." };
+      return hasDiscoveryEvidence ? [first, fromOption(landing, "een landingpage-test")] : [first];
+    }
+  }
+}
+
 export type VoiInput = {
   id: string;
   statement: string;
@@ -161,18 +233,29 @@ export type VoiInput = {
   category: AssumptionCategory;
   evidence: number;
   hasDiscoveryEvidence: boolean;
+  // Fase B4: de soort (vastgelegd of afgeleid); zonder waarde afgeleid uit de tekst.
+  kind?: AssumptionKind;
+  // Fase B4: de aanname raakt direct de beslissende vraag (eerste tiebreak).
+  decisive?: boolean;
 };
+
+export type TieBreak = "decisive" | "cost" | "importance" | "order";
 
 export type VoiResult = {
   id: string;
-  score: number;
-  index: number; // 0–100, highest assumption of the dossier = 100
+  score: number; // onafgerond; de rangorde sorteert hierop
+  index: number; // 0–100, highest assumption of the dossier = 100 (alleen voor weergave afgerond)
   uncertainty: number; // 4·p(1−p), 0..1
   after: { negative: number; positive: number };
   canFlip: boolean;
-  test: Option;
+  kind: AssumptionKind;
+  decisive: boolean;
+  test: VoiTest;
   cost: number;
-  why: string;
+  why: string; // technische uitleg met kansen (uitklapdeel)
+  reason: string; // gewone taal: "Test deze eerst, omdat …"
+  // Bij een gelijke score met de volgende aanname: waarom deze voorgaat.
+  tieBreak: TieBreak | null;
 };
 
 const pctNl = (p: number) => `${Math.round(p * 100)}%`;
@@ -182,37 +265,153 @@ const update = (p: number, lnLr: number) => {
   return Math.min(0.99, Math.max(0.01, 1 / (1 + Math.exp(-(logitP(q) + lnLr)))));
 };
 
-export function valueOfInformation(a: VoiInput): Omit<VoiResult, "index"> {
-  const { options, warning } = recommend({ category: a.category, evidence: a.evidence, hasDiscoveryEvidence: a.hasDiscoveryEvidence });
-  const candidates = (warning ? options.slice(0, 1) : options.filter((o) => o.type !== "survey")).map((o) => {
-    const ln = Math.log(TEST_LR[o.type]);
+export function valueOfInformation(a: VoiInput): Omit<VoiResult, "index" | "reason" | "tieBreak"> {
+  const kind = a.kind ?? assumptionKind({ statement: a.statement, category: a.category });
+  const candidates = testsForKind(kind, a.hasDiscoveryEvidence).map((t) => {
+    const ln = Math.log(t.lr);
     const positive = update(a.probability, ln);
     const negative = update(a.probability, -ln);
-    return { o, positive, negative, canFlip: positive >= DECISION_BOUNDARY !== negative >= DECISION_BOUNDARY, cost: costIndex(o) };
+    return { t, positive, negative, canFlip: positive >= DECISION_BOUNDARY !== negative >= DECISION_BOUNDARY, cost: costIndex(t) };
   });
   const suitable = candidates.filter((c) => c.canFlip);
   const pool = suitable.length ? suitable : candidates;
-  const best = [...pool].sort((x, y) => x.cost - y.cost || TEST_LR[y.o.type] - TEST_LR[x.o.type])[0];
+  const best = [...pool].sort((x, y) => x.cost - y.cost || y.t.lr - x.t.lr)[0];
   const p = Math.min(0.99, Math.max(0.01, a.probability));
   const uncertainty = 4 * p * (1 - p);
   const move = best.positive - best.negative;
   const score = ((Math.min(5, Math.max(1, a.importance)) / 5) * uncertainty * move * (best.canFlip ? 1 : 0.5)) / best.cost;
   const level = a.importance >= 4 ? "Kritiek" : a.importance >= 3 ? "Belangrijk" : "Minder belangrijk";
-  const testName = { interview: "klantinterviews", landing: "een landingpage-test", pricing: "een prijs-/aanbodtest", survey: "een enquête" }[best.o.type];
   const why =
     `${level} (${a.importance}/5), geschatte kans ${pctNl(p)}. ` +
-    `Met ${testName} (${best.o.duration}, ${best.o.cost}) komt de kans op ${pctNl(best.negative)} of ${pctNl(best.positive)}` +
-    (best.canFlip ? ": de uitkomst kan het besluit omdraaien." : ": het besluit draait daar waarschijnlijk niet door om.");
-  return { id: a.id, score, uncertainty, after: { negative: best.negative, positive: best.positive }, canFlip: best.canFlip, test: best.o, cost: best.cost, why };
+    `Met ${best.t.label} (${best.t.duration}, ${best.t.cost}) komt de kans op ${pctNl(best.negative)} of ${pctNl(best.positive)}` +
+    (best.canFlip ? ": de uitkomst kan het besluit omdraaien." : ": het besluit draait daar waarschijnlijk niet door om.") +
+    (best.t.note ? ` ${best.t.note}` : "");
+  return {
+    id: a.id,
+    score,
+    uncertainty,
+    after: { negative: best.negative, positive: best.positive },
+    canFlip: best.canFlip,
+    kind,
+    decisive: !!a.decisive,
+    test: best.t,
+    cost: best.cost,
+    why,
+  };
 }
 
-// Highest information value first; ties keep the input order.
+// Twee scores zijn gelijk als ze op afrondingsruis na hetzelfde zijn.
+export function sameScore(x: number, y: number): boolean {
+  return Math.abs(x - y) <= 1e-9 * Math.max(Math.abs(x), Math.abs(y), 1e-12);
+}
+
+type Scored = Omit<VoiResult, "index" | "reason" | "tieBreak"> & { i: number; importance: number };
+
+// Waarom x vóór y komt bij een gelijke score (null: de score beslist).
+function tieBreakBetween(x: Scored, y: Scored): TieBreak | null {
+  if (!sameScore(x.score, y.score)) return null;
+  if (x.decisive !== y.decisive) return "decisive";
+  if (Math.abs(x.cost - y.cost) > 1e-9) return "cost";
+  if (x.importance !== y.importance) return "importance";
+  return "order";
+}
+
+function compare(x: Scored, y: Scored): number {
+  if (!sameScore(x.score, y.score)) return y.score - x.score;
+  if (x.decisive !== y.decisive) return x.decisive ? -1 : 1;
+  if (Math.abs(x.cost - y.cost) > 1e-9) return x.cost - y.cost;
+  if (x.importance !== y.importance) return y.importance - x.importance;
+  return x.i - y.i;
+}
+
+const importanceText = (n: number) =>
+  n >= 5 ? "het idee omvalt als dit niet klopt" : n >= 4 ? "het idee sterk wankelt als dit niet klopt" : n >= 3 ? "dit belangrijk is voor het idee" : "dit het idee maar beperkt raakt";
+
+const knowledgeText = (p: number, uncertainty: number) =>
+  uncertainty >= 0.8
+    ? "we nog niet weten of het klopt"
+    : uncertainty >= 0.5
+      ? `we nog twijfelen (we denken eerder van ${p >= 0.5 ? "wel" : "niet"})`
+      : `we al vrij zeker denken dat het ${p >= 0.5 ? "wel" : "niet"} klopt`;
+
+const TIE_TEXT: Record<TieBreak, string> = {
+  decisive: "deze raakt direct de beslissende vraag",
+  cost: "de test hiervoor is goedkoper of sneller",
+  importance: "deze is belangrijker",
+  order: "deze staat eerder in de lijst",
+};
+const TIE_TEXT_PREVIOUS: Record<TieBreak, string> = {
+  decisive: "die direct de beslissende vraag raakt",
+  cost: "de test daarvoor goedkoper of sneller is",
+  importance: "die belangrijker is",
+  order: "die eerder in de lijst staat",
+};
+
+// De rangorde in gewone taal (fase B4): belang, wat we weten en wat de voorgestelde test kan opleveren; bij een
+// gelijke score ook waarom deze voorgaat. Geen scores of kansen: die staan in het uitklapdeel (why, index).
+export function plainReason(
+  v: Pick<VoiResult, "test" | "canFlip" | "uncertainty" | "decisive" | "tieBreak">,
+  position: number,
+  probability: number,
+  importance: number,
+  tiedWithPrevious: TieBreak | null,
+): string {
+  const lead = ["Test deze eerst, omdat", "Test deze als tweede, omdat", "Test deze als derde, omdat"][position] ?? "Minder dringend, omdat";
+  // Kosten zonder toelichting tussen haakjes ("€ 0–500 (advertenties optioneel)" → "€ 0–500").
+  const cost = v.test.cost.replace(/\s*\([^)]*\)\s*$/, "");
+  const test = v.test.external
+    ? `${v.test.label} (${v.test.duration}) hier de passende toets is, geen klanttest`
+    : `${v.test.label} (${v.test.duration}, ${cost}) ${v.canFlip ? "het besluit kan omdraaien" : "het besluit waarschijnlijk niet omdraait"}`;
+  const parts = [`${lead} ${importanceText(importance)}, ${knowledgeText(probability, v.uncertainty)} en ${test}.`];
+  if (v.decisive) parts.push("Ze raakt direct de beslissende vraag.");
+  if (v.tieBreak) parts.push(`Even hoog als de volgende, maar ${TIE_TEXT[v.tieBreak]}.`);
+  else if (tiedWithPrevious) parts.push(`Even hoog als de vorige; die gaat voor omdat ${TIE_TEXT_PREVIOUS[tiedWithPrevious]}.`);
+  return parts.join(" ");
+}
+
+// Highest information value first, on the unrounded score. Ties: direct relation with the decisive question,
+// then the cheapest test, then importance, then input order (stable).
 export function rankByInformationValue(list: VoiInput[]): VoiResult[] {
-  const scored = list.map((a, i) => ({ ...valueOfInformation(a), i }));
+  const scored: Scored[] = list.map((a, i) => ({ ...valueOfInformation(a), i, importance: a.importance }));
+  const probabilityOf = new Map(list.map((a) => [a.id, a.probability]));
   const max = Math.max(0, ...scored.map((s) => s.score));
-  return scored
-    .sort((x, y) => y.score - x.score || x.i - y.i)
-    .map(({ i: _i, ...s }) => ({ ...s, index: max > 0 ? Math.round((s.score / max) * 100) : 0 }));
+  const sorted = [...scored].sort(compare);
+  return sorted.map((s, pos) => {
+    const tieBreak = pos + 1 < sorted.length ? tieBreakBetween(s, sorted[pos + 1]) : null;
+    const prevTie = pos > 0 ? tieBreakBetween(sorted[pos - 1], s) : null;
+    const base = {
+      id: s.id,
+      score: s.score,
+      uncertainty: s.uncertainty,
+      after: s.after,
+      canFlip: s.canFlip,
+      kind: s.kind,
+      decisive: s.decisive,
+      test: s.test,
+      cost: s.cost,
+      why: s.why,
+      tieBreak,
+      index: max > 0 ? Math.round((s.score / max) * 100) : 0,
+    };
+    return { ...base, reason: plainReason(base, pos, probabilityOf.get(s.id) ?? 0.5, s.importance, prevTie) };
+  });
+}
+
+// Fase B4: de consultant kiest maximaal zoveel aannames om nu te testen; de rest blijft zichtbaar als "later".
+// De database dwingt hetzelfde af (supabase/migrations/20261110100000_b4_aannames.sql).
+export const MAX_SELECTED_FOR_TEST = 3;
+
+// Null als de keuze mag; anders de melding voor het scherm.
+export function selectionError(currentlySelected: number, select: boolean, alreadySelected: boolean): string | null {
+  if (!select || alreadySelected) return null;
+  return currentlySelected >= MAX_SELECTED_FOR_TEST
+    ? `Je hebt al ${MAX_SELECTED_FOR_TEST} aannames gekozen om te testen. Zet er eerst één op later.`
+    : null;
+}
+
+// Gekozen aannames eerst (in rangorde), daarna de rest als "later".
+export function splitBySelection<T extends { selectedForTest?: boolean }>(ranked: T[]): { now: T[]; later: T[] } {
+  return { now: ranked.filter((a) => a.selectedForTest), later: ranked.filter((a) => !a.selectedForTest) };
 }
 
 // Default templates for each experiment type, filled into the Test Card.

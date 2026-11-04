@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Term } from "@/components/ui/Term";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PageFrame } from "@/components/shell/PageFrame";
@@ -158,7 +159,7 @@ export default async function ForecastsPage() {
           <div className="grid-2">
             <div className="card">
               <div className="section-title">
-                <h3>Brier-score per voorspeller</h3>
+                <h3><Term k="brier-score">Brier-score</Term> per voorspeller</h3>
                 <span className="pill gray">Lager is beter</span>
               </div>
               {brierWarning(resolved.length) && (
@@ -227,7 +228,7 @@ export default async function ForecastsPage() {
             </div>
             <div className="card">
               <div className="section-title">
-                <h3>Kalibratie</h3>
+                <h3><Term k="kalibratie">Kalibratie</Term></h3>
                 <span className="pill gray">{calRows.reduce((s, r) => s + r.forecasts, 0)} voorspellingen</span>
               </div>
               {calRows.length > 0 ? <CalibrationChart rows={calRows} /> : <p className="sub">Nog geen gescoorde voorspellingen.</p>}
@@ -240,7 +241,7 @@ export default async function ForecastsPage() {
         <div className="grid-2 mt-24">
           <div className="card">
             <div className="section-title">
-              <h3>Eigen basispercentage per projecttype</h3>
+              <h3>Eigen <Term k="basispercentage">basispercentage</Term> per projecttype</h3>
               <span className="pill gray">Vanaf {OWN_BASE_RATE_MIN} dossiers</span>
             </div>
             {types.map((t) => (

@@ -5,17 +5,19 @@
 import { method2026_11_a } from "./2026-11-a";
 import { method2026_11_b } from "./2026-11-b";
 import { method2026_11_c } from "./2026-11-c";
+import { method2026_11_d } from "./2026-11-d";
 import { METHOD_VERSIONS, type MethodModule, type MethodVersion } from "./types";
 
 export { METHOD_VERSIONS, type HypothesisRule, type MethodModule, type MethodVersion } from "./types";
 
 export const LEGACY_METHOD: MethodVersion = "2026-11-a";
-export const CURRENT_METHOD: MethodVersion = "2026-11-c";
+export const CURRENT_METHOD: MethodVersion = "2026-11-d";
 
 export const METHODS: Record<MethodVersion, MethodModule> = {
   "2026-11-a": method2026_11_a,
   "2026-11-b": method2026_11_b,
   "2026-11-c": method2026_11_c,
+  "2026-11-d": method2026_11_d,
 };
 
 // Onbekend of leeg (database zonder methodekolom): de oude rekenwijze.

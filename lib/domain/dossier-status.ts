@@ -43,7 +43,8 @@ const BACK_TO_TEST = ["test_more", "extend", "adjust"];
 
 const OPEN_DECISION_LABELS: Record<string, string> = {
   test_more: "Verder testen",
-  extend: "Verlengde testfase",
+  // B6: verder testen en de verlengde testfase zijn één keuze; beide heten "Verder testen".
+  extend: "Verder testen",
   adjust: "Bijsturen",
   pause: "Gepauzeerd",
 };

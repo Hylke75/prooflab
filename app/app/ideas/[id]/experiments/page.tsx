@@ -14,6 +14,10 @@ import { aiConfigured } from "@/lib/env";
 import { TEST_ROLES, testRole } from "@/lib/domain/primary-test";
 import { assumptionKind } from "@/lib/domain/assumption-kind";
 import { countRealInterviewObservations } from "@/lib/practice-data";
+import { loadDecisionRule } from "@/lib/decision-rule-data";
+import { proposeGoRule } from "@/lib/domain/decision-rule-proposal";
+import { describeRule } from "@/lib/domain/decision-rule";
+import { GoRuleProposalCard } from "@/components/experiments/GoRuleProposal";
 
 export const metadata: Metadata = { title: "Experimenten" };
 
@@ -52,6 +56,23 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
   const rec = selected
     ? recommend({ category: selected.category as AssumptionCategory, evidence: selected.evidence, hasDiscoveryEvidence: interviewObs > 0 })
     : null;
+  // B5: de go-regel van het dossier. Zonder regel (null) stelt ProofLab hem voor bij de eerste hoofdtest;
+  // undefined = de database kent de tabel nog niet.
+  const rule = await loadDecisionRule(id);
+  const savedAssumption = saved ? assumptions.find((a) => a.id === saved.hypotheses?.assumption_id) : undefined;
+  const goProposal =
+    saved && savedAssumption && canWrite
+      ? proposeGoRule({ rule, assumption: savedAssumption, experiment: saved, isPrimary: savedAssumption.primaryExperimentId === saved.id })
+      : null;
+  // B5: wat de intake al weet, om de Test Card vooraf in te vullen (prijs, beschrijving). Een expliciet prijsveld
+  // (price_eur/price_period) telt als het dossier dat heeft; anders zoekt ProofLab de prijs in de intaketeksten.
+  const ideaRow = idea as unknown as Record<string, unknown>;
+  const intake = {
+    description: idea.description ?? "",
+    texts: [idea.description, idea.outcome_statement, idea.decision_question, idea.decision_stakes, idea.key_uncertainty],
+    price_eur: typeof ideaRow.price_eur === "number" ? ideaRow.price_eur : null,
+    price_period: typeof ideaRow.price_period === "string" ? ideaRow.price_period : null,
+  };
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Testen"]} coach="experiments" ideaId={id} section="/experiments">
@@ -68,6 +89,12 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           <strong>Test Card opgeslagen als concept.</strong> &quot;{saved.title}&quot; staat op het bord onder Voorbereiden.{" "}
           <Link className="text-link" href={`/app/ideas/${id}/experiments/${saved.id}`}>Open het concept →</Link>
         </div>
+      )}
+      {goProposal && <GoRuleProposalCard ideaId={id} proposal={goProposal} />}
+      {saved && rule && rule.primaryExperimentId === saved.id && (
+        <p className="form-ok" role="status" id="go-regel-vast">
+          <strong>Go-regel vastgelegd.</strong> {describeRule(rule, saved.title)}
+        </p>
       )}
       {(experiments ?? []).length > 0 && (
         <div className="kpi-row" id="bord" style={{ marginBottom: 20 }}>
@@ -147,6 +174,8 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           researcher={ws.org?.name ?? ""}
           surveyDraftAction={draftSurveyWithCoach.bind(null, id)}
           priors={priors}
+          intake={intake}
+          goRuleMissing={rule === null}
           key={`${selected.id}|${wantedType ?? ""}`}
         />
       ) : (

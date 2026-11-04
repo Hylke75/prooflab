@@ -3,6 +3,8 @@ import { createIdeaViaIntake, dutchDate, isoDate } from "./intake";
 
 // Fase B1: de Test Card van een prijs-/aanbodtest. Opslaan geeft altijd een zichtbaar resultaat of een duidelijke
 // fout, en de drempels liggen vast vóórdat ProofLab het aantal deelnemers uitrekent.
+// Fase B5: vijf zichtbare velden, de rest vooringevuld onder Details (ook de prijs uit de intake), een statusbalk
+// Concept → Klaar voor goedkeuring → Loopt, en een hoofdtest start pas met een vastgelegde go-regel.
 
 const email = process.env.E2E_EMAIL ?? "";
 const password = process.env.E2E_PASSWORD ?? "";
@@ -16,7 +18,8 @@ async function login(page: Page) {
   await page.waitForURL(/\/app/);
   const ws = page.getByLabel("Naam van je bureau of team", { exact: true });
   const hero = page.getByRole("heading", { name: /Van goed idee naar/ });
-  await expect(ws.or(hero)).toBeVisible();
+  // Het overzicht van een werkruimte met veel testdossiers laadt soms langzaam.
+  await expect(ws.or(hero)).toBeVisible({ timeout: 30_000 });
   if (await ws.isVisible()) {
     await ws.fill("E2E Bureau");
     await page.getByRole("button", { name: "Werkruimte aanmaken" }).click();
@@ -35,7 +38,7 @@ async function createIdea(page: Page): Promise<string> {
   });
 }
 
-test("B1: Test Card van een prijstest opslaan, met drempels vóór het rekenwerk", async ({ page }) => {
+test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-regel starten", async ({ page }) => {
   await login(page);
   const ideaUrl = await createIdea(page);
 
@@ -48,6 +51,11 @@ test("B1: Test Card van een prijstest opslaan, met drempels vóór het rekenwerk
   await expect(page.getByRole("heading", { name: "Risicokaart" })).toBeVisible();
 
   await page.goto(`${ideaUrl}/experiments`);
+  // Een prijsaanname, zodat de prijstest ook kan worden goedgekeurd (B0 punt 3).
+  const statements = await page.locator("#as-select option").allTextContents();
+  const price = statements.find((s) => /prijs|betalen/i.test(s));
+  expect(price, "een prijsaanname").toBeTruthy();
+  await page.getByLabel("Aanname die je toetst", { exact: true }).selectOption({ label: price! });
   await page.getByRole("radio", { name: /Prijs-\/aanbodtest/ }).click();
   const card = page.getByRole("form", { name: "Test Card" });
 
@@ -55,7 +63,33 @@ test("B1: Test Card van een prijstest opslaan, met drempels vóór het rekenwerk
   await expect(card.getByLabel("Verwachte uitkomst (%)", { exact: true })).toHaveCount(0);
   await expect(card.getByText("Leg eerst de drempels vast. Daarna rekent ProofLab uit hoeveel deelnemers je nodig hebt.")).toBeVisible();
 
-  // B1a: één opslagknop; leeg opslaan stuurt geen verzoek maar toont meldingen bij de velden en een samenvatting.
+  // B5: bovenaan de status; zichtbaar zijn alleen wat, bij wie, de drempels, het aantal deelnemers en de deadline.
+  const status = card.locator(".tc-status");
+  await expect(status).toContainText("Concept");
+  await expect(status).toContainText("Klaar voor goedkeuring");
+  await expect(status).toContainText("Loopt");
+  await expect(status.locator("li[aria-current=step]")).toContainText("Concept");
+  for (const label of ["Wat test je? (verplicht)", "Bij wie? (verplicht)", "Het klopt als ≥ (%) (verplicht)", "Het klopt niet als < (%) (verplicht)", "Minimale steekproef (verplicht)", "Deadline (verplicht)"]) {
+    await expect(card.getByLabel(label, { exact: true })).toBeVisible();
+  }
+  // Vijf velden, zes invoervakjes (succes- en faaldrempel); de rest zit dicht onder Details.
+  await expect(card.locator("input:visible:not([type=hidden]):not([type=radio]), textarea:visible, select:visible")).toHaveCount(6);
+  await expect(card.getByLabel("Kop (verplicht)", { exact: true })).toBeHidden();
+  // De deadline is een datum; de looptijd in dagen gaat mee als verborgen veld.
+  await expect(card.getByLabel("Deadline (verplicht)", { exact: true })).toHaveValue(/^\d{4}-\d{2}-\d{2}$/);
+
+  // Onder Details staat alles vooringevuld, ook de prijs uit de intake (€ 249 per maand).
+  await card.locator("#tc-details").click();
+  await expect(card.getByLabel("Prijspunt 1: naam (verplicht)", { exact: true })).toHaveValue("Basis");
+  await expect(card.getByLabel("Bedrag (€) en periode", { exact: true }).first()).toHaveValue("249");
+  await expect(card.getByLabel("Periode prijspunt 1", { exact: true })).toHaveValue("per maand");
+  await expect(card.getByText("Prijs uit de intake overgenomen: € 249 per maand.")).toBeVisible();
+  await expect(card.getByLabel("Kop (verplicht)", { exact: true })).not.toHaveValue("");
+  await expect(card.getByRole("radio", { name: "Eigen netwerk", exact: true })).toBeChecked();
+  await card.locator("#tc-details").click();
+  await expect(card.getByLabel("Kop (verplicht)", { exact: true })).toBeHidden();
+
+  // B1a: één opslagknop; opslaan zonder vastgelegde drempels stuurt geen verzoek maar toont de melding.
   const save = card.getByRole("button", { name: "Test Card opslaan als concept" });
   await expect(save).toHaveCount(1);
   await expect(save).toBeEnabled();
@@ -63,14 +97,10 @@ test("B1: Test Card van een prijstest opslaan, met drempels vóór het rekenwerk
   page.on("request", (r) => {
     if (r.method() === "POST") posts++;
   });
-  await card.getByLabel("Wij denken dat… (verplicht)", { exact: true }).fill("Zelfstandige NVM-makelaars kiezen op de testpagina een abonnement van € 249 per maand.");
+  await card.getByLabel("Wat test je? (verplicht)", { exact: true }).fill("Zelfstandige NVM-makelaars kiezen op de testpagina een abonnement van € 249 per maand.");
   await save.click();
-  await expect(card.getByText(/Nog niet opgeslagen: \d+ punten moeten nog worden aangevuld/)).toBeVisible();
-  for (const label of ["Drempels vastleggen", "Wervingsgroep", "Kop", "Prijspunten"]) {
-    await expect(card.locator(".tc-save").getByRole("button", { name: label, exact: true })).toBeVisible();
-  }
-  await expect(card.locator("#err-headline")).toContainText("Schrijf een kop");
-  await expect(card.locator("#err-recruitment_group")).toBeVisible();
+  await expect(card.getByText("Nog niet opgeslagen: 1 punt moet nog worden aangevuld.")).toBeVisible();
+  await expect(card.locator(".tc-save").getByRole("button", { name: "Drempels vastleggen", exact: true })).toBeVisible();
   expect(posts).toBe(0);
   expect(page.url()).toContain("/experiments");
 
@@ -91,19 +121,55 @@ test("B1: Test Card van een prijstest opslaan, met drempels vóór het rekenwerk
   await card.getByRole("button", { name: "Leg de drempels opnieuw vast" }).click();
   await expect(card.getByText(/Drempels vastgelegd \(gewijzigd, met motivering\)/)).toBeVisible();
 
-  // De rest aanvullen en opslaan: bevestiging en het concept op het bord, ook na herladen.
-  await card.getByRole("radio", { name: "Koud", exact: true }).check();
+  // B5: een verplicht detailveld dat ontbreekt, opent Details vanzelf; de fout staat zichtbaar bij het veld.
+  await card.locator("#tc-details").click();
+  await card.getByLabel("Kop (verplicht)", { exact: true }).fill("");
+  await card.locator("#tc-details").click();
+  await expect(card.locator("details.tc-details")).not.toHaveAttribute("open", "");
+  await save.click();
+  await expect(card.locator("details.tc-details")).toHaveAttribute("open", "");
+  await expect(card.locator("#err-headline")).toBeVisible();
+  await expect(card.locator("#err-headline")).toContainText("Schrijf een kop");
+  await expect(card.getByLabel("Kop (verplicht)", { exact: true })).toBeFocused();
+  expect(posts).toBe(0);
+
+  // Aanvullen en opslaan: bevestiging en het concept op het bord, ook na herladen.
   await card.getByLabel("Kop (verplicht)", { exact: true }).fill("Je woningteksten en klantmails in minuten klaar.");
-  await card.getByLabel("Prijspunt 1: naam (verplicht)", { exact: true }).fill("Kantoor");
-  await card.getByLabel("Bedrag (€) en periode", { exact: true }).first().fill("249");
   await save.click();
   await page.waitForURL(/\/experiments\?opgeslagen=[0-9a-f-]{36}/);
   await expect(page.getByText("Test Card opgeslagen als concept.")).toBeVisible();
   const board = page.locator("#bord");
   await expect(board.locator(".assumption-item.just-saved")).toContainText("Prijs");
+  // B5: bij de eerste Test Card stelt ProofLab de go-regel van het dossier voor.
+  await expect(page.locator("#go-regel")).toContainText(/Doorgaan als de hoofdtest ".+" slaagt en de aanname ".+" minstens 70% kans haalt\./);
   await page.reload();
   await expect(board.locator(".assumption-item", { hasText: "Prijs" })).toHaveCount(1);
   await page.getByRole("link", { name: "Open het concept →" }).click();
+  await page.waitForURL(/\/experiments\/[0-9a-f-]{36}/);
   await expect(page.getByText(/ongeveer \d+ deelnemers nodig/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Ter review aanbieden" })).toBeVisible();
+  // De prijs uit de intake staat op de testpagina en de deadline op de Test Card.
+  await expect(page.getByText(/Deadline/).first()).toBeVisible();
+
+  // B5: de statusbalk volgt de Test Card: Concept → Klaar voor goedkeuring → (goedgekeurd) → Loopt.
+  const steps = page.locator(".tc-status li[aria-current=step]");
+  await expect(steps).toContainText("Concept");
+  await page.getByRole("button", { name: "Ter review aanbieden" }).click();
+  await expect(steps).toContainText("Klaar voor goedkeuring");
+  for (const box of await page.locator("input[type=checkbox][name^=check_]").all()) await box.check();
+  await page.getByRole("button", { name: "Akkoord: keur goed en vergrendel" }).click();
+
+  // B5: zonder vastgelegde go-regel start een hoofdtest niet; de reden staat bij de knop.
+  const start = page.getByRole("button", { name: "Publiceer en start de meting" });
+  await expect(start).toBeVisible({ timeout: 20_000 });
+  await expect(start).toBeDisabled();
+  await expect(page.locator("#go-rule-block")).toContainText("Leg eerst de go-regel van het dossier vast.");
+  await page.getByRole("button", { name: "Leg deze go-regel vast" }).click();
+  // Het voorstel maakt plaats voor de vastgelegde regel (achteraf: er was al een test goedgekeurd).
+  await expect(page.locator("#go-regel")).toHaveCount(0);
+  await expect(page.locator("#go-rule-row")).toContainText(/Doorgaan als .* de hoofdtest .* slaagt/);
+  await expect(page.locator("#go-rule-row")).toContainText("achteraf vastgelegd");
+  await expect(start).toBeEnabled();
+  await expect(page.locator("#go-rule-block")).toHaveCount(0);
+  await start.click();
+  await expect(steps).toContainText("Loopt");
 });

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageFrame } from "@/components/shell/PageFrame";
+import { Term } from "@/components/ui/Term";
 import { ActionForm, CheckField, Field } from "@/components/ui/ActionForm";
 import { RuleSummary, ruleName } from "@/components/experiments/RuleSummary";
 import { ResultMeter } from "@/components/experiments/ResultMeter";
@@ -31,7 +32,13 @@ import { isStarted } from "@/lib/domain/test-counts";
 import { loadTestExclusions } from "@/lib/progress";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 import { assumptionKind, assumptionKindLabel, metricFitsAssumption } from "@/lib/domain/assumption-kind";
-import { belowMinSample, END_BELOW_SAMPLE_CONFIRM, END_REASON_MAX, END_REASON_MIN, thresholdBlock } from "@/lib/domain/experiment-gates";
+import { belowMinSample, END_BELOW_SAMPLE_CONFIRM, END_REASON_MAX, END_REASON_MIN, goRuleBlock, thresholdBlock } from "@/lib/domain/experiment-gates";
+import { loadDecisionRule } from "@/lib/decision-rule-data";
+import { proposeGoRule } from "@/lib/domain/decision-rule-proposal";
+import { describeRule } from "@/lib/domain/decision-rule";
+import { GoRuleProposalCard } from "@/components/experiments/GoRuleProposal";
+import { TestCardStatus } from "@/components/experiments/TestCardStatus";
+import { deadlineFromDays, isoDay } from "@/lib/domain/test-card";
 
 export const metadata: Metadata = { title: "Experiment" };
 
@@ -101,6 +108,16 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
   // Fase B0, punt 4: telt deze test mee in kans en rangorde? Zelfde regel en gegevens als de risicokaart.
   const exclusion = isStarted(state) ? (await loadTestExclusions(id)).get(expId) ?? null : null;
 
+  // B5: de go-regel van het dossier. Een hoofdtest start pas als die vastligt; zonder regel stelt ProofLab hem voor.
+  const rule = await loadDecisionRule(id);
+  const goBlock = goRuleBlock({ isPrimary: role === "primary", rule: rule === undefined ? "unknown" : rule ? "saved" : "missing" });
+  const goProposal =
+    canWrite && h.assumptions && ["draft", "ready_for_review", "approved"].includes(state)
+      ? proposeGoRule({ rule, assumption: { id: h.assumption_id, statement: h.assumptions.statement }, experiment: exp, isPrimary: role === "primary" })
+      : null;
+  // B5: de deadline. Vóór de start geldt hij als de test vandaag start; daarna is het de vastgelegde einddatum.
+  const deadline = exp.ends_at ? new Date(exp.ends_at) : new Date(`${deadlineFromDays(h.max_duration_days, isoDay(new Date()))}T12:00:00`);
+
   const shortTitle = truncateWords(exp.title, TITLE_MAX);
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Testen", exp.title]} coach="experiments" ideaId={id} section={`/experiments/${expId}`}>
@@ -113,6 +130,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
         </div>
         <span className={`pill ${EXPERIMENT_STATES[state].pill}`}>{EXPERIMENT_STATES[state].label}</span>
       </div>
+      <TestCardStatus state={state} />
 
       {running && (
         <div className="insight-banner">
@@ -167,7 +185,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
       <div className="grid-2 mt-18">
         <div className="card">
           <div className="section-title">
-            <h2 className="as-h3">Test Card</h2>
+            <h2 className="as-h3"><Term k="test-card">Test Card</Term></h2>
             <span className={`pill ${h.locked_at ? "dark" : "gray"}`}>{h.locked_at ? `Vergrendeld ${new Date(h.locked_at).toLocaleDateString("nl-NL")}` : "Concept"}</span>
           </div>
           <div className="data-row">
@@ -197,6 +215,23 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
             </>
           )}
           <div className="data-row"><span>Steekproef · looptijd</span><strong className="num">≥ {h.min_sample} · max. {h.max_duration_days} dagen</strong></div>
+          {role === "primary" && rule !== undefined && (
+            <div className="data-row" id="go-rule-row">
+              <span>Go-regel van het dossier</span>
+              <strong style={{ textAlign: "right" }}>
+                {rule
+                  ? `${describeRule(rule, rule.primaryExperimentId === expId ? exp.title : null)}${rule.recordedLate ? " (achteraf vastgelegd)" : rule.lockedAt ? " (vergrendeld)" : ""}`
+                  : "Nog niet vastgelegd: deze hoofdtest start pas als de go-regel vastligt."}
+              </strong>
+            </div>
+          )}
+          <div className="data-row">
+            <span>Deadline</span>
+            <strong style={{ textAlign: "right" }}>
+              {exp.ends_at ? "" : "bij start vandaag: "}
+              {deadline.toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" })}
+            </strong>
+          </div>
           {h.decision_rule && (
             <div className="data-row">
               <span>Vooraf berekend</span>
@@ -229,6 +264,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
         <div className="card">
           <div className="section-title"><h2 className="as-h3">Volgende stap</h2></div>
           {!canWrite && <p className="sub">Je kijkt mee. Het onderzoeksteam beheert dit experiment.</p>}
+          {goProposal && <GoRuleProposalCard ideaId={id} proposal={goProposal} />}
           {canWrite && state === "draft" && (
             <>
               <p className="sub">Controleer de Test Card. Daarna bied je het experiment aan voor review.</p>
@@ -266,7 +302,17 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
             <>
               {type !== "interview" && !trackingConfigured() && <div className="form-error">Meting is niet geconfigureerd (INGEST_SECRET en TRACKING_SALT ontbreken). De test kan nog niet live.</div>}
               {publicUrl && type !== "survey" && <p className="sub">Bekijk eerst het <a className="text-link" href={`/t/${exp.public_slug}`} target="_blank">voorbeeld</a> (metingen staan nog uit).</p>}
-              <ActionForm action={transitionExperiment.bind(null, id, expId, "live")} submitLabel={type === "interview" ? "Start de interviewronde" : "Publiceer en start de meting"}>
+              {goBlock && (
+                <div className="form-error" id="go-rule-block" role="status">
+                  <p style={{ margin: 0 }}>{goBlock}</p>
+                </div>
+              )}
+              <ActionForm
+                action={transitionExperiment.bind(null, id, expId, "live")}
+                submitLabel={type === "interview" ? "Start de interviewronde" : "Publiceer en start de meting"}
+                disabled={!!goBlock}
+                describedBy={goBlock ? "go-rule-block" : undefined}
+              >
                 <span />
               </ActionForm>
             </>
@@ -297,7 +343,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           )}
           {canWrite && state === "ended" && (cards ?? []).length === 0 && (
             <ActionForm action={createLearningCard.bind(null, id, expId)} submitLabel="Analyseer en maak de Learning Card" pendingLabel="Analyseren…">
-              <p className="sub">ProofLab berekent het resultaat uit de ruwe, ontdubbelde metingen en maakt een concept-Learning Card.</p>
+              <p className="sub">ProofLab berekent het resultaat uit de ruwe, ontdubbelde metingen en maakt een concept-<Term k="learning-card">Learning Card</Term>.</p>
             </ActionForm>
           )}
           {(cards ?? []).length > 0 && <Link className="btn primary" href={`/app/ideas/${id}/evidence`}>Naar bewijs & besluit →</Link>}
