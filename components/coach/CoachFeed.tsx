@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useActionState, useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
-import { NOTE_KINDS, type NoteKind } from "@/lib/coach/rules";
+import { NOTE_KINDS, NOTES_SHOWN, byNotePriority, type NoteKind } from "@/lib/coach/rules";
 import { rateCoachNote, resolveCoachNote, reviewNow, type ReviewNowState } from "@/app/app/coach-review-actions";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 
@@ -27,7 +27,9 @@ export function CoachFeed({ ideaId, notes, canWrite, onNavigate }: { ideaId: str
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [review, reviewAction, reviewing] = useActionState<ReviewNowState, FormData>(reviewNow.bind(null, ideaId), { message: null, error: null });
-  const visible = notes.filter((n) => !hidden.includes(n.id));
+  const visible = byNotePriority(notes.filter((n) => !hidden.includes(n.id)));
+  const [showAll, setShowAll] = useState(false);
+  const shown = showAll ? visible : visible.slice(0, NOTES_SHOWN);
 
   // Een notitie waarvan de coach nog niet ziet dat het werk gedaan is: eerst een bevestigingsvraag.
   const [confirm, setConfirm] = useState<{ id: string; message: string } | null>(null);
@@ -90,7 +92,7 @@ export function CoachFeed({ ideaId, notes, canWrite, onNavigate }: { ideaId: str
         </p>
       ) : (
         <ul className="coach-notes" aria-busy={pending}>
-          {visible.map((n) => {
+          {shown.map((n) => {
             const k = NOTE_KINDS[(n.kind as NoteKind) in NOTE_KINDS ? (n.kind as NoteKind) : "tip"];
             return (
               <li key={n.id} className={`coach-note ${n.kind}`}>
@@ -132,6 +134,11 @@ export function CoachFeed({ ideaId, notes, canWrite, onNavigate }: { ideaId: str
             );
           })}
         </ul>
+      )}
+      {visible.length > NOTES_SHOWN && (
+        <button type="button" className="text-link" onClick={() => setShowAll((v) => !v)} aria-expanded={showAll}>
+          {showAll ? "Toon alleen de belangrijkste drie" : `Toon nog ${visible.length - NOTES_SHOWN} ${visible.length - NOTES_SHOWN === 1 ? "notitie" : "notities"}`}
+        </button>
       )}
       {canWrite && (
         <form action={reviewAction} className="coach-feed-review">

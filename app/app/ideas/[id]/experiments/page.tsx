@@ -143,7 +143,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
                 {a.statement}
                 <small style={{ display: "block", fontWeight: 500, marginTop: 3 }}>{a.voi.why}</small>
               </span>
-              <small>IW {a.voi.index}</small>
+              <small>score {a.voi.index}</small>
             </Link>
           ))}
         </div>

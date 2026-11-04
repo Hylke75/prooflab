@@ -139,7 +139,31 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
 
       {lock ? (
         // Golf B, punt 15: eerst de eigen voorspelling, dan de berekende kansen op de risicokaart.
-        <ForecastFirstLock ideaId={id} moment={lock} what="de risicokaart met de berekende kans per aanname" client={!canWrite} />
+        <>
+          <ForecastFirstLock ideaId={id} moment={lock} what="de risicokaart met de berekende kans per aanname" client={!canWrite} />
+          {/* Systeemcontrole: de aannames zelf zijn wel zichtbaar (op belang, niet op berekende rangorde), zodat de pagina
+              niet leeg lijkt. Verborgen tot de voorspelling: de berekende kansen, de rangorde en de risicokaart. */}
+          {board.length > 0 && (
+            <div className="card mt-18" role="region" aria-labelledby="aannames-lijst">
+              <div className="section-title">
+                <h2 className="as-h3" id="aannames-lijst">Je aannames ({board.length})</h2>
+                <span className="pill gray">Op belang</span>
+              </div>
+              <p className="tiny" style={{ marginTop: -8 }}>Kansen en rangorde zie je na je voorspelling.</p>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                {[...board]
+                  .sort((a, b) => b.importance - a.importance || a.statement.localeCompare(b.statement, "nl"))
+                  .map((a) => (
+                    <li key={a.id} className="assumption-item" style={{ cursor: "default" }}>
+                      <span className="count" title="Belang (1–5)">{a.importance}</span>
+                      <span>{a.statement}</span>
+                      <small>{ASSUMPTION_KINDS[a.kind].label}</small>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
+        </>
       ) : board.length === 0 ? (
         <div className="empty-state">
           <h2 className="as-h3">Nog geen aannames</h2>

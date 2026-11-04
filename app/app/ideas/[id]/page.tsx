@@ -7,7 +7,7 @@ import { calendarDate } from "@/components/sprint/SprintCard";
 import { getIdea } from "@/lib/data";
 import { loadProgress } from "@/lib/progress";
 import { loadOpenNotes } from "@/lib/coach/review";
-import { NOTE_KINDS, type NoteKind } from "@/lib/coach/rules";
+import { NOTE_KINDS, NOTES_SHOWN, byNotePriority, type NoteKind } from "@/lib/coach/rules";
 import { nextAction, predictionTip, sprintStage } from "@/lib/domain/coach";
 import { SPRINT_PHASES, sprintStatus, todayInNL } from "@/lib/domain/sprint";
 import { dossierStatus, IDEA_OVERVIEW, IDEA_REPORT, STEPS, stepOverview } from "@/lib/steps";
@@ -129,7 +129,7 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
           {notes.length === 0 ? (
             <p className="sub">Geen open punten. De coach meldt zich als er iets opvalt in het dossier.</p>
           ) : (
-            notes.slice(0, 6).map((n) => {
+            byNotePriority(notes).slice(0, NOTES_SHOWN).map((n) => {
               const k = NOTE_KINDS[(n.kind as NoteKind) in NOTE_KINDS ? (n.kind as NoteKind) : "tip"];
               return (
                 <div className="quickline" key={n.id}>
@@ -143,7 +143,7 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
               );
             })
           )}
-          {notes.length > 6 && <p className="tiny">En nog {notes.length - 6} in het coachpaneel.</p>}
+          {notes.length > NOTES_SHOWN && <p className="tiny">De belangrijkste drie staan hier; de andere {notes.length - NOTES_SHOWN} vind je in het coachpaneel.</p>}
         </div>
       </div>
 
