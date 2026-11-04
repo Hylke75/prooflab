@@ -1,7 +1,7 @@
 import "server-only";
-import { CLAIM_STATUS, COMPETITOR_KINDS, DECISIONS, EVIDENCE_TYPES, EXPERIMENT_TYPES, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type DecisionAction, type EvidenceType, type ExperimentType, type SourceType } from "@/lib/domain/labels";
+import { CLAIM_STATUS, COMPETITOR_KINDS, DECISIONS, DMU_ROLES, EVIDENCE_TYPES, EXPERIMENT_TYPES, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type DecisionAction, type DmuRole, type EvidenceType, type ExperimentType, type SourceType } from "@/lib/domain/labels";
 import type { Finding } from "@/lib/domain/reality-check";
-import { asEvidenceLevel, testEvidenceLevel } from "@/lib/domain/evidence";
+import { asEvidenceLevel, strength, testEvidenceLevel } from "@/lib/domain/evidence";
 import { buildAllTests } from "@/lib/domain/all-tests";
 import { testRole } from "@/lib/domain/primary-test";
 import { ACHIEVED_LABELS, FORECAST_MOMENTS, FORECASTER_LABELS, JUSTIFIED_LABELS, MOMENT_LABELS, ON_TRACK_LABELS, aggregate, aiAsOneVote, brier, type Achieved, type ForecasterKind, type Justified, type OnTrack } from "@/lib/domain/forecast";
@@ -10,9 +10,13 @@ import { effortSummary } from "@/lib/domain/effort";
 import { deviationLabel, type RuleEvaluation } from "@/lib/domain/decision-rule";
 import { PROVIDER_LABELS, providerOfModel } from "@/lib/ai/providers/config";
 import { buildReportCounts } from "@/lib/domain/report-counts";
-import { evidenceLadder, type EvidenceLadder } from "@/lib/domain/dossier-label";
+import { evidenceLadder, ladderSummary, type EvidenceLadder } from "@/lib/domain/dossier-label";
 import { ladderObservation, type Dossier } from "@/lib/dossier";
 import { decisionConfirmation } from "@/lib/domain/decision-confirmation";
+import type { DossierStatus } from "@/lib/domain/dossier-status";
+import { observationDirection, observationLevel } from "@/lib/domain/per-person";
+import { addDaysIso, buildDecisionSheet, sheetDate, type DecisionSheet } from "@/lib/report-sheet";
+import { todayInNL } from "@/lib/domain/sprint";
 
 // "AI · Gemini" for an AI forecast whose provider is known; null otherwise.
 function aiName(kind: string, model: string | null): string | null {
@@ -24,7 +28,11 @@ function aiName(kind: string, model: string | null): string | null {
 // known at the time, even if the dossier has changed since.
 export type ReportSnapshot = ReturnType<typeof buildSnapshot>;
 
-export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: string }) {
+// B6: voor het beslisblad de dossierstatus (getDossierStatus, via loadProgress) en de volgende actie van de coach.
+// Zonder deze context krijgt het rapport geen opgeslagen beslisblad; het wordt dan afgeleid (sheetFromSnapshot).
+export type SheetContext = { status: Pick<DossierStatus, "steps" | "stepsWithEvidence">; nextAction: string | null };
+
+export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: string; sheet?: SheetContext }) {
   const sources = new Map<string, { n: number; title: string; url: string | null; publisher: string | null; published_on: string | null; retrieved_at: string; type: string; primary: boolean }>();
   const footnote = (s: { id: string; title: string; url: string | null; publisher: string | null; published_on: string | null; retrieved_at: string; source_type: string; is_primary: boolean } | null) => {
     if (!s) return null;
@@ -52,6 +60,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
   const checkFindings = ((check?.findings as { findings?: (Finding & { source?: string })[] } | null)?.findings ?? []).map((f) => ({ title: f.title, detail: f.detail, severity: f.severity, source: f.source ?? "regels" }));
   const lastDecision = d.decisions[d.decisions.length - 1] ?? null;
   const aiCost = d.research.ai.reduce((s, r) => s + Number(r.cost_usd), 0);
+  const ladder = evidenceLadder(d.observations.map(ladderObservation));
+  const sheet = meta.sheet ? decisionSheetFor(d, meta.sheet, ladder, footnote) : undefined;
 
   return {
     version: 1,
@@ -80,7 +90,9 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
     },
     // Fase B0, punt 1: klantwaarnemingen per persoon geteld (één interview = per bewijsniveau maximaal één waarneming).
     // Oudere rapporten hebben dit veld niet.
-    observationCounts: evidenceLadder(d.observations.map(ladderObservation)) as EvidenceLadder | undefined,
+    observationCounts: ladder as EvidenceLadder | undefined,
+    // Fase B6: het beslisblad (pagina 1), vastgelegd bij het maken van de versie. Oudere rapporten hebben het niet.
+    sheet: sheet as DecisionSheet | undefined,
     competitors: d.competitors.map((c) => ({ name: c.name, kind: COMPETITOR_KINDS[c.kind as CompetitorKind].label, positioning: c.positioning, price: c.visible_price ? `${c.visible_price} (peildatum ${c.price_checked_on ?? "onbekend"})` : "Niet publiek", differentiation: c.differentiation_opportunity })),
     sizing: d.sizing.map((s) => ({
       label: s.label,
@@ -91,6 +103,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       formula: s.result.formula,
       provenance: s.result.provenance,
       status: s.result.label,
+      // B6: is de marktomvang vastgesteld (basisomvang met bron)? Zo niet: "Niet vastgesteld", geen € 0.
+      established: s.result.established as boolean | undefined,
       factors: s.factors,
       // Golf C, punt 8: waarschuwing als jaar of regio van de factoren verschillen.
       originWarnings: s.consistency.warnings,
@@ -301,6 +315,71 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       models: [...new Set(d.research.ai.map((r) => `${r.model} (prompt ${r.prompt_version})`))],
     },
   };
+}
+
+type Footnote = (s: { id: string; title: string; url: string | null; publisher: string | null; published_on: string | null; retrieved_at: string; source_type: string; is_primary: boolean } | null) => number | null;
+
+// De invoer van het beslisblad uit het dossier (fase B6). Alleen echte waarnemingen tellen: geen synthetische, geen
+// oefengesprekken (loadDossier markeert die als synthetisch) en geen AI-codering die niet is geaccepteerd.
+function decisionSheetFor(d: Dossier, ctx: SheetContext, ladder: EvidenceLadder, footnote: Footnote): DecisionSheet {
+  const last = d.decisions[d.decisions.length - 1] ?? null;
+  const decisive = d.questions[0] ?? null;
+  const expById = new Map(d.experiments.map((e) => [e.id, e]));
+  const roleOf = new Map(d.interviews.map((i) => [i.id, i.dmu_role]));
+  const sprintEnd = d.idea.sprint_start ? addDaysIso(d.idea.sprint_start, (d.idea.sprint_weeks ?? 0) * 7) : null;
+  return buildDecisionSheet({
+    status: ctx.status,
+    decision: last
+      ? {
+          action: last.action,
+          label: DECISIONS[last.action as DecisionAction]?.label ?? last.action,
+          decidedOn: todayInNL(new Date(last.decided_at)),
+          nextStep: last.next_step,
+          extendWeeks: last.action === "extend" ? (last.extend_weeks ?? null) : null,
+          ruleMet: last.rule_met ?? null,
+          deviation: !!last.rule_deviation_reason,
+        }
+      : null,
+    evidenceLevel: d.label.label,
+    ladder: ladderSummary(ladder) || null,
+    claims: d.claims.map((c) => {
+      const exact = (c.claim_sources ?? []).filter((s) => s.quote_check === "exact");
+      const first = exact.find((s) => s.sources)?.sources ?? null;
+      return {
+        statement: c.statement,
+        verified: c.status === "verified",
+        contradicted: exact.some((s) => s.stance === "contradicts"),
+        notes: exact.map((s) => footnote(s.sources)).filter((n): n is number => n !== null),
+        source: first ? `${first.publisher ? `${first.publisher}, ` : ""}${first.title}` : null,
+        url: first?.url ?? null,
+        strong: !!first && (first.is_primary || first.source_type === "official_statistic" || first.source_type === "primary_document"),
+      };
+    }),
+    observations: d.observations
+      .filter((o) => !o.is_synthetic && (o.origin !== "ai" || o.review_status === "accepted"))
+      .map((o) => {
+        const e = o.experiment_id ? expById.get(o.experiment_id) : undefined;
+        const type = e ? (EXPERIMENT_TYPES[e.type as ExperimentType]?.label ?? e.type) : null;
+        const role = o.interview_id ? roleOf.get(o.interview_id) : null;
+        const what = o.interview_id ? `Klantgesprek${role ? ` (${DMU_ROLES[role as DmuRole] ?? role})` : ""}` : `Meting${type ? ` (${type.toLowerCase()})` : ""}`;
+        return {
+          text: o.summary,
+          source: `${what}${e ? `, test "${e.title}"` : ""}, ${sheetDate(o.created_at)}`,
+          level: observationLevel(o.kind),
+          strength: strength({ isFact: o.is_fact, isBehaviour: o.is_behaviour, isRealContext: o.is_real_context, isCostly: o.is_costly, isSynthetic: false }),
+          against: observationDirection({ kind: o.kind }) === "contradicts",
+          group: o.interview_id ? `iv:${o.interview_id}` : `exp:${o.experiment_id ?? o.id}`,
+        };
+      }),
+    assumptions: d.assumptions.map((a) => ({ statement: a.statement, importance: a.importance, status: a.status, evidence: a.evidence })),
+    decisiveQuestion: decisive
+      ? { question: decisive.question, answered: decisive.status === "answered", verifiedClaims: d.claims.filter((c) => c.question_id === decisive.id && c.status === "verified").length }
+      : null,
+    paymentShown: ladder.paymentShown,
+    labelMissing: d.label.missing,
+    dates: { today: todayInNL(), sprintEnd, decisionDeadline: d.idea.decision_deadline ?? null, outcomeDue: d.idea.outcome_due ?? null },
+    fallbackNext: ctx.nextAction,
+  });
 }
 
 // De toets aan de beslisregel bij een besluit, leesbaar voor het rapport (null zonder regel of bij een tussenbesluit).

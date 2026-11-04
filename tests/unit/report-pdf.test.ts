@@ -147,6 +147,36 @@ describe("report PDF content", () => {
   });
 });
 
+describe("beslisblad in de PDF (B6)", () => {
+  it("zet het beslisblad vóór het dossier, met besluit, bewijs, open punten en volgende stap", () => {
+    const m = buildReportPdfModel(fixture(), { shared: false, version: 2 });
+    expect(m.sheetEyebrow).toContain("BESLISBLAD · VERSIE 2");
+    expect(m.cover.eyebrow).toContain("BIJLAGE · VOLLEDIG VALIDATIEDOSSIER");
+    // Oud rapport zonder opgeslagen beslisblad: afgeleid. Doorgaan zonder afgeronde test met uitslag is nog niet beslisbaar.
+    expect(m.sheet.derived).toBe(true);
+    expect(m.sheet.verdictLabel).toBe("Nog niet beslisbaar");
+    expect(m.sheet.strongest.length).toBeLessThanOrEqual(3);
+    expect(m.sheet.strongest.some((e) => e.source.startsWith("CBS") && e.note === 1)).toBe(true);
+    expect(m.sheet.notProven.length).toBeLessThanOrEqual(3);
+    expect(m.sheet.nextStep.text).toBe("Start een betaalde pilot.");
+  });
+
+  it("toont 'Niet vastgesteld' in plaats van € 0 als de marktomvang niet is vastgesteld", () => {
+    const m = buildReportPdfModel(
+      fixture({
+        sizing: [{ label: "Realistisch", somRevenue: 0, somCount: 0, samCount: 0, tamCount: 0, formula: "0 × 0", provenance: { sourced: 0, total: 5 }, status: "Verkennend scenario; marktomvang niet vastgesteld", factors: [], established: false }],
+      }),
+      { shared: false, version: 1 },
+    );
+    const kpis = m.chapters.find((c) => c.id === "summary")!.blocks.find((b) => b.t === "kpis");
+    const revenue = kpis && kpis.t === "kpis" ? kpis.items.find((k) => k.label.startsWith("Bereikbare jaaromzet")) : null;
+    expect(revenue?.value).toBe("Niet vastgesteld");
+    expect(revenue?.note).toMatch(/basisomvang/);
+    const table = m.chapters.find((c) => c.id === "sizing")!.blocks.find((b) => b.t === "table");
+    expect(table && table.t === "table" ? table.rows[0][4] : "").toBe("Niet vastgesteld");
+  });
+});
+
 describe("report PDF rendering", () => {
   it("renders a real PDF document server-side", async () => {
     const buf = await renderReportPdf(fixture(), { shared: false, version: 2 });
@@ -157,7 +187,8 @@ describe("report PDF rendering", () => {
     const raw = buf.toString("latin1");
     // Object dictionaries are not compressed (only content streams): count the pages and read the title.
     const pages = raw.match(/\/Type \/Page\b/g)?.length ?? 0;
-    expect(pages).toBeGreaterThanOrEqual(2);
+    // Beslisblad, cover van het dossier en minstens één pagina met hoofdstukken.
+    expect(pages).toBeGreaterThanOrEqual(3);
     expect(raw).toContain("Eventplanner Pro");
     expect(raw.trimEnd().endsWith("%%EOF")).toBe(true);
   }, 30_000);
