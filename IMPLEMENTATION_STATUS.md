@@ -366,3 +366,13 @@ Uit `docs/VERBETERPLAN_WERKWIJZE.md`, golf B (punten 1, 2, 6, 15, 18 en 20). Mig
 - 🟡 Het goedkeuren van de eerste test wordt niet geblokkeerd zonder beslisregel (coach waarschuwt, regel heet dan "achteraf vastgelegd")
 - 🟡 Het voorspelmoment "bij het besluit" is één moment: wie vóór de verlengde testfase voorspelde, voorspelt na afloop niet opnieuw
 - [ ] Migratie nog toepassen op de live Supabase; e2e-journey en visuele controle van de nieuwe kaarten in de browser
+
+## Methode 2026-11-d: tegenbewijs per bron (4 november)
+
+Methodedocument hoofdstuk 13. Bestaande dossiers op 2026-11-a t/m 2026-11-c rekenen ongewijzigd; nieuwe dossiers starten op 2026-11-d.
+
+- ✅ **Tegenbewijs per bron** (`assumptionProbabilityV4`, optie `contraPerSource` in `lib/domain/evidence.ts`; `lib/domain/method/2026-11-d.ts`): per bron telt alleen het sterkste tegensignaal; over bronnen heen afnemend per soort; plafonds ongewijzigd; geen wervingsgroep-demping voor tegenbewijs
+- ✅ **Weergave**: samengevoegde tegensignalen apart op aannamepagina, methodepagina en rapport (`explainMerged`, `mergedShort`); helptekst "Methodeversie" bijgewerkt
+- ✅ Migratie `20261108090000_method_d.sql` (akkoord product owner): `'2026-11-d'` toegestaan en standaard voor nieuwe dossiers, rangorde en overstapbewaking bijgewerkt, geen bestaande rijen gewijzigd
+- ✅ Tests `tests/unit/evidence-v4.test.ts`, `method.test.ts`; `tests/db/method-d.test.ts`, bijgewerkt `golf-a.test.ts` en `method-v2.test.ts`
+- 🟡 Migratie nog toe te passen op de live database (Supabase); tot dan geeft overstappen naar 2026-11-d een fout en starten nieuwe dossiers op 2026-11-c
