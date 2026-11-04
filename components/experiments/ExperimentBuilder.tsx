@@ -43,7 +43,7 @@ export function ExperimentBuilder({
   initialType,
   researcher = "",
   surveyDraftAction,
-  method = "2026-11-c",
+  method = "2026-11-d",
 }: {
   method?: MethodVersion;
   initialType?: ExperimentType;
