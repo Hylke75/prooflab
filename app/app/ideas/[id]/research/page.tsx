@@ -415,13 +415,22 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                   Per onderzoeksvraag zoekt ProofLab apart naar bronnen die het idee tegenspreken. Elke tegenbevinding heeft een letterlijk gecontroleerd citaat.
                   Niets gevonden bewijst niet dat het idee klopt.
                 </p>
-                {counterTasks.map((t, i) => (
-                  <div className="quickline" key={i}>
-                    <span className="num risk" aria-hidden="true">{t.status === "done" ? "✓" : t.status === "failed" ? "!" : "…"}</span>
-                    <div><strong>{t.label}</strong><span>{t.detail ?? (t.status === "pending" ? "Nog niet gestart." : t.status === "skipped" ? "Overgeslagen." : "")}</span></div>
-                  </div>
-                ))}
-                {counterLog.length > 0 && <SearchLogList questions={counterLog} canWrite={canWrite} title="Zoeklogboek tegenbewijs" />}
+                {counterClaims.length > 0 && (
+                  <p className="tiny"><a className="text-link" href="#tegenbewijs">Lees de tegenbevindingen ↓</a></p>
+                )}
+                {/* Systeemcontrole: hoe er gezocht is, staat achter een uitklapper; de tegenbevindingen zelf staan verderop. */}
+                {(counterTasks.length > 0 || counterLog.length > 0) && (
+                  <details className="run-details">
+                    <summary className="text-link">Hoe is er gezocht naar tegenbewijs?</summary>
+                    {counterTasks.map((t, i) => (
+                      <div className="quickline" key={i}>
+                        <span className="num risk" aria-hidden="true">{t.status === "done" ? "✓" : t.status === "failed" ? "!" : "…"}</span>
+                        <div><strong>{t.label}</strong><span>{t.detail ?? (t.status === "pending" ? "Nog niet gestart." : t.status === "skipped" ? "Overgeslagen." : "")}</span></div>
+                      </div>
+                    ))}
+                    {counterLog.length > 0 && <SearchLogList questions={counterLog} canWrite={canWrite} title="Zoeklogboek tegenbewijs" />}
+                  </details>
+                )}
               </div>
             )}
             {challenges.length > 0 && (
@@ -474,7 +483,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
             <>
               <div className="section-title mt-24">
                 <div>
-                  <h2><Term k="tegenbewijs">Tegenbewijs</Term></h2>
+                  <h2 id="tegenbewijs" style={{ scrollMarginTop: 100 }}><Term k="tegenbewijs">Tegenbewijs</Term></h2>
                   <p className="sub">Bevindingen die het idee tegenspreken, per onderzoeksvraag. Lees ze even serieus als het ondersteunende bewijs.</p>
                 </div>
               </div>
@@ -485,7 +494,15 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                   .map((g) => (
                     <div key={g.key} className="stack">
                       <div className="eyebrow" style={{ marginBottom: 0 }}>{g.label}</div>
-                      {g.list.map((c) => <InsightCard key={c.id} claim={c} actions={claimActions(c.id)} evidenceActions={evidenceActions(c)} />)}
+                      {byStrength(g.list).slice(0, FIRST_FINDINGS).map((c) => <InsightCard key={c.id} claim={c} actions={claimActions(c.id)} evidenceActions={evidenceActions(c)} />)}
+                      {g.list.length > FIRST_FINDINGS && (
+                        <details className="more-findings">
+                          <summary className="text-link">Toon nog {g.list.length - FIRST_FINDINGS} {g.list.length - FIRST_FINDINGS === 1 ? "tegenbevinding" : "tegenbevindingen"} bij deze vraag</summary>
+                          <div className="stack mt-12">
+                            {byStrength(g.list).slice(FIRST_FINDINGS).map((c) => <InsightCard key={c.id} claim={c} actions={claimActions(c.id)} evidenceActions={evidenceActions(c)} />)}
+                          </div>
+                        </details>
+                      )}
                     </div>
                   ))}
               </div>

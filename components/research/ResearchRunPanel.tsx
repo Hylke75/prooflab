@@ -238,15 +238,28 @@ export function ResearchRunPanel({
           <span className="pill gray">Nog niet gestart</span>
         )}
       </div>
-      <ul className="row" style={{ listStyle: "none", padding: 0, margin: "0 0 12px", flexWrap: "wrap", gap: 6 }} aria-label="AI-aanbieders voor webonderzoek">
-        {providers.map((p) => (
-          <li key={p.id}>
-            <span className={`pill ${p.connected ? "green" : "gray"}`}>
-              {p.name}: {p.connected ? "verbonden" : "niet verbonden"}
-            </span>
-          </li>
-        ))}
-      </ul>
+      {/* Systeemcontrole: uitleg en aanbieders achter een uitklapper; de knoppen en de kostenschatting blijven zichtbaar. */}
+      <details className="run-details" style={{ marginBottom: 12 }}>
+        <summary className="text-link">Hoe zoekt ProofLab? ({providers.filter((p) => p.connected).length} van {providers.length} AI-aanbieders verbonden)</summary>
+        <ul className="row" style={{ listStyle: "none", padding: 0, margin: "0 0 12px", flexWrap: "wrap", gap: 6 }} aria-label="AI-aanbieders voor webonderzoek">
+          {providers.map((p) => (
+            <li key={p.id}>
+              <span className={`pill ${p.connected ? "green" : "gray"}`}>
+                {p.name}: {p.connected ? "verbonden" : "niet verbonden"}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="sub">
+          {searchWith.length > 1
+            ? `${searchWith.join(", ")} zoeken per onderzoeksvraag los van elkaar naar bronnen.`
+            : searchWith.length === 1
+              ? `${searchWith[0]} zoekt per onderzoeksvraag naar bronnen.`
+              : "De AI zoekt per onderzoeksvraag naar bronnen."}{" "}
+          ProofLab bewaart alleen letterlijke passages van de pagina en houdt een bevinding pas als het citaat woord voor woord
+          in de bron staat, welke aanbieder de bron ook vond. Kosten worden per stap bijgehouden.
+        </p>
+      </details>
       {!aiConnected ? (
         <div className="note" style={{ marginTop: 0 }}>
           <strong>Live webonderzoek niet verbonden.</strong> ProofLab maakt geen gepretendeerd actueel rapport. Voeg bronnen
@@ -260,15 +273,6 @@ export function ResearchRunPanel({
         </div>
       ) : (
         <>
-          <p className="sub">
-            {searchWith.length > 1
-              ? `${searchWith.join(", ")} zoeken per onderzoeksvraag los van elkaar naar bronnen.`
-              : searchWith.length === 1
-                ? `${searchWith[0]} zoekt per onderzoeksvraag naar bronnen.`
-                : "De AI zoekt per onderzoeksvraag naar bronnen."}{" "}
-            ProofLab bewaart alleen letterlijke passages van de pagina en houdt een bevinding pas als het citaat woord voor woord
-            in de bron staat, welke aanbieder de bron ook vond. Kosten worden per stap bijgehouden.
-          </p>
           {canWrite && !active && (
             <>
               <div className="row mt-12" style={{ flexWrap: "wrap", gap: 8 }}>

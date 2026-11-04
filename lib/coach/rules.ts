@@ -17,6 +17,14 @@ export const NOTE_KINDS: Record<NoteKind, { label: string; pill: string; icon: "
   praise: { label: "Goed bezig", pill: "green", icon: "check" },
 };
 
+// Systeemcontrole: veel open notities tegelijk is onoverzichtelijk. Eerst wat aandacht vraagt (Let op, Vraag), dan
+// tips, dan complimenten; binnen een soort de nieuwste eerst. Schermen tonen er standaard drie.
+export const NOTES_SHOWN = 3;
+const NOTE_PRIORITY: Record<string, number> = { warning: 0, question: 1, tip: 2, praise: 3 };
+export function byNotePriority<T extends { kind: string; created_at?: string | null }>(notes: T[]): T[] {
+  return [...notes].sort((a, b) => (NOTE_PRIORITY[a.kind] ?? 9) - (NOTE_PRIORITY[b.kind] ?? 9) || (b.created_at ?? "").localeCompare(a.created_at ?? ""));
+}
+
 export type CoachNoteDraft = {
   code: string;
   kind: NoteKind;
