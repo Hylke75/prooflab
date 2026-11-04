@@ -103,7 +103,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
 
   const shortTitle = truncateWords(exp.title, TITLE_MAX);
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Experimenten", exp.title]} coach="experiments" ideaId={id}>
+    <PageFrame crumbs={["Werkruimte", idea.title, "Testen", exp.title]} coach="experiments" ideaId={id} section={`/experiments/${expId}`}>
       <div className="section-row">
         <div>
           <div className="eyebrow">{EXPERIMENT_TYPES[type].label} · {EXPERIMENT_TYPES[type].phase}</div>

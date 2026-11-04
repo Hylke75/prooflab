@@ -192,6 +192,18 @@ export default async function StatusPage() {
           </div>
         </>
       )}
+      <div className="card" style={{ marginTop: 22 }}>
+        <div className="section-title">
+          <h3>E-mail en inloglinks</h3>
+        </div>
+        <p className="sub">
+          Uitnodigingen aan opdrachtgevers gaan via Resend als die is gekoppeld. Inloglinks die een opdrachtgever zelf aanvraagt, verstuurt Supabase
+          Auth. Zolang het project de standaard-e-mailserver van Supabase gebruikt, komen die mails alleen aan bij adressen van het eigen
+          Supabase-team en geldt een laag limiet van enkele mails per uur. Voor externe opdrachtgevers is een eigen SMTP-server nodig (Supabase:
+          Authentication → Emails → SMTP), bijvoorbeeld Resend-SMTP; zie <code>docs/OPERATIONS.md</code>. Komt een mail niet aan, dan kopieert het
+          team op Klanten de link en laat de opdrachtgever zelf een inloglink aanvragen met hetzelfde e-mailadres.
+        </p>
+      </div>
       <div style={{ marginTop: 22 }}>
         <AiProviderSettings settings={aiSettings} connected={connected} models={models} />
         <AiConnectionTest />

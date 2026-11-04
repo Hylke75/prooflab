@@ -28,6 +28,17 @@ const FIELD_STEP: Record<string, number> = {
   title: 2, description: 2, target_audience: 3, region: 4, project_type: 5, sprint_start: 5, sprint_weeks: 5,
 };
 
+// Markering bij velden die mogen wachten: het dossier start zonder, en ze zijn later aan te vullen.
+const OPTIONAL_TEXT = "optioneel, later aan te vullen";
+function OptionalLabel({ htmlFor, children }: { htmlFor: string; children: React.ReactNode }) {
+  return (
+    <div className="label-row">
+      <label className="field-label" htmlFor={htmlFor}>{children}</label>
+      <span className="opt-tag" id={`${htmlFor}-opt`}>{OPTIONAL_TEXT}</span>
+    </div>
+  );
+}
+
 export function IntakeWizard({ clients, today }: { clients: Client[]; today: string }) {
   const [step, setStep] = useState(0);
   const [state, action, pending] = useActionState<IntakeState, FormData>(createIdea, { error: null });
@@ -55,6 +66,7 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
 
       <div style={vis(0)}>
         <span className="pill blue">Vraag 1 / 6</span>
+        <p className="tiny intake-required">Alle velden van deze vraag zijn nodig om te starten.</p>
         <h2 style={{ marginTop: 21 }}>Welke beslissing wil je nemen?</h2>
         <p className="sub">Elk onderzoek krijgt zo een doel, en een moment waarop het genoeg is.</p>
         <div className="choice-grid">
@@ -98,6 +110,7 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
 
       <div style={vis(1)}>
         <span className="pill blue">Vraag 2 / 6</span>
+        <p className="tiny intake-required">Nodig: de zin, de maatstaf, de doelwaarde en een bedrag. De meetdatum is optioneel en later aan te vullen.</p>
         <h2 style={{ marginTop: 21 }}>Wanneer is dit geslaagd?</h2>
         <p className="sub" id="outcome-hint">
           Eén meetbare zin met een doelwaarde. We meten het zes maanden na het besluit; zodra er voorspellingen zijn, ligt deze definitie vast.
@@ -125,14 +138,15 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
           </div>
         </div>
         <p className="field-hint" id="value-hint">Vul minstens één van beide in: 15 klanten van € 10 is iets anders dan 15 klanten van € 2.000.</p>
-        <label className="field-label" htmlFor="outcome_measure_date">Meetdatum (optioneel)</label>
-        <input className="field" id="outcome_measure_date" name="outcome_measure_date" type="date" min={deadline || undefined} aria-describedby="measure-hint" />
+        <OptionalLabel htmlFor="outcome_measure_date">Meetdatum</OptionalLabel>
+        <input className="field" id="outcome_measure_date" name="outcome_measure_date" type="date" min={deadline || undefined} aria-describedby="outcome_measure_date-opt measure-hint" />
         <p className="field-hint" id="measure-hint">Na de beslisdatum en uiterlijk zes maanden daarna. Leeg: zes maanden na het besluit.</p>
         <div className="note">Zonder vooraf vastgelegde uitkomst kan niemand achteraf zeggen of de voorspellingen klopten.</div>
       </div>
 
       <div style={vis(2)}>
         <span className="pill blue">Vraag 3 / 6</span>
+        <p className="tiny intake-required">Beide velden zijn nodig om te starten.</p>
         <h2 style={{ marginTop: 21 }}>Welk idee wil je onderzoeken?</h2>
         <p className="sub">Vertel het alsof je het aan een vriend uitlegt. Kort is helemaal goed.</p>
         <label className="field-label" htmlFor="title">Korte naam</label>
@@ -144,6 +158,7 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
 
       <div style={vis(3)}>
         <span className="pill blue">Vraag 4 / 6</span>
+        <p className="tiny intake-required">Kies een doelgroep; de specifiekere omschrijving is optioneel en later aan te vullen.</p>
         <h2 style={{ marginTop: 21 }}>Voor wie is dit idee bedoeld?</h2>
         <p className="sub">We beginnen met één duidelijke doelgroep. Later kun je uitbreiden.</p>
         <div className="choice-grid">
@@ -154,12 +169,13 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
           ))}
         </div>
         <input type="hidden" name="target_audience" value={audience} />
-        <label className="field-label" htmlFor="audience_detail">Specifieker</label>
-        <input className="field" id="audience_detail" name="audience_detail" placeholder="Bijv. eventmanagers bij bedrijven met 50+ medewerkers" />
+        <OptionalLabel htmlFor="audience_detail">Specifieker</OptionalLabel>
+        <input className="field" id="audience_detail" name="audience_detail" aria-describedby="audience_detail-opt" placeholder="Bijv. eventmanagers bij bedrijven met 50+ medewerkers" />
       </div>
 
       <div style={vis(4)}>
         <span className="pill blue">Vraag 5 / 6</span>
+        <p className="tiny intake-required">Kies een regio; land of regio verfijnen is optioneel en later aan te vullen.</p>
         <h2 style={{ marginTop: 21 }}>Waar wil je beginnen?</h2>
         <p className="sub">Dat helpt om betrouwbare en relevante marktinformatie te vinden.</p>
         <div className="choice-grid">
@@ -170,12 +186,13 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
           ))}
         </div>
         <input type="hidden" name="region" value={region.replace(/^[^A-Za-zÀ-ÿ]+/, "")} />
-        <label className="field-label" htmlFor="region_detail">Land of regio</label>
-        <input className="field" id="region_detail" name="region_detail" placeholder="Bijv. Randstad of Benelux" />
+        <OptionalLabel htmlFor="region_detail">Land of regio</OptionalLabel>
+        <input className="field" id="region_detail" name="region_detail" aria-describedby="region_detail-opt" placeholder="Bijv. Randstad of Benelux" />
       </div>
 
       <div style={vis(5)}>
         <span className="pill blue">Vraag 6 / 6</span>
+        <p className="tiny intake-required">Kies het type project; de overige velden zijn optioneel en later aan te vullen.</p>
         <h2 style={{ marginTop: 21 }}>Wat voor project is dit?</h2>
         <p className="sub">Niet elk idee vraagt hetzelfde onderzoek. ProofLab stemt de onderzoekskaart hierop af.</p>
         <div className="choice-grid">
@@ -189,16 +206,16 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
         <input type="hidden" name="project_type" value={projectType} />
         <div className="double-field">
           <div>
-            <label className="field-label" htmlFor="sector_template">Branche</label>
-            <select className="field" id="sector_template" name="sector_template" defaultValue="generic">
+            <OptionalLabel htmlFor="sector_template">Branche</OptionalLabel>
+            <select className="field" id="sector_template" name="sector_template" defaultValue="generic" aria-describedby="sector_template-opt">
               {Object.entries(SECTOR_TEMPLATES).map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="field-label" htmlFor="client_id">Opdrachtgever</label>
-            <select className="field" id="client_id" name="client_id" value={clientChoice} onChange={(e) => setClientChoice(e.target.value)}>
+            <OptionalLabel htmlFor="client_id">Opdrachtgever</OptionalLabel>
+            <select className="field" id="client_id" name="client_id" aria-describedby="client_id-opt" value={clientChoice} onChange={(e) => setClientChoice(e.target.value)}>
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -213,16 +230,16 @@ export function IntakeWizard({ clients, today }: { clients: Client[]; today: str
             <input className="field" id="new_client_name" name="new_client_name" maxLength={160} />
           </>
         )}
-        <label className="field-label" htmlFor="key_uncertainty">Wat is volgens jou de grootste onzekerheid?</label>
-        <input className="field" id="key_uncertainty" name="key_uncertainty" placeholder="Bijv. of eventmanagers hiervoor willen betalen" />
+        <OptionalLabel htmlFor="key_uncertainty">Wat is volgens jou de grootste onzekerheid?</OptionalLabel>
+        <input className="field" id="key_uncertainty" name="key_uncertainty" aria-describedby="key_uncertainty-opt" placeholder="Bijv. of eventmanagers hiervoor willen betalen" />
         <div className="double-field">
           <div>
-            <label className="field-label" htmlFor="sprint_start">Startdatum sprint</label>
-            <input className="field" id="sprint_start" name="sprint_start" type="date" defaultValue={today} aria-describedby="sprint-hint" />
+            <OptionalLabel htmlFor="sprint_start">Startdatum sprint</OptionalLabel>
+            <input className="field" id="sprint_start" name="sprint_start" type="date" defaultValue={today} aria-describedby="sprint_start-opt sprint-hint" />
           </div>
           <div>
-            <label className="field-label" htmlFor="sprint_weeks">Duur</label>
-            <select className="field" id="sprint_weeks" name="sprint_weeks" defaultValue="5" aria-describedby="sprint-hint">
+            <OptionalLabel htmlFor="sprint_weeks">Duur</OptionalLabel>
+            <select className="field" id="sprint_weeks" name="sprint_weeks" defaultValue="5" aria-describedby="sprint_weeks-opt sprint-hint">
               {SPRINT_LENGTHS.map((w) => (
                 <option key={w} value={w}>{w} weken</option>
               ))}

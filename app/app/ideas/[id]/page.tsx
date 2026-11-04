@@ -10,21 +10,18 @@ import { loadOpenNotes } from "@/lib/coach/review";
 import { NOTE_KINDS, type NoteKind } from "@/lib/coach/rules";
 import { nextAction, predictionTip, sprintStage } from "@/lib/domain/coach";
 import { SPRINT_PHASES, sprintStatus, todayInNL } from "@/lib/domain/sprint";
-import { dossierStatus, stepOverview } from "@/lib/steps";
+import { dossierStatus, IDEA_OVERVIEW, IDEA_REPORT, STEPS, stepOverview } from "@/lib/steps";
 
-export const metadata: Metadata = { title: "Dossieroverzicht" };
+export const metadata: Metadata = { title: IDEA_OVERVIEW.label };
 
+// Snelkoppelingen met dezelfde namen als het menu: de vier stappen, het rapport en de tabbladen onder Markt en Besluit.
 const SHORTCUTS: { suffix: string; label: string; icon: IconName }[] = [
-  { suffix: "/research", label: "Marktverkenning", icon: "compass" },
-  { suffix: "/assumptions", label: "Aannames", icon: "layers" },
-  { suffix: "/experiments", label: "Experimenten", icon: "flask" },
-  { suffix: "/evidence", label: "Bewijs & besluit", icon: "shield" },
-  { suffix: "/report", label: "Rapportage", icon: "file" },
-  { suffix: "/outcome", label: "Voorspelling & uitkomst", icon: "trend" },
-  { suffix: "/integrations", label: "Bronnen & koppelingen", icon: "users" },
+  ...STEPS.map((s) => ({ suffix: s.path, label: `${s.number} ${s.label}`, icon: s.icon })),
+  { suffix: IDEA_REPORT.path, label: IDEA_REPORT.label, icon: IDEA_REPORT.icon },
+  ...STEPS.flatMap((s) => (s.tabs ?? []).filter((t) => t.path !== s.path).map((t) => ({ suffix: t.path, label: `${s.label} · ${t.label}`, icon: s.icon }))),
 ];
 
-// Dossieroverzicht: beslisvraag, sprintweek en stap, voortgang per stap, de volgende actie en de open coachtips.
+// Overzicht van dit idee (voorheen dossieroverzicht): beslisvraag, sprintweek en stap, voortgang per stap, de volgende actie en de open coachtips.
 // Opdrachtgevers gaan zoals voorheen direct naar het rapport.
 export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id]">) {
   const { id } = await params;
@@ -55,10 +52,10 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
   const withEvidence = status.stepsWithEvidence;
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Overzicht"]} coach="overview" ideaId={id}>
+    <PageFrame crumbs={["Werkruimte", idea.title, IDEA_OVERVIEW.label]} coach="overview" ideaId={id} section="">
       <div className="section-row">
         <div>
-          <div className="eyebrow">Dossieroverzicht</div>
+          <div className="eyebrow">{IDEA_OVERVIEW.label}</div>
           <h1>{idea.title}</h1>
           <p className="sub">{idea.decision_question}</p>
         </div>

@@ -22,7 +22,23 @@ function Crumb({ text, max, current = false }: { text: string; max: number; curr
   );
 }
 
-export function Topbar({ crumbs, initials, email, name, badge }: { crumbs: string[]; initials: string; email: string; name: string | null; badge?: string }) {
+export function Topbar({
+  crumbs,
+  initials,
+  email,
+  name,
+  badge,
+  isConsultant = false,
+  isOwner = false,
+}: {
+  crumbs: string[];
+  initials: string;
+  email: string;
+  name: string | null;
+  badge?: string;
+  isConsultant?: boolean;
+  isOwner?: boolean;
+}) {
   const { openSidebar, sidebarOpen } = useShell();
   return (
     <header className="topbar">
@@ -45,14 +61,15 @@ export function Topbar({ crumbs, initials, email, name, badge }: { crumbs: strin
         <Link className="round-btn help-link" href="/app/help" aria-label="Uitleg over ProofLab" title="Uitleg">
           <Icon name="info" />
         </Link>
-        <AccountMenu initials={initials} email={email} name={name} />
+        <AccountMenu initials={initials} email={email} name={name} isConsultant={isConsultant} isOwner={isOwner} />
       </div>
     </header>
   );
 }
 
-// Small disclosure menu: who is signed in, and the account actions. Escape and a click outside close it.
-function AccountMenu({ initials, email, name }: { initials: string; email: string; name: string | null }) {
+// Klein uitklapmenu: wie er is ingelogd, en de account- en beheeracties (fase 3: Voorspelkwaliteit voor het team,
+// Privacyverzoeken en Systeemstatus alleen voor eigenaren). Escape en een klik erbuiten sluiten het.
+function AccountMenu({ initials, email, name, isConsultant, isOwner }: { initials: string; email: string; name: string | null; isConsultant: boolean; isOwner: boolean }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -110,6 +127,21 @@ function AccountMenu({ initials, email, name }: { initials: string; email: strin
         <Link href="/app/help" onClick={() => setOpen(false)}>
           <Icon name="info" size="sm" /> Uitleg
         </Link>
+        {isConsultant && (
+          <Link href="/app/forecasts" onClick={() => setOpen(false)}>
+            <Icon name="trend" size="sm" /> Voorspelkwaliteit
+          </Link>
+        )}
+        {isOwner && (
+          <Link href="/app/privacy" onClick={() => setOpen(false)}>
+            <Icon name="shield" size="sm" /> Privacyverzoeken
+          </Link>
+        )}
+        {isOwner && (
+          <Link href="/app/status" onClick={() => setOpen(false)}>
+            <Icon name="settings" size="sm" /> Systeemstatus
+          </Link>
+        )}
         <form action="/auth/signout" method="post">
           <button type="submit">
             <Icon name="logout" size="sm" /> Uitloggen

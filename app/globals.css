@@ -91,8 +91,6 @@
 a.btn{text-decoration:none}
 a.nav-link{text-decoration:none}
 .nav-link .nav-sub{font-size:14px;color:var(--color-text-muted);font-weight:500;display:block;margin-top:1px}
-.idea-switch{margin:0 0 8px;padding:12px 14px;border-radius:var(--radius-inner);background:var(--color-surface-soft);color:var(--color-heading);font-size:14px;font-weight:600;line-height:1.4}
-.idea-switch small{display:block;color:var(--color-accent-text);font-weight:600;font-size:14px;margin-bottom:2px}
 .field:disabled{background:var(--color-surface-muted);color:var(--color-text-muted)}
 select.field{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--color-text-muted) 50%),linear-gradient(135deg,var(--color-text-muted) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:34px}
 .field-hint{font-size:13px;color:var(--color-text-muted);margin-top:6px;line-height:1.5}
@@ -428,3 +426,56 @@ details.quickline[open]>summary::after{transform:rotate(180deg)}
 .field[aria-invalid="true"]{border-color:var(--color-risk-text)}
 .assumption-item.just-saved{outline:2px solid var(--color-primary);outline-offset:2px}
 @media (prefers-reduced-motion:no-preference){.assumption-item.just-saved{animation:appear var(--dur) ease-out both}}
+
+/* ---- Menu (fase 3): ideekiezer, genummerde stappen met status, scheidingslijn ---- */
+.sidebar{overflow-x:hidden}
+.side-nav{padding-left:8px}
+.nav-link{min-width:0}
+.nav-label{flex:1;min-width:0;overflow-wrap:anywhere;display:flex;align-items:baseline;gap:6px}
+.nav-no{font-variant-numeric:tabular-nums;font-weight:600;color:var(--color-text-muted)}
+.nav-link.active .nav-no{color:var(--color-on-dark)}
+.nav-mark{flex:none;font-weight:700;color:var(--color-primary);min-width:12px;text-align:center}
+.nav-mark.running{color:var(--color-warning-text)}
+.nav-link.active .nav-mark{color:var(--color-on-dark)}
+/* Bij stappen staat rechts de status (✓ of •); de actieve stip zou daarmee te verwarren zijn. */
+.nav-link[data-step] .nav-dot{display:none!important}
+.nav-divider{border:0;border-top:1px solid var(--color-border);margin:14px 8px 14px 16px}
+.idea-switch{position:relative;margin:0 0 12px 8px}
+.idea-switch-btn{width:100%;display:flex;align-items:center;gap:10px;min-height:56px;padding:10px 14px;border:0;border-radius:var(--radius-inner);background:var(--color-surface-soft);color:var(--color-heading);text-align:left;cursor:pointer;transition:background-color var(--dur) ease-out}
+.idea-switch-btn:hover{background:var(--color-surface-muted)}
+.idea-switch-btn:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
+.idea-switch-btn[aria-expanded="true"] svg{transform:rotate(180deg)}
+.idea-switch-text{flex:1;min-width:0;display:grid;gap:1px}
+.idea-switch-text small{color:var(--color-accent-text);font-weight:600;font-size:13px}
+.idea-switch-title{font-size:14px;font-weight:600;line-height:1.35;overflow-wrap:anywhere}
+.idea-switch-menu{position:absolute;left:0;right:0;top:calc(100% + 6px);background:var(--color-surface);border-radius:var(--radius-panel);box-shadow:var(--shadow-lg);padding:6px;z-index:40;max-height:60vh;overflow-y:auto}
+.idea-switch-menu[hidden]{display:none}
+.idea-switch-menu ul{list-style:none;margin:0;padding:0}
+.idea-switch-menu a{display:flex;align-items:center;gap:8px;min-height:44px;padding:8px 12px;border-radius:11px;color:var(--color-heading);font-size:14px;font-weight:600;text-decoration:none;line-height:1.35;overflow-wrap:anywhere}
+.idea-switch-menu a:hover{background:var(--color-surface-muted);color:var(--color-primary)}
+.idea-switch-new{border-top:1px solid var(--color-border);margin-top:4px;color:var(--color-primary)!important}
+.idea-switch-empty{padding:8px 12px;margin:0}
+.stepper .step-mark{font-weight:700;color:var(--color-primary)}
+.stepper .step-mark.running{color:var(--color-warning-text)}
+@media (prefers-reduced-motion:no-preference){.idea-switch-btn svg{transition:transform var(--dur) ease-out}}
+.step-tabs{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 28px;border-bottom:1px solid var(--color-border)}
+.step-tabs a{display:flex;align-items:center;min-height:44px;padding:8px 14px;margin-bottom:-1px;border-bottom:2px solid transparent;color:var(--color-text-muted);font-size:14px;font-weight:600;text-decoration:none;transition:color var(--dur) ease-out,border-color var(--dur) ease-out}
+.step-tabs a:hover{color:var(--color-primary)}
+.step-tabs a.active{color:var(--color-heading);border-bottom-color:var(--color-primary)}
+/* Ingeklapte coach (bijv. Nieuw idee): geen derde kolom, het paneel opent als slide-over via de coachknop. */
+.app:has(>.coach.collapsed){grid-template-columns:248px minmax(0,1fr)}
+@media(max-width:1480px){.app:has(>.coach.collapsed){grid-template-columns:228px minmax(0,1fr)}}
+@media(min-width:1161px){
+  .coach.collapsed{position:fixed;right:0;top:0;width:340px;transform:translateX(105%);visibility:hidden;box-shadow:var(--shadow-lg);z-index:29;transition:transform .25s,visibility 0s .25s}
+  .coach.collapsed.open{transform:translateX(0);visibility:visible;transition:transform .25s}
+  .coach.collapsed .coach-close{display:grid}
+  .coach.collapsed~.coach-toggle{display:grid;position:fixed;right:24px;bottom:24px;z-index:26;height:56px;width:56px;border:0;border-radius:var(--radius-pill);background:var(--color-primary);color:var(--color-on-dark);box-shadow:var(--shadow-hover);place-items:center;transition:background-color var(--dur) ease-out}
+  .coach.collapsed~.coach-toggle:hover{background:var(--color-primary-hover)}
+}
+@media(prefers-reduced-motion:reduce){.coach.collapsed,.coach.collapsed.open{transition:none}}
+dialog.modal{border:0;color:var(--color-text);max-height:calc(100vh - 40px);overflow:auto}
+dialog.modal::backdrop{background:var(--color-overlay)}
+.label-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin:22px 0 8px}
+.label-row .field-label{margin:0}
+.opt-tag{font-size:12px;line-height:18px;font-weight:600;color:var(--color-text-muted);background:var(--color-surface-muted);border-radius:var(--radius-pill);padding:1px 8px}
+.intake-required{margin:10px 0 0}

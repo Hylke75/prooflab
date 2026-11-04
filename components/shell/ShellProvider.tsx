@@ -1,6 +1,11 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import type { StepStates } from "@/lib/steps";
+
+// De stapstatus van het idee dat nu open is. De pagina (PageFrame) kent de voortgang en geeft hem door; het menu
+// in de layout leest hem hier.
+export type IdeaSteps = { ideaId: string; states: StepStates };
 
 type Shell = {
   sidebarOpen: boolean;
@@ -9,6 +14,8 @@ type Shell = {
   openCoach: () => void;
   close: () => void;
   toast: (msg: string) => void;
+  ideaSteps: IdeaSteps | null;
+  setIdeaSteps: (s: IdeaSteps) => void;
 };
 
 const Ctx = createContext<Shell | null>(null);
@@ -25,6 +32,7 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebar] = useState(false);
   const [coachOpen, setCoach] = useState(false);
   const [message, setMessage] = useState("");
+  const [ideaSteps, setIdeaSteps] = useState<IdeaSteps | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const close = useCallback(() => {
@@ -51,8 +59,10 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
       },
       close,
       toast,
+      ideaSteps,
+      setIdeaSteps,
     }),
-    [sidebarOpen, coachOpen, close, toast],
+    [sidebarOpen, coachOpen, close, toast, ideaSteps],
   );
 
   return (
@@ -64,4 +74,14 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
       </div>
     </Ctx>
   );
+}
+
+// Geeft de stapstatus van de open pagina door aan het menu. Rendert niets.
+export function SyncIdeaSteps({ ideaId, states }: IdeaSteps) {
+  const { setIdeaSteps } = useShell();
+  const { market, assumptions, test, decide } = states;
+  useEffect(() => {
+    setIdeaSteps({ ideaId, states: { market, assumptions, test, decide } });
+  }, [ideaId, market, assumptions, test, decide, setIdeaSteps]);
+  return null;
 }

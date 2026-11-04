@@ -2,13 +2,11 @@ import type { Metadata } from "next";
 import { asMethodVersion } from "@/lib/domain/method";
 import Link from "next/link";
 import { PageFrame } from "@/components/shell/PageFrame";
-import { Stepper } from "@/components/ui/Stepper";
 import { ExperimentBuilder } from "@/components/experiments/ExperimentBuilder";
 import { getIdea, getWorkspace } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
-import { loadInformationValue, loadProgress } from "@/lib/progress";
+import { loadInformationValue } from "@/lib/progress";
 import { priorsByType } from "@/lib/experiment-metrics";
-import { stepsDone } from "@/lib/steps";
 import { recommend } from "@/lib/domain/recommend";
 import { EXPERIMENT_STATES, EXPERIMENT_TYPES, type AssumptionCategory, type ExperimentState, type ExperimentType } from "@/lib/domain/labels";
 import { createExperiment, draftSurveyWithCoach, proposeCopyVariants } from "./actions";
@@ -34,9 +32,8 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
   const supabase = await supabaseServer();
   // Ordered by information value (research 3.9): the default suggestion is the test that can change the decision most per euro and week.
   // B0: alleen waarnemingen uit echte gesprekken tellen als ontdekkingsbewijs.
-  const [assumptions, progress, { data: experiments }, interviewObs] = await Promise.all([
+  const [assumptions, { data: experiments }, interviewObs] = await Promise.all([
     loadInformationValue(id),
-    loadProgress(id),
     supabase.from("experiments").select("id, title, type, state, ends_at, hypotheses(assumption_id, assumptions(statement))").eq("idea_id", id).order("created_at", { ascending: false }),
     countRealInterviewObservations(id),
   ]);
@@ -57,15 +54,14 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
     : null;
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Experimenten"]} coach="experiments" ideaId={id}>
+    <PageFrame crumbs={["Werkruimte", idea.title, "Testen"]} coach="experiments" ideaId={id} section="/experiments">
       <div className="section-row">
         <div>
-          <div className="eyebrow">Stap 4 van 5 · Testen</div>
+          <div className="eyebrow">Stap 3 van 4 · Testen</div>
           <h1>Niet raden. Testen.</h1>
           <p className="sub">Kies een kleine proef waarmee je snel echt gedrag kunt observeren.</p>
         </div>
       </div>
-      <Stepper current="test" ideaId={id} done={stepsDone(progress)} />
 
       {saved && (
         <div className="form-ok" role="status" style={{ marginBottom: 16 }}>

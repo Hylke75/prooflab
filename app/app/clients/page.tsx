@@ -8,6 +8,9 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { SECTOR_TEMPLATES } from "@/lib/domain/labels";
 import { addClient, inviteStakeholder, removeStakeholder, resendLoginLink } from "./actions";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
+import { CopyButton } from "@/components/survey/CopyButton";
+import { loginPageLink } from "@/lib/invite-mail";
+import { env } from "@/lib/env";
 
 export const metadata: Metadata = { title: "Klanten" };
 
@@ -29,12 +32,10 @@ export default async function ClientsPage() {
           <p className="sub">Opdrachtgevers kijken mee in hun dossier en bevestigen besluiten. Ruwe interviewdata en e-mailadressen van testdeelnemers zien zij niet.</p>
         </div>
       </div>
-      <div className="note" role="note" style={{ marginTop: 0, marginBottom: 18 }}>
-        <strong>E-mail en inloglinks.</strong> Uitnodigingen en inloglinks worden verstuurd door Supabase. Zolang het project de standaard
-        e-mailserver van Supabase gebruikt, komen die mails alleen aan bij adressen van het eigen Supabase-team en geldt een laag limiet van
-        enkele mails per uur. Voor externe opdrachtgevers is een eigen SMTP-server nodig (Supabase: Authentication → Emails → SMTP). Komt een
-        mail niet aan, deel dan de app-link en laat de opdrachtgever zelf een inloglink aanvragen met hetzelfde e-mailadres.
-      </div>
+      {/* De technische uitleg over e-mail (Supabase, SMTP) staat op Systeemstatus, alleen voor eigenaren. */}
+      <p className="note" style={{ marginTop: 0, marginBottom: 18 }}>
+        Komt de uitnodiging niet aan? Kopieer de link.
+      </p>
       {(clients ?? []).length === 0 && <div className="empty-state"><h2 className="as-h3">Nog geen klanten</h2><p>Voeg een opdrachtgever toe, of maak er een aan bij een nieuw idee.</p></div>}
       <div className="stack">
         {(clients ?? []).map((c) => {
@@ -64,6 +65,7 @@ export default async function ClientsPage() {
                         </div>
                         <span className={`pill ${m.user_id ? "green" : "orange"}`}>{m.user_id ? "Actief" : "Uitgenodigd, nog niet ingelogd"}</span>
                         <div className="member-actions">
+                          {!m.user_id && <CopyButton text={loginPageLink(env.appUrl, m.email)} label="Kopieer de link" className="text-link" />}
                           <ActionForm action={resendLoginLink.bind(null, i.id, m.email)} submitLabel="Stuur inloglink opnieuw" submitClass="text-link" pendingLabel="Versturen…">
                             <span />
                           </ActionForm>

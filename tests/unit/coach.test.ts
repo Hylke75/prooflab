@@ -350,3 +350,23 @@ describe("dossieroverzicht", () => {
     expect(stepOverview(progress({ claims: 0 })).find((s) => s.current)?.key).toBe("market");
   });
 });
+
+describe("coach per pagina (fase 3)", () => {
+  it("verwijst op werkruimtepagina's naar het lopende idee in plaats van 'Begin met één idee'", () => {
+    const c = coachFor("clients", null, { currentIdea: { id: ID, title: "AI-locatieadvies" } });
+    expect(c.insight).toContain("AI-locatieadvies");
+    expect(c.insight).not.toContain("Begin met één idee");
+    expect(c.suggestions[0]).toMatchObject({ label: "Verder met AI-locatieadvies", href: base });
+    // Zonder ideeën blijft het startadvies.
+    expect(coachFor("clients", null).insight).toContain("Begin met één idee");
+  });
+
+  it("heeft voor Bronnen & koppelingen een eigen tekst en eigen suggesties", () => {
+    const research = coachFor("research", progress());
+    const integrations = coachFor("integrations", progress());
+    expect(integrations.title).not.toBe(research.title);
+    expect(integrations.copy).not.toBe(research.copy);
+    expect(integrations.suggestions.map((s) => s.href)).toContain(`${base}/integrations#bulk-import`);
+    expect(coachFor("integrations", progress(), { audience: "client" }).title).toBe("Wat zeggen klanten zelf?");
+  });
+});

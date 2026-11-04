@@ -31,7 +31,7 @@ export default async function MethodPage({ params }: PageProps<"/app/ideas/[id]/
   const calibration = await loadCalibration(id);
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Methode"]} coach="assumptions" ideaId={id}>
+    <PageFrame crumbs={["Werkruimte", idea.title, "Methode"]} coach="assumptions" ideaId={id} section="/method">
       <div className="section-row">
         <div>
           <div className="eyebrow">Rekenwijze</div>

@@ -2,7 +2,6 @@ import { describeDraftEdit, draftEdit, questionDraftText } from "@/lib/domain/ai
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PageFrame } from "@/components/shell/PageFrame";
-import { Stepper } from "@/components/ui/Stepper";
 import { InsightCard, type ClaimView } from "@/components/ui/InsightCard";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { Tabs } from "@/components/research/Tabs";
@@ -20,8 +19,6 @@ import { SUPPORT_LABEL, isSupportCheck, type SupportCheck } from "@/lib/domain/s
 import { UnitEconomicsPanel } from "@/components/research/UnitEconomicsPanel";
 import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
-import { loadProgress } from "@/lib/progress";
-import { stepsDone } from "@/lib/steps";
 import { aiConfigured, configuredProviders } from "@/lib/env";
 import { isProvider, PROVIDER_KEY_ENV, PROVIDER_LABELS, PROVIDERS, providerLabel } from "@/lib/ai/providers/config";
 import { ensembleProviders } from "@/lib/ai/providers/select";
@@ -63,7 +60,6 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     supabase.from("customer_signals").select("*").eq("idea_id", id).order("mentions", { ascending: false }),
   ]);
   const quality = canWrite ? await loadAiQuality() : null;
-  const progress = await loadProgress(id);
   const run = runRes.data;
   const { data: tasks } = run
     ? await supabase.from("research_tasks").select("label, status, detail, kind, output").eq("run_id", run.id).order("position")
@@ -178,10 +174,10 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     ) : null;
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Marktverkenning"]} coach="research" ideaId={id} badge={run?.mode === "quick" && run.status === "done" ? "Snelle marktcheck · voorlopig" : undefined}>
+    <PageFrame crumbs={["Werkruimte", idea.title, "Marktverkenning"]} coach="research" ideaId={id} section="/research" badge={run?.mode === "quick" && run.status === "done" ? "Snelle marktcheck · voorlopig" : undefined}>
       <div className="section-row">
         <div>
-          <div className="eyebrow">Stap 2 van 5 · Onderzoek</div>
+          <div className="eyebrow">Stap 1 van 4 · Markt</div>
           <h1>Begrijp je markt.</h1>
           <p className="sub">Een marktbeeld met zicht op concurrenten, doelgroepen, kansen en onzekerheden. Elke conclusie verwijst naar een controleerbare bron.</p>
         </div>
@@ -189,7 +185,6 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
           Naar aannames →
         </Link>
       </div>
-      <Stepper current="market" ideaId={id} done={stepsDone(progress)} />
 
       <div className="insight-banner">
         <div>

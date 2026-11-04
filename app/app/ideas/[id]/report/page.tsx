@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { ActionForm } from "@/components/ui/ActionForm";
+import { ConfirmDialogForm } from "@/components/ui/ConfirmDialog";
 import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { CONFIRMATION_LABELS, decisionConfirmation } from "@/lib/domain/decision-confirmation";
@@ -11,7 +12,6 @@ import { describeWeights } from "@/lib/domain/calibration";
 import { describeMethodology, ruleLabelText } from "@/lib/domain/method/describe";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { createReportVersion, shareReportVersion } from "./actions";
-import { PrintButton } from "./PrintButton";
 import { Icon } from "@/components/Icon";
 import { Probability } from "@/components/ui/Probability";
 import { explainRecruitment } from "@/lib/domain/recruitment";
@@ -81,7 +81,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   const newest = all[0];
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Rapportage"]} coach="report" ideaId={id}>
+    <PageFrame crumbs={["Werkruimte", idea.title, "Rapport"]} coach="report" ideaId={id} section="/report">
       <div className="section-row report-controls">
         <div>
           <div className="eyebrow">Uitkomst · Onderzoeksdossier</div>
@@ -95,10 +95,10 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
         <div className="stack" style={{ justifyItems: "end" }}>
           {r && current && (
             <div className="row" style={{ justifyContent: "flex-end" }}>
-              <a className="btn white" href={`/app/ideas/${id}/report/pdf?v=${current.version}`} download>
-                <Icon name="file" /> Download PDF
+              {/* Eén knop: de server-PDF van deze versie. Printen kan via de browser; de printstylesheet blijft. */}
+              <a className="btn primary" href={`/app/ideas/${id}/report/pdf?v=${current.version}`} download>
+                <Icon name="file" /> Download als PDF
               </a>
-              <PrintButton />
             </div>
           )}
           {canWrite && (
@@ -145,9 +145,18 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 </span>
                 {canWrite && isCurrent && !v.shared_at && (
                   <div style={{ flexBasis: "100%" }}>
-                    <ActionForm action={shareReportVersion.bind(null, id, v.id)} submitLabel={`Deel versie ${v.version} met opdrachtgever`} submitClass="btn primary sm" pendingLabel="Delen…">
-                      <p className="tiny">Delen is eenmalig en kan niet worden teruggedraaid. De opdrachtgever ziet daarna deze versie, zonder ruwe interviewcitaten of gegevens van testdeelnemers.</p>
-                    </ActionForm>
+                    <ConfirmDialogForm
+                      action={shareReportVersion.bind(null, id, v.id)}
+                      triggerLabel={`Deel versie ${v.version} met opdrachtgever`}
+                      title={`Versie ${v.version} delen met de opdrachtgever?`}
+                      confirmLabel="Ja, deel definitief"
+                      pendingLabel="Delen…"
+                    >
+                      <p>
+                        <strong>Dit kan niet worden teruggedraaid.</strong> Na het delen ziet de opdrachtgever deze versie blijvend, zonder ruwe
+                        interviewcitaten of gegevens van testdeelnemers. Wil je iets aanpassen, maak dan eerst een nieuwe versie.
+                      </p>
+                    </ConfirmDialogForm>
                   </div>
                 )}
               </div>
