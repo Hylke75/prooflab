@@ -20,6 +20,10 @@ import { allTestsSummary } from "@/lib/domain/all-tests";
 import { formatGroups } from "@/lib/domain/report-counts";
 import { ladderSummary } from "@/lib/domain/dossier-label";
 import { CALIBRATION_MIN_RESOLVED } from "@/lib/domain/probability-display";
+import { sheetOf, somRevenueCell } from "@/lib/report-pdf-model";
+import { reachableRevenue } from "@/lib/report-sheet";
+import { isUnknown } from "@/lib/domain/claim-scope";
+import { DecisionSheetView } from "./DecisionSheet";
 
 export const metadata: Metadata = { title: "Rapportage" };
 
@@ -79,6 +83,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
     await supabase.rpc("mark_report_viewed", { p_report: current.id });
   }
   const newest = all[0];
+  const revenue = reachableRevenue(r?.sizing.find((s) => s.label === "Realistisch") ?? r?.sizing[1] ?? null);
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Rapport"]} coach="report" ideaId={id} section="/report">
@@ -188,6 +193,13 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             </p>
           </div>
 
+          {/* Fase B6: pagina 1 is het beslisblad; het volledige dossier volgt als bijlage, in de bestaande opbouw. */}
+          <DecisionSheetView sheet={sheetOf(r)} version={r.version} date={date(r.generatedAt)} />
+
+          <div className="report-head" style={{ marginTop: 10 }}>
+            <div className="eyebrow">Bijlage · Volledig dossier</div>
+          </div>
+
           <section className="report-section">
             <span className="eyebrow">01 / Managementsamenvatting</span>
             <h3>{r.decision ? `Besluit: ${r.decision.action}.` : r.realityCheck ? `Advies: ${r.realityCheck.advice}.` : "Nog geen besluit."}</h3>
@@ -209,8 +221,9 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               </div>
               <div style={{ background: "var(--color-warning-soft)", padding: 16, borderRadius: "var(--radius-inner)" }}>
                 <div className="tiny">Bereikbare jaaromzet (realistisch)</div>
-                <div className="report-number">{r.sizing.find((s) => s.label === "Realistisch") ? eur(r.sizing.find((s) => s.label === "Realistisch")!.somRevenue) : "?"}</div>
-                <div className="tiny">{r.sizing.find((s) => s.label === "Realistisch")?.status ?? "niet berekend"}</div>
+                {/* B6: geen "€ 0" als de marktomvang niet is vastgesteld. */}
+                <div className="report-number">{revenue.value}</div>
+                <div className="tiny">{revenue.note}</div>
               </div>
             </div>
           </section>
@@ -240,7 +253,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                         {c.statement} <Notes n={c.notes} /> <em className="tiny">({c.status}{c.contradicted ? ", tegengesproken" : ""})</em>
                         {c.scope && (
                           <div className="tiny">
-                            Populatie: {c.scope.population} · regio: {c.scope.region} · peildatum: {c.scope.referenceDate}
+                            {/* B6: een onbekende regio is geen andere regio; ze staat er als "onbekend". */}
+                            Populatie: {isUnknown(c.scope.population) ? "onbekend" : c.scope.population} · regio: {isUnknown(c.scope.region) ? "onbekend" : c.scope.region} · peildatum: {isUnknown(c.scope.referenceDate) ? "onbekend" : c.scope.referenceDate}
                             {c.scope.relevance === "indirect" ? " · indirect (wijkt af van de intake)" : ""}
                           </div>
                         )}
@@ -276,7 +290,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             <h3>Van onderaf berekend, met zichtbare aannames</h3>
             <table className="table">
               <thead><tr><th>Scenario</th><th>TAM</th><th>SAM</th><th>SOM-klanten</th><th>SOM-omzet</th><th>Onderbouwing</th></tr></thead>
-              <tbody>{r.sizing.map((s) => <tr key={s.label}><td>{s.label}</td><td className="num">{int(s.tamCount)}</td><td className="num">{int(s.samCount)}</td><td className="num">{int(s.somCount)}</td><td className="num">{eur(s.somRevenue)}</td><td>{s.provenance.sourced}/{s.provenance.total} factoren met bron</td></tr>)}</tbody>
+              <tbody>{r.sizing.map((s) => <tr key={s.label}><td>{s.label}</td><td className="num">{int(s.tamCount)}</td><td className="num">{int(s.samCount)}</td><td className="num">{int(s.somCount)}</td><td className="num">{somRevenueCell(s)}</td><td>{s.provenance.sourced}/{s.provenance.total} factoren met bron</td></tr>)}</tbody>
             </table>
             {r.sizing[1] && <p className="tiny mt-8 mono">Formule (realistisch): {r.sizing[1].formula}</p>}
             <p>{r.sizing[1]?.status}. Dit is omzetpotentieel onder de getoonde aannames, geen winst en geen voorspelling.</p>
@@ -479,7 +493,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                   : r.decision.confirmation === "not_needed"
                     ? "Dit dossier heeft geen opdrachtgever: het besluit is direct definitief."
                     : "Nog niet bevestigd door de opdrachtgever."}
-                {r.decision.extendWeeks ? ` Na de sprint volgde een verlengde testfase van ${r.decision.extendWeeks} weken; het definitieve besluit en de uitkomstklok kwamen daarna.` : ""}
+                {r.decision.extendWeeks ? ` Daarna volgde een periode van ${r.decision.extendWeeks} weken verder testen (verlengde testfase); het definitieve besluit en de uitkomstklok kwamen daarna.` : ""}
                 {r.decision.confirmedAt && r.decision.reviewedAgainst ? " De opdrachtgever zag daarbij de samenvatting “Wat ging tegen” (mislukte tests, tegenbewijs, begrensde aannames en afwijkingen van de beslisregel)." : ""}
               </p>
             )}

@@ -495,3 +495,7 @@ dialog.modal::backdrop{background:var(--color-overlay)}
 .label-row .field-label{margin:0}
 .opt-tag{font-size:12px;line-height:18px;font-weight:600;color:var(--color-text-muted);background:var(--color-surface-muted);border-radius:var(--radius-pill);padding:1px 8px}
 .intake-required{margin:10px 0 0}
+/* Systeemcontrole 4 nov: op 390 px stak het sprintvenster 8 px buiten beeld (horizontaal scrollen op elke ideepagina).
+   Breedte relatief aan de sprintbalk, en een dichte <details> neemt geen ruimte in. */
+.sprint-pop{width:min(440px,100%);max-width:calc(100vw - 32px)}
+details:not([open])>.sprint-pop{display:none}

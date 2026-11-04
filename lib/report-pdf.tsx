@@ -6,7 +6,8 @@
 import type { Style } from "@react-pdf/types";
 import { Document, Font, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
 import type { ReportSnapshot } from "@/lib/report";
-import { buildReportPdfModel, type Block, type PdfMeta, type ReportPdfModel, type Tone } from "@/lib/report-pdf-model";
+import { buildReportPdfModel, nextStepDate, type Block, type PdfMeta, type ReportPdfModel, type Tone } from "@/lib/report-pdf-model";
+import type { SheetVerdict } from "@/lib/report-sheet";
 
 // Design tokens from CLAUDE.md.
 const C = {
@@ -88,6 +89,9 @@ const s = StyleSheet.create({
   footer: { position: "absolute", bottom: 26, left: 50, right: 50, flexDirection: "row", justifyContent: "space-between", fontSize: 7.5, color: C.muted, borderTopWidth: 0.6, borderTopColor: C.line, paddingTop: 8 },
 });
 
+// Beslisblad (B6): de kleur van het besluit. Doorgaan groen, stoppen koraal, nog niet beslisbaar limoen.
+const VERDICT_TONE: Record<SheetVerdict, Tone> = { continue: "green", stop: "coral", undecidable: "lime" };
+
 const T = ({ children, style }: { children: string; style?: Style | Style[] }) => <Text style={style}>{pdfText(children)}</Text>;
 
 function BlockView({ b }: { b: Block }) {
@@ -148,10 +152,79 @@ function BlockView({ b }: { b: Block }) {
   }
 }
 
+// Pagina 1: het beslisblad. Eén pagina; het volledige dossier volgt als bijlage.
+function SheetPage({ model }: { model: ReportPdfModel }) {
+  const sh = model.sheet;
+  const c = model.cover;
+  const tone = VERDICT_TONE[sh.verdict];
+  return (
+    <Page size="A4" style={s.page}>
+      <View style={s.brandRow}>
+        <View style={s.brand}>
+          <View style={s.brandDot} />
+          <Text style={s.brandText}>ProofLab.</Text>
+        </View>
+        <T style={[s.pill, { backgroundColor: TONE_BG[c.statusTone], color: TONE_FG[c.statusTone] }]}>{c.status}</T>
+      </View>
+      <View style={{ marginTop: 22 }}>
+        <T style={s.eyebrow}>{model.sheetEyebrow}</T>
+        <T style={[s.h2, { fontSize: 20, marginTop: 6 }]}>{c.title}</T>
+        <T style={[s.p, s.small]}>{`Beslisvraag: ${c.decisionQuestion}`}</T>
+      </View>
+      <View style={[s.note, { backgroundColor: TONE_BG[tone], padding: 14, marginTop: 8 }]} wrap={false}>
+        <T style={s.eyebrow}>Besluit</T>
+        <T style={[s.kpiValue, { color: TONE_FG[tone] }]}>{sh.verdictLabel}</T>
+        <T style={[s.p, { marginBottom: 2, color: C.ink }]}>{`Bewijsniveau: ${sh.evidenceLevel}.${sh.ladder ? ` ${sh.ladder}` : ""}`}</T>
+        {sh.decisionLine && <T style={[s.small, { color: C.ink }]}>{`Vastgelegd besluit: ${sh.decisionLine}.`}</T>}
+        {sh.reasons.map((x, i) => (
+          <View key={i} style={s.li}>
+            <T style={[s.bullet, s.small]}>•</T>
+            <T style={[s.liText, s.small, { color: C.ink }]}>{x}</T>
+          </View>
+        ))}
+      </View>
+      <T style={s.h3}>De 3 sterkste bewijsstukken</T>
+      {sh.strongest.length === 0 && <T style={[s.p, s.muted]}>Nog geen geverifieerde bron en geen echte waarneming.</T>}
+      {sh.strongest.map((e, i) => (
+        <View key={i} wrap={false} style={{ marginBottom: 5 }}>
+          <View style={s.li}>
+            <T style={s.bullet}>{`${i + 1}.`}</T>
+            <T style={s.liText}>{`${e.against ? "Tegenbewijs: " : ""}${e.text}`}</T>
+          </View>
+          <View style={s.li}>
+            <T style={s.bullet}> </T>
+            <T style={[s.liText, s.small, s.muted]}>{`Bron: ${e.source}${e.note ? ` [${e.note}]` : ""}${e.url ? ` · ${e.url}` : ""} · niveau: ${e.level}`}</T>
+          </View>
+        </View>
+      ))}
+      <T style={s.h3}>Wat níét bewezen is</T>
+      {sh.notProven.length === 0 && <T style={[s.p, s.muted]}>Geen open punten vastgesteld. Dat betekent niet dat alles bewezen is; zie de bijlage.</T>}
+      {sh.notProven.map((x, i) => (
+        <View key={i} style={s.li} wrap={false}>
+          <T style={s.bullet}>•</T>
+          <T style={s.liText}>{x}</T>
+        </View>
+      ))}
+      {sh.notProvenMore > 0 && <T style={[s.small, s.muted]}>{`En ${sh.notProvenMore} ${sh.notProvenMore === 1 ? "punt" : "punten"} meer in de bijlage.`}</T>}
+      <T style={s.h3}>Volgende stap</T>
+      <T style={s.p}>{sh.nextStep.text}</T>
+      <T style={[s.small, s.muted]}>{`Datum: ${nextStepDate(sh)}`}</T>
+      <T style={[s.small, s.muted, { marginTop: 14 }]}>
+        {`Het volledige dossier volgt als bijlage: beslisvraag, marktbeeld, concurrentie, marktpotentieel, aannames, experimenten, tegenargumenten, besluit en bronnen.${sh.derived ? " Dit beslisblad is afgeleid uit een rapportversie van vóór het beslisblad." : ""}`}
+      </T>
+      <View style={s.footerLine} fixed />
+      <Text style={s.footerLeft} fixed>
+        {pdfText(model.footer)}
+      </Text>
+    </Page>
+  );
+}
+
 export function ReportPdfDocument({ model }: { model: ReportPdfModel }) {
   const c = model.cover;
   return (
     <Document title={pdfText(model.title)} author="ProofLab" creator="ProofLab" producer="ProofLab" language="nl-NL">
+      <SheetPage model={model} />
       <Page size="A4" style={s.cover}>
         <View style={s.brandRow}>
           <View style={s.brand}>

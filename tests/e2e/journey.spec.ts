@@ -216,6 +216,8 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.goto(`${ideaUrl}/report`);
   await page.getByRole("button", { name: "Maak het eerste rapport" }).click();
   await expect(page.locator(".report-paper")).toContainText("Verder testen");
+  // B6: pagina 1 is het beslisblad; na "Verder testen" is het besluit nog niet beslisbaar.
+  await expect(page.locator(".decision-sheet")).toContainText("Nog niet beslisbaar");
   await expect(page.locator(".report-paper")).toContainText("CBS");
   await expect(page.locator(".report-paper")).toContainText("2 van 5");
   await page.emulateMedia({ media: "print" });
