@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
+import { setDetailLevel } from "./intake";
 
 // Eigen notities en documenten per stap: toevoegen, bewerken, een document uploaden en downloaden, en het document
 // in stap Markt overnemen in het bronformulier (dat blijft het letterlijke citaat controleren). Vraagt de migratie
@@ -48,6 +49,7 @@ async function createIdea(page: Page): Promise<string> {
   await page.getByLabel("Opdrachtgever", { exact: true }).selectOption("none");
   await page.getByRole("button", { name: "Start de marktverkenning" }).click();
   await page.waitForURL(/\/research/);
+  await setDetailLevel(page, "Grondig");
   return page.url().replace(/\/research.*$/, "");
 }
 

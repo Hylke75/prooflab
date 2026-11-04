@@ -67,6 +67,25 @@ class Query implements PromiseLike<{ data: unknown; error: null; count?: number 
     this.filters.push((r) => (r[col] ?? null) === v);
     return this;
   }
+  // not(kolom, "is", null) en not(kolom, "eq", waarde); andere operatoren zijn niet nagebootst.
+  not(col: string, op: string, v: unknown) {
+    if (op === "is") this.filters.push((r) => (r[col] ?? null) !== v);
+    else if (op === "eq") this.filters.push((r) => r[col] !== v);
+    return this;
+  }
+  // or("a.eq.1,b.is.null"): alleen eq en is.null; andere voorwaarden laten de rij door.
+  or(expr: string) {
+    const parts = expr.split(",").map((p) => p.trim().split("."));
+    this.filters.push((r) =>
+      parts.some(([col, op, ...rest]) => {
+        const v = rest.join(".");
+        if (op === "is" && v === "null") return (r[col] ?? null) === null;
+        if (op === "eq") return String(r[col]) === v;
+        return true;
+      }),
+    );
+    return this;
+  }
   order(col: string, opts: { ascending?: boolean } = {}) {
     this.orderBy.push({ col, asc: opts.ascending !== false });
     return this;

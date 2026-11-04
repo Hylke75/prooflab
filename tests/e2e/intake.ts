@@ -41,7 +41,8 @@ export async function answerIntake(page: Page, input: Pick<IntakeInput, "idea" |
 }
 
 // De hele intake: drie vragen, velden vastzetten, bevestigen. Geeft de URL van het nieuwe dossier terug.
-export async function createIdeaViaIntake(page: Page, input: IntakeInput): Promise<string> {
+// Fase 1 · punt 1: standaard daarna op Grondig (zie setDetailLevel); `level: "Snel"` laat de stand van een nieuw dossier staan.
+export async function createIdeaViaIntake(page: Page, input: IntakeInput, opts: { level?: "Snel" | "Grondig" } = {}): Promise<string> {
   await answerIntake(page, input);
   // Eerst de keuzes: het label van de inzet hangt af van de soort ("Inzet (euro)").
   const select = { ...(input.fill && "Inzet (euro)" in input.fill ? { "Wat staat er op het spel?": "amount" } : {}), ...input.select };
@@ -49,5 +50,15 @@ export async function createIdeaViaIntake(page: Page, input: IntakeInput): Promi
   for (const [label, value] of Object.entries(input.fill ?? {})) await cardField(page, label).fill(value);
   await page.getByRole("button", { name: "Klopt, start de marktverkenning" }).click();
   await page.waitForURL(/\/research/, { timeout: 60_000 });
+  if ((opts.level ?? "Grondig") === "Grondig") await setDetailLevel(page, "Grondig");
   return page.url().replace(/\/research.*$/, "");
+}
+
+// Fase 1 · punt 1: nieuwe dossiers starten op Snel. De bestaande specs controleren ook de details (berekeningen,
+// auditlijsten, bandbreedtes) en zetten het dossier daarom eerst op Grondig. Wacht tot de server de stand bewaarde.
+export async function setDetailLevel(page: Page, label: "Snel" | "Grondig") {
+  const radio = page.getByRole("radiogroup", { name: "Weergave van dit dossier" }).getByRole("radio", { name: label, exact: true });
+  if ((await radio.getAttribute("aria-checked")) === "true") return;
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/app/ideas/")), radio.click()]);
+  await expect(radio).toHaveAttribute("aria-checked", "true");
 }

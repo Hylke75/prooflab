@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { setDetailLevel } from "./intake";
 
 // Fase B6: pagina 1 van het rapport is het beslisblad. Een vers dossier zonder besluit en zonder bewijs toont
 // "Nog niet beslisbaar" met de juiste ontbrekende punten; het volledige dossier volgt als bijlage. Daarnaast: één
@@ -48,6 +49,7 @@ async function createIdea(page: Page): Promise<string> {
   await page.getByLabel("Opdrachtgever", { exact: true }).selectOption("none");
   await page.getByRole("button", { name: "Start de marktverkenning" }).click();
   await page.waitForURL(/\/research/);
+  await setDetailLevel(page, "Grondig");
   return page.url().replace(/\/research.*$/, "");
 }
 

@@ -9,6 +9,7 @@ Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van e
 |---|---|---|
 | ~~Migraties toepassen~~ | Gedaan 28-10: `core_schema`, `security`, `hardening` staan op project `prooflab`; ingest-sleutel geregistreerd | ✅ |
 | Migraties `integrity` (29-10), `prediction` en `coach_and_signals` (3-11) toepassen en migratiegeschiedenis rechtzetten | Zonder deze migraties werken testpagina's, inloglinks, sprints, rapport delen, voorspellingen, coach en koppelingen niet tegen de live database | Claude, na bevestiging in Supabase |
+| Migratie `20261114090000_fase1_weergave.sql` toepassen (Snel en Grondig) | Zonder de migratie staat elk dossier op Grondig en kan de stand niet worden bewaard; standaardwaarden worden zonder `defaulted_fields` opgeslagen | Claude, na bevestiging in Supabase |
 | Auth-hook "Before user created" → `public.hook_before_user_created` (Authentication → Hooks) | Registratie alleen op uitnodiging, ook bij directe aanroepen van Supabase Auth | Hylke |
 | E-mailsjabloon "Magic Link": link naar `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next={{ .RedirectTo }}` | Uitnodigingen werken dan op elk apparaat | Hylke |
 | Eigen adres of domein op de toegangslijst (`insert into public.signup_allowlist (entry) values ('naam@bureau.nl')`) | Registratie staat dicht; consultants hebben een plek op de lijst nodig | Claude of Hylke |
@@ -676,3 +677,59 @@ t/m e) op 181 vaste gevallen bit voor bit met de uitkomsten van vóór de refact
   het rapport en op pagina 1 van de PDF (`standingPdf`)
 - 🟡 Niet gedaan in deze omgeving: e2e (Playwright) en visuele controle op 1440/390 px met login (geen
   Supabase-toegang); de 390px-weergave is alleen via de opmaakregels geborgd
+
+## Fase 1 · punt 1: Snel en Grondig (4 november)
+
+Twee standen per dossier: **Snel** (standaard voor nieuwe dossiers) en **Grondig** (bestaande dossiers). Alleen
+weergave: geen enkele berekening leest de stand. Vijf commits en één migratie `20261114090000_fase1_weergave.sql`
+(**nog niet toegepast**; idempotent; zonder de migratie geldt overal Grondig en meldt de schakelaar dat de stand nog
+niet kan worden bewaard).
+
+- ✅ **Migratie**: `ideas.detail_level` (`quick`/`thorough`, check); eerst toegevoegd met standaard `thorough` (alle
+  bestaande dossiers), daarna standaard `quick` voor nieuwe. `ideas_touch` gebruikt nu `touch_idea_updated_at`: een
+  update die alleen de stand wijzigt laat `updated_at` staan (geen "laatst bijgewerkt", geen coachactiviteit); het
+  auditspoor (`audit_row`) legt de wissel vast (oud → nieuw). `defaulted_fields text[]` op `hypotheses`, `assumptions`
+  en `interviews`, met een eigen auditregel `defaulted_fields` (velden en waarden) bij insert; `guard_hypothesis_lock`
+  bewaakt ook deze lijst na vergrendelen
+- ✅ **Context**: `lib/view-mode.ts` (buiten `lib/domain`, zonder imports), `getViewMode` (server, via `getIdea`),
+  `ViewModeProvider` in `PageFrame` (één per pagina), `useViewMode()`, `<Detail only="thorough">` en één hint
+  "Meer tonen in Grondig" per pagina (`MoreInThorough`, eerste verborgen plek in documentvolgorde)
+- ✅ **Schakelaar** "Snel | Grondig" in `.dossier-search-bar` naast Zoeken en Vraag de AI (radiogroep, 44 px,
+  pijltjestoetsen, optimistisch); server action `setDetailLevel` (`app/app/ideas/[id]/view-actions.ts`: alleen de twee
+  standen, `requireWritableIdea`, revalidate). Opdrachtgevers zien de stand, geen schakelaar
+- ✅ **`<Explain k>`**: in Snel de uitleg de eerste keer per pagina, daarna alleen de term met tooltip (kalibratie-uitleg
+  op risicokaart, kansdetail en Stand van het bewijs; drempelnote AI-kwaliteit). Per AI-observatie in Snel alleen de
+  pil "voorstel". In Grondig overal de volledige uitleg (zoals voorheen)
+- ✅ **Snel per pagina**:
+  - Aannames: rekenuitleg → link naar de rekenwijze; red team, lijst "Later", "Score en berekening", startkans- en
+    soortkeuze in Grondig; samengevoegde signalen/wervingsgroepen/indirect bewijs achter "Waarom deze kans?"; kans als
+    één getal met de band in de tooltip; hooguit 3 aannames in de lijst; beslisregel compact
+  - Testen: "Hoe is dit berekend?" (met SamplePlanner) in Grondig; Details blijven dicht; go-regelvoorstel compact;
+    één test per aanname op het bord (hoofdtest, anders de nieuwste; het zojuist opgeslagen concept altijd)
+  - Markt: kengetallen, zoeklogboek, "Hoe is er gezocht naar tegenbewijs?", Tegenargumenten, AI-kwaliteit,
+    steuncontrole per citaat (de statuspil blijft), financiële haalbaarheid en Monte Carlo-simulatie in Grondig. De
+    bandbreedte-invoer per factor blijft (anders zou opslaan in Snel bestaande bandbreedtes wissen)
+  - Testpagina: Bayes-schatting, tabellen per kanaal/prijspunt, resultaten per bericht, leidraad- en transcriptcontrole
+    en AI-kwaliteit in Grondig
+  - Besluit: ladderpillen en pre-mortem-invoer in Grondig; goedgekeurde Learning Cards als samenvatting (de rest achter
+    "Hele Learning Card"); conceptkaarten ongewijzigd (goedkeuren blijft mogelijk)
+  - Uitkomst: kalibratiegids, AI-referentie en AI-voorspellingen in Grondig
+  - Overzicht: sprintkaart en snelkoppelingen in Grondig (de sprintbalk boven elke pagina blijft)
+  - Rapport: op het scherm Stand van het bewijs + beslisblad, de bijlage achter "Volledig dossier tonen"; printen via
+    de browser en de server-PDF zijn altijd volledig
+  - Overal blijven Notities en documenten en Vraag de AI
+- ✅ **Standaardwaarden zichtbaar** (`lib/defaulted-test-card.ts`, `lib/defaulted-fields.ts`): de Test Card toont vóór
+  opslaan welke velden nog precies de standaardwaarde hebben (meting, drempels, steekproef, deadline, vertekeningen,
+  kanalen, afgeleide wervingsgroep); de server berekent hetzelfde en schrijft het naar `hypotheses.defaulted_fields`.
+  Nieuwe aannames zonder eigen startkans krijgen `prior` (weg zodra een mens een startkans bewaart); interviews zonder
+  gekozen wervingsgroep `recruitment_group`. Los van de stand: een standaardwaarde is een standaardwaarde. De testpagina
+  toont ze bij de Test Card. Zonder migratie wordt opnieuw opgeslagen zonder de lijst
+- ✅ **Tests**: `view-mode-identical` (loadDossier, kansen, bewijsregister, dossierstand en Stand van het bewijs zijn
+  identiek bij `quick` en `thorough`), `view-mode-isolation` (niets in `lib/` behalve `view-mode.ts`, `data.ts` en de
+  types noemt de stand; `lib/domain` kent `defaulted_fields` niet; PDF en momentopname onafhankelijk), `view-mode`
+  (Detail, Explain, schakelaar, rapportbijlage), `view-mode-action` (validatie `setDetailLevel`), `defaulted-fields`;
+  DB-test `tests/db/fase1-weergave.test.ts`; e2e: bestaande specs zetten nieuwe dossiers eerst op Grondig
+  (`setDetailLevel` in `tests/e2e/intake.ts`), nieuwe spec `snel-grondig.spec.ts` (wisselen, bewaren, 390 px)
+- 🟡 Niet gedaan in deze omgeving: e2e (Playwright) en visuele controle op 1440/390 px met login (geen
+  Supabase-toegang), `scripts/test-db.sh` (Postgres kan hier niet als niet-root-gebruiker worden gestart). Migratie
+  nog toepassen

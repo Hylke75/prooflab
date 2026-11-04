@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { setDetailLevel } from "./intake";
 
 // Fase B4: de rangorde van de aannames zegt iets. Geen drie gelijke scores bovenaan, een test die past bij de soort
 // (een technische aanname krijgt geen klantinterviews), de reden in gewone taal ('Test deze eerst, omdat…') met
@@ -47,6 +48,7 @@ async function createIdea(page: Page): Promise<string> {
   await page.getByLabel("Opdrachtgever", { exact: true }).selectOption("none");
   await page.getByRole("button", { name: "Start de marktverkenning" }).click();
   await page.waitForURL(/\/research/);
+  await setDetailLevel(page, "Grondig");
   return page.url().replace(/\/research.*$/, "");
 }
 
