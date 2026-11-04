@@ -309,7 +309,12 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
 
           {/* Eén kolom: de vragen en het onderzoekslogboek bevatten lange zinnen die in een halve kolom onleesbaar werden. */}
           <div className="stack research-stack">
-            <div className="card">
+            <div className="card" id="onderzoekskaart" style={{ scrollMarginTop: 100 }}>
+              {sp.vragen === "bijgewerkt" && (
+                <p className="form-ok" role="status">
+                  <strong>De vragen volgen nu de intake.</strong> De beslissende vraag is gemarkeerd en bestaande bevindingen zijn aan hun vraag gekoppeld gebleven.
+                </p>
+              )}
               <div className="section-title">
                 <h3>Onderzoekskaart</h3>
                 {canWrite && questionsNeedIntake && (

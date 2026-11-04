@@ -15,6 +15,7 @@ import { SyncIdeaSteps } from "./ShellProvider";
 import { STEPS, stepForPath, stepStates } from "@/lib/steps";
 import Link from "next/link";
 import { StepNotes } from "@/components/steps/StepNotes";
+import { AskAiButton } from "@/components/shell/AskAiButton";
 import { noteStepForSection } from "@/lib/domain/step-files";
 
 // Main column + coach column of the three-column grid from the reference design.
@@ -73,6 +74,7 @@ export async function PageFrame({
               {/* Zoeken binnen dit dossier: knop of sneltoets "/" (alleen wat de gebruiker mag zien, via RLS). */}
               <div className="dossier-search-bar no-print">
                 <DossierSearch ideaId={access.idea.id} />
+                {access.canWrite && aiConfigured() && <AskAiButton />}
               </div>
             </>
           )}
@@ -94,7 +96,7 @@ export async function PageFrame({
           </section>
         </div>
       </main>
-      <Coach data={coachFor(coach, progress, { audience, isClientDecider: access?.isClientDecider, currentIdea })} aiConnected={aiConfigured()} notes={notes} collapsed={coachCollapsed} />
+      <Coach data={coachFor(coach, progress, { audience, isClientDecider: access?.isClientDecider, currentIdea })} aiConnected={aiConfigured()} notes={notes} collapsed={coachCollapsed} step={noteStep} />
       {ideaId && access?.canWrite && <CoachWatch ideaId={ideaId} />}
       {ideaId && progress && <SyncIdeaSteps ideaId={ideaId} states={stepStates(progress)} />}
     </>
