@@ -380,3 +380,29 @@ Uit `docs/VERBETERPLAN_WERKWIJZE.md`, golf B (punten 1, 2, 6, 15, 18 en 20). Mig
 - ✅ Intake: per vraag welke velden optioneel en later aan te vullen zijn
 - ✅ Tests: `tests/unit/menu.test.ts`, uitbreiding `tests/unit/coach.test.ts`; e2e-journey vergelijkt menu en stappenbalk en opent Systeemstatus via het avatarmenu. Visueel gecontroleerd op 1440 px en 390 px tegen de live omgeving (alleen lezen)
 - 🟡 De menustatus komt na het laden van de pagina (de layout kent het open idee niet); tot dan staan de stappen zonder teken. De e2e-journey is niet gedraaid
+
+## Notities en documenten per stap (10 november)
+
+Opdracht product owner: "per stap zelf ook teksten kan toevoegen en ook documenten". Migratie
+`20261110130000_notities_documenten.sql` (nog niet live); beheer in `docs/OPERATIONS.md` §11.
+
+- ✅ **Blok "Notities en documenten"** (`components/steps/StepNotes.tsx`, zelfstandig) onderaan het overzicht van het idee
+  en de hoofdpagina's van elke stap (Markt: /research en /integrations; Aannames; Testen; Besluit: /evidence en /outcome),
+  geplaatst via `PageFrame` (`noteStepForSection`). Ingeklapt als het leeg is, teller in de kop. Niet in print/PDF
+- ✅ **Notities** (`step_notes`): titel en tekst (≤ 20.000 tekens), platte tekst of eenvoudige markdown (koppen, lijsten,
+  vet, links met `rel="noopener noreferrer"`), veilig gerenderd als React-elementen (`lib/domain/simple-markdown.ts`).
+  Toevoegen, bewerken, verwijderen (eigen of als eigenaar, met bevestiging, geaudit); auteur en datum zichtbaar
+- ✅ **Documenten** (`step_documents` + privé bucket `step-documents`): PDF, DOCX, XLSX, PPTX, CSV, TXT, MD, PNG, JPG,
+  WEBP tot 20 MB, gecontroleerd in de browser, op de server vóór de uploadlink, na het uploaden (opgeslagen grootte en
+  type) en door de bucket. Directe upload naar Storage met een eenmalige link; downloaden via een link van 60 seconden
+- ✅ **Rechten**: team voegt toe; opdrachtgever (geen `canWrite`) leest en downloadt alleen; RLS en storage-policies
+  dwingen dit ook in de database af
+- ✅ **Herleidbaarheid**: een document is geen bron of bewijs. In stap Markt opent "Gebruik als bron" het bestaande
+  bronformulier met de titel ingevuld (zonder herladen op /research, via `?tab=sources&bron_titel=` vanaf /integrations);
+  de letterlijke citaatcontrole blijft gelden. Notities komen niet in het rapport (hint in het blok)
+- ✅ Tests: `tests/unit/step-files.test.ts` (types, grootte, mime/extensie, bestandsnaam, pad), `tests/unit/simple-markdown.test.ts`
+  (opmaak, geen HTML, alleen http(s)/mailto); `tests/db/step-notes.test.ts` (RLS, auteur, eigen/eigenaar, audit, bucket,
+  storage-policies; storage-shim in `tests/db/supabase-shim.sql`); e2e `tests/e2e/notities.spec.ts`
+- 🟡 Migratie nog toepassen op de live Supabase (na akkoord) en controleren dat Storage aan staat; daarna de e2e
+  `notities.spec.ts` draaien. Visueel gecontroleerd op 1440 px en 390 px met voorbeelddata (lokaal, alleen lezen)
+- 🟡 Bestanden van een verwijderd idee blijven in de bucket staan; inhoud van bestanden wordt niet gescand

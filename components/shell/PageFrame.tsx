@@ -13,6 +13,8 @@ import { CoachWatch } from "@/components/coach/CoachWatch";
 import { SyncIdeaSteps } from "./ShellProvider";
 import { STEPS, stepForPath, stepStates } from "@/lib/steps";
 import Link from "next/link";
+import { StepNotes } from "@/components/steps/StepNotes";
+import { noteStepForSection } from "@/lib/domain/step-files";
 
 // Main column + coach column of the three-column grid from the reference design.
 export async function PageFrame({
@@ -55,6 +57,8 @@ export async function PageFrame({
   const stepKey = ideaId && section !== undefined ? stepForPath(section) : null;
   const step = stepKey ? STEPS.find((x) => x.key === stepKey) : undefined;
   const tabs = (step?.tabs ?? []).filter((t) => !t.consultantOnly || access?.canWrite);
+  // Eigen notities en documenten onderaan het overzicht en de hoofdpagina's van elke stap (zelfstandig blok).
+  const noteStep = ideaId && access ? noteStepForSection(section) : null;
   return (
     <>
       <main className="main" id="main" tabIndex={-1}>
@@ -79,7 +83,10 @@ export async function PageFrame({
               })}
             </nav>
           )}
-          <section className="screen active">{children}</section>
+          <section className="screen active">
+            {children}
+            {ideaId && noteStep && <StepNotes ideaId={ideaId} step={noteStep} />}
+          </section>
         </div>
       </main>
       <Coach data={coachFor(coach, progress, { audience, isClientDecider: access?.isClientDecider, currentIdea })} aiConnected={aiConfigured()} notes={notes} collapsed={coachCollapsed} />

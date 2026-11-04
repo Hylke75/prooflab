@@ -262,3 +262,50 @@ Supabase een gedeelde testserver met een zeer lage limiet. Stel daarom Resend in
    verstuurd.
 
 Dezelfde sleutel mag als `RESEND_API_KEY` in Vercel staan; `EMAIL_FROM` moet ook op het geverifieerde domein liggen.
+
+## 11. Notities en documenten per stap (Storage)
+
+Migratie `20261110130000_notities_documenten.sql` (nog **niet** live; pas toepassen na akkoord van de product owner).
+Ze is herhaalbaar en wijzigt geen bestaande gegevens.
+
+**Tabellen** (beide met RLS en de gewone audit-trigger `audit_row`; bij verwijderen staat de hele rij in `audit_events`):
+
+- `step_notes`: `idea_id`, `step` (`overview`, `market`, `assumptions`, `test`, `decide`), `title` (≤ 200), `body`
+  (1–20.000 tekens), `author_name`, `created_by`, `created_at`, `updated_at`. Auteur, naam en tijden zet de database
+  (trigger `stamp_step_item`); bij bewerken blijven dossier, stap en auteur vast.
+- `step_documents`: `idea_id`, `step`, `storage_path` (uniek), `file_name`, `mime_type`, `size_bytes` (≤ 20 MB),
+  `description` (≤ 500), `author_name`, `created_by`, `created_at`. Een check eist dat het pad bij hetzelfde idee en
+  dezelfde stap hoort. Geen update: vervangen = nieuw uploaden en het oude verwijderen.
+
+**Rechten**: lezen `can_read_idea` (team en opdrachtgever); toevoegen `can_write_idea` (team); bewerken en verwijderen
+`can_edit_step_item(idea, created_by)` = mag schrijven én eigen item, of eigenaar van de werkruimte.
+
+**Bucket `step-documents`** (privé, `insert … on conflict do nothing`): `file_size_limit` 20 MB (20971520 bytes),
+`allowed_mime_types` PDF, DOCX, XLSX, PPTX, CSV, TXT, MD, PNG, JPEG, WEBP. Objectpad
+`<idea_id>/<stap>/<uuid>-<veilige-naam>`; `step_document_idea(name)` leest het idee uit het pad en geeft `null` bij elk
+afwijkend pad (dan weigeren alle policies). Policies op `storage.objects`:
+
+| Policy | Wie |
+|---|---|
+| `step_documents_objects_select` | `can_read_idea(idee uit pad)` |
+| `step_documents_objects_insert` | `can_write_idea(idee uit pad)` |
+| `step_documents_objects_delete` | `can_edit_step_item(idee uit pad, uploader)`: de uploader of de eigenaar van de werkruimte |
+
+Geen update-policy (overschrijven kan niet).
+
+**Stroom**: de server action `prepareStepUpload` controleert naam, extensie, mime-type en grootte
+(`lib/domain/step-files.ts`) en maakt met de sessie van de gebruiker een eenmalige uploadlink (`createSignedUploadUrl`,
+dus de insert-policy geldt). De browser stuurt het bestand rechtstreeks naar Storage (niet via Vercel, dus geen limiet
+op de grootte van een request). Daarna leest `recordStepDocument` grootte en type van het opgeslagen object zelf,
+controleert opnieuw en legt de rij vast; klopt iets niet, dan wordt het object weer verwijderd. Downloaden gaat via
+`/app/ideas/<id>/documenten/<docId>`: een doorverwijzing naar een `createSignedUrl` van 60 seconden, als bijlage met de
+oorspronkelijke naam. Verwijderen: eerst het object, dan de rij.
+
+**Controle na het toepassen**: Storage moet in het Supabase-project aan staan (Storage → Buckets toont
+`step-documents`, privé). Upload als consultant een klein PDF'je bij een idee en download het; als opdrachtgever alleen
+lezen en downloaden. Zonder migratie toont het blok "nog niet beschikbaar" en werkt de rest van de pagina gewoon.
+
+**Bekende grenzen**: wordt een heel idee verwijderd, dan verdwijnen de rijen (cascade) maar blijven de bestanden in de
+bucket staan; ruim die zo nodig op via het pad (`<idea_id>/…`). Een upload die halverwege wordt afgebroken (na het
+uploaden, vóór het vastleggen) laat een los object achter. De inhoud van een bestand wordt niet gescand (alleen
+extensie, mime-type en grootte); downloads gaan altijd als bijlage.
