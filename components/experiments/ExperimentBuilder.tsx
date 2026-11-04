@@ -2,6 +2,7 @@
 
 import { startTransition, useActionState, useMemo, useRef, useState, useTransition } from "react";
 import { RequiredMark, type FormState } from "@/components/ui/ActionForm";
+import { Term } from "@/components/ui/Term";
 import { SavingOverlay } from "@/components/ui/SavingOverlay";
 import { Icon } from "@/components/Icon";
 import { EXPERIMENT_TYPES, HONEST_REVEAL, NEUTRAL_INTERVIEW_GUIDE, type ExperimentType } from "@/lib/domain/labels";
@@ -362,12 +363,12 @@ export function ExperimentBuilder({
                 ))}
               </div>
             ) : (
-              <p className="field-hint" style={{ margin: 0 }}>{DECISION_RULES.probability.label}: dit testtype meet een percentage.</p>
+              <p className="field-hint" style={{ margin: 0 }}><Term k="kansregel">{DECISION_RULES.probability.label}</Term>: dit testtype meet een percentage.</p>
             )}
             <p className="field-hint" style={{ marginTop: 6 }}>
               {activeRule === "absolute"
-                ? "Voor sterke handelingen (aanbetaling, herhaalaankoop): geslaagd als het afgesproken aantal na de eindconditie is gehaald. Een gesprek telt alleen mee met een vastgelegde aanbetaling of herhaalaankoop."
-                : `Geslaagd als de kans dat het echte percentage boven de succesdrempel ligt minstens ${PASS_PROBABILITY * 100}% is; niet geslaagd als de kans dat het boven de faaldrempel ligt ${FAIL_PROBABILITY * 100}% of minder is. Daartussen onbeslist.`}
+                ? <><Term k="aantalregel">Voor sterke handelingen</Term> (aanbetaling, herhaalaankoop): geslaagd als het afgesproken aantal na de eindconditie is gehaald. Een gesprek telt alleen mee met een vastgelegde aanbetaling of herhaalaankoop.</>
+                : <>Geslaagd als de kans dat het echte percentage boven de <Term k="succesdrempel">succesdrempel</Term> ligt minstens {PASS_PROBABILITY * 100}% is; niet geslaagd als de kans dat het boven de <Term k="faaldrempel">faaldrempel</Term> ligt {FAIL_PROBABILITY * 100}% of minder is. Daartussen onbeslist.</>}
             </p>
           </fieldset>
           )}
@@ -376,13 +377,13 @@ export function ExperimentBuilder({
               <input type="hidden" name="success_threshold_pct" value={thresholdPct || ""} />
               <div className="double-field">
                 <div className="form-line"><label htmlFor="tc-count">Geslaagd bij minimaal (aantal)<RequiredMark /></label><input className="field num" id="tc-count" name="success_count" type="number" min={1} value={successCount} readOnly={locked} onChange={(e) => setSuccessCount(e.target.value)} {...aria("success_count")} />{fieldError("success_count")}</div>
-                <div className="form-line"><label htmlFor="tc-n">Uit (minimale steekproef)<RequiredMark /></label><input className="field num" id="tc-n" name="min_sample" type="number" min={5} value={card.min_sample} readOnly={locked} onChange={(e) => set("min_sample", e.target.value)} {...aria("min_sample")} />{fieldError("min_sample")}</div>
+                <div className="form-line"><label htmlFor="tc-n">Uit (<Term k="minimale-steekproef">minimale steekproef</Term>)<RequiredMark /></label><input className="field num" id="tc-n" name="min_sample" type="number" min={5} value={card.min_sample} readOnly={locked} onChange={(e) => set("min_sample", e.target.value)} {...aria("min_sample")} />{fieldError("min_sample")}</div>
               </div>
             </>
           ) : (
             <div className="double-field">
-              <div className="form-line"><label htmlFor="tc-succ">Het klopt als ≥ (%)<RequiredMark /></label><input className="field num" id="tc-succ" name="success_threshold_pct" type="number" min={1} max={100} value={card.success_threshold_pct} readOnly={locked} onChange={(e) => set("success_threshold_pct", e.target.value)} {...aria("success_threshold_pct")} />{fieldError("success_threshold_pct")}</div>
-              <div className="form-line"><label htmlFor="tc-fail">Het klopt niet als &lt; (%)<RequiredMark /></label><input className="field num" id="tc-fail" name="fail_threshold_pct" type="number" min={0} max={100} value={card.fail_threshold_pct ?? ""} readOnly={locked} onChange={(e) => set("fail_threshold_pct", e.target.value)} {...aria("fail_threshold_pct")} />{fieldError("fail_threshold_pct")}</div>
+              <div className="form-line"><label htmlFor="tc-succ"><Term k="succesdrempel">Het klopt als ≥ (%)</Term><RequiredMark /></label><input className="field num" id="tc-succ" name="success_threshold_pct" type="number" min={1} max={100} value={card.success_threshold_pct} readOnly={locked} onChange={(e) => set("success_threshold_pct", e.target.value)} {...aria("success_threshold_pct")} />{fieldError("success_threshold_pct")}</div>
+              <div className="form-line"><label htmlFor="tc-fail"><Term k="faaldrempel">Het klopt niet als &lt; (%)</Term><RequiredMark /></label><input className="field num" id="tc-fail" name="fail_threshold_pct" type="number" min={0} max={100} value={card.fail_threshold_pct ?? ""} readOnly={locked} onChange={(e) => set("fail_threshold_pct", e.target.value)} {...aria("fail_threshold_pct")} />{fieldError("fail_threshold_pct")}</div>
             </div>
           )}
           {v2 && (
@@ -448,7 +449,7 @@ export function ExperimentBuilder({
                     Het getal hierboven is het {band.shown === "low" ? "voorzichtige" : "middelste"} scenario.{band.capacity != null ? ` Bereik in de looptijd: ongeveer ${band.capacity}.` : ""}
                   </p>
                   {activeRule === "probability" && needed !== null && (
-                    <p className="tiny">Met een minimale steekproef van {n} is het resultaat &quot;sterk bewezen&quot; (ook de ondergrens van het 95%-interval boven de drempel) vanaf {needed} keer {card.metric_label.toLowerCase()}.</p>
+                    <p className="tiny">Met een minimale steekproef van {n} is het resultaat &quot;sterk bewezen&quot; (ook de ondergrens van het <Term k="interval-95">95%-interval</Term> boven de drempel) vanaf {needed} keer {card.metric_label.toLowerCase()}.</p>
                   )}
                   {type === "survey" && (
                     <SamplePlanner
@@ -465,7 +466,7 @@ export function ExperimentBuilder({
           <div className="double-field">
             {activeRule !== "absolute" && (
               <div className="form-line">
-                <label htmlFor="tc-n">Minimale steekproef<RequiredMark /></label>
+                <label htmlFor="tc-n"><Term k="minimale-steekproef">Minimale steekproef</Term><RequiredMark /></label>
                 <input className="field num" id="tc-n" name="min_sample" type="number" min={5} value={card.min_sample} onChange={(e) => set("min_sample", e.target.value)} {...aria("min_sample")} />
                 {fieldError("min_sample")}
                 {band?.requiredN != null && band.requiredN !== n && (
@@ -496,7 +497,7 @@ export function ExperimentBuilder({
           <div className="form-line"><label htmlFor="tc-bias">Verwachte vertekeningen</label><input className="field" id="tc-bias" name="expected_biases" value={card.expected_biases} onChange={(e) => set("expected_biases", e.target.value)} /></div>
           <fieldset className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }} aria-describedby="tc-rg-hint">
             <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
-              Wervingsgroep{recruitmentRequired ? " (verplicht)" : " (standaard voor de gesprekken)"}
+              <Term k="wervingsgroep">Wervingsgroep</Term>{recruitmentRequired ? " (verplicht)" : " (standaard voor de gesprekken)"}
             </legend>
             <div className="row">
               {RECRUITMENT_KEYS.map((k, i) => (
@@ -540,7 +541,7 @@ export function ExperimentBuilder({
             </label>
           )}
           <p className="field-hint">
-            Per aanname wijs je vooraf één hoofdtest aan; alleen die beslist over de aanname. Andere tests heten verkennend. Na goedkeuring ligt de keuze vast.
+            Per aanname wijs je vooraf één <Term k="hoofdtest">hoofdtest</Term> aan; alleen die beslist over de aanname. Andere tests heten <Term k="verkennende-test">verkennend</Term>. Na goedkeuring ligt de keuze vast.
           </p>
           <div className="note">Je legt deze criteria vast vóór de test. Na goedkeuring zijn ze vergrendeld; wijzigen kan alleen met een nieuwe versie en een motivering.</div>
           <div className="tc-save" id="tc-save">

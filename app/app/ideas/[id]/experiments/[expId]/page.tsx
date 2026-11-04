@@ -32,6 +32,7 @@ import { loadTestExclusions } from "@/lib/progress";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 import { assumptionKind, assumptionKindLabel, metricFitsAssumption } from "@/lib/domain/assumption-kind";
 import { belowMinSample, END_BELOW_SAMPLE_CONFIRM, END_REASON_MAX, END_REASON_MIN, thresholdBlock } from "@/lib/domain/experiment-gates";
+import { Term } from "@/components/ui/Term";
 
 export const metadata: Metadata = { title: "Experiment" };
 
@@ -167,7 +168,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
       <div className="grid-2 mt-18">
         <div className="card">
           <div className="section-title">
-            <h2 className="as-h3">Test Card</h2>
+            <h2 className="as-h3"><Term k="test-card">Test Card</Term></h2>
             <span className={`pill ${h.locked_at ? "dark" : "gray"}`}>{h.locked_at ? `Vergrendeld ${new Date(h.locked_at).toLocaleDateString("nl-NL")}` : "Concept"}</span>
           </div>
           <div className="data-row">
@@ -297,7 +298,7 @@ export default async function ExperimentPage({ params }: PageProps<"/app/ideas/[
           )}
           {canWrite && state === "ended" && (cards ?? []).length === 0 && (
             <ActionForm action={createLearningCard.bind(null, id, expId)} submitLabel="Analyseer en maak de Learning Card" pendingLabel="Analyseren…">
-              <p className="sub">ProofLab berekent het resultaat uit de ruwe, ontdubbelde metingen en maakt een concept-Learning Card.</p>
+              <p className="sub">ProofLab berekent het resultaat uit de ruwe, ontdubbelde metingen en maakt een concept-<Term k="learning-card">Learning Card</Term>.</p>
             </ActionForm>
           )}
           {(cards ?? []).length > 0 && <Link className="btn primary" href={`/app/ideas/${id}/evidence`}>Naar bewijs & besluit →</Link>}

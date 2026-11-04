@@ -391,3 +391,11 @@ Uit `docs/VERBETERPLAN_WERKWIJZE.md`, golf B (punten 1, 2, 6, 15, 18 en 20). Mig
 - ✅ Rapport: "Niet vastgesteld" met reden in plaats van "€ 0" bereikbare jaaromzet (KPI en scenariotabel)
 - ✅ Tests: `tests/unit/report-sheet.test.ts`, uitbreiding `tests/unit/report-pdf.test.ts`; e2e `tests/e2e/b6-beslisblad.spec.ts` en één extra controle in de journey
 - 🟡 De e2e-tests zijn niet gedraaid (geen lokale Supabase in deze omgeving)
+
+## Uitlegtooltips en zoeken binnen een dossier (4 november)
+
+- ✅ **Woordenboek** `lib/glossary.ts` met 31 vaktermen (o.a. beslissende vraag, kritieke aanname, hoofdtest, succes-/faaldrempel, kansregel, aantalregel, plafond, informatiewaarde, Reality Check, Learning Card, go-regel, wervingsgroep, TAM/SAM/SOM, Brier-score, kalibratie), uitleg volgens `lib/domain/*`
+- ✅ **`<Term k="…">`** (`components/ui/Term.tsx`): hover, focus, tik (opent/sluit), Escape, aria-describedby, portal zonder layoutverschuiving, past op 390 px; niet in de PDF. Geplaatst op Test Card, risicokaart, experimentpagina, bewijs & besluit, rapport (scherm), voorspelling/voorspelkwaliteit en marktverkenning
+- ✅ **Zoeken in een dossier**: knop en sneltoets `/` in de kop van elke ideepagina; server action met de sessie van de gebruiker (RLS) over bevindingen, aannames, bronnen en (als de tabel bestaat) eigen notities; per kolom een eigen `ilike` met ge-escapete jokers (geen `.or()`-filterstring); max. 30 resultaten, eerlijk verdeeld per soort; markering, lege staat, laadstatus, pijltjes/Enter; links naar `#claim-…`, `?select=…` en `?tab=sources#bron-…`. Geen zoeken in citaten of persoonlijke bronfragmenten
+- ✅ Tests: `tests/unit/glossary.test.ts`, `tests/unit/dossier-search.test.ts` (o.a. filterinjectie via een echte PostgREST-querybouwer); e2e `tests/e2e/tooltips-zoeken.spec.ts`
+- 🟡 De e2e-tests zijn niet gedraaid (geen lokale Supabase in deze omgeving); geen migratie nodig

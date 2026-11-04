@@ -2,7 +2,7 @@
 export type IconName =
   | "home" | "compass" | "layers" | "flask" | "shield" | "file" | "plus" | "arrow" | "check"
   | "spark" | "menu" | "close" | "trend" | "clock" | "info" | "users" | "settings" | "logout"
-  | "layout-dashboard" | "scale" | "lightbulb" | "chevron";
+  | "layout-dashboard" | "scale" | "lightbulb" | "chevron" | "search";
 
 export function Icon({ name, size, className }: { name: IconName; size?: "sm" | "lg"; className?: string }) {
   return (
@@ -37,6 +37,7 @@ export function IconSprite() {
         <symbol id="ic-scale" viewBox="0 0 24 24"><path d="M12 3v18M8 21h8M5 7h14M12 3v4" /><path d="M5 7 2 14a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z" /></symbol>
         <symbol id="ic-lightbulb" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4" /><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.5 1.1 1.3 1.1 2.2h5c0-.9.4-1.7 1.1-2.2A6 6 0 0 0 12 3Z" /></symbol>
         <symbol id="ic-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></symbol>
+        <symbol id="ic-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></symbol>
         <symbol id="ic-logout" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11" /></symbol>
       </defs>
     </svg>

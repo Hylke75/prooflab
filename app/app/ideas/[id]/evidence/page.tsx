@@ -28,6 +28,7 @@ import { ConfirmDecision } from "@/components/evidence/ConfirmDecision";
 import { againstFor } from "@/lib/against-data";
 import { extendedPhase, extensionBlocker } from "@/lib/domain/extension";
 import { todayInNL } from "@/lib/domain/sprint";
+import { Term } from "@/components/ui/Term";
 
 export const metadata: Metadata = { title: "Bewijs & besluit" };
 
@@ -121,7 +122,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
             {missingPayment ? " Betaling nog niet aangetoond." : ""}
           </h2>
           <p>
-            {d.label.missing.length ? `Voor het volgende niveau ontbreekt: ${d.label.missing.join("; ")}.` : "Het dossier voldoet aan het hoogste bewijsniveau."}
+            {d.label.missing.length ? <>Voor het volgende <Term k="bewijsniveau">bewijsniveau</Term> ontbreekt: {d.label.missing.join("; ")}.</> : <>Het dossier voldoet aan het hoogste <Term k="bewijsniveau">bewijsniveau</Term>.</>}
           </p>
         </div>
       </div>
@@ -135,7 +136,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
           {obs.length === 0 && <p className="sub mt-12">Nog geen observaties. Die ontstaan uit interviews en afgeronde experimenten.</p>}
           {ladder.quotes > ladder.counted && (
             <p className="tiny mt-8">
-              Per persoon geteld: uit {ladder.people} {ladder.people === 1 ? "interview" : "interviews"} telt per bewijsniveau één uitspraak mee (de sterkste; steun en tegenspraak apart). Alle {ladder.quotes} citaten blijven hieronder zichtbaar.
+              <Term k="per-persoon">Per persoon geteld</Term>: uit {ladder.people} {ladder.people === 1 ? "interview" : "interviews"} telt per bewijsniveau één uitspraak mee (de sterkste; steun en tegenspraak apart). Alle {ladder.quotes} citaten blijven hieronder zichtbaar.
             </p>
           )}
           {obs.slice(0, 12).map((o) => {
@@ -152,12 +153,12 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
               </div>
             );
           })}
-          <div className="note">Een goed bewijsdossier laat ook helder zien wat een test níét aantoont. Synthetische of AI-gegenereerde data telt nooit mee.{practiceObs > 0 && ` ${practiceObs === 1 ? "1 observatie komt" : `${practiceObs} observaties komen`} uit een oefengesprek of een gesprek dat nog niet als echt is aangegeven en ${practiceObs === 1 ? "telt" : "tellen"} daarom niet als bewijs.`}</div>
+          <div className="note">Een goed bewijsdossier laat ook helder zien wat een test níét aantoont. Synthetische of AI-gegenereerde data telt nooit mee.{practiceObs > 0 && <> {practiceObs === 1 ? "1 observatie komt" : `${practiceObs} observaties komen`} uit een <Term k="oefengesprek">oefengesprek</Term> of een gesprek dat nog niet als echt is aangegeven en {practiceObs === 1 ? "telt" : "tellen"} daarom niet als bewijs.</>}</div>
         </div>
 
         <div className="stack">
           <div className="card">
-            <div className="section-title"><h3>Reality Check</h3><span className="pill coral">Verplicht vóór elk besluit</span></div>
+            <div className="section-title"><h3><Term k="reality-check">Reality Check</Term></h3><span className="pill coral">Verplicht vóór elk besluit</span></div>
             {!check ? (
               <p className="sub">Nog niet uitgevoerd. De check zoekt naar valkuilen, zwakke data en conclusies die het bewijs niet draagt.</p>
             ) : (
@@ -256,7 +257,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
         </div>
       </div>
 
-      {(drafts.length > 0 || approved.length > 0) && <div className="section-title mt-24"><h2>Learning Cards</h2></div>}
+      {(drafts.length > 0 || approved.length > 0) && <div className="section-title mt-24"><h2><Term k="learning-card">Learning Cards</Term></h2></div>}
       <div className="grid-2">
         {drafts.map((c) => {
           const exp = d.experiments.find((e) => e.id === c.experiment_id);
@@ -336,7 +337,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                   {dec.action === "extend" && dec.extend_weeks != null && <p>Testperiode van {dec.extend_weeks} weken; het definitieve besluit volgt daarna.</p>}
                   {dec.rule_met != null && (
                     <p>
-                      Beslisregel: {dec.rule_met ? "gehaald" : "niet gehaald"}.
+                      <Term k="go-regel">Beslisregel</Term>: {dec.rule_met ? "gehaald" : "niet gehaald"}.
                       {dec.rule_deviation_reason ? ` ${deviationLabel(dec.action, dec.rule_met)}. Motivering: ${dec.rule_deviation_reason}` : ""}
                     </p>
                   )}

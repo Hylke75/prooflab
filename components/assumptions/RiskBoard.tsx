@@ -9,6 +9,7 @@ import { applyCap, bandFromShift, capReason, explainContribution, explainMerged,
 import type { VoiResult } from "@/lib/domain/recommend";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 import { Probability } from "@/components/ui/Probability";
+import { Term } from "@/components/ui/Term";
 import { formatProbability } from "@/lib/domain/probability-display";
 import { explainRecruitment } from "@/lib/domain/recruitment";
 import { explainIndirect } from "@/lib/domain/claim-scope";
@@ -45,6 +46,7 @@ const isHot = (a: BoardAssumption) => a.importance >= 4 && a.probability.probabi
 // evidence); only importance is a human estimate. The list is ordered by information value.
 export function RiskBoard({
   ideaId,
+  initialId,
   assumptions,
   claims,
   canWrite,
@@ -57,6 +59,8 @@ export function RiskBoard({
 }: {
   calibrated?: boolean;
   ideaId: string;
+  // Vooraf geselecteerde aanname (?select=… vanuit het zoeken); onbekend of leeg = de eerste in de rangorde.
+  initialId?: string | null;
   assumptions: BoardAssumption[];
   claims: { id: string; statement: string; status: string }[];
   canWrite: boolean;
@@ -66,11 +70,12 @@ export function RiskBoard({
   priorActions: Record<string, Action>;
   deleteActions: Record<string, () => Promise<void>>;
 }) {
-  const [sel, setSel] = useState(assumptions[0]?.id ?? null);
+  const firstId = (initialId && assumptions.some((a) => a.id === initialId) ? initialId : null) ?? assumptions[0]?.id ?? null;
+  const [sel, setSel] = useState(firstId);
   const [cluster, setCluster] = useState<string | null>(null);
   // Starting value for the selected assumption: the stored one, which a consultant can change and save.
   const storedPrior = (id: string | null) => assumptions.find((a) => a.id === id)?.probability.prior ?? 0.5;
-  const [prior, setPrior] = useState(storedPrior(assumptions[0]?.id ?? null));
+  const [prior, setPrior] = useState(storedPrior(firstId));
   const popRef = useRef<HTMLDivElement>(null);
   const clusterBtn = useRef<HTMLButtonElement | null>(null);
   const current = assumptions.find((a) => a.id === sel) ?? assumptions[0];
@@ -180,7 +185,7 @@ export function RiskBoard({
           <span>Kans klein →</span>
         </div>
         <p className="tiny">
-          Horizontaal staat de geschatte kans dat de aanname klopt: start op 50% en bijgewerkt met een vaste factor per soort bewijs. Tik op een punt om de aanname te bekijken.
+          Horizontaal staat de geschatte kans dat de aanname klopt: start op 50% en bijgewerkt met een vaste factor per soort bewijs. Rood = <Term k="kritieke-aanname">kritieke aanname</Term> met een kans onder 70%. Tik op een punt om de aanname te bekijken.
         </p>
       </div>
       <div className="card">
@@ -313,7 +318,7 @@ function ProbabilityDetail({
       </p>
       {capped && cap && (
         <p className="tiny mt-8">
-          <span className="pill orange">{capReason(cap.level, cap.max)}</span> Zonder plafond <Probability p={rawP} calibrated={calibrated} showLabel={false} />. Hoogste bewijsniveau tot nu toe: {cap.levelLabel.toLowerCase()}.
+          <span className="pill orange">{capReason(cap.level, cap.max)}</span> Zonder <Term k="plafond">plafond</Term> <Probability p={rawP} calibrated={calibrated} showLabel={false} />. Hoogste <Term k="bewijsniveau">bewijsniveau</Term> tot nu toe: {cap.levelLabel.toLowerCase()}.
         </p>
       )}
       {a.probability.top.length > 0 ? (

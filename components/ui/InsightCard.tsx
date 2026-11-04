@@ -57,7 +57,8 @@ export function InsightCard({
     claim.period,
   ].filter(Boolean);
   return (
-    <article className="insight">
+    // Anker voor het zoeken binnen een dossier (/research?tab=overview#claim-…).
+    <article className="insight" id={`claim-${claim.id}`}>
       <div className="insight-head">
         <h3 className="insight-title">{claim.statement}</h3>
         <span className={`pill ${st.pill}`} title={st.explain}>{st.label}</span>
