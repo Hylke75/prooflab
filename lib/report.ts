@@ -19,6 +19,7 @@ import { addDaysIso, buildDecisionSheet, sheetDate, type DecisionSheet } from "@
 import { todayInNL } from "@/lib/domain/sprint";
 import { isExploratory } from "@/lib/domain/customer-research";
 import { sanitizeChallenges } from "@/lib/domain/ai-text";
+import type { EvidenceStanding } from "@/lib/domain/evidence-standing";
 
 // "AI · Gemini" for an AI forecast whose provider is known; null otherwise.
 function aiName(kind: string, model: string | null): string | null {
@@ -34,7 +35,8 @@ export type ReportSnapshot = ReturnType<typeof buildSnapshot>;
 // Zonder deze context krijgt het rapport geen opgeslagen beslisblad; het wordt dan afgeleid (sheetFromSnapshot).
 export type SheetContext = { status: Pick<DossierStatus, "steps" | "stepsWithEvidence">; nextAction: string | null };
 
-export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: string; sheet?: SheetContext }) {
+// standing (fase 1, punt 2): de Stand van het bewijs op het moment van de versie (loadEvidenceStanding).
+export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: string; sheet?: SheetContext; standing?: EvidenceStanding }) {
   const sources = new Map<string, { n: number; title: string; url: string | null; publisher: string | null; published_on: string | null; retrieved_at: string; type: string; primary: boolean }>();
   const footnote = (s: { id: string; title: string; url: string | null; publisher: string | null; published_on: string | null; retrieved_at: string; source_type: string; is_primary: boolean } | null) => {
     if (!s) return null;
@@ -101,6 +103,9 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
     observationCounts: ladder as EvidenceLadder | undefined,
     // Fase B6: het beslisblad (pagina 1), vastgelegd bij het maken van de versie. Oudere rapporten hebben het niet.
     sheet: sheet as DecisionSheet | undefined,
+    // Fase 1, punt 2: de Stand van het bewijs, vastgelegd bij het maken van de versie. Oudere rapporten hebben het niet;
+    // die krijgen een afgeleid blok (standingFromSnapshot).
+    standing: meta.standing as EvidenceStanding | undefined,
     competitors: d.competitors.map((c) => ({ name: c.name, kind: COMPETITOR_KINDS[c.kind as CompetitorKind].label, positioning: c.positioning, price: c.visible_price ? `${c.visible_price} (peildatum ${c.price_checked_on ?? "onbekend"})` : "Niet publiek", differentiation: c.differentiation_opportunity })),
     sizing: d.sizing.map((s) => ({
       label: s.label,

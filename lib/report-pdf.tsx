@@ -183,6 +183,22 @@ function SheetPage({ model }: { model: ReportPdfModel }) {
           </View>
         ))}
       </View>
+      {/* Fase 1, punt 2: de Stand van het bewijs, hetzelfde blok als bovenaan het rapport op het scherm. */}
+      <View style={[s.note, { backgroundColor: TONE_BG.gray, padding: 12, marginTop: 8 }]} wrap={false}>
+        <T style={s.eyebrow}>{model.standing.title}</T>
+        <T style={[s.p, { marginTop: 4, marginBottom: 2, color: C.ink, fontFamily: "Helvetica-Bold" }]}>{model.standing.summary}</T>
+        <T style={[s.small, { color: C.ink }]}>{model.standing.certainty}</T>
+        <T style={[s.small, { color: C.ink, marginTop: 2 }]}>{model.standing.scale}</T>
+        {model.standing.lines.map((x, i) => (
+          <View key={i} style={s.li}>
+            <T style={[s.bullet, s.small]}>•</T>
+            <T style={[s.liText, s.small, { color: C.ink }]}>{x}</T>
+          </View>
+        ))}
+        {model.standing.notes.map((x, i) => (
+          <T key={i} style={[s.small, s.muted]}>{x}</T>
+        ))}
+      </View>
       <T style={s.h3}>De 3 sterkste bewijsstukken</T>
       {sh.strongest.length === 0 && <T style={[s.p, s.muted]}>Nog geen geverifieerde bron en geen echte waarneming.</T>}
       {sh.strongest.map((e, i) => (

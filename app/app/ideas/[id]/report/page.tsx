@@ -24,6 +24,8 @@ import { todayInNL } from "@/lib/domain/sprint";
 import { endSentence } from "@/lib/text";
 import { isUnknown } from "@/lib/domain/claim-scope";
 import { DecisionSheetView } from "./DecisionSheet";
+import { EvidenceStanding } from "@/components/evidence/EvidenceStanding";
+import { standingFromSnapshot } from "@/lib/domain/evidence-standing";
 import { Term } from "@/components/ui/Term";
 
 export const metadata: Metadata = { title: "Rapportage" };
@@ -193,6 +195,9 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               {r.client ? `Opgesteld door ${r.preparedBy} voor ${r.client}.` : `Opgesteld door ${r.preparedBy}.`} Beslisvraag: {r.idea.decisionQuestion}
             </p>
           </div>
+
+          {/* Fase 1, punt 2: de Stand van het bewijs van deze versie (oudere versies: afgeleid). */}
+          <EvidenceStanding standing={standingFromSnapshot(r)} ideaId={id} links={false} className="report-section" />
 
           {/* Fase B6: pagina 1 is het beslisblad; het volledige dossier volgt als bijlage, in de bestaande opbouw. */}
           <DecisionSheetView sheet={sheetOf(r)} version={r.version} date={date(r.generatedAt)} />

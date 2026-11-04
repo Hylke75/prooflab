@@ -644,3 +644,35 @@ de app terug, zie per punt).
 - 🟡 Niet gedaan in deze omgeving: e2e (Playwright) en visuele controle op 1440/390 px met login;
   `scripts/test-db.sh`. Migratie nog toepassen. De databasefunctie die de dossierfase bepaalt (golf B) telt een
   voorstel nog als alternatief; de app zelf niet
+
+## Fase 1 · punt 2: Stand van het bewijs (4 november)
+
+Eén beslisscherm per idee, bovenaan Overzicht, Besluit en het rapport. Vijf commits, **geen migratie**. De berekening
+van de kansen is ongewijzigd: `tests/unit/probability-golden.test.ts` vergelijkt alle vijf methodeversies (2026-11-a
+t/m e) op 181 vaste gevallen bit voor bit met de uitkomsten van vóór de refactor (`fixtures/probability-golden.json`).
+
+- ✅ **Bewijsregister** (`lib/domain/evidence.ts`): `assumptionProbability` en `probabilityCore` geven naast het
+  resultaat `items[]` terug: per gekoppelde bevinding of waarneming `fate` (`counted`/`not_counted`), `code` en
+  `reason` in gewone taal (oefengesprek of synthetisch, AI niet beoordeeld of afgekeurd, status van de bevinding,
+  weerlegd volgens de methodeversie, samengevoegd met een sterker signaal uit dezelfde bron, half gewicht, "telt mee,
+  maar het plafond van X% is bereikt"). `computeAssumptions` voegt items uit tests toe die onbeslist zijn of onder de
+  steekproef bleven (`excludedRegisterItem`). De risicokaart toont "3 voor (2 tellen mee) · 1 tegen" met uitklapbare
+  redenen (`components/evidence/EvidenceRegister.tsx`); de A2-lijst (`deskNotCounted`) is vervangen en het
+  bureauonderzoek per aanname op Besluit leest hetzelfde register (`deskRows`)
+- ✅ **Eén schaal** (`lib/domain/evidence-scale.ts`): verkenning → mening → gedrag (probleem, kleine handeling,
+  prijskeuze) → betaling → herhaling, gekoppeld aan `EVIDENCE_LEVELS`/`KIND_LEVEL`. `EVIDENCE_LADDER` is hiervan
+  afgeleid: een demo-aanvraag is overal een kleine handeling. Component `EvidenceScale` (geordende lijst, aria-current)
+- ✅ **Berekening en loader** (`lib/domain/evidence-standing.ts`, `lib/standing-data.ts`): zekerheid laag/midden/hoog
+  uit de laagste kans onder de kritieke aannames en de zwakste trede (midden ≥ 50% en gedrag, hoog ≥ 70% en gedrag;
+  gedocumenteerd in het bestand), "x van y kritieke aannames getest" (kritiek = belangrijkheid ≥ 4 én gekozen om te
+  testen; getest = hoofdtest met goedgekeurde uitslag geslaagd/niet geslaagd), sterkste bewijs (trede en personen),
+  volgende stap (Overzicht: informatiewaarde; Besluit en rapport: `openDecisionAction`, anders `nextAction`), per
+  kritieke aanname kans, telling met redenen en status van de hoofdtest. Alleen bestaande, gecachete ladingen
+- ✅ **UI** (`components/evidence/EvidenceStanding.tsx`): bovenaan Overzicht (achter de eigen voorspelling, golf B
+  punt 15) en Besluit; één samenvattende regel, schaal, details inklapbaar; "niet gekalibreerd" één keer, de
+  bandbreedte in de tooltip (`Probability band`). Geen citaten, ook niet voor opdrachtgevers
+- ✅ **Rapport**: veld `standing` in de momentopname (`buildSnapshot`), met terugval `standingFromSnapshot` voor oudere
+  rapporten (afgeleid uit belangrijkheid, status, kans en de bewijsladder; dat staat erbij). Hetzelfde blok bovenaan
+  het rapport en op pagina 1 van de PDF (`standingPdf`)
+- 🟡 Niet gedaan in deze omgeving: e2e (Playwright) en visuele controle op 1440/390 px met login (geen
+  Supabase-toegang); de 390px-weergave is alleen via de opmaakregels geborgd

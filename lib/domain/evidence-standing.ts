@@ -94,6 +94,9 @@ export type EvidenceStanding = {
   assumptions: StandingAssumption[]; // alleen de kritieke
   calibrated: boolean;
   summary: string; // één regel
+  // Afgeleid uit een rapportversie van vóór dit blok (standingFromSnapshot): zonder bewijsregister en zonder de keuze
+  // "nu testen"; dat staat er dan ook bij.
+  derived?: boolean;
 };
 
 // Korte naam van het sterkste bewijs (voor de samenvattende regel).
@@ -253,8 +256,94 @@ export function nextFromInformationValue(
   return { title: `${upperFirst(test)} (aanname 1)`, detail: first.voi.reason, href: `/app/ideas/${ideaId}/experiments?assumption=${first.id}` };
 }
 
-// Voor oudere rapporten zonder dit blok: niets tonen (de rest van het rapport blijft gelijk).
+// Een opgeslagen blok uit een rapportmomentopname, of null.
 export function asEvidenceStanding(v: unknown): EvidenceStanding | null {
   const s = v as Partial<EvidenceStanding> | null | undefined;
   return s && s.version === 1 && typeof s.summary === "string" && Array.isArray(s.assumptions) ? (s as EvidenceStanding) : null;
+}
+
+// ---------------------------------------------------------------------------
+// Terugval voor rapporten van vóór dit blok (zoals sheetFromSnapshot voor het beslisblad). Wat een oude momentopname
+// wel heeft: per aanname belangrijkheid, status en kans; voor het dossier de bewijsladder. Wat ze niet heeft: het
+// bewijsregister, de keuze "nu testen" en de hoofdtest. Daarom:
+// - kritiek = belangrijkheid 4 of 5 (zonder de keuze om nu te testen);
+// - getest = status ondersteund of weerlegd (de uitslag die de aanname kreeg);
+// - zwakste trede = het sterkste klantbewijs van het dossier (er is geen niveau per aanname);
+// - geen telling en geen volgende stap.
+// ---------------------------------------------------------------------------
+
+export type LegacyStandingSnapshot = {
+  standing?: unknown;
+  assumptions: { statement: string; importance: number; status: string; probability?: { point: number; low: number; high: number } | null }[];
+  observationCounts?: { highest: { label: string; level?: string } | null } | null;
+  calibration?: { calibrated: boolean } | null;
+};
+
+// Labels van de bewijsladder (ook van vóór de bewijsschaal) terug naar het bewijsniveau.
+const LEGACY_LADDER_LEVEL: Record<string, EvidenceLevel> = {
+  "Uitgesproken belangstelling": "opinion",
+  "Probleem in eigen gedrag": "problem",
+  "Kleine handeling (aanmelding)": "small_action",
+  "Kleine handeling (aanmelding, demo-aanvraag)": "small_action",
+  "Concrete aanvraag of keuze bij prijs": "quote",
+  "Offerte of keuze bij prijs": "quote",
+  Aanbetaling: "deposit",
+  "Herhaalde aankoop": "repeat",
+};
+
+const LEGACY_STATUS: Record<string, string> = { untested: "niet getest", testing: "wordt getest", supported: "ondersteund", refuted: "weerlegd", inconclusive: "onbeslist" };
+
+export function standingFromSnapshot(r: LegacyStandingSnapshot): EvidenceStanding {
+  const stored = asEvidenceStanding(r.standing);
+  if (stored) return stored;
+  const calibrated = !!r.calibration?.calibrated;
+  const highest = r.observationCounts?.highest ?? null;
+  const top = highest ? (asEvidenceLevel(highest.level) ?? LEGACY_LADDER_LEVEL[highest.label] ?? null) : null;
+  const step = scaleOf(top);
+  const empty: RegisterTally = { supports: 0, supportsCounted: 0, contradicts: 0, contradictsCounted: 0, notCounted: 0 };
+  const rows: StandingAssumption[] = r.assumptions
+    .map((a, i) => ({ a, number: i + 1 }))
+    .filter(({ a }) => a.importance >= CRITICAL_IMPORTANCE && a.probability)
+    .map(({ a, number }) => {
+      const tested = a.status === "supported" || a.status === "refuted";
+      return {
+        id: `legacy-${number}`,
+        number,
+        statement: a.statement,
+        importance: a.importance,
+        probability: a.probability!.point,
+        band: { low: a.probability!.low, high: a.probability!.high },
+        tally: empty,
+        tallyLine: "telling niet vastgelegd in deze versie",
+        reasons: [],
+        step,
+        level: top,
+        primary: { title: "Status", status: LEGACY_STATUS[a.status] ?? a.status, tested, href: "" },
+        tested,
+      };
+    });
+  const lowestRow = rows.reduce<StandingAssumption | null>((low, x) => (low == null || x.probability < low.probability ? x : low), null);
+  let certainty: Certainty = "low";
+  let certaintyReason = "nog geen kritieke aanname (belangrijkheid 4 of 5) met een kans in deze versie";
+  if (lowestRow) {
+    const enoughStep = scaleIndex(step) >= scaleIndex(CERTAINTY_MIN_STEP);
+    if (enoughStep && lowestRow.probability >= CERTAINTY_HIGH) certainty = "high";
+    else if (enoughStep && lowestRow.probability >= CERTAINTY_MEDIUM) certainty = "medium";
+    certaintyReason = `laagste kans onder de kritieke aannames ${pct(lowestRow.probability, calibrated)} (aanname ${lowestRow.number}); sterkste klantbewijs van het dossier: ${scaleLabel(step).toLowerCase()}`;
+  }
+  const tested = rows.filter((x) => x.tested).length;
+  const label = top ? STRONGEST_TEXT[top] : "nog geen echte waarneming";
+  return {
+    version: 1,
+    certainty,
+    certaintyReason,
+    critical: { total: rows.length, tested },
+    lowest: lowestRow ? { number: lowestRow.number, probability: lowestRow.probability } : null,
+    strongest: { step, level: top, label, persons: null, sources: 0 },
+    next: null,
+    assumptions: rows,
+    calibrated,
+    summary: [`Zekerheid: ${CERTAINTY_LABEL[certainty]}`, `${tested} van ${rows.length} kritieke ${rows.length === 1 ? "aanname" : "aannames"} getest`, `sterkste bewijs: ${label}`].join(" · "),
+    derived: true,
+  };
 }

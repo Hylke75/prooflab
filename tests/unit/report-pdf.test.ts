@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 import type { ReportSnapshot } from "@/lib/report";
 import { buildReportPdfModel, type Block } from "@/lib/report-pdf-model";
 import { pdfText, renderReportPdf } from "@/lib/report-pdf";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { assumptionProbabilityV5 } from "@/lib/domain/evidence";
+import { evidenceStanding, standingFromSnapshot } from "@/lib/domain/evidence-standing";
+import { EvidenceStanding } from "@/components/evidence/EvidenceStanding";
 
 // A report snapshot as lib/report.ts stores it (only the fields the PDF reads).
 function fixture(over: Partial<Record<string, unknown>> = {}): ReportSnapshot {
@@ -191,5 +196,56 @@ describe("report PDF rendering", () => {
     expect(pages).toBeGreaterThanOrEqual(3);
     expect(raw).toContain("Eventplanner Pro");
     expect(raw.trimEnd().endsWith("%%EOF")).toBe(true);
+  }, 30_000);
+});
+
+// Fase 1, punt 2: de Stand van het bewijs in het rapport (momentopname, scherm en PDF).
+describe("Stand van het bewijs in het rapport", () => {
+  const p = assumptionProbabilityV5([], [{ id: "o1", kind: "demo_request", relation: "supports", isSynthetic: false, origin: "manual", sourceKey: "interview:1", sourceLabel: "Interview 1" }]);
+  const standing = evidenceStanding({
+    ideaId: "idee",
+    assumptions: [{ id: "a1", statement: "Bureaus betalen 49 euro per maand.", importance: 5, selectedForTest: true, probability: p, register: p.items, primaryExperimentId: null }],
+    tests: [],
+    next: { title: "Ontwerp de volgende test", detail: "Het bewijs is nog te zwak.", href: "/app/ideas/idee/experiments" },
+    calibrated: false,
+  });
+
+  it("de momentopname bewaart het blok; scherm en PDF tonen het bovenaan", () => {
+    const r = fixture({ standing: JSON.parse(JSON.stringify(standing)) });
+    expect(standingFromSnapshot(r)).toEqual(standing);
+    const m = buildReportPdfModel(r, { shared: true, version: 4 });
+    expect(m.standing.summary).toBe("Zekerheid: midden · 0 van 1 kritieke aanname getest · sterkste bewijs: kleine handeling (1 persoon) · volgende stap: ontwerp de volgende test");
+    expect(m.standing.scale).toBe("Bewijsschaal (sterkste bewijs): Verkenning · Mening · [Gedrag] · Betaling · Herhaling");
+    expect(m.standing.lines).toEqual(["Aanname 1: Bureaus betalen 49 euro per maand. Kans 55–65% · 1 voor · 0 tegen · Hoofdtest: nog niet aangewezen."]);
+    expect(m.standing.notes).toEqual(["Volgende stap: Ontwerp de volgende test. Het bewijs is nog te zwak.", "Kansen: niet gekalibreerd, in banden van 10 procentpunt."]);
+    const html = renderToStaticMarkup(createElement(EvidenceStanding, { standing: standingFromSnapshot(r), ideaId: "idee", links: false, className: "report-section" }));
+    expect(html).toContain("Stand van het bewijs");
+    expect(html).toContain(standing.summary);
+    expect(html).not.toContain("<a ");
+  });
+
+  it("oudere rapporten zonder blok krijgen een afgeleid blok", () => {
+    const legacy = fixture({
+      assumptions: [
+        { statement: "Bureaus betalen 49 euro per maand.", importance: 5, evidence: 30, status: "supported", premortem: false, probability: { point: 0.62, low: 0.55, high: 0.7, prior: 0.5 } },
+        { statement: "Bureaus plannen in Excel.", importance: 4, evidence: 10, status: "testing", premortem: false, probability: { point: 0.42, low: 0.4, high: 0.45, prior: 0.5 } },
+        { statement: "Onbelangrijk.", importance: 2, evidence: 0, status: "untested", premortem: false, probability: { point: 0.3, low: 0.3, high: 0.3, prior: 0.5 } },
+      ],
+      observationCounts: { rungs: [], highest: { label: "Concrete aanvraag of keuze bij prijs", count: 2 }, paymentShown: false, counted: 2, quotes: 2, people: 2 },
+    });
+    const st = standingFromSnapshot(legacy);
+    expect(st.derived).toBe(true);
+    expect(st.summary).toBe("Zekerheid: laag · 1 van 2 kritieke aannames getest · sterkste bewijs: keuze bij een prijs");
+    expect(st.certaintyReason).toBe("laagste kans onder de kritieke aannames 35–45% (aanname 2); sterkste klantbewijs van het dossier: gedrag");
+    const m = buildReportPdfModel(legacy, { shared: true, version: 1 });
+    expect(m.standing.lines[0]).toBe("Aanname 1: Bureaus betalen 49 euro per maand. Kans 55–65% · telling niet vastgelegd in deze versie · Status: ondersteund.");
+    expect(m.standing.notes.some((n) => n.startsWith("Afgeleid uit een rapportversie"))).toBe(true);
+    // Zonder kansen en zonder ladder (de oudste rapporten): laag, en dat staat erbij.
+    expect(standingFromSnapshot(fixture()).certaintyReason).toBe("nog geen kritieke aanname (belangrijkheid 4 of 5) met een kans in deze versie");
+  });
+
+  it("de PDF met het blok rendert", async () => {
+    const buf = await renderReportPdf(fixture({ standing }), { shared: false, version: 4 });
+    expect(buf.subarray(0, 5).toString()).toBe("%PDF-");
   }, 30_000);
 });

@@ -8,10 +8,11 @@ const CERTAINTY_PILL: Record<Certainty, string> = { low: "coral", medium: "orang
 // Fase 1, punt 2: Stand van het bewijs, bovenaan Overzicht en Besluit. Eén samenvattende regel, de bewijsschaal en per
 // kritieke aanname de details (inklapbaar). Kansen staan als één waarde; de bandbreedte staat in de tooltip en
 // "niet gekalibreerd" één keer onderaan. Geen citaten: bewijs staat er met soort en bron, ook voor opdrachtgevers.
-export function EvidenceStanding({ standing, ideaId, links = true }: { standing: Standing; ideaId: string; links?: boolean }) {
+// className: "card" op een pagina; in het rapport een rustige sectie zonder kaartschaduw.
+export function EvidenceStanding({ standing, ideaId, links = true, className = "card" }: { standing: Standing; ideaId: string; links?: boolean; className?: string }) {
   const s = standing;
   return (
-    <section className="card" aria-labelledby="stand-van-het-bewijs" data-testid="stand-van-het-bewijs" style={{ marginBottom: 24 }}>
+    <section className={className} aria-labelledby="stand-van-het-bewijs" data-testid="stand-van-het-bewijs" style={{ marginBottom: 24 }}>
       <div className="section-title" style={{ flexWrap: "wrap" }}>
         <h2 className="as-h3" id="stand-van-het-bewijs">Stand van het bewijs</h2>
         <span className={`pill ${CERTAINTY_PILL[s.certainty]}`}>Zekerheid: {CERTAINTY_LABEL[s.certainty]}</span>
@@ -50,8 +51,10 @@ export function EvidenceStanding({ standing, ideaId, links = true }: { standing:
                 </div>
                 <p className="tiny" style={{ margin: "4px 0 0" }}>
                   <span className="num">{a.tallyLine}</span>
-                  {a.tally.notCounted > 0 ? ` · ${a.tally.notCounted} ${a.tally.notCounted === 1 ? "telt" : "tellen"} niet mee` : ""} · Hoofdtest:{" "}
-                  {a.primary ? (
+                  {a.tally.notCounted > 0 ? ` · ${a.tally.notCounted} ${a.tally.notCounted === 1 ? "telt" : "tellen"} niet mee` : ""} · {s.derived ? "Status" : "Hoofdtest"}:{" "}
+                  {s.derived && a.primary ? (
+                    a.primary.status
+                  ) : a.primary ? (
                     <>
                       {links ? <Link className="text-link" href={a.primary.href} prefetch={false}>{a.primary.title}</Link> : a.primary.title}, {a.primary.status}
                     </>
@@ -78,6 +81,12 @@ export function EvidenceStanding({ standing, ideaId, links = true }: { standing:
           </ol>
         )}
       </details>
+      {s.derived && (
+        <p className="explain mt-8">
+          Afgeleid uit een rapportversie van vóór dit blok: zonder bewijsregister, zonder de keuze &quot;nu testen&quot; en zonder hoofdtest; getest betekent hier dat de
+          aanname de status ondersteund of weerlegd had.
+        </p>
+      )}
       {!s.calibrated && (
         <p className="explain mt-8">
           Kansen zijn niet gekalibreerd: de werkruimte heeft nog te weinig afgeronde dossiers om ze te toetsen. Ze staan als band van 10 procentpunt; de exacte waarde en
