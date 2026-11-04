@@ -382,8 +382,9 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     supabase.from("claims").select("id", count).eq("idea_id", ideaId),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId).eq("status", "verified"),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId).eq("status", "insufficient"),
-    supabase.from("competitors").select("id", count).eq("idea_id", ideaId),
-    supabase.from("competitors").select("id", count).eq("idea_id", ideaId).in("kind", ["alternative", "status_quo"]),
+    // Gebruikerstest D6: voorstellen (origin 'proposal', zonder bron) tellen niet mee.
+    supabase.from("competitors").select("id", count).eq("idea_id", ideaId).neq("origin", "proposal"),
+    supabase.from("competitors").select("id", count).eq("idea_id", ideaId).neq("origin", "proposal").in("kind", ["alternative", "status_quo"]),
     supabase.from("segments").select("id", count).eq("idea_id", ideaId),
     supabase.from("experiments").select("id, title, state, started_at, ends_at, created_at, hypotheses(assumption_id, success_threshold_pct)").eq("idea_id", ideaId).order("created_at"),
     supabase.from("learning_cards").select("experiment_id, status, approved_at, verdict").eq("idea_id", ideaId),

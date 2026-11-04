@@ -1616,6 +1616,7 @@ export type Database = {
           sprint_start: string | null
           sprint_weeks: number
           audience_detail: string | null
+          audience_short: string | null
           budget_eur: number | null
           client_id: string | null
           created_at: string
@@ -1660,6 +1661,7 @@ export type Database = {
           sprint_start?: string | null
           sprint_weeks?: number
           audience_detail?: string | null
+          audience_short?: string | null
           budget_eur?: number | null
           client_id?: string | null
           created_at?: string
@@ -1704,6 +1706,7 @@ export type Database = {
           sprint_start?: string | null
           sprint_weeks?: number
           audience_detail?: string | null
+          audience_short?: string | null
           budget_eur?: number | null
           client_id?: string | null
           created_at?: string

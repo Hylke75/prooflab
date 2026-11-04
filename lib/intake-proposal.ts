@@ -8,7 +8,7 @@
 import { PROJECT_TYPES, SECTOR_TEMPLATES, type ProjectType, type SectorTemplate } from "@/lib/domain/labels";
 import { STAKE_KINDS, type StakeKind } from "@/lib/domain/decision-quality";
 import { SPRINT_LENGTHS } from "@/lib/domain/sprint";
-import { priceFromIntake } from "@/lib/research-questions";
+import { AUDIENCE_SHORT_MAX, priceFromIntake, shortAudience } from "@/lib/research-questions";
 
 export type IntakeAnswers = { idea: string; decision: string; uncertainty: string };
 
@@ -35,6 +35,8 @@ export type IntakeProposal = {
   outcome_statement: string | null;
   target_audience: AudienceCategory | null;
   audience_detail: string | null;
+  // Gebruikerstest D8: de korte doelgroep voor in vragen en kopjes ("amateursportclubs").
+  audience_short: string | null;
   region: RegionOption | null;
   region_detail: string | null;
   sector_template: SectorTemplate | null;
@@ -46,7 +48,7 @@ export type IntakeProposal = {
 export type ProposalField = Exclude<keyof IntakeProposal, "target_basis">;
 export const PROPOSAL_FIELDS: ProposalField[] = [
   "title", "stake_kind", "stake_value", "decision_deadline", "outcome_metric", "outcome_target", "outcome_min_value_per_customer", "outcome_statement",
-  "target_audience", "audience_detail", "region", "region_detail", "sector_template", "project_type", "offer_price", "sprint_weeks",
+  "target_audience", "audience_detail", "audience_short", "region", "region_detail", "sector_template", "project_type", "offer_price", "sprint_weeks",
 ];
 
 // Herkomst per veld: AI-voorstel, uit de tekst van de consultant (regels), of een standaardwaarde.
@@ -61,7 +63,7 @@ export type ProposalResult = {
 
 export const EMPTY_PROPOSAL: IntakeProposal = {
   title: null, stake_kind: null, stake_value: null, decision_deadline: null, outcome_metric: null, outcome_target: null, target_basis: null,
-  outcome_min_value_per_customer: null, outcome_statement: null, target_audience: null, audience_detail: null, region: null, region_detail: null,
+  outcome_min_value_per_customer: null, outcome_statement: null, target_audience: null, audience_detail: null, audience_short: null, region: null, region_detail: null,
   sector_template: null, project_type: null, offer_price: null, sprint_weeks: null,
 };
 
@@ -217,7 +219,7 @@ export function deadlineFromText(text: string, today: string): string | null {
 // ---------------------------------------------------------------------------
 
 // Zelfstandige naamwoorden die als "klant" te tellen zijn (ook als laatste deel: "NVM-kantoren", "makelaarskantoren").
-const CUSTOMER_NOUN = /(klanten|kantoren|abonnees|gebruikers|bedrijven|bureaus|deelnemers|leden|scholen|gemeenten|makelaars|accounts|licenties|kopers|huishoudens|organisaties|winkels|praktijken|hotels|locaties|restaurants|venues|ondernemers|zzp'ers|zelfstandigen|ouders|studenten|consumenten|webshops|bureau's|instellingen|teams|afdelingen)$/i;
+const CUSTOMER_NOUN = /(klanten|clubs|verenigingen|stichtingen|kantoren|abonnees|gebruikers|bedrijven|bureaus|deelnemers|leden|scholen|gemeenten|makelaars|accounts|licenties|kopers|huishoudens|organisaties|winkels|praktijken|hotels|locaties|restaurants|venues|ondernemers|zzp'ers|zelfstandigen|ouders|studenten|consumenten|webshops|bureau's|instellingen|teams|afdelingen)$/i;
 
 // De specifieke doelgroep na "voor" in de idee-omschrijving, tot aan een bijzin of leesteken.
 export function audienceFromText(idea: string): string | null {
@@ -245,7 +247,7 @@ export function audienceNoun(detail: string | null): string | null {
 export function audienceCategory(text: string): AudienceCategory | null {
   const t = text.toLowerCase();
   if (/\b(intern|interne|binnen (onze|de) organisatie|eigen medewerkers|onze medewerkers|collega'?s)\b/.test(t)) return "Interne gebruikers";
-  if (/\b(gemeente|gemeenten|overheid|provincie|ministerie|vereniging|verenigingen|stichting|stichtingen|school|scholen|ziekenhuis|zorginstelling|onderwijsinstelling|publieke)\w*/.test(t)) return "Publieke organisaties of verenigingen";
+  if (/\b(gemeente|gemeenten|overheid|provincie|ministerie|vereniging|verenigingen|stichting|stichtingen|sportclub|sportclubs|amateurclub|voetbalclub|tennisclub|hockeyclub|school|scholen|ziekenhuis|zorginstelling|onderwijsinstelling|publieke)\w*/.test(t)) return "Publieke organisaties of verenigingen";
   if (/\b(consument|consumenten|particulier|particulieren|huishouden|huishoudens|ouders|studenten|b2c|thuis|gezinnen|senioren)\b/.test(t)) return "Consumenten (B2C)";
   if (/(\bb2b\b|bedrijf|bedrijven|kantoor|kantoren|\bmkb\b|ondernemer|zzp|zelfstandige|bureau|makelaar|winkel|praktijk|hotel|webshop|organisaties|klanten van|\bnvm\b)/.test(t)) return "Zakelijke klanten (B2B)";
   return null;
@@ -267,6 +269,8 @@ export function sectorFromText(text: string): SectorTemplate | null {
   const t = text.toLowerCase();
   if (/(event|evenement|congres|beurs|venue|mice|vergaderlocatie|feestlocatie)/.test(t)) return "events";
   if (/(media|cultuur|theater|museum|podium|festival|uitgever|omroep|publiek bereik|bioscoop)/.test(t)) return "media_culture";
+  // Gebruikerstest D7: verenigingen, sport en maatschappelijke organisaties (vóór MKB: "vrijwilligers" en "leden").
+  if (/(vereniging|sportclub|\bclubs?\b|voetbal|hockey|tennis|korfbal|scouting|stichting|vrijwilliger|ledenadministratie|contributie|buurthuis|maatschappelijke organisatie|welzijn)/.test(t)) return "associations";
   if (/(\bmkb\b|kantoor|kantoren|ondernemer|zzp|zelfstandig|winkel|makelaar|praktijk|webshop|medewerkers|kleine bedrijven)/.test(t)) return "smb";
   return null;
 }
@@ -292,6 +296,27 @@ export function titleFromText(idea: string, noun: string | null): string | null 
   return capFirst(title).slice(0, 80);
 }
 
+// Gebruikerstest D6: de huidige werkwijze als de intake die noemt ("Clubs communiceren nu via WhatsApp en e-mail."):
+// de eerste zin met "nu", "momenteel", "op dit moment", "tegenwoordig" of "nog steeds". Null als er geen is.
+export function currentPracticeFromText(...texts: (string | null | undefined)[]): string | null {
+  for (const text of texts) {
+    for (const raw of squash(text).split(/(?<=[.!?])\s+/)) {
+      const sentence = raw.replace(/[.!?]+$/, "").trim();
+      if (sentence.length < 12 || sentence.length > 220) continue;
+      if (/\?/.test(raw)) continue;
+      if (/\b(nu|momenteel|op dit moment|tegenwoordig|nog steeds|doen het nu|werken nu)\b/i.test(sentence)) return sentence;
+    }
+  }
+  return null;
+}
+
+// De regel "Niets doen" voor de concurrentiekaart, uit de intake (D6).
+export function statusQuoPositioning(short: string | null | undefined, practice: string | null | undefined): string {
+  const who = capFirst(squash(short) || "De doelgroep");
+  const how = squash(practice);
+  return `${who} houden vast aan hoe het nu gaat: ${how ? how.charAt(0).toLocaleLowerCase("nl-NL") + how.slice(1) : "nog te onderzoeken"}.`;
+}
+
 // ---------------------------------------------------------------------------
 // Succesdefinitie
 // ---------------------------------------------------------------------------
@@ -307,13 +332,30 @@ export function targetFromText(text: string): { target: number; noun: string } |
   return null;
 }
 
-const priceNumber = (price: string | null) => {
+export const priceNumber = (price: string | null) => {
   if (!price) return null;
   const a = euroAmounts(price)[0];
   return a ? a.value : parseAmount(price.replace(/[^\d.,\s]/g, "").trim());
 };
 
-const pricePeriod = (price: string | null) => (price ? (/per\s+(maand|jaar|kwartaal|week)/i.exec(price)?.[1]?.toLowerCase() ?? null) : null);
+export const pricePeriod = (price: string | null) => (price ? (/per\s+(maand|jaar|kwartaal|week)/i.exec(price)?.[1]?.toLowerCase() ?? null) : null);
+
+const PER_YEAR: Record<string, number> = { maand: 12, kwartaal: 4, week: 52, jaar: 1 };
+
+// Gebruikerstest D5: de jaaromzet per klant uit de prijs in de intake ("€ 79 per maand" → 948). Alleen met een
+// periode (maand ×12, kwartaal ×4, week ×52, jaar ×1); zonder periode of bedrag: null. Het blijft een aanname: de
+// toelichting zegt dat, en er hoort geen bevinding (claim) bij.
+export function annualPriceFromOffer(text: string | null | undefined): { value: number; note: string } | null {
+  const price = squash(text);
+  if (!price) return null;
+  const n = priceNumber(price);
+  const period = pricePeriod(price);
+  if (n == null || !Number.isFinite(n) || n <= 0 || !period) return null;
+  const factor = PER_YEAR[period];
+  const value = Math.round(n * factor * 100) / 100;
+  const amount = `€ ${nl(n)} per ${period}`;
+  return { value, note: `Aanname uit intake: ${factor === 1 ? amount : `${amount} × ${factor}`}, niet getoetst` };
+}
 
 // De zin "Geslaagd als…" uit maatstaf, doelwaarde en prijs, zes maanden na het besluit.
 export function composeStatement(p: Pick<IntakeProposal, "outcome_metric" | "outcome_target" | "outcome_min_value_per_customer" | "offer_price">): string | null {
@@ -370,12 +412,16 @@ export function ruleProposal(a: IntakeAnswers, today: string): ProposalResult {
 
   const detail = audienceFromText(idea);
   set("audience_detail", detail);
+  set("audience_short", shortAudience(detail));
   const noun = audienceNoun(detail);
-  set("target_audience", audienceCategory(`${detail ?? ""} ${idea}`));
+  const category = audienceCategory(`${detail ?? ""} ${idea}`);
+  set("target_audience", category);
   const region = regionFromText(all);
   set("region", region.region);
   set("region_detail", region.detail);
-  set("sector_template", sectorFromText(`${detail ?? ""} ${idea}`));
+  // Gebruikerstest D7: geen MKB-branche bij een publieke doelgroep of consumenten.
+  const sector = sectorFromText(`${detail ?? ""} ${idea}`);
+  set("sector_template", sector === "smb" && category && category !== "Zakelijke klanten (B2B)" ? null : sector);
   set("project_type", projectTypeFromText(`${idea} ${decision}`));
   set("title", titleFromText(idea, noun));
 
@@ -432,6 +478,7 @@ export function sanitizeAiProposal(raw: Partial<Record<keyof IntakeProposal, unk
     outcome_statement: str(raw.outcome_statement, 400, 10),
     target_audience: oneOf(raw.target_audience, AUDIENCE_CATEGORIES),
     audience_detail: str(raw.audience_detail, 200, 2),
+    audience_short: str(raw.audience_short, AUDIENCE_SHORT_MAX, 2),
     region: oneOf(raw.region, REGION_OPTIONS),
     region_detail: str(raw.region_detail, 120, 2),
     sector_template: oneOf(raw.sector_template, SECTOR_KEYS),
@@ -461,6 +508,17 @@ export function mergeProposals(rules: ProposalResult, ai: IntakeProposal): Propo
     origin.stake_kind = origin.stake_value = "text";
   }
   if (origin.outcome_target === "ai") proposal.target_basis = ai.target_basis;
+  // Gebruikerstest D7: ook een AI-voorstel krijgt geen MKB-branche bij een publieke doelgroep of consumenten.
+  if (proposal.sector_template === "smb" && proposal.target_audience && proposal.target_audience !== "Zakelijke klanten (B2B)") {
+    proposal.sector_template = rules.proposal.sector_template === "smb" ? null : rules.proposal.sector_template;
+    if (proposal.sector_template) origin.sector_template = rules.origin.sector_template;
+    else delete origin.sector_template;
+  }
+  // D8: een korte doelgroep hoort bij de toelichting; past de AI de toelichting aan zonder korte vorm, leid hem af.
+  if (origin.audience_detail === "ai" && origin.audience_short !== "ai") {
+    proposal.audience_short = shortAudience(proposal.audience_detail);
+    if (proposal.audience_short) origin.audience_short = "text";
+  }
   if (!proposal.outcome_statement) {
     const s = composeStatement(proposal);
     if (s) {

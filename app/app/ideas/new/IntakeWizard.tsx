@@ -310,6 +310,17 @@ export function SummaryCard({
       <Field className="" labelClassName="field-label" name="audience_detail" id="s-audience" label="Doelgroep" required hint={tag("audience_detail")}>
         <input className="field" defaultValue={p.audience_detail ?? ""} maxLength={200} placeholder="Bijv. zelfstandige NVM-kantoren met 2–15 medewerkers" />
       </Field>
+      {/* Gebruikerstest D8: de korte doelgroep voor in onderzoeksvragen en kopjes. */}
+      <Field
+        className=""
+        labelClassName="field-label"
+        name="audience_short"
+        id="s-audience-short"
+        label="Korte doelgroep (voor in zinnen)"
+        hint={tag("audience_short", false, "Hooguit zes woorden, bijv. 'NVM-kantoren'. Leeg: ProofLab kort de doelgroep zelf in.")}
+      >
+        <input className="field" defaultValue={p.audience_short ?? ""} maxLength={60} placeholder="Bijv. amateursportclubs" />
+      </Field>
       <div className="double-field">
         <Field className="" labelClassName="field-label" name="target_audience" id="s-category" label="Soort klant" required hint={tag("target_audience")}>
           <select className="field" defaultValue={p.target_audience ?? ""}>

@@ -13,6 +13,7 @@ import { ReportImport, type ImportableDoc, type ImportedReport } from "@/compone
 import { importExt, isImportedReport } from "@/lib/domain/report-import";
 import { isNoteStep } from "@/lib/domain/step-files";
 import { CompetitorPanel, type CompetitorView } from "@/components/research/CompetitorPanel";
+import { isProposal, withoutProposals } from "@/lib/domain/competitor-proposals";
 import { SizingPanel } from "@/components/research/SizingPanel";
 import { SupportControls } from "@/components/research/SupportControls";
 import { AiQualityCard } from "@/components/research/AiQualityCard";
@@ -33,11 +34,12 @@ import { breakEvenRevenue, type ScenarioKind, type SizingModel } from "@/lib/dom
 import { compareWithIntake, intakeScope } from "@/lib/domain/claim-scope";
 import type { FreshnessKind } from "@/lib/domain/verify";
 import {
-  addClaim, addSource, aiPlan, fetchCbsFigures, checkClaimSupport, deleteClaim, deleteCompetitor, deleteQuestion, deleteSegment, deleteSource,
+  addClaim, addSource, adoptIntakePrice, aiPlan, fetchCbsFigures, checkClaimSupport, deleteClaim, deleteCompetitor, deleteQuestion, deleteSegment, deleteSource,
   overrideSupport, recheckCompetitors, refreshQuestionsFromIntake, saveCompetitor, saveQuestion, saveScenario, saveSegment, saveUnitEconomics,
   setDecisiveQuestion,
 } from "./actions";
-import { decisiveFirst, isGenericTemplate } from "@/lib/research-questions";
+import { decisiveFirst, isGenericTemplate, priceFromIntake } from "@/lib/research-questions";
+import { annualPriceFromOffer } from "@/lib/intake-proposal";
 import { FAILURE_TEXT, failedProviders, retryable } from "@/lib/research-failures";
 import { loadUncertaintyPicks } from "@/lib/research-uncertainty-data";
 import { uncertaintyText } from "@/lib/research-uncertainty";
@@ -174,7 +176,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   const excerpts = sources
     .filter((s) => !isImportedReport(s.access_note))
     .flatMap((s) => (s.source_excerpts ?? []).map((e) => ({ id: e.id, text: e.text, sourceTitle: s.title, sourceType: s.source_type })));
-  const competitors: CompetitorView[] = (compRes.data ?? []).map((c) => ({
+  const allCompetitors: CompetitorView[] = (compRes.data ?? []).map((c) => ({
     ...c,
     kind: c.kind as CompetitorKind,
     claim: c.claims ? { statement: c.claims.statement, status: c.claims.status } : null,
@@ -186,6 +188,10 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
       return [[l.sources.url, { url: l.sources.url, note: `hercontrole ${when}: ${text}`, missing }] as const];
     })).values()],
   }));
+  // Gebruikerstest D6: voorstellen (genoemd door de AI, zonder bron) staan apart en alleen voor consultants; ze tellen
+  // nergens mee. De database laat opdrachtgevers ze ook niet lezen.
+  const competitors = withoutProposals(allCompetitors);
+  const proposals = canWrite ? allCompetitors.filter(isProposal) : [];
   const signals: SignalView[] = (signalsRes.data ?? []).map((s) => ({ id: s.id, kind: s.kind as SignalKind, label: s.label, mentions: s.mentions, origin: s.origin, quotes: parseSignalQuotes(s.quotes) }));
   const signalSources = sources
     .filter((s) => isSignalSource(s))
@@ -207,6 +213,10 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   // Sjabloonvragen met de brede doelgroep terwijl de intake specifieker is, of nog geen beslissende vraag.
   const questionsNeedIntake = questions.some((q) => isGenericTemplate(q, idea)) || (questions.length > 0 && !decisiveQuestion);
   const kinds = new Set(competitors.map((c) => c.kind));
+  // Gebruikerstest D5: de prijs uit de intake als jaaromzet per klant (aanname), voor de knop in het marktpotentieel.
+  const offerText = priceFromIntake(idea);
+  const annual = annualPriceFromOffer(offerText);
+  const intakePrice = annual && offerText ? { ...annual, offer: offerText } : null;
   const ue = ueRes.data;
   const sizingClaims = claims
     .filter((c) => c.status !== "insufficient")
@@ -590,11 +600,12 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
         <div key="competitors">
           <CompetitorPanel
             competitors={competitors}
+            proposals={proposals}
             canWrite={canWrite}
             claims={claims.filter((c) => c.status !== "insufficient").map((c) => ({ id: c.id, statement: c.statement }))}
             addAction={saveCompetitor.bind(null, id, null)}
-            updateActions={Object.fromEntries(competitors.map((c) => [c.id, saveCompetitor.bind(null, id, c.id)]))}
-            deleteActions={Object.fromEntries(competitors.map((c) => [c.id, deleteCompetitor.bind(null, id, c.id)]))}
+            updateActions={Object.fromEntries(allCompetitors.map((c) => [c.id, saveCompetitor.bind(null, id, c.id)]))}
+            deleteActions={Object.fromEntries(allCompetitors.map((c) => [c.id, deleteCompetitor.bind(null, id, c.id)]))}
             recheckActions={Object.fromEntries(competitors.map((c) => [c.id, recheckCompetitors.bind(null, id, c.id)]))}
             recheckAll={recheckCompetitors.bind(null, id, null)}
           />
@@ -680,6 +691,10 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
         {/* Marktpotentieel */}
         <div key="sizing">
           <SizingPanel
+            // D5: opnieuw opbouwen als de omzet per klant op de server verandert (bijv. na "Neem intakeprijs over").
+            key={(scenRes.data ?? []).map((sc) => (sc.sizing_factors ?? []).find((f) => f.key === "revenue_per_customer")?.value ?? "").join("|")}
+            intakePrice={intakePrice}
+            adoptIntakePrice={canWrite && intakePrice ? adoptIntakePrice.bind(null, id) : null}
             canWrite={canWrite}
             claims={sizingClaims}
             scenarios={(scenRes.data ?? []).map((s) => ({

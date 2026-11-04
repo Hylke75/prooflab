@@ -16,6 +16,8 @@ export type IntakeFacts = {
   decision_question?: string | null;
   target_audience: string;
   audience_detail?: string | null;
+  // Gebruikerstest D8: de korte doelgroep voor in zinnen ("amateursportclubs"), bevestigd in de intake.
+  audience_short?: string | null;
   region: string;
   region_detail?: string | null;
   project_type: string;
@@ -35,9 +37,28 @@ const clean = (s: string | null | undefined) =>
     .replace(/[?.!]+$/, "")
     .trim();
 
-// De doelgroep zo specifiek als de intake hem noemt: de toelichting wint van de brede categorie.
-export function specificAudience(i: Pick<IntakeFacts, "target_audience" | "audience_detail">): string {
-  return clean(i.audience_detail) || clean(i.target_audience) || "klanten";
+// Gebruikerstest D8: een korte doelgroep uit de toelichting, voor in vragen en kopjes. Afgebroken op een bijzin of
+// nadere bepaling ("met", "van", "in", "die", een komma of haakje) en hooguit zes woorden: "amateursportclubs met
+// 100–500 leden in Nederland" wordt "amateursportclubs". Null als er niets bruikbaars overblijft.
+export const AUDIENCE_SHORT_MAX = 60;
+export function shortAudience(detail: string | null | undefined): string | null {
+  const s = clean(detail);
+  if (!s) return null;
+  const head = s.split(/\s+(?:met|van|in|die|dat|waar|zonder)\s+|[,;:(]|\s[–-]\s/i)[0]?.trim() ?? "";
+  const words = head.split(" ").filter(Boolean).slice(0, 6).join(" ");
+  if (words.length < 2) return null;
+  return words.length > AUDIENCE_SHORT_MAX ? words.slice(0, AUDIENCE_SHORT_MAX).replace(/\s+\S*$/, "") : words;
+}
+
+// De korte doelgroep: bevestigd in de intake, anders afgeleid uit de toelichting. Null als er geen toelichting is.
+export function shortAudienceOf(i: Pick<IntakeFacts, "audience_detail" | "audience_short">): string | null {
+  return clean(i.audience_short) || shortAudience(i.audience_detail);
+}
+
+// De doelgroep zo specifiek als de intake hem noemt, maar kort genoeg voor in een zin (D8): eerst de bevestigde korte
+// doelgroep, dan de afgeleide korte vorm, dan de toelichting, dan de brede categorie.
+export function specificAudience(i: Pick<IntakeFacts, "target_audience" | "audience_detail" | "audience_short">): string {
+  return shortAudienceOf(i) || clean(i.audience_detail) || clean(i.target_audience) || "klanten";
 }
 
 // Het gebied zo specifiek als de intake het noemt (bijv. "Randstad" binnen "Nederland").
@@ -213,7 +234,7 @@ export type DerivedPlan = { questions: PlanQuestion[]; decisiveIndex: number };
 // waarin de beslissende vraag de sjabloonvraag over hetzelfde onderwerp vervangt (of, zonder zo'n vraag, de laatste).
 // De volgorde van het sjabloon blijft, zodat een bestaande sjabloonkaart per positie kan worden bijgewerkt.
 export function derivePlan(i: IntakeFacts): DerivedPlan {
-  const base = templatePlan(i.project_type as ProjectType, i.sector_template as SectorTemplate, { audience: specificAudience(i), region: specificRegion(i) });
+  const base = templatePlan(i.project_type as ProjectType, i.sector_template as SectorTemplate, { audience: specificAudience(i), region: specificRegion(i), targetAudience: i.target_audience });
   const decisive = decisiveQuestionFor(i);
   const topic = questionTopic(decisive);
   let at = topic === "other" ? -1 : base.findIndex((q) => questionTopic(q) === topic);
@@ -240,8 +261,10 @@ export function pickDecisiveIndex(questions: { question: string; expected_source
 // Of een vraag nog de brede sjabloontekst draagt terwijl de intake een specifiekere doelgroep noemt.
 export function isGenericTemplate(q: { question: string; origin?: string | null }, i: IntakeFacts): boolean {
   if (q.origin !== "template") return false;
+  // D8: een vraag met de korte doelgroep of de volledige toelichting is specifiek.
   const specific = specificAudience(i);
-  return clean(i.audience_detail).length > 0 && !q.question.includes(specific);
+  const detail = clean(i.audience_detail);
+  return detail.length > 0 && !q.question.includes(specific) && !q.question.includes(detail);
 }
 
 // De vragen in onderzoeksvolgorde: de beslissende vraag eerst, daarna de rest op positie (zonder markering: de

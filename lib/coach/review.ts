@@ -39,7 +39,7 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
     await Promise.all([
       db.from("claims").select("updated_at", exact).eq("idea_id", id).order("updated_at", { ascending: false }).limit(1),
       db.from("sources").select("created_at", exact).eq("idea_id", id).order("created_at", { ascending: false }).limit(1),
-      db.from("competitors").select("created_at", exact).eq("idea_id", id).order("created_at", { ascending: false }).limit(1),
+      db.from("competitors").select("created_at", exact).eq("idea_id", id).neq("origin", "proposal").order("created_at", { ascending: false }).limit(1),
       db.from("assumptions").select("created_at, status, importance").eq("idea_id", id),
       db.from("experiments").select("created_at, state").eq("idea_id", id),
       db.from("test_events").select("id", head).eq("idea_id", id),

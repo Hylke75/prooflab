@@ -9,6 +9,7 @@ import { assumptionStatusFromCards } from "@/lib/domain/primary-test";
 import { METHODS } from "@/lib/domain/method";
 import { ideaMethodVersion } from "@/lib/method-data";
 import { dossierSummaryForAi, factsFrom, loadDossier } from "@/lib/dossier";
+import { storeAlternativeProposals } from "@/lib/competitor-proposals-data";
 import { runRealityCheck, type Finding } from "@/lib/domain/reality-check";
 import { aiConfigured } from "@/lib/env";
 import { challengeDossier } from "@/lib/ai/research";
@@ -97,16 +98,19 @@ export async function runCheck(ideaId: string, _: ActionState): Promise<ActionSt
   const result = runRealityCheck(factsFrom(dossier));
   const findings: (Finding & { source?: string })[] = result.findings.map((f) => ({ ...f, source: "regels" }));
   let aiUsed = false;
+  let proposed = 0;
+  const supabase = await supabaseServer();
   if (aiConfigured()) {
     try {
       const res = await runAi(ideaId, "reality_check", (p) => challengeDossier(ideaContext(idea), dossierSummaryForAi(dossier), p));
       for (const c of res.data.challenges) findings.push({ code: "ai_challenge", severity: c.severity, title: c.title, detail: c.detail, source: "ai" });
       aiUsed = true;
+      // Gebruikerstest D6: genoemde alternatieven worden voorstellen zonder bron, die nergens meetellen.
+      proposed = await storeAlternativeProposals(supabase, ideaId, res.data.alternatives ?? []);
     } catch {
       // Logged by runAi; the rule-based check below still runs.
     }
   }
-  const supabase = await supabaseServer();
   const { error } = await supabase.from("reality_checks").insert({
     idea_id: ideaId,
     findings: { findings, investorQuestions: result.investorQuestions } as unknown as Json,
@@ -116,7 +120,12 @@ export async function runCheck(ideaId: string, _: ActionState): Promise<ActionSt
   });
   if (error) return { error: "De Reality Check kon niet worden opgeslagen." };
   refresh(ideaId);
-  return { error: null, ok: "Reality Check uitgevoerd." };
+  return {
+    error: null,
+    ok: proposed
+      ? `Reality Check uitgevoerd. ${proposed} genoemd${proposed === 1 ? " alternatief staat" : "e alternatieven staan"} als voorstel bij Concurrenten; neem ${proposed === 1 ? "het" : "ze"} over met een website of bron.`
+      : "Reality Check uitgevoerd.",
+  };
 }
 
 // Pre-mortem (research 3.10): "Het is zes maanden na het besluit en dit is mislukt. Wat is de meest

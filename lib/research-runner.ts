@@ -23,6 +23,9 @@ import { isSupportCheck, keepAfterSupportCheck, type SupportCheck } from "@/lib/
 import { decideMerge, knownSupportVerdict, type KnownFinding } from "@/lib/research-dedupe";
 import { proposeUncertainty } from "@/lib/research-uncertainty-data";
 import { groundedScope } from "@/lib/domain/claim-scope";
+import { CLAIM_STATUS, COMPETITOR_KINDS, type ClaimStatus, type CompetitorKind } from "@/lib/domain/labels";
+import { withoutProposals } from "@/lib/domain/competitor-proposals";
+import { storeAlternativeProposals } from "@/lib/competitor-proposals-data";
 
 type RunState = { status: string; done: number; total: number; current: string | null; cost: number; budget: number; error: string | null };
 
@@ -405,15 +408,23 @@ async function runTask(task: TaskRow, idea: Idea, mode: RunMode, runWith: Provid
 
   if (task.kind === "reality_check") {
     const { data: claims } = await supabase.from("claims").select("statement, status").eq("idea_id", idea.id).limit(60);
-    const { data: comps } = await supabase.from("competitors").select("name, kind").eq("idea_id", idea.id);
+    const { data: comps } = await supabase.from("competitors").select("name, kind, origin").eq("idea_id", idea.id);
+    // Gebruikerstest D10: Nederlandse labels, geen interne codes; voorstellen (zonder bron) tellen niet mee.
     const summary = [
       "Bevindingen:",
-      ...(claims ?? []).map((c) => `- [${c.status}] ${c.statement}`),
+      ...(claims ?? []).map((c) => `- [${CLAIM_STATUS[c.status as ClaimStatus]?.label ?? "onbekende status"}] ${c.statement}`),
       "Aanbieders en alternatieven:",
-      ...(comps ?? []).map((c) => `- ${c.name} (${c.kind})`),
+      ...withoutProposals(comps ?? []).map((c) => `- ${c.name} (${COMPETITOR_KINDS[c.kind as CompetitorKind]?.label ?? "aanbieder"})`),
+      "Noem in je antwoord geen interne codes; gebruik de Nederlandse namen hierboven.",
     ].join("\n");
     const res = await runAi(idea.id, "research:challenge", (p) => challengeDossier(ctx, summary, p));
-    return { output: { challenges: res.data.challenges }, detail: `${res.data.challenges.length} kritische punten gevonden.`, cost: res.usage.cost };
+    // Gebruikerstest D6: genoemde alternatieven worden voorstellen zonder bron (tellen nergens mee).
+    const proposed = await storeAlternativeProposals(supabase, idea.id, res.data.alternatives ?? []);
+    return {
+      output: { challenges: res.data.challenges },
+      detail: `${res.data.challenges.length} kritische punten gevonden${proposed ? `; ${proposed} alternatief${proposed === 1 ? "" : "en"} als voorstel bij Concurrenten` : ""}.`,
+      cost: res.usage.cost,
+    };
   }
 
   return { output: {}, detail: "Overgeslagen.", cost: 0 };

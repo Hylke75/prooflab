@@ -1,4 +1,5 @@
 import "server-only";
+import { withoutProposals } from "@/lib/domain/competitor-proposals";
 import { decisive } from "@/lib/domain/customer-research";
 import { PROPOSAL_REFERENCE_PREFIX } from "@/lib/domain/reference-proposal";
 import { supabaseServer } from "@/lib/supabase/server";
@@ -181,7 +182,7 @@ export async function loadDossier(idea: Idea) {
   const approvedCards = (cards.data ?? []).filter((c) => c.status === "approved");
   const label = dossierLabel({
     claims: (claims.data ?? []).map((c) => ({ status: c.status, domain: c.claim_sources?.[0]?.sources?.domain ?? null, sourceType: c.claim_sources?.[0]?.sources?.source_type ?? null })),
-    competitorKinds: (competitors.data ?? []).map((c) => c.kind),
+    competitorKinds: withoutProposals(competitors.data ?? []).map((c) => c.kind),
     sizingComputed: sizing.some((s) => s.result.tamCount > 0),
     behaviourCards: approvedCards
       .map((c) => {
@@ -198,7 +199,8 @@ export async function loadDossier(idea: Idea) {
     clientName: client.data?.name ?? null,
     questions: questions.data ?? [],
     claims: claims.data ?? [],
-    competitors: competitors.data ?? [],
+    // Gebruikerstest D6: voorstellen (zonder bron) tellen nergens mee: niet in rapport, Reality Check of AI-samenvatting.
+    competitors: withoutProposals(competitors.data ?? []),
     segments: segments.data ?? [],
     sizing,
     unitEconomics: ue.data,

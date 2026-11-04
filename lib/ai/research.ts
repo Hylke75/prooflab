@@ -443,6 +443,11 @@ const ChallengeSchema = z.object({
       }),
     )
     .max(6),
+  // Gebruikerstest D6: huidige alternatieven die klanten gebruiken en die nog niet in het dossier staan. ProofLab slaat
+  // ze op als voorstel (zonder bron); ze tellen pas mee als de consultant ze met een website of bevinding overneemt.
+  alternatives: z
+    .array(z.object({ name: z.string(), why: z.string() }))
+    .max(3),
 });
 
 export async function challengeDossier(idea: IdeaContext, dossierSummary: string, provider: ProviderId) {
@@ -455,7 +460,9 @@ export async function challengeDossier(idea: IdeaContext, dossierSummary: string
 ${dossierSummary}
 </dossier>
 Welke conclusies worden onvoldoende ondersteund? Welk bewijs spreekt het idee tegen? Welke alternatieve verklaring
-missen we? Onder welke omstandigheden moet het traject stoppen? Wees concreet en verwijs naar het dossier.`,
+missen we? Onder welke omstandigheden moet het traject stoppen? Wees concreet en verwijs naar het dossier.
+Noem in "alternatives" hooguit drie huidige alternatieven (hoe de doelgroep het nu oplost, ook gratis of zelfgemaakt)
+die nog niet in het dossier staan, met in "why" één zin waarom. Geen alternatieven bekend: een lege lijst.`,
     "high",
   );
 }

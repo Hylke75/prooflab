@@ -43,12 +43,17 @@ export function SizingPanel({
   actions,
   canWrite,
   breakEvenRevenue = null,
+  intakePrice = null,
+  adoptIntakePrice = null,
 }: {
   scenarios: Scenario[];
   claims: Claim[];
   actions: Record<string, Action>;
   canWrite: boolean;
   breakEvenRevenue?: number | null;
+  // Gebruikerstest D5: de prijs uit de intake als jaaromzet per klant (aanname), en de actie om hem over te nemen.
+  intakePrice?: { value: number; note: string; offer: string } | null;
+  adoptIntakePrice?: Action | null;
 }) {
   const order: ScenarioKind[] = ["conservative", "realistic", "optimistic"];
   const sorted = order.map((k) => scenarios.find((s) => s.kind === k)).filter(Boolean) as Scenario[];
@@ -114,6 +119,15 @@ export function SizingPanel({
   const defs = MODEL_FACTORS[scenario.model];
   const labelOf = (key: string) => defs.find((d) => d.key === key)?.label ?? key;
   const isBreakEven = breakEvenRevenue != null && thresholdValue != null && Math.round(breakEvenRevenue) === thresholdValue;
+  const priceKey = scenario.model === "transactions" ? "ticket" : "revenue_per_customer";
+  const original = (key: string) => scenario.factors.find((f) => f.key === key);
+  // De toelichting (bijv. "Aanname uit intake …") blijft alleen staan zolang de waarde niet is aangepast.
+  const noteFor = (key: string) => {
+    const o = original(key);
+    return o?.note && (current[key]?.value ?? 0) === o.value ? o.note : "";
+  };
+  const offerPrice = canWrite && intakePrice && adoptIntakePrice && scenario.model !== "transactions" && (current[priceKey]?.value ?? 0) === 0 ? intakePrice : null;
+  const notEstablished = result.missing.length > 0;
 
   return (
     <>
@@ -188,6 +202,8 @@ export function SizingPanel({
                       aria-describedby={`u-${def.key}`}
                     />
                     <span id={`u-${def.key}`} className="sr-only">{unitWord(def.unit)}</span>
+                    <input type="hidden" name={`note_${def.key}`} value={noteFor(def.key)} />
+                    {noteFor(def.key) && <small className="tiny" style={{ gridColumn: "1 / -1" }}>{noteFor(def.key)}</small>}
                     <RangeInputs def={def} f={f} canWrite={canWrite} onChange={(patch) => set(def.key, patch)} />
                     <OriginInputs def={def} f={f} canWrite={canWrite} onChange={(patch) => set(def.key, patch)} />
                   </div>
@@ -195,11 +211,23 @@ export function SizingPanel({
               })}
             </div>
           </ActionForm>
+          {offerPrice && (
+            <div className="note" role="note">
+              <strong>Jaaromzet per klant staat op 0.</strong> De intake noemt {offerPrice.offer}: dat is € {offerPrice.value.toLocaleString("nl-NL")} per jaar. Neem je die
+              over, dan blijft het een aanname zonder bron (nog te toetsen), in alle drie de scenario&apos;s.
+              <ActionForm action={adoptIntakePrice!} submitLabel="Neem intakeprijs over (aanname)" submitClass="btn white sm" pendingLabel="Overnemen…">
+                <span />
+              </ActionForm>
+            </div>
+          )}
         </div>
         <div className="card calc-dark">
           <div className="eyebrow" style={{ color: "var(--color-on-dark)" }}>{result.label}</div>
           <p style={{ color: "var(--color-on-dark-muted)", margin: "13px 0 3px", fontSize: 14 }}>Bereikbare jaaromzet (SOM) in dit scenario</p>
-          <div className="num" style={{ font: "700 39px var(--font-heading),sans-serif", letterSpacing: "-.06em" }}>{eur(result.somRevenue)}</div>
+          <div className="num" style={{ font: "700 39px var(--font-heading),sans-serif", letterSpacing: "-.06em" }}>{notEstablished ? "Niet vastgesteld" : eur(result.somRevenue)}</div>
+          {notEstablished && (
+            <p style={{ color: "var(--color-on-dark-muted)", fontSize: 13, marginTop: 4 }}>Nog onbekend: {result.missing.map((m) => m.toLowerCase()).join(", ")}.</p>
+          )}
           <div className="divider" />
           <div className="kpi-row" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>
             <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="tam">TAM</Term> (aantal)</p><strong className="num">{int(result.tamCount)}</strong></div>
@@ -207,7 +235,7 @@ export function SizingPanel({
             <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="som">SOM</Term> (klanten)</p><strong className="num">{int(result.somCount)}</strong></div>
           </div>
           <p style={{ color: "var(--color-on-dark-muted)", fontSize: 14, marginTop: 16 }}>Formule</p>
-          <div className="calc-formula">{result.formula} = {eur(result.somRevenue)}</div>
+          <div className="calc-formula">{result.formula} = {notEstablished ? "niet vastgesteld" : eur(result.somRevenue)}</div>
           <span className="pill dark">
             {result.provenance.sourced} van {result.provenance.total} factoren met bron · {result.provenance.assumed} aangenomen
           </span>

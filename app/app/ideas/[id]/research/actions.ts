@@ -27,6 +27,9 @@ import { proposeUncertainty } from "@/lib/research-uncertainty-data";
 import { isProvider, PROVIDER_LABELS, type ProviderId } from "@/lib/ai/providers/config";
 import { isUnknown } from "@/lib/domain/claim-scope";
 import { evidenceTypeError } from "@/lib/domain/source-defaults";
+import { annualPriceFromOffer } from "@/lib/intake-proposal";
+import { proposalAdoptionProblem } from "@/lib/domain/competitor-proposals";
+import { priceFromIntake } from "@/lib/research-questions";
 
 export type ActionState = { error: string | null; ok?: string | null };
 
@@ -326,11 +329,22 @@ export async function saveCompetitor(ideaId: string, competitorId: string | null
     last_checked_at: new Date().toISOString(),
   };
   const supabase = await supabaseServer();
+  // Gebruikerstest D6: een voorstel (door de Reality Check of AI genoemd, zonder bron) wordt pas een echt alternatief met
+  // een website of een gekoppelde bevinding. Daarna telt het mee en zien opdrachtgevers het.
+  let adopted = false;
+  if (competitorId) {
+    const { data: existing } = await supabase.from("competitors").select("origin").eq("id", competitorId).eq("idea_id", ideaId).maybeSingle();
+    if (existing?.origin === "proposal") {
+      const problem = proposalAdoptionProblem(row);
+      if (problem) return { error: problem };
+      adopted = true;
+    }
+  }
   const { error } = competitorId
-    ? await supabase.from("competitors").update(row).eq("id", competitorId).eq("idea_id", ideaId)
+    ? await supabase.from("competitors").update(adopted ? { ...row, origin: "manual" } : row).eq("id", competitorId).eq("idea_id", ideaId)
     : await supabase.from("competitors").insert({ ...row, idea_id: ideaId, origin: "manual" });
   if (error) return { error: "Opslaan mislukt." };
-  return done(ideaId, "Aanbieder opgeslagen.");
+  return done(ideaId, adopted ? "Voorstel overgenomen als aanbieder of alternatief." : "Aanbieder opgeslagen.");
 }
 
 export async function deleteCompetitor(ideaId: string, competitorId: string) {
@@ -419,6 +433,26 @@ export async function saveScenario(ideaId: string, scenarioId: string, _: Action
   }
   await supabase.from("sizing_scenarios").update({ updated_at: new Date().toISOString() }).eq("id", scenarioId).eq("idea_id", ideaId);
   return done(ideaId, "Scenario opgeslagen.");
+}
+
+// Gebruikerstest D5: de prijs uit de intake als jaaromzet per klant, alleen waar die nog op 0 staat en geen bron heeft.
+// Het blijft een aanname: geen claim_id, met de toelichting "Aanname uit intake: …, niet getoetst".
+export async function adoptIntakePrice(ideaId: string, _: ActionState): Promise<ActionState> {
+  const { idea } = await requireWritableIdea(ideaId);
+  const price = annualPriceFromOffer(priceFromIntake(idea));
+  if (!price) return { error: "De intake noemt geen prijs met een periode (bijv. € 79 per maand). Vul de jaaromzet per klant zelf in." };
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase
+    .from("sizing_factors")
+    .update({ value: price.value, note: price.note })
+    .eq("idea_id", ideaId)
+    .eq("key", "revenue_per_customer")
+    .eq("value", 0)
+    .is("claim_id", null)
+    .select("id");
+  if (error) return { error: "Overnemen mislukt. Probeer het opnieuw." };
+  if (!data?.length) return { error: "Er staat geen scenario meer op 0; er is niets overgenomen." };
+  return done(ideaId, `Intakeprijs overgenomen als aanname (€ ${price.value.toLocaleString("nl-NL")} per jaar) in ${data.length} scenario${data.length === 1 ? "" : "'s"}.`);
 }
 
 export async function saveUnitEconomics(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {

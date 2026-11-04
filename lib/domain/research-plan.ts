@@ -32,7 +32,8 @@ export type PlanQuestion = {
 };
 
 // Wat het sjabloon uit de intake invult.
-export type PlanContext = { audience: string; region: string };
+// targetAudience: het brede soort klant (ideas.target_audience), om een branche weg te laten die er niet bij past.
+export type PlanContext = { audience: string; region: string; targetAudience?: string | null };
 
 type Ctx = { a: string; r: string; b: string };
 type Template = (c: Ctx) => PlanQuestion;
@@ -174,16 +175,29 @@ const SECTOR_NOTES: Record<SectorTemplate, string> = {
   events: "Houd rekening met seizoensinvloed en lange leadtijden: meet eerder aanvragen dan boekingen.",
   media_culture:
     "Levensvatbaarheid kan via leden, subsidie, donaties of bereik lopen in plaats van directe betaling.",
+  associations:
+    "Denk aan leden, contributie en vrijwilligers: het bestuur beslist (vaak in een ledenvergadering), vrijwilligers voeren uit en de contributie bepaalt het budget.",
 };
+
+// Gebruikerstest D7: past de branche bij het soort klant? MKB past niet bij een publieke doelgroep of consumenten;
+// verenigingen passen niet bij zakelijke klanten of consumenten. Past hij niet, dan laat het sjabloon de branche weg.
+export function sectorFitsAudience(sector: SectorTemplate, targetAudience: string | null | undefined): boolean {
+  const t = (targetAudience ?? "").toLowerCase();
+  if (!t) return true;
+  if (sector === "smb") return !/publieke|vereniging|consument|b2c|intern/.test(t);
+  if (sector === "associations") return !/zakelijk|b2b|consument|b2c/.test(t);
+  return true;
+}
 
 const clean = (s: string) => s.replace(/\s+/g, " ").replace(/[?.!]+$/, "").trim();
 
 export function templatePlan(projectType: ProjectType, sector: SectorTemplate, ctx: PlanContext): PlanQuestion[] {
-  const note = SECTOR_NOTES[sector];
+  const fits = sectorFitsAudience(sector, ctx.targetAudience);
+  const note = fits ? (SECTOR_NOTES[sector] ?? "") : "";
   const c: Ctx = {
     a: clean(ctx.audience) || "klanten",
     r: clean(ctx.region) || "Nederland",
-    b: sector === "generic" ? "" : ` in de branche ${SECTOR_TEMPLATES[sector]}`,
+    b: sector === "generic" || !fits || !SECTOR_TEMPLATES[sector] ? "" : ` in de branche ${SECTOR_TEMPLATES[sector]}`,
   };
   return PLANS[projectType]
     .map((t) => t(c))
