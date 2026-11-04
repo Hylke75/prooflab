@@ -138,6 +138,19 @@ d("fase 1 · punt 3: interviews importeren in de database", () => {
     ).rejects.toThrow(/INTERVIEW_LOCKED/);
   });
 
+  it("auditspoor: een kort transcript en een vervangen naam komen er alleen als md5 in", async () => {
+    const t = await interviewTest(owner, A.idea);
+    const iv = await importInterview(owner, A.idea, { experiment: t.experiment, source: "gesprek-audit" });
+    // "Een gemiste naam vervangen": korter dan 300 tekens, dus vroeger letterlijk in het spoor.
+    await as(owner, (c) => c.query("update public.interviews set transcript = replace(transcript, 'Club 1', 'Club 2') where id = $1", [iv.id]));
+    const rows = (await db.query("select detail from public.audit_events where row_id = $1 and action = 'update'", [iv.id])).rows;
+    const change = rows.map((r) => r.detail?.changes?.transcript).find(Boolean);
+    expect(change).toBeTruthy();
+    expect(String(change.old)).toMatch(/^md5:/);
+    expect(String(change.new)).toMatch(/^md5:/);
+    expect(JSON.stringify(rows)).not.toMatch(/Club 1|Club 2/);
+  });
+
   it("betaler los van inkoper; een onbekende rol weigert de database", async () => {
     const iv = await importInterview(owner, A.idea, { role: "payer" });
     expect(iv.id).toBeTruthy();

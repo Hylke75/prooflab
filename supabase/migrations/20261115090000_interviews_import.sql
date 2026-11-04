@@ -567,4 +567,56 @@ grant execute on function public.transcript_settings_status(uuid), public.set_fa
 revoke execute on function public.stamp_interview_import(), public.audit_interview_import(), public.guard_assumption_observation_scope(),
   public.guard_interview_code(), public.guard_observation_code() from public, anon, authenticated;
 
+-- ---------------------------------------------------------------------------
+-- Auditspoor zonder gesprekstekst
+-- ---------------------------------------------------------------------------
+-- audit_row bewaarde waarden tot 300 tekens letterlijk. Bij een kort transcript of citaat kon een vervangen naam (zie
+-- "Een gemiste naam vervangen") zo in het auditspoor blijven staan. Transcript, citaat en deelnemerslabel van interviews
+-- en observaties komen er voortaan altijd als md5 in. Verder gelijk aan 20261029090000_integrity.sql.
+create or replace function public.audit_row()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  rec jsonb;
+  prev jsonb;
+  v_idea uuid;
+  v_org uuid;
+  v_changes jsonb := '{}'::jsonb;
+  k text;
+  -- Persoonsgegevens uit gesprekken komen nooit als tekst in het auditspoor, ook niet als ze kort zijn.
+  v_hidden text[] := case when tg_table_name in ('interviews', 'observations') then array['transcript', 'quote', 'participant_label'] else array[]::text[] end;
+begin
+  rec := case when tg_op = 'DELETE' then to_jsonb(old) else to_jsonb(new) end;
+  v_idea := case when tg_table_name = 'ideas' then (rec->>'id')::uuid else nullif(rec->>'idea_id', '')::uuid end;
+  v_org := case when tg_table_name = 'ideas' then (rec->>'org_id')::uuid
+                else (select i.org_id from public.ideas i where i.id = v_idea) end;
+  -- During a cascade the idea row is already gone; its earlier audit rows still name the organisation.
+  if v_org is null and v_idea is not null then
+    select a.org_id into v_org from public.audit_events a where a.idea_id = v_idea and a.org_id is not null limit 1;
+  end if;
+  if tg_op = 'UPDATE' then
+    prev := to_jsonb(old);
+    for k in select jsonb_object_keys(rec) loop
+      if k not in ('updated_at') and rec->k is distinct from prev->k then
+        v_changes := v_changes || jsonb_build_object(k, jsonb_build_object(
+          'old', case when length(coalesce(prev->>k, '')) > 300 or (k = any(v_hidden) and prev->>k is not null) then to_jsonb('md5:' || md5(prev->>k)) else prev->k end,
+          'new', case when length(coalesce(rec->>k, '')) > 300 or (k = any(v_hidden) and rec->>k is not null) then to_jsonb('md5:' || md5(rec->>k)) else rec->k end));
+      end if;
+    end loop;
+  end if;
+  insert into public.audit_events (idea_id, org_id, actor_id, table_name, row_id, action, detail)
+  values (
+    v_idea, v_org, auth.uid(), tg_table_name,
+    coalesce(rec->>'id', concat_ws(':', rec->>'assumption_id', rec->>'claim_id', rec->>'observation_id', rec->>'idea_id')),
+    lower(tg_op),
+    case
+      when tg_op = 'UPDATE' then jsonb_build_object('changes', v_changes)
+      when tg_op = 'DELETE' then jsonb_build_object('deleted', (
+        select jsonb_object_agg(key, case when length(value::text) > 300 or (key = any(v_hidden) and value <> 'null'::jsonb) then to_jsonb('md5:' || md5(value::text)) else value end)
+        from jsonb_each(rec)))
+      else null
+    end
+  );
+  return null;
+end $$;
+
 commit;
