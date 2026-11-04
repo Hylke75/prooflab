@@ -718,6 +718,7 @@ export type Database = {
           detail: string | null
           id: string
           idea_id: string | null
+          org_id: string | null
           input_tokens: number
           model: string
           outcome: string
@@ -734,6 +735,7 @@ export type Database = {
           detail?: string | null
           id?: string
           idea_id?: string | null
+          org_id?: string | null
           input_tokens?: number
           model: string
           outcome: string
@@ -750,6 +752,7 @@ export type Database = {
           detail?: string | null
           id?: string
           idea_id?: string | null
+          org_id?: string | null
           input_tokens?: number
           model?: string
           outcome?: string
@@ -1589,6 +1592,8 @@ export type Database = {
           id: string
           is_demo: boolean
           key_uncertainty: string | null
+          offer_price: string | null
+          intake_proposal: Json | null
           method_version: string
           org_id: string
           project_type: string
@@ -1631,6 +1636,8 @@ export type Database = {
           id?: string
           is_demo?: boolean
           key_uncertainty?: string | null
+          offer_price?: string | null
+          intake_proposal?: Json | null
           method_version?: string
           org_id: string
           project_type: string
@@ -1673,6 +1680,8 @@ export type Database = {
           id?: string
           is_demo?: boolean
           key_uncertainty?: string | null
+          offer_price?: string | null
+          intake_proposal?: Json | null
           method_version?: string
           org_id?: string
           project_type?: string
@@ -2939,6 +2948,7 @@ export type Database = {
       research_run_lease: { Args: { p_run: string; p_lease: string; p_seconds: number }; Returns: boolean }
       research_run_release: { Args: { p_run: string; p_lease: string }; Returns: undefined }
       org_ai_spend: { Args: { p_idea: string }; Returns: { spent: number; cap: number }[] }
+      org_ai_spend_for_org: { Args: { p_org: string }; Returns: { spent: number; cap: number }[] }
       system_status: {
         Args: { p_org?: string | null }
         Returns: {
