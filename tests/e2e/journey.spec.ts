@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { assumptionKind } from "../../lib/domain/assumption-kind";
+import { createIdeaViaIntake, dutchDate, isoDate } from "./intake";
 
 const email = process.env.E2E_EMAIL ?? "";
 const password = process.env.E2E_PASSWORD ?? "";
@@ -62,30 +63,15 @@ async function visit(browser: Browser, url: string, ua: string, act: "view" | "c
 test("idee → onderzoek → risico → test → bewijs → besluit → rapport", async ({ page, browser }) => {
   await login(page);
 
-  // 1. Decision-first intake
-  await page.goto("/app/ideas/new");
-  await page.getByRole("button", { name: "Lanceren we dit aanbod in het eerste kwartaal met twee consultants, of stoppen we?" }).click();
-  // Inzet en beslisdatum zijn verplicht in de intake.
-  await page.getByLabel("Hoeveel (euro)", { exact: true }).fill("25000");
-  await page.getByLabel("Uiterlijke beslisdatum", { exact: true }).fill(new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10));
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByLabel("Geslaagd als…", { exact: true }).fill("Zes maanden na het besluit hebben minstens 10 eventbureaus een betaald abonnement.");
-  await page.getByLabel("Wat meet je?", { exact: true }).fill("betalende eventbureaus");
-  await page.getByLabel("Doelwaarde", { exact: true }).fill("10");
-  await page.getByLabel("Omzetdoel (€)", { exact: true }).fill("15000");
-  await page.getByRole("button", { name: "Volgende stap" }).click();
+  // 1. Intake (fase B3): drie vragen en één bevestiging; de kaart krijgt vaste waarden, los van het AI-voorstel.
   const title = `E2E-idee ${Date.now()}`;
-  await page.getByLabel("Korte naam", { exact: true }).fill(title);
-  await page.getByLabel("Mijn idee", { exact: true }).fill("Een AI-assistent die zakelijke eventmanagers helpt binnen minuten een passende locatie te vinden.");
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: "Zakelijke klanten (B2B)" }).click();
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: /Nederland/ }).click();
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: "Nieuw product" }).click();
-  await page.getByLabel("Opdrachtgever", { exact: true }).selectOption("none");
-  await page.getByRole("button", { name: "Start de marktverkenning" }).click();
-  await page.waitForURL(/\/research/);
+  await createIdeaViaIntake(page, {
+    idea: "Een AI-assistent die zakelijke eventmanagers helpt binnen minuten een passende locatie te vinden, voor € 150 per maand.",
+    decision: `Lanceren we dit aanbod met twee consultants en € 25.000, of stoppen we, vóór ${dutchDate(60)}?`,
+    uncertainty: "Of eventmanagers zelf een locatie willen zoeken in plaats van een eventbureau te bellen.",
+    fill: { "Korte naam": title, "Doelgroep": "zakelijke eventmanagers", "Inzet (euro)": "25000", "Uiterlijke beslisdatum": isoDate(60), "Wat meet je?": "betalende eventbureaus", "Doelwaarde": "10", "Minimumbedrag per klant (€)": "1500" },
+    select: { "Soort klant": "Zakelijke klanten (B2B)", "Regio": "Nederland", "Type project": "new_product", "Opdrachtgever": "none" },
+  });
   await expect(page.getByRole("heading", { name: "Begrijp je markt." })).toBeVisible();
   await expectMenuMatchesStepper(page);
   const ideaUrl = page.url().replace(/\/research.*$/, "");
