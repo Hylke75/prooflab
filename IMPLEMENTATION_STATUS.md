@@ -395,3 +395,16 @@ Aanleiding: sjabloonvragen met de brede doelgroep, de prijsvraag niet onderzocht
 - ✅ Tests: `research-questions`, `research-steps`, `research-worker`, `research-failures`, `research-dedupe`, `research-uncertainty`, `research-b2-acceptance` (snelle check op het testdossier: prijsvraag eerst, binnen $1,50, melding)
 - 🟡 Een run duurt hooguit zo lang als het toegangstoken geldig is (minstens een uur na de start); daarna pauzeert hij tot iemand van het team de pagina opent. Previews met Deployment Protection hebben `VERCEL_AUTOMATION_BYPASS_SECRET` nodig
 - [ ] Migratie toepassen op de live Supabase (na akkoord); snelle check op het testdossier met de echte API's en visuele controle van de kaart en het paneel
+
+## Fase B3: intake in drie vragen en één bevestiging (10 november)
+
+Aanleiding: 6 vragen met ongeveer 20 velden, eerst "wanneer geslaagd" en dan pas het idee, doelgroep en prijs dubbel, de grootste onzekerheid achteraan in één regel, opdrachtgever standaard "+ Nieuwe opdrachtgever". Migratie `20261110090000_b3_intake.sql` (nog niet live; de intake werkt ook zonder, dan zonder AI-voorstel en met de prijs in de beschrijving).
+
+- ✅ **Drie vragen**: 1 het idee en voor wie (één tekstvak), 2 de beslissing met inzet en datum (inzet en datum worden direct herkend en getoond), 3 de grootste onzekerheid (meerregelig, met voorbeeld)
+- ✅ **Voorstel** (`lib/intake-proposal.ts`, `lib/ai/intake.ts`): succesdefinitie (maatstaf, doelwaarde, minimumbedrag, zin), doelgroep, soort klant, regio, branche, type project, prijs, inzet, beslisdatum en sprintduur. AI via `runOrgAi` (budgetstop en grootboek op de organisatie, want er is nog geen idee); zonder sleutel, budget of bij een fout de regels (bedragen, datums, prijs, doelgroep na "voor", terugverdienen van de inzet als doelwaarde). Wat letterlijk in de tekst staat wint van de AI
+- ✅ **Samenvattingskaart**: alle velden bewerkbaar, herkomst per veld (AI-voorstel / Uit je tekst / Nog invullen), fouten per veld (ActionForm/Field), "Klopt, start de marktverkenning" → idee, onderzoeksvragen (B2), /research. Antwoorden, voorstel en aangepaste velden in `ideas.intake_proposal`
+- ✅ **Opdrachtgever**: standaard "Geen (eigen idee)"; een nieuwe alleen na de keuze "+ Nieuwe opdrachtgever…" en met naam
+- ✅ Tests: `tests/unit/intake-proposal.test.ts`; e2e `b3-intake.spec.ts` en de intake in journey, testcard en dogfood via `tests/e2e/intake.ts`
+- ✅ Telling makelaarsdossier: oud 6 schermen, 23 velden (16 ingevuld, prijs 3× en doelgroep 2×), ±24 klikken; nieuw 3 schermen + 1 bevestiging, 3 tekstvakken + 17 voorgestelde velden op de kaart (0 leeg), 7 klikken (met naam aanpassen 8)
+- 🟡 Visueel gecontroleerd op 1440 px en 390 px met een tijdelijke voorbeeldpagina (zonder login); de e2e-tests zijn niet gedraaid (geen E2E-account in deze omgeving)
+- [ ] Migratie toepassen op de live Supabase (na akkoord); e2e `b3-intake` draaien, met en zonder AI-sleutel
