@@ -9,6 +9,7 @@ import { PRACTICE_LABELS, practiceStatus } from "@/lib/domain/practice";
 import { TRANSCRIPT_FORMATS, type TranscriptFormat } from "@/lib/domain/transcript-parse";
 import { EXPLORATORY_INTERVIEW_NOTE, IMPORT_SCHEMA_MISSING, missingImportSchema } from "@/lib/domain/interview-import";
 import { ThemeCrossTable } from "@/components/experiments/ThemeCrossTable";
+import { FathomField } from "@/components/experiments/FathomField";
 import { loadThemeCountsForClient, loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
 
 export const metadata: Metadata = { title: "Interviews" };
@@ -95,7 +96,7 @@ export default async function InterviewsPage({ params }: PageProps<"/app/ideas/[
           <h2 className="as-h3" id="iv-import">Verkennend interview importeren</h2>
           <p className="sub">{EXPLORATORY_INTERVIEW_NOTE} Wil je een aanname toetsen, importeer het gesprek dan in een lopende interviewronde in stap 3.</p>
           <div className="mt-12">
-            <InterviewImport ideaId={id} expId={null} testGroup={null} />
+            <InterviewImport ideaId={id} expId={null} testGroup={null} fathom={<FathomField ideaId={id} />} />
           </div>
         </section>
       )}

@@ -46,6 +46,7 @@ import { defaultedLabels } from "@/lib/view-mode";
 import { Detail } from "@/components/shell/ViewMode";
 import { InterviewImport } from "@/components/experiments/InterviewImport";
 import { ThemeCrossTable } from "@/components/experiments/ThemeCrossTable";
+import { FathomField } from "@/components/experiments/FathomField";
 import { loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
 
 export const metadata: Metadata = { title: "Experiment" };
@@ -579,7 +580,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
               <h3>Transcript importeren</h3>
               <p className="sub">Een bestand uit Teams, Zoom, Fathom of Otter (of geplakte tekst). ProofLab pseudonimiseert vóór opslag en vóór elke AI-stap; het bestand zelf wordt niet bewaard.</p>
               <div className="mt-12">
-                <InterviewImport ideaId={id} expId={expId} testGroup={exp.recruitment_group ?? null} />
+                <InterviewImport ideaId={id} expId={expId} testGroup={exp.recruitment_group ?? null} fathom={<FathomField ideaId={id} />} />
               </div>
             </div>
           )}
