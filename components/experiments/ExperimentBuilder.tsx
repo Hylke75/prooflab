@@ -7,7 +7,22 @@ import { Icon } from "@/components/Icon";
 import { EXPERIMENT_TYPES, HONEST_REVEAL, NEUTRAL_INTERVIEW_GUIDE, type ExperimentType } from "@/lib/domain/labels";
 import { testCardDefaults, type Option } from "@/lib/domain/recommend";
 import { DECISION_RULES, PASS_PROBABILITY, FAIL_PROBABILITY, FLAT_PRIOR, wilson, type BetaPrior, type DecisionRule } from "@/lib/domain/stats";
-import { orderedErrors, sampleBand, validateTestCard, type FieldErrors } from "@/lib/domain/test-card";
+import {
+  daysUntil,
+  deadlineFromDays,
+  detailFieldErrors,
+  formatAmount,
+  headlineFromIdea,
+  intakePrice,
+  isoDay,
+  orderedErrors,
+  recruitmentFromChannels,
+  sampleBand,
+  validateTestCard,
+  type FieldErrors,
+} from "@/lib/domain/test-card";
+import { GO_RULE_DEFAULT_PROBABILITY } from "@/lib/domain/decision-rule-proposal";
+import { TestCardStatus } from "@/components/experiments/TestCardStatus";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { METHODS, type MethodVersion } from "@/lib/domain/method";
 import { RECRUITMENT_GROUPS, RECRUITMENT_KEYS, RECRUITMENT_REQUIRED_TYPES, type RecruitmentGroup } from "@/lib/domain/recruitment";
@@ -46,7 +61,7 @@ const FIELD_FOCUS: Record<string, string> = {
   success_count: "tc-count",
   thresholds: "tc-lock",
   min_sample: "tc-n",
-  max_duration_days: "tc-days",
+  max_duration_days: "tc-deadline",
   recruitment_group: "tc-rg-0",
   channels: "tc-ch-0",
   guide: "tc-guide",
@@ -78,7 +93,13 @@ export function ExperimentBuilder({
   surveyDraftAction,
   method = "2026-11-c",
   priors = {},
+  intake = { description: "", texts: [] },
+  goRuleMissing = false,
 }: {
+  // B5: wat de intake al weet (prijs, beschrijving), om de Test Card vooraf in te vullen.
+  intake?: { description: string; texts: (string | null | undefined)[]; price_eur?: number | null; price_period?: string | null };
+  // B5: het dossier heeft nog geen go-regel; na opslaan van een hoofdtest stelt ProofLab die voor.
+  goRuleMissing?: boolean;
   priors?: Partial<Record<ExperimentType, BetaPrior>>;
   method?: MethodVersion;
   initialType?: ExperimentType;
@@ -110,13 +131,18 @@ export function ExperimentBuilder({
   const [card, setCard] = useState(() => withSurveyMetric(defaults, survey));
   const [rule, setRule] = useState<DecisionRule>("probability");
   const [lastKey, setLastKey] = useState(`${type}|${assumption.id}`);
-  const [page, setPage] = useState({
-    headline: "",
+  // B5: kop en aanbod staan vooringevuld uit de intake (onder "Details" aan te passen).
+  const [page, setPage] = useState(() => ({
+    headline: headlineFromIdea(intake.description, ideaTitle),
     subline: "",
-    offer: "",
+    offer: intake.description.trim().slice(0, 600),
     cta_label: CTA_DEFAULT[type],
     product_name: "",
-  });
+  }));
+  // B5: vandaag (lokale datum) voor de deadline; de looptijd in dagen gaat naar de database.
+  const [today] = useState(() => isoDay(new Date()));
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [isPrimary, setIsPrimary] = useState(() => !assumption.primary);
   const titleFor = () => `${EXPERIMENT_TYPES[type].label}: ${assumption.statement.slice(0, 60)}`;
   const [title, setTitle] = useState(titleFor);
   // Fase B1b, stap 1: de drempels liggen vast vóórdat ProofLab rekent. Wijzigen kan daarna alleen met een motivering.
@@ -136,6 +162,7 @@ export function ExperimentBuilder({
     setLockedAt(null);
     setChanging(false);
     setChangeReason("");
+    setIsPrimary(!assumption.primary);
     // De standaardleidraad volgt de soort aanname (prijs: ook uitgaven en budget), tenzij de gebruiker hem aanpaste.
     const prev = assumptions.find((a) => a.id === lastKey.split("|")[1]);
     if (prev) setGuide((g) => (g === defaultGuide(kindOf(prev)) ? defaultGuide(kind) : g));
@@ -148,10 +175,12 @@ export function ExperimentBuilder({
     // Teller and noemer always follow the key question; the label only when the key question itself changed.
     setCard((c) => ({ ...c, metric_numerator: m.metric_numerator, metric_denominator: m.metric_denominator, metric_label: keyChanged ? m.metric_label : c.metric_label }));
   };
-  const [prices, setPrices] = useState([
-    { label: "Basis", amount: "", period: "per maand" },
-    { label: "Plus", amount: "", period: "per maand" },
-    { label: "", amount: "", period: "per maand" },
+  // B5: het eerste prijspunt komt uit de intake ("€ 249 per maand"), als die een prijs noemt.
+  const fromIntake = useMemo(() => intakePrice(intake), [intake]);
+  const [prices, setPrices] = useState(() => [
+    { label: "Basis", amount: fromIntake ? formatAmount(fromIntake.amount) : "", period: fromIntake?.period ?? "per maand" },
+    { label: "Plus", amount: "", period: fromIntake?.period ?? "per maand" },
+    { label: "", amount: "", period: fromIntake?.period ?? "per maand" },
   ]);
   const [successCount, setSuccessCount] = useState("3");
   const [perWeek, setPerWeek] = useState("");
@@ -165,11 +194,15 @@ export function ExperimentBuilder({
     );
   };
   const [channels, setChannels] = useState<string[]>(["linkedin", "network"]);
-  // Wervingsgroep (golf A, punt 13): verplicht bij enquête-, landing- en prijstests, zonder vooraf gekozen waarde.
-  const [recruitment, setRecruitment] = useState<string>("");
+  // Wervingsgroep (golf A, punt 13): verplicht bij enquête-, landing- en prijstests. B5: zolang de consultant niets
+  // kiest, volgt de groep uit de kanalen (eigen netwerk bij organische kanalen); "onbekend" is geen standaard.
+  const [recruitmentChoice, setRecruitment] = useState<string>("");
   // Het bewaarde AI-origineel van de enquête (golf A, punt 17), zodat zichtbaar blijft wat de mens aanpaste.
   const [surveyDraftId, setSurveyDraftId] = useState<string | null>(null);
   const recruitmentRequired = (RECRUITMENT_REQUIRED_TYPES as readonly string[]).includes(type);
+  const derivedRecruitment = recruitmentRequired ? recruitmentFromChannels(channels) : "unknown";
+  const recruitment = recruitmentChoice || (derivedRecruitment !== "unknown" ? derivedRecruitment : "");
+  const recruitmentDerived = !recruitmentChoice && recruitment !== "";
   const [reach, setReach] = useState("");
   const audit = useMemo(() => auditGuide(guide.split("\n"), { productNames: [ideaTitle, page.product_name] }), [guide, ideaTitle, page.product_name]);
   const auditSum = guideSummary(audit);
@@ -261,15 +294,24 @@ export function ExperimentBuilder({
   const errs = orderedErrors(shown);
   const serverOnly = tried && errs.length === 0 && saveState.error ? saveState.error : null;
   const focusField = (field: string) => {
-    const el = document.getElementById(FIELD_FOCUS[field] ?? "");
-    if (el) {
-      el.scrollIntoView({ block: "center", behavior: "smooth" });
-      (el as HTMLElement).focus({ preventScroll: true });
-    }
+    const go = () => {
+      const el = document.getElementById(FIELD_FOCUS[field] ?? "");
+      if (el) {
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+        (el as HTMLElement).focus({ preventScroll: true });
+      }
+    };
+    // B5: een veld onder "Details" is pas te zien (en te focussen) als "Details" openstaat.
+    if (detailFieldErrors({ [field]: "x" }).length && !detailsOpen) {
+      setDetailsOpen(true);
+      requestAnimationFrame(go);
+    } else go();
   };
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setTried(true);
+    // B5: een verplicht detailveld met een fout opent "Details" vanzelf; de fout staat dan zichtbaar bij het veld.
+    if (detailFieldErrors(liveErrors).length) setDetailsOpen(true);
     const first = orderedErrors(liveErrors)[0];
     if (first) return focusField(first.field);
     const fd = new FormData(e.currentTarget);
@@ -334,19 +376,12 @@ export function ExperimentBuilder({
         {locked && <input type="hidden" name="thresholds_locked" value="1" />}
         {thresholdsChanged && <input type="hidden" name="threshold_change_reason" value={changeReason.trim()} />}
         <div className="card" style={{ marginTop: 18 }}>
-          <div className="section-title"><h2 className="as-h3">Jouw Test Card</h2><span className="pill gray">Concept</span></div>
-          <p className="explain" style={{ marginTop: -8, marginBottom: 14 }}>Een Test Card legt vóór de start vast wat je denkt, hoe je het toetst, wat je meet en wanneer het klopt. Na goedkeuring kan dat niet meer stil veranderen.</p>
-          <div className="form-line"><label htmlFor="tc-title">Naam van het experiment<RequiredMark /></label><input className="field" id="tc-title" name="title" value={title} onChange={(e) => setTitle(e.target.value)} {...aria("title")} />{fieldError("title")}</div>
-          <div className="form-line"><label htmlFor="tc-believe">Wij denken dat…<RequiredMark /></label><textarea className="field" id="tc-believe" name="we_believe" rows={3} value={card.we_believe} onChange={(e) => set("we_believe", e.target.value)} {...aria("we_believe")} />{fieldError("we_believe")}</div>
+          <div className="section-title"><h2 className="as-h3">Jouw Test Card</h2></div>
+          {/* B5: één duidelijke status bovenaan; een nieuwe Test Card is altijd een concept. */}
+          <TestCardStatus state="draft" note="Nog niet opgeslagen. Na opslaan bied je de Test Card aan voor goedkeuring; daarna start de test." />
+          <p className="explain" style={{ marginTop: 0, marginBottom: 14 }}>Vijf vragen; de rest staat vooringevuld onder Details. Na goedkeuring kan niets meer stil veranderen.</p>
+          <div className="form-line"><label htmlFor="tc-believe">Wat test je?<RequiredMark /></label><textarea className="field" id="tc-believe" name="we_believe" rows={3} value={card.we_believe} onChange={(e) => set("we_believe", e.target.value)} {...aria("we_believe")} />{fieldError("we_believe")}</div>
           <div className="form-line"><label htmlFor="tc-target">Bij wie?<RequiredMark /></label><input className="field" id="tc-target" name="target_group" value={card.target_group} onChange={(e) => set("target_group", e.target.value)} {...aria("target_group")} />{fieldError("target_group")}</div>
-          <div className="form-line"><label htmlFor="tc-method">Dat toetsen we door…<RequiredMark /></label><input className="field" id="tc-method" name="test_method" value={card.test_method} onChange={(e) => set("test_method", e.target.value)} {...aria("test_method")} />{fieldError("test_method")}</div>
-          <div className="form-line"><label htmlFor="tc-metric">En we meten…<RequiredMark /></label><input className="field" id="tc-metric" name="metric_label" value={card.metric_label} onChange={(e) => set("metric_label", e.target.value)} {...aria("metric_label")} />{fieldError("metric_label")}</div>
-          <div className="double-field">
-            <div className="form-line"><label htmlFor="tc-num">Teller<RequiredMark /></label><input className="field" id="tc-num" name="metric_numerator" value={card.metric_numerator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_numerator", e.target.value)} {...aria("metric_numerator")} /></div>
-            <div className="form-line"><label htmlFor="tc-den">Noemer<RequiredMark /></label><input className="field" id="tc-den" name="metric_denominator" value={card.metric_denominator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_denominator", e.target.value)} aria-required /></div>
-          </div>
-          {fieldError("metric_numerator")}
-          {type === "survey" && <p className="field-hint" id="tc-metric-hint" style={{ marginTop: -8, marginBottom: 12 }}>Teller en noemer volgen uit de kernvraag en de succesopties in de enquête hiernaast.</p>}
           {v2 && <input type="hidden" name="decision_rule" value={activeRule} />}
           <section className="tc-step" aria-labelledby="tc-step1">
           <h3 id="tc-step1" className="tc-step-title"><span className="num">1</span> Wanneer is de test geslaagd?</h3>
@@ -473,15 +508,30 @@ export function ExperimentBuilder({
                 )}
               </div>
             )}
-            <div className="form-line"><label htmlFor="tc-days">Maximale looptijd (dagen)<RequiredMark /></label><input className="field num" id="tc-days" name="max_duration_days" type="number" min={1} max={180} value={card.max_duration_days} onChange={(e) => set("max_duration_days", e.target.value)} {...aria("max_duration_days")} />{fieldError("max_duration_days")}</div>
-          </div>
-          {v2 && (
+            {/* B5: de deadline is een datum op het scherm; de database bewaart de maximale looptijd in dagen. */}
             <div className="form-line">
-              <label htmlFor="tc-week">Beschikbare deelnemers per week (optioneel)</label>
-              <input className="field num" id="tc-week" name="available_per_week" type="number" min={0} value={perWeek} onChange={(e) => setPerWeek(e.target.value)} aria-describedby="tc-week-hint" />
-              <p className="field-hint" id="tc-week-hint">Hoeveel mensen uit de doelgroep je per week kunt bereiken. ProofLab toetst daarmee of de test binnen de looptijd haalbaar is.</p>
+              <label htmlFor="tc-deadline">Deadline<RequiredMark /></label>
+              <input type="hidden" name="max_duration_days" value={card.max_duration_days} />
+              <input
+                className="field num"
+                id="tc-deadline"
+                type="date"
+                min={deadlineFromDays(1, today)}
+                max={deadlineFromDays(180, today)}
+                value={deadlineFromDays(Number(card.max_duration_days), today)}
+                onChange={(e) => set("max_duration_days", String(daysUntil(e.target.value, today) ?? ""))}
+                suppressHydrationWarning
+                {...aria("max_duration_days")}
+                aria-describedby={shown.max_duration_days ? "err-max_duration_days tc-deadline-hint" : "tc-deadline-hint"}
+              />
+              {fieldError("max_duration_days")}
+              <p className="field-hint" id="tc-deadline-hint">
+                {Number(card.max_duration_days) > 0
+                  ? `Maximaal ${card.max_duration_days} dagen. Start je later, dan schuift de deadline mee.`
+                  : "De uiterste einddatum als je vandaag start."}
+              </p>
             </div>
-          )}
+          </div>
           </section>
           {!v2 && (
             needed !== null ? (
@@ -493,7 +543,35 @@ export function ExperimentBuilder({
               <div className="note" style={{ marginTop: 0 }}>Met deze steekproef is de succesdrempel niet aantoonbaar te halen. Verhoog de steekproef.</div>
             )
           )}
+          {goRuleMissing && isPrimary && (
+            <p className="field-hint" id="tc-go-rule">
+              Dit dossier heeft nog geen go-regel. Na opslaan stelt ProofLab hem voor: doorgaan als deze hoofdtest slaagt en de aanname minstens{" "}
+              {Math.round(GO_RULE_DEFAULT_PROBABILITY * 100)}% kans haalt. Een hoofdtest start pas als de go-regel vastligt.
+            </p>
+          )}
+          {/* B5: alles hieronder staat vooringevuld. Een verplicht veld met een fout opent dit deel vanzelf. */}
+          <details className="tc-details" open={detailsOpen} onToggle={(e) => setDetailsOpen(e.currentTarget.open)}>
+          <summary id="tc-details">
+            <strong>Details</strong> <small>naam, meting, vertekeningen, werving{type === "landing" || type === "pricing" ? ", aanbodtekst" : ""}{type === "pricing" ? " en prijspunten" : ""}{type === "interview" ? " en gespreksleidraad" : ""} (vooringevuld)</small>
+            {tried && detailFieldErrors(liveErrors).length > 0 && <span className="pill coral">{detailFieldErrors(liveErrors).length} aan te vullen</span>}
+          </summary>
+          <div className="form-line mt-12"><label htmlFor="tc-title">Naam van het experiment<RequiredMark /></label><input className="field" id="tc-title" name="title" value={title} onChange={(e) => setTitle(e.target.value)} {...aria("title")} />{fieldError("title")}</div>
+          <div className="form-line"><label htmlFor="tc-method">Dat toetsen we door…<RequiredMark /></label><input className="field" id="tc-method" name="test_method" value={card.test_method} onChange={(e) => set("test_method", e.target.value)} {...aria("test_method")} />{fieldError("test_method")}</div>
+          <div className="form-line"><label htmlFor="tc-metric">En we meten…<RequiredMark /></label><input className="field" id="tc-metric" name="metric_label" value={card.metric_label} onChange={(e) => set("metric_label", e.target.value)} {...aria("metric_label")} />{fieldError("metric_label")}</div>
+          <div className="double-field">
+            <div className="form-line"><label htmlFor="tc-num">Teller<RequiredMark /></label><input className="field" id="tc-num" name="metric_numerator" value={card.metric_numerator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_numerator", e.target.value)} {...aria("metric_numerator")} /></div>
+            <div className="form-line"><label htmlFor="tc-den">Noemer<RequiredMark /></label><input className="field" id="tc-den" name="metric_denominator" value={card.metric_denominator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_denominator", e.target.value)} aria-required /></div>
+          </div>
+          {fieldError("metric_numerator")}
+          {type === "survey" && <p className="field-hint" id="tc-metric-hint" style={{ marginTop: -8, marginBottom: 12 }}>Teller en noemer volgen uit de kernvraag en de succesopties in de enquête hiernaast.</p>}
           <div className="form-line"><label htmlFor="tc-bias">Verwachte vertekeningen</label><input className="field" id="tc-bias" name="expected_biases" value={card.expected_biases} onChange={(e) => set("expected_biases", e.target.value)} /></div>
+          {v2 && (
+            <div className="form-line">
+              <label htmlFor="tc-week">Beschikbare deelnemers per week (optioneel)</label>
+              <input className="field num" id="tc-week" name="available_per_week" type="number" min={0} value={perWeek} onChange={(e) => setPerWeek(e.target.value)} aria-describedby="tc-week-hint" />
+              <p className="field-hint" id="tc-week-hint">Hoeveel mensen uit de doelgroep je per week kunt bereiken. ProofLab toetst daarmee of de test vóór de deadline haalbaar is.</p>
+            </div>
+          )}
           <fieldset className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }} aria-describedby="tc-rg-hint">
             <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
               Wervingsgroep{recruitmentRequired ? " (verplicht)" : " (standaard voor de gesprekken)"}
@@ -507,6 +585,7 @@ export function ExperimentBuilder({
             </div>
             {fieldError("recruitment_group")}
             <p className="field-hint" id="tc-rg-hint">
+              {recruitmentDerived ? "Standaard afgeleid uit de kanalen; kies een andere groep als die beter past. " : ""}
               {recruitment ? `${RECRUITMENT_GROUPS[recruitment as RecruitmentGroup].explain} ` : ""}
               {recruitmentRequired
                 ? "Signalen uit dezelfde wervingsgroep zijn geen onafhankelijk bewijs: herhaling binnen één groep telt afnemend mee."
@@ -535,13 +614,60 @@ export function ExperimentBuilder({
             </p>
           ) : (
             <label className="check-row">
-              <input type="checkbox" name="is_primary" defaultChecked={!assumption.primary} key={`primary-${assumption.id}`} />{" "}
+              <input type="checkbox" name="is_primary" checked={isPrimary} onChange={(e) => setIsPrimary(e.target.checked)} />{" "}
               {assumption.primary ? "Maak dit de hoofdtest van deze aanname (vervangt de huidige hoofdtest, die nog niet is goedgekeurd)" : "Dit is de hoofdtest van deze aanname"}
             </label>
           )}
           <p className="field-hint">
             Per aanname wijs je vooraf één hoofdtest aan; alleen die beslist over de aanname. Andere tests heten verkennend. Na goedkeuring ligt de keuze vast.
           </p>
+          {type === "interview" && (
+            <>
+              <div className="form-line">
+                <label htmlFor="tc-guide">Gespreksleidraad (één vraag per regel)<RequiredMark /></label>
+                <textarea className="field" id="tc-guide" name="guide" rows={9} value={guide} onChange={(e) => setGuide(e.target.value)} aria-describedby={shown.guide ? "err-guide tc-guide-audit" : "tc-guide-audit"} aria-invalid={shown.guide ? true : undefined} aria-required />
+                {fieldError("guide")}
+                <p className="field-hint">Vragen over gedrag in het verleden. Geen pitch en geen &quot;zou je dit kopen?&quot;. De controle staat hiernaast.</p>
+              </div>
+              <div className="form-line">
+                <label htmlFor="tc-screen">Selectiecriteria en uitsluitingen</label>
+                <textarea className="field" id="tc-screen" name="screener" rows={3} placeholder="Bijv. organiseert minstens 4 zakelijke events per jaar; geen vrienden of collega's" />
+              </div>
+            </>
+          )}
+          {(type === "landing" || type === "pricing") && (
+            <>
+              <div className="form-line"><label htmlFor="pg-name">Naam van het aanbod (merkneutraal)</label><input className="field" id="pg-name" name="product_name" value={page.product_name} onChange={(e) => setPage({ ...page, product_name: e.target.value })} /></div>
+              <div className="form-line"><label htmlFor="pg-head">Kop<RequiredMark /></label><input className="field" id="pg-head" name="headline" value={page.headline} onChange={(e) => setPage({ ...page, headline: e.target.value })} {...aria("headline")} />{fieldError("headline")}</div>
+              <div className="form-line"><label htmlFor="pg-sub">Ondertitel</label><input className="field" id="pg-sub" name="subline" value={page.subline} onChange={(e) => setPage({ ...page, subline: e.target.value })} /></div>
+              <div className="form-line"><label htmlFor="pg-offer">Aanbod (wat krijgt iemand precies?)</label><textarea className="field" id="pg-offer" name="offer" rows={3} value={page.offer} onChange={(e) => setPage({ ...page, offer: e.target.value })} /></div>
+              <div className="form-line"><label htmlFor="pg-cta">Knoptekst</label><input className="field" id="pg-cta" name="cta_label" value={page.cta_label} onChange={(e) => setPage({ ...page, cta_label: e.target.value })} /></div>
+              {type === "pricing" && (
+                <p className="field-hint" id="pp-hint">
+                  {fromIntake
+                    ? `Prijs uit de intake overgenomen: ${fromIntake.text}.${fromIntake.period ? "" : " De intake noemt geen periode: controleer die."}`
+                    : "De intake noemt geen prijs: vul minstens één prijspunt in."}
+                </p>
+              )}
+              {type === "pricing" &&
+                prices.map((p, i) => (
+                  <div className="double-field" key={i}>
+                    <div className="form-line"><label htmlFor={`pp-l-${i}`}>Prijspunt {i + 1}: naam{i === 0 && <RequiredMark />}</label><input className="field" id={`pp-l-${i}`} name={`price_label_${i}`} {...(i === 0 ? aria("price_points") : {})} value={p.label} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} /></div>
+                    <div className="form-line"><label htmlFor={`pp-a-${i}`}>Bedrag (€) en periode</label>
+                      <div className="row" style={{ flexWrap: "nowrap" }}>
+                        <input className="field num" id={`pp-a-${i}`} name={`price_amount_${i}`} inputMode="decimal" value={p.amount} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} />
+                        <input className="field" aria-label={`Periode prijspunt ${i + 1}`} name={`price_period_${i}`} value={p.period} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, period: e.target.value } : x)))} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              {type === "pricing" && fieldError("price_points")}
+              <label className="check-row"><input type="checkbox" name="collect_email" defaultChecked={type === "landing"} /> Na de klik om een e-mailadres vragen (met toestemming)</label>
+              <div className="form-line"><label htmlFor="pg-reveal">Bericht na de klik</label><textarea className="field" id="pg-reveal" name="reveal_message" rows={3} defaultValue="Bedankt! We nemen contact op zodra we kunnen starten." /></div>
+              <p className="field-hint">Na elke klik toont ProofLab altijd ook: “{HONEST_REVEAL}” Dit is niet uit te zetten.</p>
+            </>
+          )}
+          </details>
           <div className="note">Je legt deze criteria vast vóór de test. Na goedkeuring zijn ze vergrendeld; wijzigen kan alleen met een nieuwe versie en een motivering.</div>
           <div className="tc-save" id="tc-save">
             {errs.length > 0 && (
@@ -584,13 +710,11 @@ export function ExperimentBuilder({
             </>
           ) : type === "interview" ? (
             <>
-              <div className="form-line">
-                <label htmlFor="tc-guide">Gespreksleidraad (één vraag per regel)<RequiredMark /></label>
-                <textarea className="field" id="tc-guide" name="guide" rows={9} value={guide} onChange={(e) => setGuide(e.target.value)} aria-describedby={shown.guide ? "err-guide tc-guide-audit" : "tc-guide-audit"} aria-invalid={shown.guide ? true : undefined} aria-required />
-                {fieldError("guide")}
-                <p className="field-hint">Vragen over gedrag in het verleden. Geen pitch en geen &quot;zou je dit kopen?&quot;.</p>
-              </div>
-              <div id="tc-guide-audit" aria-live="polite">
+              {/* B5: de leidraad bewerk je onder Details; hier staat wat de deelnemer hoort. */}
+              <ol className="signal-steps" aria-label="Gespreksleidraad">
+                {guide.split("\n").map((q) => q.trim()).filter(Boolean).map((q, i) => <li key={i}>{q}</li>)}
+              </ol>
+              <div id="tc-guide-audit" aria-live="polite" className="mt-12">
                 {auditSum.flagged === 0 ? (
                   <div className="form-ok" style={{ marginTop: 0 }}>Leidraadcontrole: geen hypothetische, sturende of verkopende vragen gevonden.</div>
                 ) : (
@@ -599,10 +723,6 @@ export function ExperimentBuilder({
                     <GuideAuditList audit={audit} />
                   </div>
                 )}
-              </div>
-              <div className="form-line">
-                <label htmlFor="tc-screen">Selectiecriteria en uitsluitingen</label>
-                <textarea className="field" id="tc-screen" name="screener" rows={3} placeholder="Bijv. organiseert minstens 4 zakelijke events per jaar; geen vrienden of collega's" />
               </div>
             </>
           ) : (
@@ -665,27 +785,7 @@ export function ExperimentBuilder({
                   </div>
                 )}
               </div>
-              <div className="form-line mt-12"><label htmlFor="pg-name">Naam van het aanbod (merkneutraal)</label><input className="field" id="pg-name" name="product_name" value={page.product_name} onChange={(e) => setPage({ ...page, product_name: e.target.value })} /></div>
-              <div className="form-line"><label htmlFor="pg-head">Kop<RequiredMark /></label><input className="field" id="pg-head" name="headline" value={page.headline} onChange={(e) => setPage({ ...page, headline: e.target.value })} {...aria("headline")} />{fieldError("headline")}</div>
-              <div className="form-line"><label htmlFor="pg-sub">Ondertitel</label><input className="field" id="pg-sub" name="subline" value={page.subline} onChange={(e) => setPage({ ...page, subline: e.target.value })} /></div>
-              <div className="form-line"><label htmlFor="pg-offer">Aanbod (wat krijgt iemand precies?)</label><textarea className="field" id="pg-offer" name="offer" rows={3} value={page.offer} onChange={(e) => setPage({ ...page, offer: e.target.value })} /></div>
-              <div className="form-line"><label htmlFor="pg-cta">Knoptekst</label><input className="field" id="pg-cta" name="cta_label" value={page.cta_label} onChange={(e) => setPage({ ...page, cta_label: e.target.value })} /></div>
-              {type === "pricing" &&
-                prices.map((p, i) => (
-                  <div className="double-field" key={i}>
-                    <div className="form-line"><label htmlFor={`pp-l-${i}`}>Prijspunt {i + 1}: naam{i === 0 && <RequiredMark />}</label><input className="field" id={`pp-l-${i}`} name={`price_label_${i}`} {...(i === 0 ? aria("price_points") : {})} value={p.label} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} /></div>
-                    <div className="form-line"><label htmlFor={`pp-a-${i}`}>Bedrag (€) en periode</label>
-                      <div className="row" style={{ flexWrap: "nowrap" }}>
-                        <input className="field num" id={`pp-a-${i}`} name={`price_amount_${i}`} inputMode="decimal" value={p.amount} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} />
-                        <input className="field" aria-label={`Periode prijspunt ${i + 1}`} name={`price_period_${i}`} value={p.period} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, period: e.target.value } : x)))} />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              {type === "pricing" && fieldError("price_points")}
-              <label className="check-row"><input type="checkbox" name="collect_email" defaultChecked={type === "landing"} /> Na de klik om een e-mailadres vragen (met toestemming)</label>
-              <div className="form-line"><label htmlFor="pg-reveal">Bericht na de klik</label><textarea className="field" id="pg-reveal" name="reveal_message" rows={3} defaultValue="Bedankt! We nemen contact op zodra we kunnen starten." /></div>
-              <p className="field-hint">Na elke klik toont ProofLab altijd ook: “{HONEST_REVEAL}” Dit is niet uit te zetten.</p>
+              <p className="field-hint mt-12">Kop, aanbod{type === "pricing" ? " en prijspunten" : ""} pas je aan onder Details in de Test Card.</p>
             </>
           )}
         </div>

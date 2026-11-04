@@ -13,7 +13,8 @@ async function login(page: Page) {
   await page.waitForURL(/\/app/);
   const ws = page.getByLabel("Naam van je bureau of team", { exact: true });
   const hero = page.getByRole("heading", { name: /Van goed idee naar/ });
-  await expect(ws.or(hero)).toBeVisible();
+  // Het overzicht van een werkruimte met veel testdossiers laadt soms langzaam.
+  await expect(ws.or(hero)).toBeVisible({ timeout: 30_000 });
   if (await ws.isVisible()) {
     await ws.fill("E2E Bureau");
     await page.getByRole("button", { name: "Werkruimte aanmaken" }).click();
@@ -133,6 +134,8 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   expect(fitting, "een markt- of gedragsaanname").toBeTruthy();
   await page.getByLabel("Aanname die je toetst", { exact: true }).selectOption({ label: fitting! });
   await page.getByRole("radio", { name: /Landingpage-test/ }).click();
+  // Fase B5: kop, ondertitel en werving staan onder Details.
+  await page.locator("#tc-details").click();
   await page.getByLabel("Kop (verplicht)", { exact: true }).fill("Vind de perfecte eventlocatie in minuten.");
   await page.getByLabel("Ondertitel", { exact: true }).fill("Een persoonlijke selectie, zonder eindeloos zoeken.");
   // Fase B1b: eerst de drempels vastleggen; daarna rekent ProofLab het aantal deelnemers uit.
@@ -144,6 +147,9 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   // Fase B1a: na opslaan terug op het bord met een bevestiging; daarvandaan naar het concept.
   await page.waitForURL(/\/experiments\?opgeslagen=/);
   await expect(page.getByText("Test Card opgeslagen als concept.")).toBeVisible();
+  // Fase B5: de eerste hoofdtest krijgt een voorgestelde go-regel; zonder vastgelegde regel start hij niet.
+  await page.getByRole("button", { name: "Leg deze go-regel vast" }).click();
+  await expect(page.getByText("Go-regel vastgelegd.")).toBeVisible();
   await page.getByRole("link", { name: "Open het concept →" }).click();
   await page.waitForURL(/\/experiments\/[0-9a-f-]{36}/);
   await page.getByRole("button", { name: "Ter review aanbieden" }).click();
@@ -173,6 +179,9 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.getByRole("button", { name: "Rond af" }).click();
   await page.getByRole("button", { name: "Analyseer en maak de Learning Card" }).click();
   await page.waitForURL(/\/evidence/);
+  // Fase B5: "Daaruit leren we" en "Daarom gaan we" staan er als voorstel; met goedkeuren bevestig je ze.
+  await expect(page.getByText(/een voorstel/).first()).toBeVisible();
+  await expect(page.locator("textarea[name=we_learned]").first()).not.toHaveValue("");
   await page.getByRole("button", { name: "Keur goed: werk de aanname bij" }).click();
   await page.getByRole("button", { name: "Voer de Reality Check uit" }).click();
   await expect(page.getByText(/Advies:/)).toBeVisible();

@@ -31,20 +31,21 @@ export type TestCardInput = {
 
 export type FieldErrors = Record<string, string>;
 
-// Volgorde = volgorde op het scherm, zodat de eerste fout ook bovenaan de samenvatting staat.
+// Volgorde = volgorde op het scherm, zodat de eerste fout ook bovenaan de samenvatting staat. Fase B5: eerst de vijf
+// zichtbare velden, daarna wat onder "Details" staat.
 export const FIELD_LABELS: Record<string, string> = {
-  title: "Naam van het experiment",
-  we_believe: "Wij denken dat…",
+  we_believe: "Wat test je?",
   target_group: "Bij wie?",
-  test_method: "Dat toetsen we door…",
-  metric_label: "En we meten…",
-  metric_numerator: "Teller en noemer",
   success_threshold_pct: "Succesdrempel",
   fail_threshold_pct: "Faaldrempel",
   success_count: "Geslaagd bij minimaal (aantal)",
   thresholds: "Drempels vastleggen",
   min_sample: "Minimale steekproef",
-  max_duration_days: "Maximale looptijd",
+  max_duration_days: "Deadline",
+  title: "Naam van het experiment",
+  test_method: "Dat toetsen we door…",
+  metric_label: "En we meten…",
+  metric_numerator: "Teller en noemer",
   recruitment_group: "Wervingsgroep",
   channels: "Wervingskanalen",
   guide: "Gespreksleidraad",
@@ -67,6 +68,9 @@ export function validateTestCard(c: TestCardInput): FieldErrors {
     if (c.success_count == null || c.success_count < 1) add("success_count", "Leg vast hoeveel sterke handelingen minimaal nodig zijn.");
     else if (c.min_sample != null && c.success_count > c.min_sample) add("success_count", "Het afgesproken aantal kan niet groter zijn dan de minimale steekproef.");
   }
+  // B5: de looptijd staat op het scherm als deadline (een datum); de melding spreekt dezelfde taal.
+  if (c.max_duration_days == null || c.max_duration_days < 1) add("max_duration_days", "Kies een deadline na vandaag.");
+  else if (c.max_duration_days > 180) add("max_duration_days", "Kies een deadline binnen 180 dagen: een langere test verliest zijn waarde voor het besluit.");
   const coach = checkHypothesis({
     we_believe: c.we_believe,
     target_group: c.target_group,
@@ -183,4 +187,159 @@ export function sampleBand(input: {
     capacity,
     advice,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Fase B5: een korte Test Card. Zichtbaar zijn alleen wat je test, bij wie, wanneer de test geslaagd is (drempels),
+// hoeveel deelnemers en de deadline. De rest staat vooringevuld onder "Details". Een verplicht detailveld met een
+// fout opent "Details" vanzelf: een verplicht veld zit nooit verborgen in een dichtgeklapt deel.
+// ---------------------------------------------------------------------------
+
+// Velden (sleutels van FieldErrors) die op het zichtbare deel van de Test Card staan.
+export const VISIBLE_FIELDS = ["we_believe", "target_group", "success_threshold_pct", "fail_threshold_pct", "success_count", "thresholds", "min_sample", "max_duration_days"] as const;
+
+// Alle andere velden staan onder "Details" (de enquête staat in de preview en telt niet als detailveld).
+export function detailFieldErrors(e: FieldErrors): string[] {
+  return Object.keys(e).filter((k) => !(VISIBLE_FIELDS as readonly string[]).includes(k) && k !== "survey");
+}
+
+// Deadline: op het scherm een einddatum, in de database de maximale looptijd in dagen (hypotheses.max_duration_days).
+// De echte einddatum volgt bij de start (ends_at = start + looptijd); de datum hier geldt als de test vandaag start.
+const DAY_MS = 86_400_000;
+const utcDay = (iso: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : NaN;
+};
+export const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+export function deadlineFromDays(days: number, today: string): string {
+  const t = utcDay(today);
+  if (!Number.isFinite(t) || !Number.isFinite(days)) return "";
+  return new Date(t + Math.round(days) * DAY_MS).toISOString().slice(0, 10);
+}
+
+// Aantal dagen van vandaag tot de deadline; null bij een ongeldige datum.
+export function daysUntil(deadline: string, today: string): number | null {
+  const a = utcDay(today);
+  const b = utcDay(deadline);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return Math.round((b - a) / DAY_MS);
+}
+
+// Prijs uit de intake ("€ 249 per maand"). Eerst een expliciet prijsveld (als het dossier dat heeft), anders de
+// eerste prijs met een periode in de teksten, in de gegeven volgorde. Een bedrag zonder periode telt alleen na
+// "voor", "kost" of "prijs" (bijv. "voor € 1.500"); zo wordt een investering of omzetdoel geen prijspunt.
+export type IntakePrice = { amount: number; period: string | null; text: string };
+
+const PERIODS: [RegExp, string][] = [
+  [/^(per\s+maand|per\s+mnd|p\/m|pm|\/\s*maand|\/\s*mnd|\/\s*m|maandelijks)(?![a-z])/i, "per maand"],
+  [/^(per\s+jaar|per\s+jr|p\/j|pj|\/\s*jaar|\/\s*jr|\/\s*j|jaarlijks)(?![a-z])/i, "per jaar"],
+  [/^(per\s+week|p\/w|\/\s*week|wekelijks)(?![a-z])/i, "per week"],
+  [/^(per\s+kwartaal|\/\s*kwartaal)(?![a-z])/i, "per kwartaal"],
+  [/^eenmalig(?![a-z])/i, "eenmalig"],
+];
+
+// Een bedrag in Nederlandse notatie: "249", "1.250", "49,95", "1.250,50", "249,-".
+export function parseDutchAmount(s: string): number | null {
+  let t = s.trim().replace(/\s/g, "").replace(/,-$/, "");
+  if (/^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(t)) t = t.replace(/\./g, "").replace(",", ".");
+  else if (/^\d+,\d{1,2}$/.test(t)) t = t.replace(",", ".");
+  else if (!/^\d+$/.test(t)) return null;
+  const n = Number(t);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function periodAfter(rest: string): string | null {
+  const r = rest
+    .replace(/^\s*(excl\.?|incl\.?|ex\.?)\s*(btw)?\s*/i, "")
+    .replace(/^\s*per\s+(gebruiker|kantoor|klant|licentie|persoon|vestiging)\s*/i, "")
+    .trimStart();
+  for (const [re, label] of PERIODS) if (re.test(r)) return label;
+  return null;
+}
+
+export function priceFromText(text: string | null | undefined): IntakePrice | null {
+  if (!text) return null;
+  const re = /(?:€|EUR)\s*(\d+(?:[.,]\d+)*(?:,-)?)|(\d+(?:[.,]\d+)*)\s*(?:euro|EUR)(?![a-z])/gi;
+  let loose: IntakePrice | null = null;
+  for (const m of text.matchAll(re)) {
+    const start = m.index ?? 0;
+    const amount = parseDutchAmount(m[1] ?? m[2] ?? "");
+    if (amount == null) continue;
+    const end = start + m[0].length;
+    const period = periodAfter(text.slice(end, end + 40));
+    const phrase = `€ ${formatAmount(amount)}${period ? ` ${period}` : ""}`;
+    if (period) return { amount, period, text: phrase };
+    const before = text.slice(Math.max(0, start - 24), start).toLowerCase();
+    if (!loose && /(voor|kost|kosten|prijs|prijs van|à)\s*:?\s*$/.test(before)) loose = { amount, period: null, text: phrase };
+  }
+  return loose;
+}
+
+export function intakePrice(intake: { price_eur?: number | null; price_period?: string | null; texts: (string | null | undefined)[] }): IntakePrice | null {
+  if (intake.price_eur != null && Number.isFinite(intake.price_eur) && intake.price_eur > 0) {
+    const period = intake.price_period?.trim() || null;
+    return { amount: intake.price_eur, period, text: `€ ${formatAmount(intake.price_eur)}${period ? ` ${period}` : ""}` };
+  }
+  let loose: IntakePrice | null = null;
+  for (const t of intake.texts) {
+    const p = priceFromText(t);
+    if (p?.period) return p;
+    if (p && !loose) loose = p;
+  }
+  return loose;
+}
+
+// Bedrag voor een invoerveld: "249" of "49,95".
+export function formatAmount(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(".", ",");
+}
+
+// Kop van de testpagina als voorstel: de eerste zin van het idee, zonder de prijs (die staat bij de prijspunten).
+export function headlineFromIdea(description: string | null | undefined, title: string): string {
+  const first = (description ?? "").trim().split(/(?<=[.!?])\s+/)[0]?.trim() ?? "";
+  const clean = first
+    .replace(/,?\s*(voor|à|vanaf)\s*(€|EUR)\s*\d[\d.,]*(,-)?\s*(euro)?\s*(per\s+\w+|p\/m|pm|\/\s*\w+)?/gi, "")
+    .replace(/\s+([.,!?])/g, "$1")
+    .replace(/[.,]+$/, "")
+    .trim();
+  const text = clean.length >= 5 ? clean : title.trim();
+  return text.length > 140 ? `${text.slice(0, 137).replace(/\s+\S*$/, "")}…` : text;
+}
+
+// Wervingsgroep als standaard, afgeleid uit de kanalen (definities in recruitment.ts): organische kanalen en
+// persoonlijke uitnodigingen bereiken vooral het eigen netwerk (ook volgers van het eigen account); advertenties en
+// koude outreach zijn koud. Gemengd met het eigen netwerk telt als eigen netwerk: dat is het voorzichtigst, omdat
+// signalen uit het eigen netwerk minder onafhankelijk zijn. De consultant past het zo nodig aan onder "Details".
+const OWN_CHANNELS = ["network", "linkedin", "meta", "x", "email", "newsletter"];
+const COLD_CHANNELS = ["linkedin_ads", "meta_ads", "google_ads", "outreach"];
+export function recruitmentFromChannels(channels: string[]): "own_network" | "cold" | "unknown" {
+  if (channels.some((c) => OWN_CHANNELS.includes(c))) return "own_network";
+  if (channels.some((c) => COLD_CHANNELS.includes(c))) return "cold";
+  return "unknown";
+}
+
+// Statusbalk: Concept → Klaar voor goedkeuring → Loopt. "Goedgekeurd" is de laatste stap vóór de start: de tweede
+// stap is dan afgerond. Na de meting zijn alle drie de stappen afgerond.
+export type StatusStep = { key: "concept" | "review" | "live"; label: string; status: "done" | "current" | "todo" };
+export function testCardStatus(state: string): { steps: StatusStep[]; note: string } {
+  const labels: [StatusStep["key"], string][] = [
+    ["concept", "Concept"],
+    ["review", "Klaar voor goedkeuring"],
+    ["live", "Loopt"],
+  ];
+  const at: Record<string, { index: number; done: boolean; note: string }> = {
+    draft: { index: 0, done: false, note: "Vul de Test Card aan en bied hem aan voor goedkeuring." },
+    ready_for_review: { index: 1, done: false, note: "Wacht op goedkeuring. Goedkeuren vergrendelt hypothese en drempels." },
+    approved: { index: 1, done: true, note: "Goedgekeurd en vergrendeld. Start de test om te gaan meten." },
+    live: { index: 2, done: false, note: "Metingen worden geteld tot de deadline of de afgesproken eindconditie." },
+    paused: { index: 2, done: false, note: "Gepauzeerd: bezoeken worden nu niet geteld." },
+  };
+  const s = at[state] ?? { index: 2, done: true, note: "De meting is afgerond." };
+  const steps = labels.map(([key, label], i) => ({
+    key,
+    label,
+    status: (i < s.index || (i === s.index && s.done) ? "done" : i === s.index ? "current" : "todo") as StatusStep["status"],
+  }));
+  return { steps, note: s.note };
 }
