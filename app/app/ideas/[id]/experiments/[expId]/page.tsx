@@ -550,7 +550,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
               <h3>Interview toevoegen</h3>
               <ActionForm action={addInterview.bind(null, id, expId)} submitLabel="Interview opslaan" pendingLabel="Interview opslaan…" resetOnSuccess noValidate>
                 <div className="double-field mt-12">
-                  <Field name="participant_label" id="iv-l" label="Pseudoniem" required><input className="field" placeholder="Bijv. Eventmanager A" maxLength={80} /></Field>
+                  <Field name="participant_label" id="iv-l" label="Pseudoniem" required><input className="field" placeholder="Bijv. Deelnemer A" maxLength={80} /></Field>
                   <Field name="held_on" id="iv-d" label="Datum gesprek" required><input className="field" type="date" /></Field>
                 </div>
                 <div className="double-field">

@@ -6,6 +6,7 @@ import {
   bucketLabel,
   checkinDueFor,
   decisionBlocker,
+  decisionSteps,
   explainBrier,
   followUp,
   forecastDue,
@@ -209,10 +210,19 @@ function progress(forecast: Partial<ForecastState> | undefined, over: Partial<Id
 
 describe("decision gate", () => {
   it("requires the outcome definition and the decider's own decision forecast", () => {
-    expect(decisionBlocker(progress({ outcomeDefined: false }))).toMatch(/wanneer dit idee geslaagd is/);
-    expect(decisionBlocker(progress({}))).toMatch(/eigen voorspelling/);
+    expect(decisionBlocker(progress({ outcomeDefined: false }))?.text).toMatch(/wanneer dit idee geslaagd is/);
+    expect(decisionBlocker(progress({}))?.text).toMatch(/eigen voorspelling/);
     expect(forecastDue(progress({}))).toBe("decision");
     expect(decisionBlocker(progress({ ownMoments: ["decision"] }))).toBeNull();
+  });
+
+  it("gebruikerstest D12: per ontbrekend onderdeel een link en de stap", () => {
+    expect(decisionBlocker(progress({ outcomeDefined: false }))).toMatchObject({ step: "definitie", href: "/app/ideas/i1/outcome#definitie" });
+    expect(decisionBlocker(progress({ baseRateChosen: false }))).toMatchObject({ step: "basispercentage", href: "/app/ideas/i1/outcome#basispercentage" });
+    expect(decisionSteps(progress({ baseRateChosen: false }))?.missing.map((m) => m.step)).toEqual(["basispercentage", "voorspelling"]);
+    expect(decisionBlocker(progress({}))).toMatchObject({ step: "voorspelling", href: "#voorspelling" });
+    expect(decisionSteps(progress({ ownMoments: ["decision"] }))).toEqual({ done: true, missing: [] });
+    expect(decisionSteps(progress(undefined))).toBeNull();
   });
 
   it("does not block without the prediction schema, after resolution, or once the decision moment has closed", () => {

@@ -18,6 +18,7 @@ import { observationDirection, observationLevel } from "@/lib/domain/per-person"
 import { addDaysIso, buildDecisionSheet, sheetDate, type DecisionSheet } from "@/lib/report-sheet";
 import { todayInNL } from "@/lib/domain/sprint";
 import { isExploratory } from "@/lib/domain/customer-research";
+import { sanitizeChallenges } from "@/lib/domain/ai-text";
 
 // "AI · Gemini" for an AI forecast whose provider is known; null otherwise.
 function aiName(kind: string, model: string | null): string | null {
@@ -58,7 +59,10 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
   }));
 
   const check = d.realityCheck;
-  const checkFindings = ((check?.findings as { findings?: (Finding & { source?: string })[] } | null)?.findings ?? []).map((f) => ({ title: f.title, detail: f.detail, severity: f.severity, source: f.source ?? "regels" }));
+  // Gebruikerstest D10: AI-vragen zonder interne codes; een vraag met een resterende code valt weg.
+  const checkFindings = ((check?.findings as { findings?: (Finding & { source?: string })[] } | null)?.findings ?? [])
+    .map((f) => ({ title: f.title, detail: f.detail, severity: f.severity, source: f.source ?? "regels" }))
+    .flatMap((f) => (f.source === "ai" ? sanitizeChallenges([f]) : [f]));
   const lastDecision = d.decisions[d.decisions.length - 1] ?? null;
   const aiCost = d.research.ai.reduce((s, r) => s + Number(r.cost_usd), 0);
   const ladder = evidenceLadder(d.observations.map(ladderObservation));
@@ -88,6 +92,9 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       claims: claims.length,
       verified: claims.filter((c) => c.statusKey === "verified").length,
       insufficient: claims.filter((c) => c.statusKey === "insufficient").length,
+      // Gebruikerstest D13: tegenstrijdig en weerlegd apart geteld (oudere rapporten hebben deze velden niet).
+      contested: claims.filter((c) => c.statusKey === "contested").length as number | undefined,
+      refuted: claims.filter((c) => c.statusKey === "refuted").length as number | undefined,
     },
     // Fase B0, punt 1: klantwaarnemingen per persoon geteld (één interview = per bewijsniveau maximaal één waarneming).
     // Oudere rapporten hebben dit veld niet.
@@ -296,19 +303,27 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
     decision: lastDecision
       ? {
           action: DECISIONS[lastDecision.action as DecisionAction].label,
+          // Gebruikerstest D1: de actie zelf, zodat een tussenbesluit nooit als definitief wordt beschreven.
+          actionCode: lastDecision.action as string | null,
           rationale: lastDecision.rationale,
           nextStep: lastDecision.next_step,
           at: lastDecision.decided_at,
           confirmedAt: lastDecision.client_confirmed_at,
           // B1: zonder opdrachtgever is het besluit direct definitief; oudere rapporten hebben dit veld niet.
-          confirmation: decisionConfirmation(lastDecision.client_confirmed_at, !!d.idea.client_id),
+          // D1: verder testen, bijsturen en pauzeren zijn een tussenbesluit ("not_final"), nooit definitief.
+          confirmation: decisionConfirmation(lastDecision.client_confirmed_at, !!d.idea.client_id, lastDecision.action),
           comment: lastDecision.client_comment,
           // Golf B, punt 6: de toets aan de beslisregel en, bij afwijken, de motivering.
           rule: ruleSummary(lastDecision),
           // Golf B, punt 18: bevestigd na de samenvatting "Wat ging tegen".
           reviewedAgainst: lastDecision.reviewed_against_summary != null,
           // Golf B, punt 20: de verlengde testfase (aantal weken), als dit besluit er een is of erop volgde.
-          extendWeeks: d.decisions.find((x) => x.action === "extend")?.extend_weeks ?? null,
+          extendWeeks: extendOf(d)?.extend_weeks ?? null,
+          // Gebruikerstest D2: einde van de verlengde testfase (besluitdatum + weken × 7), YYYY-MM-DD.
+          extendUntil: (() => {
+            const x = extendOf(d);
+            return x?.extend_weeks ? addDaysIso(todayInNL(new Date(x.decided_at)), x.extend_weeks * 7) : null;
+          })() as string | null,
         }
       : null,
     sources: [...sources.values()].sort((a, b) => a.n - b.n),
@@ -319,6 +334,9 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
     },
   };
 }
+
+// Het (enige) besluit "verlengde testfase" van het dossier, als dat er is.
+const extendOf = (d: Dossier) => d.decisions.find((x) => x.action === "extend") ?? null;
 
 type Footnote = (s: { id: string; title: string; url: string | null; publisher: string | null; published_on: string | null; retrieved_at: string; source_type: string; is_primary: boolean } | null) => number | null;
 
@@ -351,6 +369,8 @@ function decisionSheetFor(d: Dossier, ctx: SheetContext, ladder: EvidenceLadder,
       return {
         statement: c.statement,
         verified: c.status === "verified",
+        // D13: een weerlegde bevinding is nooit geverifieerd of "deels tegengesproken".
+        refuted: c.status === "refuted",
         contradicted: exact.some((s) => s.stance === "contradicts"),
         notes: exact.map((s) => footnote(s.sources)).filter((n): n is number => n !== null),
         source: first ? `${first.publisher ? `${first.publisher}, ` : ""}${first.title}` : null,

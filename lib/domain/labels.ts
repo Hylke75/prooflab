@@ -14,6 +14,8 @@ export const SECTOR_TEMPLATES = {
   smb: "MKB / ondernemers",
   events: "Events, MICE en venues",
   media_culture: "Media, cultuur en publiek",
+  // Gebruikerstest D7: sportclubs, verenigingen, stichtingen en andere maatschappelijke organisaties.
+  associations: "Verenigingen, sport en maatschappelijke organisaties",
 } as const;
 export type SectorTemplate = keyof typeof SECTOR_TEMPLATES;
 

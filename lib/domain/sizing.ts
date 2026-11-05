@@ -65,6 +65,8 @@ export type SizingResult = {
   formula: string;
   provenance: { sourced: number; assumed: number; total: number };
   established: boolean; // base count backed by a verified or estimated claim
+  // Gebruikerstest D5: factoren die op 0 staan of ontbreken (labels). Dan is de uitkomst niet vastgesteld.
+  missing: string[];
   label: string;
 };
 
@@ -72,8 +74,12 @@ const fmtInt = (n: number) => Math.round(n).toLocaleString("nl-NL");
 const fmtEur = (n: number) => `€ ${Math.round(n).toLocaleString("nl-NL")}`;
 const fmtPct = (n: number) => `${n.toLocaleString("nl-NL", { maximumFractionDigits: 2 })}%`;
 
+// Een factor die 0 is of ontbreekt, is onbekend: in de formule staat "onbekend", niet "0" (gebruikerstest D5).
+const known = (n: number) => Number.isFinite(n) && n > 0;
+
 export function computeSizing(model: SizingModel, factors: Factor[]): SizingResult {
   const get = (k: string) => factors.find((f) => f.key === k)?.value ?? 0;
+  const show = (k: string, fmt: (n: number) => string) => (known(get(k)) ? fmt(get(k)) : "onbekend");
   const base = get("base_count");
   const fit = get("fit_pct") / 100;
   const reach = get("reach_pct") / 100;
@@ -85,12 +91,13 @@ export function computeSizing(model: SizingModel, factors: Factor[]): SizingResu
   const somCount = samCount * win;
   const revenueFormula =
     model === "transactions"
-      ? `${get("frequency").toLocaleString("nl-NL")} × ${fmtEur(get("ticket"))}`
-      : fmtEur(perCustomer);
+      ? `${show("frequency", (n) => n.toLocaleString("nl-NL"))} × ${show("ticket", fmtEur)}`
+      : show("revenue_per_customer", fmtEur);
 
   const defs = MODEL_FACTORS[model];
   const sourced = defs.filter((d) => factorSourced(factors.find((f) => f.key === d.key))).length;
   const established = factorSourced(factors.find((f) => f.key === "base_count"));
+  const missing = defs.filter((d) => !known(get(d.key))).map((d) => d.label);
 
   return {
     tamCount,
@@ -99,14 +106,17 @@ export function computeSizing(model: SizingModel, factors: Factor[]): SizingResu
     tamRevenue: tamCount * perCustomer,
     samRevenue: samCount * perCustomer,
     somRevenue: somCount * perCustomer,
-    formula: `${fmtInt(base)} × ${fmtPct(get("fit_pct"))} × ${fmtPct(get("reach_pct"))} × ${fmtPct(get("winnable_pct"))} × ${revenueFormula}`,
+    formula: `${show("base_count", fmtInt)} × ${show("fit_pct", fmtPct)} × ${show("reach_pct", fmtPct)} × ${show("winnable_pct", fmtPct)} × ${revenueFormula}`,
     provenance: { sourced, assumed: defs.length - sourced, total: defs.length },
     established,
-    label: established
-      ? sourced === defs.length
-        ? "Onderbouwd scenario"
-        : "Scenario met deels aangenomen factoren"
-      : "Verkennend scenario; marktomvang niet vastgesteld",
+    missing,
+    label: !established
+      ? "Verkennend scenario; marktomvang niet vastgesteld"
+      : missing.length
+        ? `Onvolledig scenario (onbekend: ${missing.map((m) => m.toLowerCase()).join(", ")}); omzet niet vastgesteld`
+        : sourced === defs.length
+          ? "Onderbouwd scenario"
+          : "Scenario met deels aangenomen factoren",
   };
 }
 

@@ -66,7 +66,7 @@ export function dsrLines(r: DsrResult): DsrLine[] {
       label: "Interviews",
       count: r.interviews.length,
       erasable: false,
-      explain: "Interviews staan onder een pseudoniem (bijv. 'Eventmanager A'), niet onder een e-mailadres. Gevonden worden alleen interviews waarvan het pseudoniem dit adres is of waarin het adres letterlijk in het transcript staat. Zoek ook op naam in de interviews van het dossier; verwijder of pas ze aan op de experimentpagina.",
+      explain: "Interviews staan onder een pseudoniem (bijv. 'Deelnemer A'), niet onder een e-mailadres. Gevonden worden alleen interviews waarvan het pseudoniem dit adres is of waarin het adres letterlijk in het transcript staat. Zoek ook op naam in de interviews van het dossier; verwijder of pas ze aan op de experimentpagina.",
     },
     {
       key: "team_account",

@@ -592,3 +592,55 @@ product owner. Drie commits (A bugs, B betrouwbaarheid besluit, C gebruiksvriend
   server leidt "bekende" daaruit af; zonder keuze volgt de groep uit het wervingskanaal (`lib/domain/interview-intake.ts`)
 - 🟡 Niet gedaan in deze omgeving: e2e (Playwright) en visuele controle op 1440/390 px met login; `scripts/test-db.sh`
   (geen bruikbare lokale Postgres). Migratie nog toepassen
+
+## Gebruikerstest: groep D (13 november)
+
+Tweede ronde met het dossier "AI-communicatie voor sportclubs" (analyse goedgekeurd). Drie commits (D1–D4
+rapporttekst, D5–D8 markt en intake, D9–D13 Reality Check en besluit) en één migratie
+`20261113090000_groep_d.sql` (**nog niet toegepast**; idempotent, wijzigt geen bestaande data; zonder de migratie valt
+de app terug, zie per punt).
+
+### Rapporttekst (D1–D4)
+- ✅ **D1** Tussenbesluit is nooit definitief: `decisionConfirmation(at, hasClient, action)` kent `not_final`
+  ("Tussenbesluit: nog geen definitief besluit") voor verder testen, verlengde testfase, bijsturen en pauzeren. De
+  momentopname bewaart `actionCode` (oudere rapporten: afgeleid uit het label). Hoofdstuk 09 komt uit
+  `decisionParagraph` (`lib/report-sheet.ts`), voor rapportpagina en PDF; de PDF-auditregel zegt zonder opdrachtgever
+  niet meer "Nog niet bevestigd". Ook Bewijs & besluit zegt bij een tussenbesluit niet meer "direct definitief"
+- ✅ **D2** De momentopname bewaart `extendUntil`; tekst "De verlengde testfase loopt tot 2 december 2026; daarna …" of
+  in de verleden tijd; Nederlandse datums in `testMoreNextStep` en de melding van `extensionBlocker`
+- ✅ **D3** `endSentence` (`lib/text.ts`): nooit meer ".." na volgende stap, beslisregel, ontbrekend bewijs of uitkomst
+- ✅ **D4** Kansen in hoofdstuk 06 als platte tekst (`assumptionProbabilityText`, gedeeld met de PDF); "niet
+  gekalibreerd" één keer in de kolomkop, de uitleg één keer onder de tabel, geen verwijzing naar een tooltip
+
+### Markt en intake (D5–D8)
+- ✅ **D5** `annualPriceFromOffer` ("€ 79 per maand" → € 948, "Aanname uit intake: … × 12, niet getoetst"). Een nieuw
+  dossier vult de jaaromzet per klant als aanname (geen bevinding); bestaande dossiers krijgen de knop "Neem intakeprijs
+  over (aanname)" zolang de waarde 0 is. Een factor op 0 heet in de formule "onbekend" en de uitkomst "Niet vastgesteld"
+- ✅ **D6** "Niets doen" uit de intake ("Amateursportclubs houden vast aan hoe het nu gaat: …" of "nog te
+  onderzoeken"). Alternatieven die de AI in de Reality Check noemt, worden voorstellen (`competitors.origin =
+  'proposal'`): apart en alleen voor consultants, nergens meegeteld (rapport, Reality Check, dossierstatus, coach).
+  Overnemen alleen met website of gekoppelde bevinding (`saveCompetitor`). Migratie: check op `origin` en leesregel
+  (opdrachtgevers zien geen voorstellen). Zonder migratie slaat de Reality Check geen voorstellen op
+- ✅ **D7** Branche "Verenigingen, sport en maatschappelijke organisaties" (`associations`) met eigen aandachtspunten
+  (leden, contributie, vrijwilligers, bestuur als beslisser); herkend door regels en AI-intake; nooit MKB bij een
+  publieke doelgroep; het sjabloon laat een branche weg die niet bij het soort klant past. Zonder migratie weigert de
+  database de nieuwe branche
+- ✅ **D8** Korte doelgroep `ideas.audience_short` (max. 60 tekens): voorstel uit AI of regels, aanpasbaar op de
+  samenvattingskaart (er is geen aparte dossierinstellingenpagina). `specificAudience` gebruikt eerst de korte vorm.
+  Zonder migratie wordt hij steeds afgeleid uit de toelichting
+
+### Reality Check en besluit (D9–D13)
+- ✅ **D9** "Geen onafhankelijke marktbron" noemt de brontypes die er echt zijn, of "geen gecontroleerde bron"
+- ✅ **D10** `dossierSummaryForAi` zonder ruwe codes (labels, bewijs in procenten) en met de opdracht geen codes te
+  noemen; `sanitizeAiText` (`lib/domain/ai-text.ts`) op Reality Check (ook in de onderzoeksrun), coachnotities,
+  AI-voorspellingen en oudere AI-vragen in het rapport. Een uitdaging met een resterende code valt weg
+- ✅ **D11** Voorbeelden met de korte doelgroep van het dossier, anders neutraal; geen "Eventmanagers" meer buiten
+  demo-data
+- ✅ **D12** `decisionBlocker` geeft `{ text, href, step }`; boven het besluit "1. Voorspelling (✓/open) – 2. Besluit"
+  met links naar wat ontbreekt; de compacte voorspelling staat in de besluitkaart (`#voorspelling`)
+- ✅ **D13** Weerlegd overal goed: aparte telling (KPI), geen "(Weerlegd, tegengesproken)", in de PDF als "Weerlegd
+  door gecontroleerde bronnen", nooit sterkste bewijs; Reality Check "1 bevinding weerlegd" / "2 bevindingen …";
+  tegensprekende bronnen tellen niet als onafhankelijke marktbron
+- 🟡 Niet gedaan in deze omgeving: e2e (Playwright) en visuele controle op 1440/390 px met login;
+  `scripts/test-db.sh`. Migratie nog toepassen. De databasefunctie die de dossierfase bepaalt (golf B) telt een
+  voorstel nog als alternatief; de app zelf niet

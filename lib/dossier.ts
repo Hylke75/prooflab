@@ -1,4 +1,5 @@
 import "server-only";
+import { withoutProposals } from "@/lib/domain/competitor-proposals";
 import { decisive } from "@/lib/domain/customer-research";
 import { PROPOSAL_REFERENCE_PREFIX } from "@/lib/domain/reference-proposal";
 import { supabaseServer } from "@/lib/supabase/server";
@@ -8,7 +9,8 @@ import { breakEvenRevenue, computeSizing, computeUnitEconomics, factorConsistenc
 import { explainContribution } from "@/lib/domain/evidence";
 import { dossierLabel, type LadderObservation } from "@/lib/domain/dossier-label";
 import type { DossierFacts } from "@/lib/domain/reality-check";
-import { CLAIM_STATUS, type ClaimStatus } from "@/lib/domain/labels";
+import { ASSUMPTION_STATUS, CLAIM_STATUS, EXPERIMENT_STATES, type AssumptionStatus, type ClaimStatus, type ExperimentState } from "@/lib/domain/labels";
+import { AI_CODE_LABELS } from "@/lib/domain/ai-text";
 import type { Idea } from "@/lib/data";
 import { loadIdeaWeights } from "@/lib/learning-data";
 import { asMethodVersion, METHODS } from "@/lib/domain/method";
@@ -181,7 +183,7 @@ export async function loadDossier(idea: Idea) {
   const approvedCards = (cards.data ?? []).filter((c) => c.status === "approved");
   const label = dossierLabel({
     claims: (claims.data ?? []).map((c) => ({ status: c.status, domain: c.claim_sources?.[0]?.sources?.domain ?? null, sourceType: c.claim_sources?.[0]?.sources?.source_type ?? null })),
-    competitorKinds: (competitors.data ?? []).map((c) => c.kind),
+    competitorKinds: withoutProposals(competitors.data ?? []).map((c) => c.kind),
     sizingComputed: sizing.some((s) => s.result.tamCount > 0),
     behaviourCards: approvedCards
       .map((c) => {
@@ -198,7 +200,8 @@ export async function loadDossier(idea: Idea) {
     clientName: client.data?.name ?? null,
     questions: questions.data ?? [],
     claims: claims.data ?? [],
-    competitors: competitors.data ?? [],
+    // Gebruikerstest D6: voorstellen (zonder bron) tellen nergens mee: niet in rapport, Reality Check of AI-samenvatting.
+    competitors: withoutProposals(competitors.data ?? []),
     segments: segments.data ?? [],
     sizing,
     unitEconomics: ue.data,
@@ -247,7 +250,9 @@ export function factsFrom(d: Dossier): DossierFacts {
       status: c.status as ClaimStatus,
       section: c.section,
       region: c.region,
-      sourceTypes: (c.claim_sources ?? []).filter((s) => s.quote_check === "exact").map((s) => s.sources?.source_type ?? "other"),
+      // Gebruikerstest D13: alleen bevestigende gecontroleerde bronnen; een tegensprekende bron van een weerlegde
+      // bevinding is geen onafhankelijke marktbron voor het idee.
+      sourceTypes: (c.claim_sources ?? []).filter((s) => s.quote_check === "exact" && s.stance !== "contradicts").map((s) => s.sources?.source_type ?? "other"),
     })),
     competitors: d.competitors.map((c) => ({ kind: c.kind })),
     sizing: realistic
@@ -289,16 +294,25 @@ export function factsFrom(d: Dossier): DossierFacts {
 }
 
 export function dossierSummaryForAi(d: Dossier): string {
+  // Gebruikerstest D10: overal Nederlandse labels en bewijs als percentage, nooit ruwe codes. De AI krijgt de opdracht
+  // geen interne codes te noemen; de uitvoer gaat daarna nog door sanitizeAiText (lib/domain/ai-text.ts).
+  const claimLabel = (s: string) => (s in CLAIM_STATUS ? CLAIM_STATUS[s as ClaimStatus].label : "onbekende status");
+  const assumptionLabel = (s: string) => (s in ASSUMPTION_STATUS ? ASSUMPTION_STATUS[s as AssumptionStatus].label.toLowerCase() : "onbekende status");
+  const stateLabel = (s: string) => (s in EXPERIMENT_STATES ? EXPERIMENT_STATES[s as ExperimentState].label.toLowerCase() : "onbekende status");
+  const verdictLabel = (v: string) => AI_CODE_LABELS[v] ?? "onbeslist";
   return [
     `Beslisvraag: ${d.idea.decision_question}`,
     "Bevindingen:",
-    // Gebruikerstest A4: Nederlandse statuslabels, geen ruwe codes.
-    ...d.claims.slice(0, 40).map((c) => `- [${c.status in CLAIM_STATUS ? CLAIM_STATUS[c.status as ClaimStatus].label : c.status}] ${c.statement}`),
-    "Aannames (belangrijkheid, bewijs 0-1, status):",
-    ...d.assumptions.map((a) => `- (${a.importance}, ${a.evidence.toFixed(2)}, ${a.status}) ${a.statement}`),
+    ...d.claims.slice(0, 40).map((c) => `- [${claimLabel(c.status)}] ${c.statement}`),
+    "Aannames (belang 1–5, bewijs in procenten, status):",
+    ...d.assumptions.map((a) => `- (belang ${a.importance}, bewijs ${Math.round(a.evidence * 100)}%, ${assumptionLabel(a.status)}) ${a.statement}`),
     "Experimenten:",
-    ...d.experiments.map((e) => `- ${e.title} [${e.state}]${e.type === "survey" ? " (enquête: zelfrapportage, geen waargenomen gedrag)" : ""} ${e.metrics ? `${e.metrics.successes}/${e.metrics.n}, oordeel: ${e.metrics.verdict.kind}` : ""}`),
+    ...d.experiments.map(
+      (e) =>
+        `- ${e.title} (${stateLabel(e.state)})${e.type === "survey" ? " (enquête: zelfrapportage, geen waargenomen gedrag)" : ""}${e.metrics ? ` ${e.metrics.successes} van ${e.metrics.n}, oordeel: ${verdictLabel(e.metrics.verdict.kind)}` : ""}`,
+    ),
     "Learning Cards:",
-    ...d.learningCards.map((c) => `- [${c.status}, ${c.verdict}] ${c.we_learned}`),
+    ...d.learningCards.map((c) => `- (${c.status === "approved" ? "goedgekeurd" : "concept"}, ${verdictLabel(c.verdict)}) ${c.we_learned}`),
+    "Schrijf in gewone Nederlandse taal en noem geen interne codes (zoals statuscodes in het Engels); gebruik de namen hierboven.",
   ].join("\n");
 }

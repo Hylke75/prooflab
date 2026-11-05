@@ -13,15 +13,15 @@ import { describeMethodology, ruleLabelText } from "@/lib/domain/method/describe
 import { CHANNELS } from "@/lib/domain/tracking";
 import { createReportVersion, shareReportVersion } from "./actions";
 import { Icon } from "@/components/Icon";
-import { Probability } from "@/components/ui/Probability";
 import { explainRecruitment } from "@/lib/domain/recruitment";
 import { asEvidenceLevel, mergedShort, outcomeWithLevel } from "@/lib/domain/evidence";
 import { allTestsSummary } from "@/lib/domain/all-tests";
 import { formatGroups } from "@/lib/domain/report-counts";
 import { ladderSummary } from "@/lib/domain/dossier-label";
-import { CALIBRATION_MIN_RESOLVED } from "@/lib/domain/probability-display";
-import { sheetOf, somRevenueCell } from "@/lib/report-pdf-model";
-import { reachableRevenue } from "@/lib/report-sheet";
+import { PROBABILITY_EXPLAIN, assumptionProbabilityText, calibrationNote, claimCountsNote, claimStatusText, probabilityColumnHead, sheetOf, somRevenueCell } from "@/lib/report-pdf-model";
+import { decisionParagraph, reachableRevenue } from "@/lib/report-sheet";
+import { todayInNL } from "@/lib/domain/sprint";
+import { endSentence } from "@/lib/text";
 import { isUnknown } from "@/lib/domain/claim-scope";
 import { DecisionSheetView } from "./DecisionSheet";
 import { Term } from "@/components/ui/Term";
@@ -72,11 +72,11 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   const current = versions.find((v) => v.version === wanted) ?? versions[0];
   const [{ data: row }, { data: lastDecision }] = await Promise.all([
     current ? supabase.from("reports").select("snapshot").eq("id", current.id).single() : Promise.resolve({ data: null }),
-    supabase.from("decisions").select("decided_at, client_confirmed_at").eq("idea_id", id).order("decided_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("decisions").select("decided_at, client_confirmed_at, action").eq("idea_id", id).order("decided_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const r = row?.snapshot as ReportSnapshot | undefined;
   // B1: zonder opdrachtgever wacht het besluit niet op bevestiging.
-  const confirmation = lastDecision ? decisionConfirmation(lastDecision.client_confirmed_at, !!idea.client_id) : null;
+  const confirmation = lastDecision ? decisionConfirmation(lastDecision.client_confirmed_at, !!idea.client_id, lastDecision.action) : null;
   // Rapporten van vóór golf A hebben geen kalibratie: dan de voorzichtige weergave (banden).
   const calibrated = !!(r && "calibration" in r && r.calibration?.calibrated);
   // A client opening a shared version marks it as seen (once; the database keeps the first moment).
@@ -137,7 +137,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                   </span>
                 )}
                 {v.id === newest?.id && lastDecision && (
-                  <span className={`pill ${confirmation === "awaiting" ? "orange" : "green"}`}>{CONFIRMATION_LABELS[confirmation!]}</span>
+                  <span className={`pill ${confirmation === "awaiting" ? "orange" : confirmation === "not_final" ? "gray" : "green"}`}>{CONFIRMATION_LABELS[confirmation!]}</span>
                 )}
                 <span className="version-links">
                   {!isCurrent && (
@@ -206,14 +206,14 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             <h3>{r.decision ? `Besluit: ${r.decision.action}.` : r.realityCheck ? `Advies: ${r.realityCheck.advice}.` : "Nog geen besluit."}</h3>
             <p>
               {r.decision?.rationale ?? r.realityCheck?.reason ?? "Het onderzoek loopt nog."} <Term k="bewijsniveau">Bewijsniveau</Term>: <strong>{r.label}</strong>.
-              {r.labelMissing.length ? ` Voor een hoger niveau ontbreekt: ${r.labelMissing.join("; ")}.` : ""}
+              {r.labelMissing.length ? ` Voor een hoger niveau ontbreekt: ${endSentence(r.labelMissing.join("; "))}` : ""}
               {r.observationCounts ? ` ${ladderSummary(r.observationCounts)}` : ""}
             </p>
             <div className="grid-3" style={{ margin: "20px 0" }}>
               <div style={{ background: "var(--color-surface-soft)", padding: 16, borderRadius: "var(--radius-inner)" }}>
                 <div className="tiny">Bevindingen met bron</div>
                 <div className="report-number">{r.counts.claims}</div>
-                <div className="tiny">{r.counts.verified} geverifieerd · {r.counts.insufficient} onvoldoende</div>
+                <div className="tiny">{claimCountsNote(r.counts)}</div>
               </div>
               <div style={{ background: "var(--color-success-soft)", padding: 16, borderRadius: "var(--radius-inner)" }}>
                 <div className="tiny">Experimenten</div>
@@ -251,7 +251,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                   <ul style={{ margin: "6px 0 0 18px", fontSize: 13, lineHeight: 1.7, color: "var(--color-text)" }}>
                     {list.map((c, i) => (
                       <li key={i}>
-                        {c.statement} <Notes n={c.notes} /> <em className="tiny">({c.status}{c.contradicted ? ", tegengesproken" : ""})</em>
+                        {c.statement} <Notes n={c.notes} /> <em className="tiny">({claimStatusText(c)})</em>
                         {c.scope && (
                           <div className="tiny">
                             {/* B6: een onbekende regio is geen andere regio; ze staat er als "onbekend". */}
@@ -318,7 +318,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             <span className="eyebrow">06 / Aannames en risico&apos;s</span>
             <h3>Wat moet waar zijn?</h3>
             <table className="table">
-              <thead><tr><th>Aanname</th><th>Belang</th>{r.assumptions.some((a) => "probability" in a && a.probability) ? <th>Geschatte kans{calibrated ? "" : " (niet gekalibreerd)"}</th> : <th>Bewijs</th>}<th>Status</th></tr></thead>
+              <thead><tr><th>Aanname</th><th>Belang</th>{r.assumptions.some((a) => "probability" in a && a.probability) ? <th>{probabilityColumnHead(calibrated)}</th> : <th>Bewijs</th>}<th>Status</th></tr></thead>
               <tbody>
                 {r.assumptions.map((a, i) => (
                   <tr key={i}>
@@ -326,8 +326,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                     <td className="num">{a.importance}/5</td>
                     {"probability" in a && a.probability ? (
                       <td className="num">
-                        <Probability p={a.probability.point} calibrated={calibrated} showLabel={false} />{" "}
-                        <span className="tiny">(<Probability p={a.probability.low} high={a.probability.high} calibrated={calibrated} showLabel={false} />)</span>
+                        {/* Gebruikerstest D4: platte tekst zoals de PDF, geen tooltip met "Exacte waarde". */}
+                        {assumptionProbabilityText({ probability: a.probability }, calibrated)}
                         {"capReason" in a && a.capReason ? <span className="tiny" style={{ display: "block" }}>{a.capReason}</span> : null}
                         {"merged" in a && a.merged.length ? <span className="tiny" style={{ display: "block" }}>{a.merged.map((m) => mergedShort(m)).join("; ")}</span> : null}
                         {"recruitment" in a && a.recruitment?.length ? <span className="tiny" style={{ display: "block" }}>{a.recruitment.map((x) => explainRecruitment(x)).join(" ")}</span> : null}
@@ -342,13 +342,9 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             </table>
             {r.assumptions.some((a) => "probability" in a && a.probability) && (
               <p className="explain">
-                Geschatte kans dat de aanname klopt: een beginwaarde (meestal 50%), bijgewerkt met een vaste factor per soort bewijs. Uitspraken
-                tellen nauwelijks, gedrag en betalingen sterk. Tussen haakjes de bandbreedte als die factoren de helft zwakker of sterker zijn.{" "}
+                {PROBABILITY_EXPLAIN}{" "}
                 {"weights" in r && r.weights ? describeWeights(r.weights) : "Gebruikte factoren: de vaste standaardfactoren van ProofLab (rapport gemaakt vóór geleerde factoren bestonden)."}{" "}
-                Rekenwijze: {describeMethodology("methodology" in r ? r.methodology : null).title}.
-                {calibrated
-                  ? ""
-                  : ` Niet gekalibreerd: bij dit rapport had de werkruimte minder dan ${CALIBRATION_MIN_RESOLVED} opgeloste dossiers om deze kansen aan te toetsen. Daarom staan ze in banden van 10 procentpunt rond de berekende waarde; de exacte waarde staat in de tooltip.`}
+                Rekenwijze: {describeMethodology("methodology" in r ? r.methodology : null).title}. {calibrationNote(calibrated)}
               </p>
             )}
           </section>
@@ -485,23 +481,12 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           <section className="report-section">
             <span className="eyebrow">09 / Besluit en volgende stap</span>
             <h3>{r.decision ? `${r.decision.action}.` : "Nog geen besluit."}</h3>
-            {r.decision && (
-              <p>
-                {r.decision.rationale}
-                {r.decision.nextStep ? ` Volgende stap: ${r.decision.nextStep}.` : ""} Vastgelegd op {date(r.decision.at)}.{" "}
-                {r.decision.confirmedAt
-                  ? `Bevestigd door de opdrachtgever op ${date(r.decision.confirmedAt)}${r.decision.comment ? ` (“${r.decision.comment}”)` : ""}.`
-                  : r.decision.confirmation === "not_needed"
-                    ? "Dit dossier heeft geen opdrachtgever: het besluit is direct definitief."
-                    : "Nog niet bevestigd door de opdrachtgever."}
-                {r.decision.extendWeeks ? ` Daarna volgde een periode van ${r.decision.extendWeeks} weken verder testen (verlengde testfase); het definitieve besluit en de uitkomstklok kwamen daarna.` : ""}
-                {r.decision.confirmedAt && r.decision.reviewedAgainst ? " De opdrachtgever zag daarbij de samenvatting “Wat ging tegen” (mislukte tests, tegenbewijs, begrensde aannames en afwijkingen van de beslisregel)." : ""}
-              </p>
-            )}
+            {/* Gebruikerstest D1/D2: één helper voor pagina en PDF; een tussenbesluit is nooit "direct definitief". */}
+            {r.decision && <p>{decisionParagraph(r.decision, todayInNL(new Date(r.generatedAt)), { hasClient: !!r.client })}</p>}
             {r.decision?.rule && (
               <div className="mt-12">
                 <p>
-                  <strong><Term k="go-regel">Beslisregel</Term>: {r.decision.rule.met ? "gehaald" : "niet gehaald"}.</strong> {r.decision.rule.lines.join("; ")}.
+                  <strong><Term k="go-regel">Beslisregel</Term>: {r.decision.rule.met ? "gehaald" : "niet gehaald"}.</strong> {endSentence(r.decision.rule.lines.join("; "))}
                 </p>
                 {r.decision.rule.deviation && (
                   <p className="mt-8">
@@ -518,8 +503,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               <h3>{r.prediction.result ? `Uitkomst: ${r.prediction.result.achieved.toLowerCase()}.` : "Wat verwachten we, en hoe toetsen we dat?"}</h3>
               {r.prediction.outcome.statement ? (
                 <p>
-                  Geslaagd betekent: {r.prediction.outcome.statement}
-                  {r.prediction.outcome.target != null ? ` (doel: ${r.prediction.outcome.target}${r.prediction.outcome.metric ? ` ${r.prediction.outcome.metric}` : ""})` : ""}. Gemeten zes maanden na het
+                  Geslaagd betekent:{" "}
+                  {endSentence(`${r.prediction.outcome.statement.replace(/\.\s*$/, "")}${r.prediction.outcome.target != null ? ` (doel: ${r.prediction.outcome.target}${r.prediction.outcome.metric ? ` ${r.prediction.outcome.metric}` : ""})` : ""}`)} Gemeten zes maanden na het
                   besluit{r.prediction.outcome.due ? `, op ${date(r.prediction.outcome.due)}` : ""}.
                 </p>
               ) : (

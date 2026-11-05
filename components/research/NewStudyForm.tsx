@@ -47,7 +47,7 @@ export function NewStudyForm({
               </select>
             </Field>
             <Field name="title" id={`${p}-title`} label="Titel" required hint="Respondenten zien deze titel boven de vragen.">
-              <input className="field" maxLength={120} placeholder={interview ? "Bijv. Hoe plannen eventmanagers nu hun personeel?" : "Bijv. Hoe vaak speelt dit probleem?"} />
+              <input className="field" maxLength={120} placeholder={interview ? "Bijv. Hoe pakt de doelgroep dit nu aan?" : "Bijv. Hoe vaak speelt dit probleem?"} />
             </Field>
             <Field name="goal" id={`${p}-goal`} label="Wat wil je leren?" required hint="Eén of twee zinnen. Dit staat bij het onderzoek, niet in de vragen.">
               <textarea className="field" rows={2} maxLength={600} style={{ minHeight: 80 }} />

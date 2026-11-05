@@ -9,6 +9,8 @@ import { assumptionStatusFromCards } from "@/lib/domain/primary-test";
 import { METHODS } from "@/lib/domain/method";
 import { ideaMethodVersion } from "@/lib/method-data";
 import { dossierSummaryForAi, factsFrom, loadDossier } from "@/lib/dossier";
+import { storeAlternativeProposals } from "@/lib/competitor-proposals-data";
+import { sanitizeChallenges } from "@/lib/domain/ai-text";
 import { runRealityCheck, type Finding } from "@/lib/domain/reality-check";
 import { aiConfigured } from "@/lib/env";
 import { challengeDossier } from "@/lib/ai/research";
@@ -20,7 +22,7 @@ import { decisionBlocker, outcomeDueForQuestion, outcomeQuestionFor } from "@/li
 import { addDays, todayInNL } from "@/lib/domain/sprint";
 import { deviates, isFinalAction } from "@/lib/domain/decision-rule";
 import { loadRuleCheck } from "@/lib/decision-rule-data";
-import { EXTEND_MAX_WEEKS, EXTEND_MIN_WEEKS, extensionBlocker, planTestMore, testMoreNextStep } from "@/lib/domain/extension";
+import { EXTEND_MAX_WEEKS, EXTEND_MIN_WEEKS, extensionBlocker, nlDay, planTestMore, testMoreNextStep } from "@/lib/domain/extension";
 import { againstFor } from "@/lib/against-data";
 import { isConclusiveDecision } from "@/lib/domain/dossier-status";
 import { DECISIONS } from "@/lib/domain/labels";
@@ -29,7 +31,6 @@ import { fieldErrorsFrom, savedNothing } from "@/lib/domain/form-errors";
 
 export type ActionState = { error: string | null; ok?: string | null; fieldErrors?: Record<string, string> };
 // "2 december 2026" voor een kalenderdatum (YYYY-MM-DD).
-const nlDay = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Amsterdam" });
 const refresh = (id: string) => revalidatePath(`/app/ideas/${id}`, "layout");
 
 const CardSchema = z.object({
@@ -98,16 +99,20 @@ export async function runCheck(ideaId: string, _: ActionState): Promise<ActionSt
   const result = runRealityCheck(factsFrom(dossier));
   const findings: (Finding & { source?: string })[] = result.findings.map((f) => ({ ...f, source: "regels" }));
   let aiUsed = false;
+  let proposed = 0;
+  const supabase = await supabaseServer();
   if (aiConfigured()) {
     try {
       const res = await runAi(ideaId, "reality_check", (p) => challengeDossier(ideaContext(idea), dossierSummaryForAi(dossier), p));
-      for (const c of res.data.challenges) findings.push({ code: "ai_challenge", severity: c.severity, title: c.title, detail: c.detail, source: "ai" });
+      // Gebruikerstest D10: geen interne codes; een uitdaging waarin na opschonen nog een code staat, valt weg.
+      for (const c of sanitizeChallenges(res.data.challenges)) findings.push({ code: "ai_challenge", severity: c.severity, title: c.title, detail: c.detail, source: "ai" });
       aiUsed = true;
+      // Gebruikerstest D6: genoemde alternatieven worden voorstellen zonder bron, die nergens meetellen.
+      proposed = await storeAlternativeProposals(supabase, ideaId, res.data.alternatives ?? []);
     } catch {
       // Logged by runAi; the rule-based check below still runs.
     }
   }
-  const supabase = await supabaseServer();
   const { error } = await supabase.from("reality_checks").insert({
     idea_id: ideaId,
     findings: { findings, investorQuestions: result.investorQuestions } as unknown as Json,
@@ -117,7 +122,12 @@ export async function runCheck(ideaId: string, _: ActionState): Promise<ActionSt
   });
   if (error) return { error: "De Reality Check kon niet worden opgeslagen." };
   refresh(ideaId);
-  return { error: null, ok: "Reality Check uitgevoerd." };
+  return {
+    error: null,
+    ok: proposed
+      ? `Reality Check uitgevoerd. ${proposed} genoemd${proposed === 1 ? " alternatief staat" : "e alternatieven staan"} als voorstel bij Concurrenten; neem ${proposed === 1 ? "het" : "ze"} over met een website of bron.`
+      : "Reality Check uitgevoerd.",
+  };
 }
 
 // Pre-mortem (research 3.10): "Het is zes maanden na het besluit en dit is mislukt. Wat is de meest
@@ -177,7 +187,7 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   // defined and the decider gives their own forecast while the decision moment is open.
   const progress = await loadProgress(ideaId);
   const blocker = decisionBlocker(progress);
-  if (blocker) return { error: blocker };
+  if (blocker) return { error: blocker.text };
   // Golf B, punt 20: één verlengde testfase van 2 tot 8 weken; tijdens die fase geen definitief besluit.
   // B6: "Verder testen" vraagt dezelfde duur; het oude extend blijft als invoer geldig.
   if ((p.data.action === "extend" || p.data.action === "test_more") && !p.data.extend_weeks) {
@@ -191,7 +201,7 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   const plan = p.data.action === "test_more" ? planTestMore(p.data.extend_weeks!, lites, todayInNL(), !!idea.outcome_clock_start) : null;
   const action = plan ? plan.action : p.data.action;
   const extendWeeks = plan ? plan.extendWeeks : p.data.action === "extend" ? p.data.extend_weeks! : null;
-  const nextStep = plan && !plan.binding ? testMoreNextStep(p.data.extend_weeks!, nlDay(plan.until), p.data.next_step) : p.data.next_step || null;
+  const nextStep = plan && !plan.binding ? testMoreNextStep(p.data.extend_weeks!, plan.until, p.data.next_step) : p.data.next_step || null;
   const extBlock = extensionBlocker(action, lites, todayInNL(), !!idea.outcome_clock_start);
   if (extBlock) return { error: extBlock };
   // Golf B, punt 6: een definitief besluit wordt getoetst aan de beslisregel. Wie afwijkt, motiveert dat.

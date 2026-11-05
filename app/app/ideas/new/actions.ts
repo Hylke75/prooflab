@@ -6,7 +6,7 @@ import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { getWorkspace } from "@/lib/data";
 import { insertDerivedQuestions, missingColumn } from "@/lib/research-questions-data";
-import { priceFromIntake, type IntakeFacts } from "@/lib/research-questions";
+import { AUDIENCE_SHORT_MAX, priceFromIntake, shortAudience, shortAudienceOf, type IntakeFacts } from "@/lib/research-questions";
 import { defaultFactors, MODEL_FACTORS, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import { OutcomeDefinitionSchema, optionalAmount, outcomeValueProblem } from "@/lib/forecast-schemas";
 import { measureWindowProblem } from "@/lib/domain/forecast";
@@ -22,8 +22,11 @@ import {
   PROJECT_TYPE_KEYS,
   REGION_OPTIONS,
   SECTOR_KEYS,
+  annualPriceFromOffer,
   changedFields,
   composeStatement,
+  currentPracticeFromText,
+  statusQuoPositioning,
   mergeProposals,
   ruleProposal,
   sanitizeAiProposal,
@@ -95,6 +98,8 @@ const IntakeSchema = z.object({
   outcome_statement: z.string().trim().max(400, "Houd de uitkomst kort: hooguit 400 tekens.").optional(),
   target_audience: z.enum(AUDIENCE_CATEGORIES, { message: "Kies het soort klant." }),
   audience_detail: z.string().trim().min(2, "Beschrijf de doelgroep, bijvoorbeeld 'zelfstandige NVM-kantoren met 2–15 medewerkers'.").max(200),
+  // Gebruikerstest D8: de korte doelgroep voor in vragen en kopjes (leeg: afgeleid uit de toelichting).
+  audience_short: optionalText(AUDIENCE_SHORT_MAX),
   region: z.enum(REGION_OPTIONS, { message: "Kies een regio." }),
   region_detail: optionalText(120),
   project_type: z.enum(PROJECT_TYPE_KEYS, { message: "Kies het type project." }),
@@ -184,6 +189,7 @@ export async function createIdea(_: FormState, form: FormData): Promise<FormStat
 
   // Wat was voorstel en wat paste de consultant aan (herleidbaar, zoals ai_original bij onderzoeksvragen).
   const stored = parseProposal(v.proposal_json);
+  const audienceShort = v.audience_short ?? shortAudience(v.audience_detail);
   const confirmed = {
     title: v.title,
     stake_kind: v.stake_kind,
@@ -195,6 +201,7 @@ export async function createIdea(_: FormState, form: FormData): Promise<FormStat
     outcome_statement,
     target_audience: v.target_audience,
     audience_detail: v.audience_detail,
+    audience_short: audienceShort,
     region: v.region,
     region_detail: v.region_detail ?? null,
     sector_template: v.sector_template,
@@ -242,9 +249,13 @@ export async function createIdea(_: FormState, form: FormData): Promise<FormStat
   };
   let res = await supabase
     .from("ideas")
-    .insert({ ...row, offer_price: v.offer_price ?? null, intake_proposal: intakeProposal })
+    .insert({ ...row, offer_price: v.offer_price ?? null, intake_proposal: intakeProposal, audience_short: audienceShort })
     .select("id")
     .single();
+  // Zonder de migratie van groep D: zonder de korte doelgroep (die wordt dan steeds afgeleid uit de toelichting).
+  if (res.error && missingColumn(res.error)) {
+    res = await supabase.from("ideas").insert({ ...row, offer_price: v.offer_price ?? null, intake_proposal: intakeProposal }).select("id").single();
+  }
   if (res.error && missingColumn(res.error)) {
     // Zonder de B3-migratie: zonder de nieuwe kolommen. De prijs gaat dan mee in de beschrijving, zodat de
     // onderzoeksvragen hem toch vinden (priceFromIntake leest de onzekerheid en de beschrijving).
@@ -262,6 +273,7 @@ export async function createIdea(_: FormState, form: FormData): Promise<FormStat
     decision_question: v.decision_question,
     target_audience: v.target_audience,
     audience_detail: v.audience_detail,
+    audience_short: audienceShort,
     region: v.region,
     region_detail: v.region_detail ?? null,
     project_type: v.project_type,
@@ -281,6 +293,9 @@ async function seedDossier(ideaId: string, intake: IntakeFacts) {
   const supabase = await supabaseServer();
   await insertDerivedQuestions(supabase, ideaId, intake);
   const model: SizingModel = /consument|particulier|b2c|huishoud/i.test(audience) ? "b2c_people" : "b2b_accounts";
+  // Gebruikerstest D5: de prijs uit de intake als jaaromzet per klant, gemarkeerd als aanname (geen claim_id).
+  const price = annualPriceFromOffer(intake.offer_price ?? priceFromIntake(intake));
+  const priceKey = "revenue_per_customer";
   for (const kind of ["conservative", "realistic", "optimistic"] as ScenarioKind[]) {
     const { data: scenario } = await supabase.from("sizing_scenarios").insert({ idea_id: ideaId, kind, model }).select("id").single();
     if (!scenario) continue;
@@ -292,7 +307,8 @@ async function seedDossier(ideaId: string, intake: IntakeFacts) {
         key: f.key,
         label: f.label,
         unit: f.unit,
-        value: defaults[f.key] ?? 0,
+        value: f.key === priceKey && price ? price.value : (defaults[f.key] ?? 0),
+        note: f.key === priceKey && price ? price.note : null,
         position: i + 1,
       })),
     );
@@ -302,7 +318,8 @@ async function seedDossier(ideaId: string, intake: IntakeFacts) {
     idea_id: ideaId,
     name: "Niets doen / huidige werkwijze",
     kind: "status_quo",
-    positioning: "De doelgroep houdt vast aan hoe het nu gaat: eigen netwerk, spreadsheets of uitstellen.",
+    // Gebruikerstest D6: uit de intake, geen verzonnen werkwijze.
+    positioning: statusQuoPositioning(shortAudienceOf(intake), currentPracticeFromText(intake.description, intake.key_uncertainty)),
     origin: "manual",
   });
 }

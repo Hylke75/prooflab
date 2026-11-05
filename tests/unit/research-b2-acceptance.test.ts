@@ -92,7 +92,7 @@ describe("snelle check op het testdossier", () => {
     const decisiveId = await ensureDecisiveQuestion(IDEA.id, IDEA);
     const decisive = db.research_questions.find((q) => q.id === decisiveId)!;
     expect(decisive.is_decisive).toBe(true);
-    expect(decisive.question).toBe("Willen zelfstandige NVM-kantoren met 2–15 medewerkers in Nederland € 249 per maand betalen voor Makelaarsassistent?");
+    expect(decisive.question).toBe("Willen zelfstandige NVM-kantoren in Nederland € 249 per maand betalen voor Makelaarsassistent?");
     // De sjabloonvragen noemen nu de specifieke doelgroep; dezelfde rijen (ids) blijven.
     expect(db.research_questions.map((q) => q.id)).toEqual(["q1", "q2", "q3", "q4", "q5"]);
     expect(db.research_questions.every((q) => !String(q.question).includes("Zakelijke klanten (B2B)"))).toBe(true);

@@ -7,6 +7,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { COMPETITOR_KINDS, type CompetitorKind } from "@/lib/domain/labels";
 import { RECHECK_DAYS, recheckDue } from "@/lib/domain/recheck";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
+import { isProposal, PROPOSAL_LABEL } from "@/lib/domain/competitor-proposals";
 
 export type CompetitorView = {
   id: string;
@@ -32,6 +33,7 @@ type Action = (s: FormState, f: FormData) => Promise<FormState>;
 
 export function CompetitorPanel({
   competitors,
+  proposals = [],
   canWrite,
   addAction,
   updateActions,
@@ -43,6 +45,8 @@ export function CompetitorPanel({
   recheckActions?: Record<string, Action>;
   recheckAll?: Action | null;
   competitors: CompetitorView[];
+  // Gebruikerstest D6: door de AI genoemde alternatieven zonder bron; alleen voor consultants, tellen nergens mee.
+  proposals?: CompetitorView[];
   canWrite: boolean;
   addAction: Action;
   updateActions: Record<string, Action>;
@@ -52,7 +56,8 @@ export function CompetitorPanel({
   const [filter, setFilter] = useState<"all" | CompetitorKind>("all");
   const [open, setOpen] = useState<string | "new" | null>(null);
   const shown = competitors.filter((c) => filter === "all" || c.kind === filter || (filter === "alternative" && c.kind === "status_quo"));
-  const current = open && open !== "new" ? competitors.find((c) => c.id === open) : null;
+  const current = open && open !== "new" ? (competitors.find((c) => c.id === open) ?? proposals.find((c) => c.id === open)) : null;
+  const currentIsProposal = !!current && isProposal(current);
 
   return (
     <>
@@ -112,6 +117,29 @@ export function CompetitorPanel({
           </div>
         ))}
       </div>
+      {canWrite && proposals.length > 0 && (
+        <div className="card mt-18" aria-labelledby="proposals-title">
+          <div className="section-title" style={{ marginBottom: 6 }}>
+            <h3 id="proposals-title">Voorstellen uit de Reality Check</h3>
+            <span className="pill orange">{PROPOSAL_LABEL}</span>
+          </div>
+          <p className="sub">
+            De AI noemde deze alternatieven. Ze tellen nergens mee en de opdrachtgever ziet ze niet. Neem een voorstel pas over met een website of een
+            bevinding met bron; anders verwijder je het.
+          </p>
+          {proposals.map((c) => (
+            <div className="competitor-row" key={c.id}>
+              <div>
+                <strong>{c.name}</strong>
+                <small>{COMPETITOR_KINDS[c.kind].label} · {PROPOSAL_LABEL.toLowerCase()}</small>
+              </div>
+              <div>{c.positioning ?? "—"}</div>
+              <div className="comp-col-hidden"><span className="muted">Niet onderzocht</span></div>
+              <button type="button" className="btn white sm" onClick={() => setOpen(c.id)} aria-label={`Voorstel ${c.name} bekijken en overnemen`}>Bekijk</button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="note">Prijzen staan er alleen met peildatum en bron. Een ontbrekende prijs blijft &quot;niet publiek&quot;; ProofLab vult die nooit zelf in.</div>
 
       <Drawer open={!!open} onClose={() => setOpen(null)} portal className="drawer" labelledBy="competitor-drawer-title">
@@ -121,7 +149,13 @@ export function CompetitorPanel({
                 <Icon name="close" />
               </button>
             </div>
-            {current && (
+            {currentIsProposal && (
+              <div className="note" role="note">
+                <strong>{PROPOSAL_LABEL}.</strong> Dit alternatief is genoemd door de AI. Vul een website in of koppel een bevinding met bron en sla op om het
+                over te nemen; tot dan telt het nergens mee.
+              </div>
+            )}
+            {current && !currentIsProposal && (
               <div className="stack mt-12">
                 <span className={`pill ${COMPETITOR_KINDS[current.kind].pill}`}>{COMPETITOR_KINDS[current.kind].label}</span>
                 {current.website && <a className="text-link" href={current.website} target="_blank" rel="noreferrer noopener">{current.website}</a>}
@@ -147,7 +181,7 @@ export function CompetitorPanel({
               </div>
             )}
             {canWrite ? (
-              <ActionForm action={current ? updateActions[current.id] : addAction} submitLabel="Opslaan" className="mt-18">
+              <ActionForm action={current ? updateActions[current.id] : addAction} submitLabel={currentIsProposal ? "Overnemen als aanbieder of alternatief" : "Opslaan"} className="mt-18">
                 <CompetitorFields c={current ?? null} claims={claims} />
               </ActionForm>
             ) : (

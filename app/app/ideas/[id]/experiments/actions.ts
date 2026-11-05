@@ -432,7 +432,7 @@ export async function deleteDraft(ideaId: string, expId: string) {
 // ---------------------------------------------------------------------------
 
 const InterviewSchema = z.object({
-  participant_label: text(80).min(2, "Gebruik een pseudoniem, bijv. 'Eventmanager A'."),
+  participant_label: text(80).min(2, "Gebruik een pseudoniem, bijv. 'Deelnemer A'."),
   dmu_role: z.enum(["user", "buyer", "decider", "influencer", "other"]),
   segment: text(160).optional(),
   recruited_via: z.enum(Object.keys(CHANNELS) as [string, ...string[]]),

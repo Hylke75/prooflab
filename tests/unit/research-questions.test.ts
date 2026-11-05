@@ -32,7 +32,7 @@ const MAKELAAR: IntakeFacts = {
 
 describe("afleiden uit de intake", () => {
   it("gebruikt de specifieke doelgroep, niet de brede categorie", () => {
-    expect(specificAudience(MAKELAAR)).toBe("zelfstandige NVM-kantoren met 2–15 medewerkers");
+    expect(specificAudience(MAKELAAR)).toBe("zelfstandige NVM-kantoren");
     const plan = derivePlan(MAKELAAR);
     expect(plan.questions).toHaveLength(5);
     for (const q of plan.questions) expect(q.question).not.toMatch(/Zakelijke klanten \(B2B\)/);
@@ -50,7 +50,7 @@ describe("afleiden uit de intake", () => {
 
   it("maakt de prijsvraag met doelgroep, aanbod en prijs de beslissende vraag", () => {
     const q = decisiveQuestionFor(MAKELAAR);
-    expect(q.question).toBe("Willen zelfstandige NVM-kantoren met 2–15 medewerkers in Nederland € 249 per maand betalen voor Makelaarsassistent?");
+    expect(q.question).toBe("Willen zelfstandige NVM-kantoren in Nederland € 249 per maand betalen voor Makelaarsassistent?");
     expect(q.expected_source).toBe("pricing_page");
     expect(q.unit).toBe("euro per klant per maand");
     expect(q.data_needed).toMatch(/gratis alternatieven/);
@@ -63,7 +63,7 @@ describe("afleiden uit de intake", () => {
 
   it("vraagt zonder genoemde prijs wat de doelgroep wil betalen", () => {
     const q = decisiveQuestionFor({ ...MAKELAAR, key_uncertainty: "of ze hiervoor willen betalen", outcome_min_value_per_customer: null });
-    expect(q.question).toBe("Hoeveel willen zelfstandige NVM-kantoren met 2–15 medewerkers in Nederland betalen voor Makelaarsassistent?");
+    expect(q.question).toBe("Hoeveel willen zelfstandige NVM-kantoren in Nederland betalen voor Makelaarsassistent?");
   });
 
   it("herkent het onderwerp van de onzekerheid", () => {

@@ -231,14 +231,32 @@ export function forecastDue(p: IdeaProgress): ForecastMoment | null {
   return m && p.forecast && !p.forecast.ownMoments.includes(m) ? m : null;
 }
 
-// Why a decision cannot be saved yet: the outcome must be defined, and while the decision moment is open the
-// decider gives their own forecast first. Null when nothing blocks (or the prediction schema is absent).
-export function decisionBlocker(p: IdeaProgress): string | null {
+// Gebruikerstest D12: wat er vóór het besluit nog moet, met een link naar de plek waar het kan.
+export type DecisionStepKey = "definitie" | "basispercentage" | "voorspelling";
+export type DecisionBlocker = { text: string; href: string; step: DecisionStepKey };
+
+// De onderdelen van stap 1 (Voorspelling) vóór het besluit: uitkomstdefinitie, basispercentage en de eigen voorspelling
+// bij het besluitmoment. done = niets meer open. Null zonder voorspellingsschema of als de uitkomst al bekend is.
+export function decisionSteps(p: IdeaProgress): { done: boolean; missing: DecisionBlocker[] } | null {
   const f = p.forecast;
   if (!f || f.resolved) return null;
-  if (!f.outcomeDefined) return "Leg eerst vast wanneer dit idee geslaagd is (Voorspelling & uitkomst). Zonder uitkomstdefinitie kan niemand later toetsen of het besluit goed was.";
-  if (openMomentFor(p) === "decision" && !f.ownMoments.includes("decision")) return "Geef eerst je eigen voorspelling bij het besluit: hoe groot is de kans dat het doel over zes maanden is gehaald?";
-  return null;
+  const outcome = `/app/ideas/${p.ideaId}/outcome`;
+  const missing: DecisionBlocker[] = [];
+  if (!f.outcomeDefined)
+    missing.push({ step: "definitie", href: `${outcome}#definitie`, text: "Leg eerst vast wanneer dit idee geslaagd is (Voorspelling & uitkomst). Zonder uitkomstdefinitie kan niemand later toetsen of het besluit goed was." });
+  const forecastOpen = f.outcomeDefined && openMomentFor(p) === "decision" && !f.ownMoments.includes("decision");
+  if (forecastOpen && !f.baseRateChosen)
+    missing.push({ step: "basispercentage", href: `${outcome}#basispercentage`, text: "Kies eerst het basispercentage; daarna geef je je eigen voorspelling bij het besluit." });
+  if (forecastOpen)
+    missing.push({ step: "voorspelling", href: "#voorspelling", text: "Geef eerst je eigen voorspelling bij het besluit: hoe groot is de kans dat het doel over zes maanden is gehaald?" });
+  return { done: missing.length === 0, missing };
+}
+
+// Why a decision cannot be saved yet: the outcome must be defined, and while the decision moment is open the
+// decider gives their own forecast first (after choosing the base rate). Null when nothing blocks (or the prediction
+// schema is absent). Gebruikerstest D12: met een link naar de plek waar het kan en de stap waar het bij hoort.
+export function decisionBlocker(p: IdeaProgress): DecisionBlocker | null {
+  return decisionSteps(p)?.missing[0] ?? null;
 }
 
 // ---------------------------------------------------------------------------

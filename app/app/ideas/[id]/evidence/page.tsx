@@ -8,7 +8,7 @@ import { LABEL_PILL, RuleSummary, outcomeFromCard, ruleLine } from "@/components
 import { asMethodVersion, METHODS } from "@/lib/domain/method";
 import { verdictInput } from "@/lib/method-preview";
 import { DecisionForecast } from "@/components/forecast/DecisionForecast";
-import { decisionBlocker, forecastFirstLock } from "@/lib/domain/forecast";
+import { decisionBlocker, decisionSteps, forecastFirstLock } from "@/lib/domain/forecast";
 import { ForecastFirstLock } from "@/components/forecast/ForecastFirstLock";
 import { getIdea } from "@/lib/data";
 import { loadDossier } from "@/lib/dossier";
@@ -30,6 +30,8 @@ import { ConfirmDecision } from "@/components/evidence/ConfirmDecision";
 import { againstFor } from "@/lib/against-data";
 import { extendedPhase, extensionBlocker } from "@/lib/domain/extension";
 import { todayInNL } from "@/lib/domain/sprint";
+import { isConclusiveDecision } from "@/lib/domain/dossier-status";
+import { audienceExample } from "@/lib/research-questions";
 import { Term } from "@/components/ui/Term";
 import { DeskEvidence, type DeskLinkRow } from "@/components/evidence/DeskEvidence";
 import { supabaseServer } from "@/lib/supabase/server";
@@ -48,6 +50,8 @@ const SEV = { blocker: ["Blokkerend", "coral"], warning: ["Let op", "orange"], i
 export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id]/evidence">) {
   const { id } = await params;
   const { idea, canWrite, isClientDecider } = await getIdea(id);
+  // Gebruikerstest D11: voorbeelden met de korte doelgroep van dit dossier, anders neutraal.
+  const who = audienceExample(idea);
   const progress = await loadProgress(id);
   // Golf B, punt 15: zolang het open voorspelmoment niet door deze gebruiker is voorspeld, blijven de berekende kansen,
   // de sterkte van het bewijs en andermans voorspellingen vergrendeld.
@@ -224,12 +228,12 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                 <summary className="text-link">{premortem.length ? "Nog een reden toevoegen" : "Doe de pre-mortem (1 tot 3 redenen)"}</summary>
                 <ActionForm action={addPremortem.bind(null, id)} submitLabel="Zet op de risicokaart" submitClass="btn white sm" resetOnSuccess>
                   <p className="explain">
-                    Schrijf elke reden op als wat waar moet zijn om die mislukking te voorkomen. Reden &quot;overstappen was te veel gedoe&quot; wordt bijvoorbeeld: &quot;Eventmanagers stappen zonder veel moeite over van hun vaste bureau.&quot;
+                    Schrijf elke reden op als wat waar moet zijn om die mislukking te voorkomen. Reden &quot;overstappen was te veel gedoe&quot; wordt bijvoorbeeld: &quot;{who ? `${who} stappen zonder veel moeite over van hun huidige werkwijze.` : "De doelgroep stapt zonder veel moeite over van de huidige werkwijze."}&quot;
                   </p>
                   {[1, 2, 3].map((i) => (
                     <div key={i} className="mt-12">
                       <label className="field-label" htmlFor={`pm-r-${i}`} style={{ marginTop: 0 }}>Reden {i}{i > 1 ? " (optioneel)" : ""}</label>
-                      <input className="field" id={`pm-r-${i}`} name={`reason_${i}`} maxLength={400} placeholder={i === 1 ? "Bijv. Eventmanagers stappen zonder veel moeite over van hun vaste bureau." : ""} />
+                      <input className="field" id={`pm-r-${i}`} name={`reason_${i}`} maxLength={400} placeholder={i === 1 ? (who ? `Bijv. ${who} blijven bij hun huidige werkwijze, omdat …` : "Bijv. De doelgroep blijft bij de huidige werkwijze, omdat …") : ""} />
                       <div className="double-field mt-8">
                         <select className="field" name={`category_${i}`} defaultValue="desirability" aria-label={`Soort risico bij reden ${i}`}>
                           {Object.entries(ASSUMPTION_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -249,7 +253,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
             )}
           </div>
 
-          <DecisionForecast ideaId={id} />
+          {!canWrite && <DecisionForecast ideaId={id} />}
 
           {ruleCheck && <RuleCheckCard rule={ruleCheck.rule} evaluation={ruleCheck.evaluation} />}
           {!ruleCheck && canWrite && (
@@ -265,7 +269,10 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
               <DecisionSelector
                 advised={(check?.advice as DecisionAction) ?? null}
                 action={saveDecision.bind(null, id)}
-                disabledReason={!check ? "Voer eerst de Reality Check uit." : stale ? "Voer de Reality Check opnieuw uit; er is nieuw bewijs." : decisionBlocker(progress)}
+                // Gebruikerstest D12: stap 1 (voorspelling) met wat nog ontbreekt en waar het kan, de invoer in deze kaart.
+                forecastStep={decisionSteps(progress)}
+                forecast={<DecisionForecast ideaId={id} />}
+                disabledReason={!check ? "Voer eerst de Reality Check uit." : stale ? "Voer de Reality Check opnieuw uit; er is nieuw bewijs." : (decisionBlocker(progress)?.text ?? null)}
                 ruleMet={ruleCheck ? ruleCheck.evaluation.met : null}
                 blocked={blocked}
               />
@@ -365,9 +372,11 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                   <p>
                     {dec.client_confirmed_at
                       ? `Bevestigd door de opdrachtgever op ${new Date(dec.client_confirmed_at).toLocaleDateString("nl-NL")}${dec.client_comment ? `: “${dec.client_comment}”` : ""}`
-                      : idea.client_id
-                        ? "Nog niet bevestigd door de opdrachtgever."
-                        : "Geen opdrachtgever: dit besluit is direct definitief."}
+                      : !isConclusiveDecision(dec.action)
+                        ? "Tussenbesluit: nog geen definitief besluit."
+                        : idea.client_id
+                          ? "Nog niet bevestigd door de opdrachtgever."
+                          : "Geen opdrachtgever: dit besluit is direct definitief."}
                   </p>
                   {isClientDecider && !dec.client_confirmed_at && <ConfirmDecision summary={againstFor(d, dec)} action={confirmDecision.bind(null, id, dec.id)} />}
                   {dec.reviewed_against_summary && <p className="tiny">De opdrachtgever zag bij het bevestigen de samenvatting &ldquo;Wat ging tegen&rdquo;.</p>}
