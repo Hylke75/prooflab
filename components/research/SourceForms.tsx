@@ -73,7 +73,8 @@ export function AddSourceForm({ action }: { action: Action }) {
         <div className="form-line">
           <label htmlFor="src-type">Type bron</label>
           <select ref={typeRef} className="field" id="src-type" name="source_type" defaultValue="official_statistic">
-            {Object.entries(SOURCE_TYPES).map(([k, v]) => (
+            {/* Een eigen wervingsregistratie maakt ProofLab zelf vanaf de testpagina (fase 2 · punt 5). */}
+            {Object.entries(SOURCE_TYPES).filter(([k]) => k !== "recruitment_log").map(([k, v]) => (
               <option key={k} value={k}>{v}</option>
             ))}
           </select>
