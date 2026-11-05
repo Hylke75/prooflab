@@ -50,6 +50,7 @@ import { FathomField } from "@/components/experiments/FathomField";
 import { loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
 import { RecruitmentFunnel } from "@/components/experiments/RecruitmentFunnel";
 import { loadRecruitment } from "@/lib/recruitment-data";
+import { deadlineRiskText } from "@/lib/domain/recruitment-funnel";
 
 export const metadata: Metadata = { title: "Experiment" };
 
@@ -233,6 +234,13 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
         </div>
       )}
       {m.warnings.map((w) => <div className="note" key={w}>{w}</div>)}
+      {/* Fase 2 · punt 5: deadline in gevaar (gehouden + gepland tegen de steekproef en de eerste deadline). Zelfde regel als de coach. */}
+      {recruitment && deadlineRiskText(recruitment.risk, type) && (
+        <div className="note" role="status" id="deadline-in-gevaar">
+          <strong>{recruitment.risk.level === "missed" ? "Deadline verstreken." : "Deadline in gevaar."}</strong> {deadlineRiskText(recruitment.risk, type)}{" "}
+          <a className="text-link" href="#werving">Bekijk de werving per kanaal</a>
+        </div>
+      )}
 
       <div className="grid-2 mt-18">
         <div className="card">

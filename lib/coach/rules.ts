@@ -6,6 +6,7 @@ import { OWN_BASE_RATE_MIN, openMoment } from "@/lib/domain/forecast";
 import { OVERCONFIDENT_GAP, overconfidence } from "@/lib/domain/calibration";
 import { extendedPhase } from "@/lib/domain/extension";
 import { dedupeByPerson } from "@/lib/domain/per-person";
+import { deadlineRisk, deadlineRiskText } from "@/lib/domain/recruitment-funnel";
 
 export type NoteKind = "tip" | "warning" | "question" | "praise";
 export type NoteAudience = "consultant" | "everyone";
@@ -69,6 +70,9 @@ export type CoachFacts = {
     guide: string[];
     // The assumption the experiment tests (optional for callers that do not know it).
     assumptionId?: string | null;
+    // Fase 2 · punt 5: geplande gesprekken (afspraken nog niet gehouden) uit de wervingsregistratie en de agenda.
+    // Ontbreekt bij oudere aanroepers en zonder registratie: dan rekent test_pace zoals voorheen met alleen n.
+    planned?: number;
   }[];
   interviews: { isAcquaintance: boolean }[];
   // interviewId: om per persoon te tellen (fase B0, punt 1); zonder interview telt elke waarneming apart.
@@ -238,18 +242,34 @@ export const RULES: Record<string, Rule> = {
     };
   },
 
+  // Fase 2 · punt 5: één regel voor tempo en deadline (geen aparte melding naast deze). Gehouden + gepland tegen de
+  // minimale steekproef en de eerste van einddatum en beslisdatum. Zonder planning en beslisdatum precies het oude tempo.
   test_pace: (f, base) =>
     f.experiments.flatMap((e) => {
-      if (e.state !== "live" || e.minSample <= 0 || e.n >= e.minSample) return [];
-      const p = projectedSample(e, f.now);
-      if (!p || p.elapsedDays < 2 || p.projected >= e.minSample) return [];
+      if (e.state !== "live") return [];
+      const r = deadlineRisk({
+        state: e.state,
+        held: e.n,
+        planned: e.planned ?? 0,
+        minSample: e.minSample,
+        startedAt: e.startedAt,
+        endsAt: e.endsAt,
+        decisionDeadline: f.decisionDeadline,
+        now: f.now,
+      });
+      const text = deadlineRiskText(r, e.type);
+      if (!text) return [];
       return [
         {
           code: `test_pace:${e.id}`,
           kind: "warning" as const,
-          title: `"${short(e.title, 60)}" haalt de steekproef waarschijnlijk niet`,
-          body: `In ${Math.floor(p.elapsedDays)} dagen kwamen ${e.n} deelnemers; in dit tempo zijn het er rond ${p.projected} van de minimaal ${e.minSample} op de einddatum. Werf nu extra via een ander kanaal, anders eindigt de test onbeslist.`,
-          href: `${base}/experiments/${e.id}`,
+          title: r.level === "missed" ? `"${short(e.title, 60)}": de deadline is verstreken` : `"${short(e.title, 60)}" haalt de steekproef waarschijnlijk niet`,
+          body: `${text} ${
+            r.level === "missed"
+              ? "Rond af (met reden) of verleng bewust; een uitspraak onder de steekproef telt niet mee."
+              : "Werf nu extra via het kanaal met de beste respons (zie Werving op de testpagina), anders eindigt de test onbeslist."
+          }`,
+          href: `${base}/experiments/${e.id}#werving`,
           audience: "consultant" as const,
         },
       ];
@@ -583,7 +603,7 @@ export const RULE_LABELS: Record<string, string> = {
   single_secondary_source: "Eén secundaire bron",
   opinions_no_behaviour: "Veel meningen, geen gedrag",
   critical_untested: "Kritieke aanname niet getest",
-  test_pace: "Steekproef niet op tempo",
+  test_pace: "Steekproef of deadline in gevaar",
   interview_hypothetical: "Hypothetische interviewvragen",
   survey_suggest: "Enquête voorstellen",
   acquaintances_majority: "Vooral bekenden geïnterviewd",
@@ -631,7 +651,7 @@ export const NOT_DONE: Record<string, string> = {
   single_secondary_source: "We zien nog geen tweede onafhankelijke of primaire bron bij deze bevinding(en).",
   opinions_no_behaviour: "We zien nog geen waargenomen klantgedrag (een aanvraag, aanmelding of aanbetaling).",
   critical_untested: "We zien nog geen test of nieuwe status voor deze kritieke aanname.",
-  test_pace: "We zien nog geen extra deelnemers: in dit tempo haalt de test de steekproef nog niet.",
+  test_pace: "We zien nog niet genoeg extra deelnemers of geplande gesprekken: in dit tempo haalt de test de steekproef niet voor de deadline.",
   interview_hypothetical: "We zien nog geen aangepaste gespreksleidraad: er staan nog hypothetische vragen in.",
   survey_suggest: "We zien nog geen enquête of extra datapunten bij deze aanname.",
   acquaintances_majority: "We zien nog geen extra gesprekken buiten je eigen netwerk.",

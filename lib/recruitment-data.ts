@@ -127,6 +127,14 @@ export async function plannedByExperiment(ideaId: string, tests: { id: string; t
   const out = new Map<string, number>();
   const interviews = tests.filter((t) => t.type === "interview");
   if (interviews.length === 0) return out;
+  try {
+    return await plannedFor(ideaId, interviews, now, out);
+  } catch {
+    return new Map();
+  }
+}
+
+async function plannedFor(ideaId: string, interviews: { id: string; held: number }[], now: number, out: Map<string, number>): Promise<Map<string, number>> {
   const db = await supabaseServer();
   const { data, error } = await db.from("recruitment_entries").select("experiment_id, quantity").eq("idea_id", ideaId).eq("step", "appointment");
   const appointments = new Map<string, number>();

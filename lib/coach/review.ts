@@ -16,6 +16,7 @@ import { evaluateRules, planNoteChanges, type CoachFacts, type CoachNoteDraft } 
 import { validateAiNotes } from "./ai-notes";
 import { countsAsEvidence } from "@/lib/domain/practice";
 import { isExploratory } from "@/lib/domain/customer-research";
+import { plannedByExperiment } from "@/lib/recruitment-data";
 
 // The trajectory coach looks at a dossier again only after a real change (fingerprint), at most once per
 // two minutes per dossier, and asks the AI at most three times per dossier per day.
@@ -36,7 +37,7 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
   const id = ideaId;
   const exact = { count: "exact" as const };
   const head = { count: "exact" as const, head: true };
-  const [claims, sources, competitors, assumptions, experiments, testEvents, interviews, observations, cards, checks, decisions, forecasts, outcome, checkins, replies, ideaRow, stopReview, realInterviews] =
+  const [claims, sources, competitors, assumptions, experiments, testEvents, interviews, observations, cards, checks, decisions, forecasts, outcome, checkins, replies, ideaRow, stopReview, realInterviews, recruitment] =
     await Promise.all([
       db.from("claims").select("updated_at", exact).eq("idea_id", id).order("updated_at", { ascending: false }).limit(1),
       db.from("sources").select("created_at", exact).eq("idea_id", id).order("created_at", { ascending: false }).limit(1),
@@ -59,6 +60,8 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
       db.from("stop_reviews").select("idea_id", head).eq("idea_id", id),
       // B0: een gesprek alsnog als echt aangeven verandert het bewijs, dus ook de vingerafdruk.
       db.from("interviews").select("id", head).eq("idea_id", id).eq("is_practice", false),
+      // Fase 2 · punt 5: wervingsregels veranderen "deadline in gevaar"; zonder tabel is het er niet.
+      db.from("recruitment_entries").select("id", head).eq("idea_id", id),
     ]);
   const tally = (rows: { [k: string]: unknown }[] | null, key: string) => {
     const m = new Map<string, number>();
@@ -84,6 +87,8 @@ export async function dossierFingerprint(db: Db, ideaId: string, sprintWeek: num
     interviews: interviews.count ?? 0,
     // Alleen als er echte gesprekken zijn, zodat bestaande vingerafdrukken (en de AI-beoordeling) niet verschuiven.
     ...(!realInterviews.error && (realInterviews.count ?? 0) > 0 ? { interviews_real: realInterviews.count ?? 0 } : {}),
+    // Idem: alleen met wervingsregels, zodat bestaande vingerafdrukken niet verschuiven.
+    ...(!recruitment.error && (recruitment.count ?? 0) > 0 ? { recruitment_entries: recruitment.count ?? 0 } : {}),
     observations: observations.count ?? 0,
     observations_at: observations.data?.[0]?.created_at ?? null,
     learning_cards: cardRows.length,
@@ -121,6 +126,8 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
     db.from("decision_rules").select("locked_at").eq("idea_id", id).maybeSingle(),
   ]);
   const idea = d.idea;
+  // Fase 2 · punt 5: geplande gesprekken per interviewtest (handmatige afspraken en agenda), voor test_pace.
+  const planned = await plannedByExperiment(id, d.experiments.map((e) => ({ id: e.id, type: e.type, held: e.metrics?.n ?? 0 })));
   return {
     ideaId: id,
     today,
@@ -154,6 +161,7 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
         failThresholdPct: h?.fail_threshold_pct ?? null,
         guide: Array.isArray(guide) ? guide.filter((g): g is string => typeof g === "string") : [],
         assumptionId: h?.assumption_id ?? null,
+        ...(planned.has(e.id) ? { planned: planned.get(e.id) } : {}),
       };
     }),
     // B0: alleen echte gesprekken; waarnemingen uit oefendata zijn in loadDossier al als synthetisch gemarkeerd.
