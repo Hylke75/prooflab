@@ -15,7 +15,7 @@ import { isNoteStep } from "@/lib/domain/step-files";
 import { CompetitorPanel, type CompetitorView } from "@/components/research/CompetitorPanel";
 import { isProposal, withoutProposals } from "@/lib/domain/competitor-proposals";
 import { SizingPanel } from "@/components/research/SizingPanel";
-import { cbsCellPreview, cbsTableMetadata, saveCbsFactor } from "./data-actions";
+import { attachRegisterFile, cbsCellPreview, cbsTableMetadata, fetchRegisterPage, importSectorRegister, linkSectorRegister, saveCbsFactor } from "./data-actions";
 import { SupportControls } from "@/components/research/SupportControls";
 import { AiQualityCard } from "@/components/research/AiQualityCard";
 import { CustomerSignals, type SignalView } from "@/components/research/CustomerSignals";
@@ -32,7 +32,9 @@ import { estimateRun, estimateText, planSteps, runBudgetUsd } from "@/lib/resear
 import { ensembleProviders } from "@/lib/ai/providers/select";
 import { aiSettingsForOrg } from "@/lib/ai/settings";
 import { CLAIM_STATUS, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type EvidenceType, type SourceType } from "@/lib/domain/labels";
-import { breakEvenRevenue, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
+import { breakEvenRevenue, SCENARIO_LABELS, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
+import { loadRegisters } from "@/lib/sector-register-data";
+import { SectorRegisterPanel } from "@/components/research/SectorRegisterPanel";
 import { compareWithIntake, intakeScope } from "@/lib/domain/claim-scope";
 import type { FreshnessKind } from "@/lib/domain/verify";
 import {
@@ -98,6 +100,13 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
     importExt(d.file_name) && isNoteStep(d.step) ? [{ id: d.id, fileName: d.file_name, size: Number(d.size_bytes), description: d.description, step: d.step }] : [],
   );
   const quality = canWrite ? await loadAiQuality() : null;
+  // Fase 2, punt 6: sectorregisters (bronnen van het type dataset met een vaste markering) en hun originelen.
+  const registers = await loadRegisters(id);
+  const registerTargets = (scenRes.data ?? []).flatMap((s) =>
+    (s.sizing_factors ?? [])
+      .filter((f) => f.unit === "count")
+      .map((f) => ({ value: `${s.id}:${f.key}`, label: `${SCENARIO_LABELS[s.kind as ScenarioKind]?.label ?? s.kind} scenario: ${f.label}` })),
+  );
   // Klantonderzoek: alle enquêtes en interviews van dit dossier (verkennend vanuit Markt en tests uit stap 3).
   const studies = await loadStudies(id);
   const run = runRes.data;
@@ -718,6 +727,16 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
             }))}
             breakEvenRevenue={breakEvenRevenue({ grossMarginPct: ue?.gross_margin_pct ?? null, fixedCostsYear: ue?.fixed_costs_year ?? null })}
             actions={Object.fromEntries((scenRes.data ?? []).map((s) => [s.id, saveScenario.bind(null, id, s.id)]))}
+          />
+          <SectorRegisterPanel
+            registers={registers}
+            targets={registerTargets}
+            canWrite={canWrite}
+            templateHref={`/app/ideas/${id}/research/sectorregister-sjabloon.csv`}
+            importAction={canWrite ? importSectorRegister.bind(null, id) : null}
+            attachFileActions={canWrite ? Object.fromEntries(registers.map((r) => [r.sourceId, attachRegisterFile.bind(null, id, r.sourceId)])) : {}}
+            fetchPageActions={canWrite ? Object.fromEntries(registers.map((r) => [r.sourceId, fetchRegisterPage.bind(null, id, r.sourceId)])) : {}}
+            linkActions={canWrite ? Object.fromEntries(registers.map((r) => [r.sourceId, linkSectorRegister.bind(null, id, r.sourceId)])) : {}}
           />
           <Detail>
           <UnitEconomicsPanel

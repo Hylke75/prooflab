@@ -270,11 +270,13 @@ export function cbsCellLine(r: CbsCellRow): string {
   return `CBS ${r.tableId} (${r.tableTitle}); ${dims}; Periode: ${r.period.title}${r.period.status ? ` (${r.period.status})` : ""}; Onderwerp: ${r.measure.title}; Waarde: ${cbsNumber(r.value)} ${r.measure.unit}`;
 }
 
-// Het getal voor het invoerveld van een bevinding. Let op "1.234": dat leest ProofLab (zoals in Nederlandse tekst)
-// als duizendtal. Met precies drie decimalen schrijven we daarom een extra nul, zodat het een decimaal getal blijft.
-export function cbsNumericInput(v: number): string {
+// Het getal voor het invoerveld van een bevinding, of null als ProofLab het niet ondubbelzinnig terugleest: "1.234"
+// leest ProofLab (zoals in Nederlandse tekst) als duizendtal. In dat geval zet de aanroeper het getal zelf.
+export function cbsNumericInput(v: number): string | null {
   const s = cbsNumber(v);
-  return /\.\d{3}$/.test(s) ? `${s}0` : s;
+  if (/^\d+$/.test(s)) return s;
+  // Eén decimale lezing: niet precies drie cijfers achter de punt.
+  return /\.\d{3}$/.test(s) ? null : s;
 }
 
 // De regio van een cel (de titel bij de regiodimensie, zonder het achtervoegsel "(PV)" e.d.), of "Nederland" voor

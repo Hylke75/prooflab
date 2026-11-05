@@ -179,7 +179,7 @@ export async function saveCbsToFactor(
         region,
         reference_date: referenceDate,
         period: row.period.title.slice(0, 60),
-        numeric_value: cbsNumericInput(row.value),
+        numeric_value: cbsNumericInput(row.value) ?? undefined,
         unit: row.measure.unit.slice(0, 40),
         definition: `CBS-onderwerp "${row.measure.title}" uit tabel ${cell.table.id} (${cell.table.title}).`.slice(0, 400),
         does_not_prove: "Dat deze groep het probleem heeft, klant wil worden of kan betalen: dit is alleen de omvang volgens CBS.",
@@ -191,6 +191,9 @@ export async function saveCbsToFactor(
     // Het getal staat letterlijk in de tabelregel; een andere uitkomst betekent dat er iets mis is met de regel.
     if (res.check !== "exact") return { error: "De citaatcontrole vond het getal niet in de tabelregel; er is niets aan de factor gekoppeld." };
     claimId = res.claimId;
+    // Een getal dat de invoer niet ondubbelzinnig leest (bijv. 1.234 als decimaal), zetten we zelf; het staat
+    // letterlijk in het citaat (dat controleerde checkQuote al).
+    if (cbsNumericInput(row.value) == null) await supabase.from("claims").update({ numeric_value: row.value }).eq("id", claimId).eq("idea_id", ideaId);
     const { data: c } = await supabase.from("claims").select("status").eq("id", claimId).maybeSingle();
     status = (c?.status as ClaimStatus | undefined) ?? null;
   }
