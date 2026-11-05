@@ -49,6 +49,7 @@ import { privacyBlock, type TestPrivacy } from "@/lib/domain/test-privacy";
 import { EMPTY_COUNTS, systemObservationKind, systemObservationSummary } from "@/lib/domain/action-counts";
 import { asSuccessMetric } from "@/lib/domain/test-page-generator";
 import { loadActionCounts, schemaMissing } from "@/lib/action-counts-data";
+import { depositAvailability } from "@/lib/integrations/mollie-server";
 
 export type ActionState = { error: string | null; ok?: string | null; warning?: string | null; fieldErrors?: Record<string, string> };
 
@@ -214,6 +215,14 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       controller_contact: String(raw.privacy_contact ?? "").trim().slice(0, 200),
     };
     landing.privacy = privacy;
+    // Fase 2 · punt 4: optionele betaalstap, alleen als Mollie voor deze werkruimte is ingesteld (de server controleert het zelf).
+    if (raw.deposit_enabled === "on") {
+      const amount = Math.round(Number(String(raw.deposit_amount ?? "").replace(",", ".")) * 100) / 100;
+      if (!(amount >= 1 && amount <= 500)) return { error: "De Test Card is nog niet opgeslagen: kies een aanbetaling tussen € 1 en € 500." };
+      const availability = await depositAvailability(ws.org?.id);
+      if (!availability.available) return { error: availability.reason ?? "Mollie niet ingesteld: de betaalstap is niet beschikbaar." };
+      landing.deposit = { enabled: true, amount_eur: amount };
+    }
     if (v.type === "pricing") {
       config = { ...landing, price_points: pricePoints } satisfies PricingConfig;
     } else {

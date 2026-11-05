@@ -120,6 +120,8 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
     stopped ? db.from("stop_reviews").select("idea_id").eq("idea_id", id).maybeSingle() : Promise.resolve({ data: null }),
     db.from("decision_rules").select("locked_at").eq("idea_id", id).maybeSingle(),
   ]);
+  // Fase 2 · punt 4: betaalde, nog niet terugbetaalde aanbetalingen (zonder migratie: onbekend).
+  const deposits = await db.from("test_payments").select("id", { count: "exact", head: true }).eq("idea_id", id).eq("status", "paid");
   const idea = d.idea;
   return {
     ideaId: id,
@@ -180,6 +182,7 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
     orgResolved: orgResolved.error ? Number.POSITIVE_INFINITY : Number(orgResolved.data?.[0]?.resolved ?? 0),
     decisionRule: rule.error ? undefined : { defined: !!rule.data, locked: !!rule.data?.locked_at },
     outreach: { replies: replies.count ?? 0, latestReplyAt: replies.data?.[0]?.received_at ?? null, latestImportAt: imports.data?.[0]?.created_at ?? null },
+    depositsOutstanding: deposits.error ? undefined : (deposits.count ?? 0),
   };
 }
 

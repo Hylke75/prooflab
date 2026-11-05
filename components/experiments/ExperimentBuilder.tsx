@@ -104,7 +104,10 @@ export function ExperimentBuilder({
   priors = {},
   intake = { description: "", texts: [] },
   goRuleMissing = false,
+  deposit = { available: false, reason: null, mode: null },
 }: {
+  // Fase 2 · punt 4: kan deze werkruimte een betaalstap aanbieden (Mollie ingesteld)? Zo niet: niet te kiezen, met reden.
+  deposit?: { available: boolean; reason: string | null; mode: "test" | "live" | null };
   // B5: wat de intake al weet (prijs, beschrijving), om de Test Card vooraf in te vullen.
   intake?: { description: string; texts: (string | null | undefined)[]; price_eur?: number | null; price_period?: string | null };
   // B5: het dossier heeft nog geen go-regel; na opslaan van een hoofdtest stelt ProofLab die voor.
@@ -152,6 +155,9 @@ export function ExperimentBuilder({
   }));
   // Fase 2 · punt 4: verwerkingsverantwoordelijke voor de AVG-tekst op de testpagina (vooringevuld met de werkruimte).
   const [privacy, setPrivacy] = useState({ controller: researcher, contact: "" });
+  // Fase 2 · punt 4: optionele betaalstap (standaard uit).
+  const [depositOn, setDepositOn] = useState(false);
+  const [depositAmount, setDepositAmount] = useState("10");
   // B5: vandaag (lokale datum) voor de deadline; de looptijd in dagen gaat naar de database.
   const [today] = useState(() => isoDay(new Date()));
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -769,6 +775,24 @@ export function ExperimentBuilder({
               <label className="check-row"><input type="checkbox" name="collect_email" defaultChecked={type === "landing"} /> Na de klik om een e-mailadres vragen (met toestemming)</label>
               <div className="form-line"><label htmlFor="pg-reveal">Bericht na de klik</label><textarea className="field" id="pg-reveal" name="reveal_message" rows={3} defaultValue="Bedankt! We nemen contact op zodra we kunnen starten." /></div>
               <p className="field-hint">Na elke klik toont ProofLab altijd ook: “{HONEST_REVEAL}” Dit is niet uit te zetten.</p>
+              <fieldset className="mt-12" style={{ border: 0, padding: 0, margin: 0 }} aria-describedby="tc-deposit-hint">
+                <legend className="field-label">Betaalde intentie (optioneel)</legend>
+                <label className="check-row">
+                  <input type="checkbox" name="deposit_enabled" checked={depositOn && deposit.available} disabled={!deposit.available} onChange={(e) => setDepositOn(e.target.checked)} />{" "}
+                  Reserveer met een terugbetaalbare aanbetaling van € {depositAmount || "…"}
+                </label>
+                {depositOn && deposit.available && (
+                  <div className="form-line">
+                    <label htmlFor="tc-deposit-amount">Bedrag van de aanbetaling (€)</label>
+                    <input className="field num" id="tc-deposit-amount" name="deposit_amount" inputMode="decimal" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)} style={{ maxWidth: 140 }} />
+                  </div>
+                )}
+                <p className="field-hint" id="tc-deposit-hint">
+                  {deposit.available
+                    ? `Na de klik kan een bezoeker een plek reserveren met een aanbetaling via Mollie. De pagina zegt altijd dat het product nog niet bestaat en dat het volledige bedrag wordt terugbetaald. Telt als Geverifieerde betaling${deposit.mode === "test" ? "; de werkruimte gebruikt nu een testsleutel: testbetalingen tellen niet als bewijs" : ""}.`
+                    : (deposit.reason ?? "Mollie niet ingesteld.")}
+                </p>
+              </fieldset>
               <fieldset className="mt-12" style={{ border: 0, padding: 0, margin: 0 }}>
                 <legend className="field-label">Privacy op de testpagina (AVG)</legend>
                 <div className="double-field">

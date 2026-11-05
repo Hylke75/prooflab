@@ -50,6 +50,7 @@ import { FathomField } from "@/components/experiments/FathomField";
 import { ChannelLinkBuilder } from "@/components/experiments/ChannelLinkBuilder";
 import { privacyBlock, privacyOf } from "@/lib/domain/test-privacy";
 import { PerPersonCounts } from "@/components/experiments/PerPersonCounts";
+import { DepositsPanel } from "@/components/experiments/DepositsPanel";
 import { loadActionCounts } from "@/lib/action-counts-data";
 import { asSuccessMetric } from "@/lib/domain/test-page-generator";
 import { loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
@@ -228,6 +229,9 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
       )}
       {m.warnings.map((w) => <div className="note" key={w}>{w}</div>)}
       {perPerson && <PerPersonCounts counts={perPerson.counts} available={perPerson.available} metric={successMetric} deposit={!!(exp.config as LandingConfig).deposit?.enabled} />}
+      {canWrite && pagesTest && isStarted(state) && (exp.config as LandingConfig).deposit?.enabled && (
+        <DepositsPanel ideaId={id} expId={expId} amount={Number((exp.config as LandingConfig).deposit?.amount_eur) || 0} />
+      )}
 
       <div className="grid-2 mt-18">
         <div className="card">

@@ -6,6 +6,8 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { configuredProviders, emailConfigured, trackingConfigured } from "@/lib/env";
 import { AiProviderSettings } from "@/components/settings/AiProviderSettings";
 import { FathomSettings } from "@/components/settings/FathomSettings";
+import { MollieSettings } from "@/components/settings/MollieSettings";
+import { mollieEnvironment } from "@/lib/integrations/mollie-server";
 import { fathomEnabled } from "@/lib/integrations/transcripts/fathom";
 import { AiConnectionTest } from "@/components/settings/AiConnectionTest";
 import { aiSettingsForOrg } from "@/lib/ai/settings";
@@ -59,6 +61,10 @@ export default async function StatusPage() {
   // Fase 1 · punt 3: Fathom-koppeling van de werkruimte (alleen of er een sleutel is en de laatste vier tekens).
   const { data: transcriptStatus, error: transcriptError } = await supabase.rpc("transcript_settings_status", { p_org: ws.org.id });
   const fathom = (transcriptStatus ?? [])[0] ?? null;
+  // Fase 2 · punt 4: Mollie-koppeling (alleen of er een sleutel is, de modus en de laatste vier tekens).
+  const { data: paymentStatus, error: paymentError } = await supabase.rpc("payment_settings_status", { p_org: ws.org.id });
+  const mollie = (paymentStatus ?? [])[0] ?? null;
+  const mollieEnv = mollieEnvironment();
   const models = Object.fromEntries(PROVIDERS.map((p) => [p, modelFor(p)])) as Record<(typeof PROVIDERS)[number], string>;
   const email = emailConfigured();
   const tracking = trackingConfigured();
@@ -214,6 +220,14 @@ export default async function StatusPage() {
         <AiConnectionTest />
       </div>
       <FathomSettings enabled={fathomEnabled()} connected={!!fathom?.fathom_connected} hint={fathom?.fathom_key_hint ?? null} schemaReady={!transcriptError} />
+      <MollieSettings
+        ready={mollieEnv.ready}
+        reason={mollieEnv.reason}
+        connected={!!mollie?.mollie_connected}
+        mode={mollie?.mollie_mode ?? null}
+        hint={mollie?.mollie_key_hint ?? null}
+        schemaReady={!paymentError}
+      />
     </PageFrame>
   );
 }
