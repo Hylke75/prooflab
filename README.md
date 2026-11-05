@@ -48,6 +48,8 @@ npm run dev                  # http://localhost:3000
 | `ANTHROPIC_MODEL`, `OPENAI_MODEL`, `GEMINI_MODEL` | nee | Ander model per aanbieder; standaardmodellen en prijzen staan in `lib/ai/providers/config.ts` |
 | `ANTHROPIC_RESEARCH_MODEL`, `OPENAI_RESEARCH_MODEL`, `GEMINI_RESEARCH_MODEL` | nee | Ander (goedkoper) model voor zoeken, uitlezen en steuncontrole; standaard het kleinere model per aanbieder |
 | `RESEARCH_BUDGET_USD` | nee | Maximum per diepe onderzoeksrun (standaard 3) |
+| `FATHOM_ENABLED` | nee | `1` zet de Fathom-koppeling voor interviewtranscripten aan (standaard uit). De API-sleutel staat per werkruimte in de database (statuspagina), niet in de omgeving; zie `docs/OPERATIONS.md` §13 |
+| `FATHOM_API_URL` | nee | Andere basis-URL van de Fathom-API (standaard `https://api.fathom.ai/external/v1`) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | nee | Persoonlijke enquête-uitnodigingen en uitnodigingen aan opdrachtgevers via Resend (docs/OPERATIONS.md §10) |
 | `SENTRY_DSN` | nee | Serverfouten naar een Sentry-compatibele dienst (Sentry, GlitchTip, Bugsink); zonder: alleen JSON-logregels |
 | `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` | nee | Labels bij gemelde fouten (standaard `VERCEL_ENV` / `VERCEL_GIT_COMMIT_SHA`) |

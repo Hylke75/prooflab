@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { setDetailLevel } from "./intake";
 
 // Markt: klantonderzoek vanuit stap 1. Op het tabblad Klantonderzoek maak je een verkennende enquête en een online
 // interview (schriftelijk) bij een onderzoeksvraag, zonder Test Card. Daarna opent de editor; het onderzoek is
@@ -49,6 +50,7 @@ async function createIdea(page: Page): Promise<string> {
   await page.getByLabel("Opdrachtgever", { exact: true }).selectOption("none");
   await page.getByRole("button", { name: "Start de marktverkenning" }).click();
   await page.waitForURL(/\/research/);
+  await setDetailLevel(page, "Grondig");
   return page.url().replace(/\/research.*$/, "");
 }
 

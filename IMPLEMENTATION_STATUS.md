@@ -9,6 +9,9 @@ Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van e
 |---|---|---|
 | ~~Migraties toepassen~~ | Gedaan 28-10: `core_schema`, `security`, `hardening` staan op project `prooflab`; ingest-sleutel geregistreerd | ✅ |
 | Migraties `integrity` (29-10), `prediction` en `coach_and_signals` (3-11) toepassen en migratiegeschiedenis rechtzetten | Zonder deze migraties werken testpagina's, inloglinks, sprints, rapport delen, voorspellingen, coach en koppelingen niet tegen de live database | Claude, na bevestiging in Supabase |
+| Migratie `20261114090000_fase1_weergave.sql` toepassen (Snel en Grondig) | Zonder de migratie staat elk dossier op Grondig en kan de stand niet worden bewaard; standaardwaarden worden zonder `defaulted_fields` opgeslagen | Claude, na bevestiging in Supabase |
+| Migratie `20261115090000_interviews_import.sql` toepassen (interviews importeren, thema's, Fathom-sleutel) | Zonder de migratie meldt het importscherm dat de database moet worden bijgewerkt; plakken blijft werken, thema's en "X van N" zijn niet beschikbaar, de rol Betaler kan niet worden opgeslagen | Claude, na bevestiging in Supabase |
+| Optioneel: `FATHOM_ENABLED=1` (Vercel) en een Fathom-API-sleutel op `/app/status` | Opnames rechtstreeks uit Fathom kiezen; zonder koppeling werkt importeren via een bestand | Hylke |
 | Auth-hook "Before user created" → `public.hook_before_user_created` (Authentication → Hooks) | Registratie alleen op uitnodiging, ook bij directe aanroepen van Supabase Auth | Hylke |
 | E-mailsjabloon "Magic Link": link naar `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next={{ .RedirectTo }}` | Uitnodigingen werken dan op elk apparaat | Hylke |
 | Eigen adres of domein op de toegangslijst (`insert into public.signup_allowlist (entry) values ('naam@bureau.nl')`) | Registratie staat dicht; consultants hebben een plek op de lijst nodig | Claude of Hylke |
@@ -644,3 +647,157 @@ de app terug, zie per punt).
 - 🟡 Niet gedaan in deze omgeving: e2e (Playwright) en visuele controle op 1440/390 px met login;
   `scripts/test-db.sh`. Migratie nog toepassen. De databasefunctie die de dossierfase bepaalt (golf B) telt een
   voorstel nog als alternatief; de app zelf niet
+
+## Fase 1 · punt 2: Stand van het bewijs (4 november)
+
+Eén beslisscherm per idee, bovenaan Overzicht, Besluit en het rapport. Vijf commits, **geen migratie**. De berekening
+van de kansen is ongewijzigd: `tests/unit/probability-golden.test.ts` vergelijkt alle vijf methodeversies (2026-11-a
+t/m e) op 181 vaste gevallen bit voor bit met de uitkomsten van vóór de refactor (`fixtures/probability-golden.json`).
+
+- ✅ **Bewijsregister** (`lib/domain/evidence.ts`): `assumptionProbability` en `probabilityCore` geven naast het
+  resultaat `items[]` terug: per gekoppelde bevinding of waarneming `fate` (`counted`/`not_counted`), `code` en
+  `reason` in gewone taal (oefengesprek of synthetisch, AI niet beoordeeld of afgekeurd, status van de bevinding,
+  weerlegd volgens de methodeversie, samengevoegd met een sterker signaal uit dezelfde bron, half gewicht, "telt mee,
+  maar het plafond van X% is bereikt"). `computeAssumptions` voegt items uit tests toe die onbeslist zijn of onder de
+  steekproef bleven (`excludedRegisterItem`). De risicokaart toont "3 voor (2 tellen mee) · 1 tegen" met uitklapbare
+  redenen (`components/evidence/EvidenceRegister.tsx`); de A2-lijst (`deskNotCounted`) is vervangen en het
+  bureauonderzoek per aanname op Besluit leest hetzelfde register (`deskRows`)
+- ✅ **Eén schaal** (`lib/domain/evidence-scale.ts`): verkenning → mening → gedrag (probleem, kleine handeling,
+  prijskeuze) → betaling → herhaling, gekoppeld aan `EVIDENCE_LEVELS`/`KIND_LEVEL`. `EVIDENCE_LADDER` is hiervan
+  afgeleid: een demo-aanvraag is overal een kleine handeling. Component `EvidenceScale` (geordende lijst, aria-current)
+- ✅ **Berekening en loader** (`lib/domain/evidence-standing.ts`, `lib/standing-data.ts`): zekerheid laag/midden/hoog
+  uit de laagste kans onder de kritieke aannames en de zwakste trede (midden ≥ 50% en gedrag, hoog ≥ 70% en gedrag;
+  gedocumenteerd in het bestand), "x van y kritieke aannames getest" (kritiek = belangrijkheid ≥ 4 én gekozen om te
+  testen; getest = hoofdtest met goedgekeurde uitslag geslaagd/niet geslaagd), sterkste bewijs (trede en personen),
+  volgende stap (Overzicht: informatiewaarde; Besluit en rapport: `openDecisionAction`, anders `nextAction`), per
+  kritieke aanname kans, telling met redenen en status van de hoofdtest. Alleen bestaande, gecachete ladingen
+- ✅ **UI** (`components/evidence/EvidenceStanding.tsx`): bovenaan Overzicht (achter de eigen voorspelling, golf B
+  punt 15) en Besluit; één samenvattende regel, schaal, details inklapbaar; "niet gekalibreerd" één keer, de
+  bandbreedte in de tooltip (`Probability band`). Geen citaten, ook niet voor opdrachtgevers
+- ✅ **Rapport**: veld `standing` in de momentopname (`buildSnapshot`), met terugval `standingFromSnapshot` voor oudere
+  rapporten (afgeleid uit belangrijkheid, status, kans en de bewijsladder; dat staat erbij). Hetzelfde blok bovenaan
+  het rapport en op pagina 1 van de PDF (`standingPdf`)
+- 🟡 Niet gedaan in deze omgeving: e2e (Playwright) en visuele controle op 1440/390 px met login (geen
+  Supabase-toegang); de 390px-weergave is alleen via de opmaakregels geborgd
+
+## Fase 1 · punt 1: Snel en Grondig (4 november)
+
+Twee standen per dossier: **Snel** (standaard voor nieuwe dossiers) en **Grondig** (bestaande dossiers). Alleen
+weergave: geen enkele berekening leest de stand. Vijf commits en één migratie `20261114090000_fase1_weergave.sql`
+(**nog niet toegepast**; idempotent; zonder de migratie geldt overal Grondig en meldt de schakelaar dat de stand nog
+niet kan worden bewaard).
+
+- ✅ **Migratie**: `ideas.detail_level` (`quick`/`thorough`, check); eerst toegevoegd met standaard `thorough` (alle
+  bestaande dossiers), daarna standaard `quick` voor nieuwe. `ideas_touch` gebruikt nu `touch_idea_updated_at`: een
+  update die alleen de stand wijzigt laat `updated_at` staan (geen "laatst bijgewerkt", geen coachactiviteit); het
+  auditspoor (`audit_row`) legt de wissel vast (oud → nieuw). `defaulted_fields text[]` op `hypotheses`, `assumptions`
+  en `interviews`, met een eigen auditregel `defaulted_fields` (velden en waarden) bij insert; `guard_hypothesis_lock`
+  bewaakt ook deze lijst na vergrendelen
+- ✅ **Context**: `lib/view-mode.ts` (buiten `lib/domain`, zonder imports), `getViewMode` (server, via `getIdea`),
+  `ViewModeProvider` in `PageFrame` (één per pagina), `useViewMode()`, `<Detail only="thorough">` en één hint
+  "Meer tonen in Grondig" per pagina (`MoreInThorough`, eerste verborgen plek in documentvolgorde)
+- ✅ **Schakelaar** "Snel | Grondig" in `.dossier-search-bar` naast Zoeken en Vraag de AI (radiogroep, 44 px,
+  pijltjestoetsen, optimistisch); server action `setDetailLevel` (`app/app/ideas/[id]/view-actions.ts`: alleen de twee
+  standen, `requireWritableIdea`, revalidate). Opdrachtgevers zien de stand, geen schakelaar
+- ✅ **`<Explain k>`**: in Snel de uitleg de eerste keer per pagina, daarna alleen de term met tooltip (kalibratie-uitleg
+  op risicokaart, kansdetail en Stand van het bewijs; drempelnote AI-kwaliteit). Per AI-observatie in Snel alleen de
+  pil "voorstel". In Grondig overal de volledige uitleg (zoals voorheen)
+- ✅ **Snel per pagina**:
+  - Aannames: rekenuitleg → link naar de rekenwijze; red team, lijst "Later", "Score en berekening", startkans- en
+    soortkeuze in Grondig; samengevoegde signalen/wervingsgroepen/indirect bewijs achter "Waarom deze kans?"; kans als
+    één getal met de band in de tooltip; hooguit 3 aannames in de lijst; beslisregel compact
+  - Testen: "Hoe is dit berekend?" (met SamplePlanner) in Grondig; Details blijven dicht; go-regelvoorstel compact;
+    één test per aanname op het bord (hoofdtest, anders de nieuwste; het zojuist opgeslagen concept altijd)
+  - Markt: kengetallen, zoeklogboek, "Hoe is er gezocht naar tegenbewijs?", Tegenargumenten, AI-kwaliteit,
+    steuncontrole per citaat (de statuspil blijft), financiële haalbaarheid en Monte Carlo-simulatie in Grondig. De
+    bandbreedte-invoer per factor blijft (anders zou opslaan in Snel bestaande bandbreedtes wissen)
+  - Testpagina: Bayes-schatting, tabellen per kanaal/prijspunt, resultaten per bericht, leidraad- en transcriptcontrole
+    en AI-kwaliteit in Grondig
+  - Besluit: ladderpillen en pre-mortem-invoer in Grondig; goedgekeurde Learning Cards als samenvatting (de rest achter
+    "Hele Learning Card"); conceptkaarten ongewijzigd (goedkeuren blijft mogelijk)
+  - Uitkomst: kalibratiegids, AI-referentie en AI-voorspellingen in Grondig
+  - Overzicht: sprintkaart en snelkoppelingen in Grondig (de sprintbalk boven elke pagina blijft)
+  - Rapport: op het scherm Stand van het bewijs + beslisblad, de bijlage achter "Volledig dossier tonen"; printen via
+    de browser en de server-PDF zijn altijd volledig
+  - Overal blijven Notities en documenten en Vraag de AI
+- ✅ **Standaardwaarden zichtbaar** (`lib/defaulted-test-card.ts`, `lib/defaulted-fields.ts`): de Test Card toont vóór
+  opslaan welke velden nog precies de standaardwaarde hebben (meting, drempels, steekproef, deadline, vertekeningen,
+  kanalen, afgeleide wervingsgroep); de server berekent hetzelfde en schrijft het naar `hypotheses.defaulted_fields`.
+  Nieuwe aannames zonder eigen startkans krijgen `prior` (weg zodra een mens een startkans bewaart); interviews zonder
+  gekozen wervingsgroep `recruitment_group`. Los van de stand: een standaardwaarde is een standaardwaarde. De testpagina
+  toont ze bij de Test Card. Zonder migratie wordt opnieuw opgeslagen zonder de lijst
+- ✅ **Tests**: `view-mode-identical` (loadDossier, kansen, bewijsregister, dossierstand en Stand van het bewijs zijn
+  identiek bij `quick` en `thorough`), `view-mode-isolation` (niets in `lib/` behalve `view-mode.ts`, `data.ts` en de
+  types noemt de stand; `lib/domain` kent `defaulted_fields` niet; PDF en momentopname onafhankelijk), `view-mode`
+  (Detail, Explain, schakelaar, rapportbijlage), `view-mode-action` (validatie `setDetailLevel`), `defaulted-fields`;
+  DB-test `tests/db/fase1-weergave.test.ts`; e2e: bestaande specs zetten nieuwe dossiers eerst op Grondig
+  (`setDetailLevel` in `tests/e2e/intake.ts`), nieuwe spec `snel-grondig.spec.ts` (wisselen, bewaren, 390 px)
+- 🟡 Niet gedaan in deze omgeving: e2e (Playwright) en visuele controle op 1440/390 px met login (geen
+  Supabase-toegang), `scripts/test-db.sh` (Postgres kan hier niet als niet-root-gebruiker worden gestart). Migratie
+  nog toepassen
+
+## Fase 1 · punt 3: Interviews importeren en analyseren (4 november)
+
+Transcripten uit Teams, Zoom, Fathom, Otter of eigen notities importeren, pseudonimiseren vóór opslag en vóór AI,
+citaten markeren en thema's tellen over alle interviews heen. Acht commits en één migratie
+`20261115090000_interviews_import.sql` (**nog niet toegepast**; idempotent, twee keer uitgevoerd in de test; zonder
+de migratie werkt de app zoals voorheen en meldt het importscherm dat de database moet worden bijgewerkt).
+
+- ✅ **Parsers** (`lib/domain/transcript-parse.ts`, `lib/transcript-file.ts`): TXT/MD (ook Otter- en Fathom-notatie),
+  DOCX (ook Teams-DOCX met tijdcodes of kopregels), VTT (Teams `<v>`, Zoom "Naam: tekst"), SRT → segmenten → één
+  genormaliseerde tekst "[00:12:03] Spreker A: …" met per segment de exacte positie. Grenzen: 4 MB per bestand,
+  200.000 tekens (was 60.000; database 250.000), AI-vensters van 40.000 tekens met overlap. Het bestand wordt alleen in
+  het geheugen gelezen (server action tot 4,5 MB) en nergens bewaard
+- ✅ **Pseudonimiseren** (`lib/domain/pseudonymize.ts`, `components/experiments/PseudonymReview.tsx`): regelgebaseerd
+  (sprekers met voor- en achternaam, Nederlandse voornamen met tussenvoegsels, aanspreekvormen, clubs/verenigingen,
+  Stichting/BV/NV, e-mail, telefoon, IBAN, postcode) → voorstel {gevonden → label}. Controlescherm met aan/uit (e-mail,
+  telefoon en IBAN altijd aan), aanpasbare labels, extra naam markeren (ook via selectie), voorbeeld en de melding dat
+  pseudonimiseren geen anonimiseren is. De server stelt het voorstel opnieuw op uit het origineel, legt de keuzes
+  erover en controleert het resultaat (`prepareImport`). Bewaard: alleen labels, soorten en aantallen
+- ✅ **Migratie**: `interviews.source_format`, `source_hash` (uniek per dossier), `segments` (zonder tekst),
+  `pseudonymized_at/_by` (door de database gezet), `pseudonym_labels`, `experiment_id` mag leeg (verkennend);
+  bewaartermijn bij import = `held_on` + 12 maanden; bron, pseudonimisering en test liggen vast en het transcript
+  verandert niet meer zodra er observaties zijn. `observations.quote_start/quote_end/segment_index` en `theme_only`.
+  `dmu_role` met `payer` (Betaler los van Inkoper). `interview_codes` en `observation_codes` met RLS, beoordelingsguards
+  en `audit_row`. `interview_theme_counts(p_idea)` voor opdrachtgevers. `purge_expired_personal_data` wist ook
+  segmenten en posities; `dsr_search` vindt verkennende interviews; `org_transcript_settings` (Fathom-sleutel, alleen
+  via functies). DB-test `tests/db/interviews-import.test.ts` (10 tests)
+- ✅ **Import-UI en acties** (`interview-import-actions.ts`, `components/experiments/InterviewImport.tsx`):
+  `parseInterviewFile` (voorstel, niets opgeslagen) en `saveImportedInterview` (hercontrole; toestemming alleen bij een
+  echt gesprek; wervingsgroep en rol; gespreksdatum niet in de toekomst en niet ouder dan de bewaartermijn; pseudoniem
+  mag geen gevonden naam bevatten). Ingangen: op de lopende interviewtest ("Transcript importeren", naast plakken) en
+  vanuit Markt › Klantonderzoek als verkennend interview (nieuwe pagina `/app/ideas/[id]/interviews`)
+- ✅ **Markeren om te citeren** (`TranscriptMarker`, `transcript-actions.ts`): transcriptpagina's
+  `/experiments/[expId]/interviews/[ivId]` en `/interviews/[ivId]`. Selecteren (of typen/plakken; ProofLab zoekt het
+  citaat op) → "Maak observatie" met citaat, begin, einde en uitspraak. De server accepteert alleen als
+  `transcript.slice(begin, einde)` genormaliseerd gelijk is aan het citaat én `checkQuote` het vindt, binnen één
+  uitspraak. Koppelen aan een aanname is per citaat expliciet (standaard niet gekoppeld, met de melding dat de kans
+  verandert), alleen bij een interviewtest; per-persoon-ontdubbeling blijft. Een gemiste naam vervangen kan alleen
+  zolang er geen observaties zijn
+- ✅ **Thema's** (`theme-actions.ts`, `lib/domain/themes.ts`, `ThemePanel`): `suggestThemes` via `runAi` op de
+  gepseudonimiseerde tekst in vensters (een zelf geplakt, niet gepseudonimiseerd transcript gaat niet naar de AI); alleen
+  letterlijk teruggevonden citaten met positie blijven. Beoordelen per thema en per toewijzing (ook alles van één thema
+  tegelijk), handmatig thema's maken en toewijzen. Kwaliteitsmaat "AI-thema's: geaccepteerd" (zelfde drempels) in
+  `AiQualityCard`. Thema's tellen nooit mee in de kans: `observations_for_idea` laat thema-citaten weg, de voortgang,
+  de testtelling (n) en het ontdekkingsbewijs filteren ze (`withoutThemeOnly`), en een thema-citaat kan niet aan een
+  aanname worden gekoppeld
+- ✅ **Dwarsdoorsnede** (`lib/domain/theme-counts.ts`, `ThemeCrossTable`): per thema en per aanname "X van N
+  geïnterviewden" (N = echte gesprekken met toestemming; X = verschillende interviews met een handmatige of
+  geaccepteerde toewijzing), uitsplitsing per rol en wervingsgroep (in Grondig), citaten met doorklik voor het team.
+  Op de interviewtest en op de dossierpagina Interviews; opdrachtgevers via de RPC, zonder citaten. Oefeningen buiten N
+  en X
+- ✅ **Fathom** (`lib/integrations/transcripts/{types,file,fathom,fathom-server}.ts`): interface `TranscriptSource`;
+  Fathom achter `FATHOM_ENABLED`, sleutel per werkruimte op `/app/status` (eigenaar), status "niet verbonden" met het
+  handmatige alternatief. Instellen: `docs/OPERATIONS.md` §13. Tests met nep-fetch, geen netwerk
+- ✅ **Controle C8**: een oefening vraagt geen toestemmingsvinkje en telt nergens mee (ook niet in N of X)
+- ✅ **Tests**: unit `transcript-parse`, `pseudonymize`, `interview-import`, `quote-marking`, `themes`, `theme-counts`,
+  `transcript-sources` (74 nieuwe tests); DB `interviews-import`. Na elke commit typecheck, lint en vitest groen;
+  `next build` groen. `scripts/test-db.sh`-stappen lokaal gedraaid (alle 24 DB-testbestanden groen)
+- **Keuze verkennend interview**: `interviews.experiment_id` leeg, met `idea_id` (al aanwezig). Het eenvoudigste dat
+  `testOutcomesFrom` en `experimentMetrics` niet raakt (die lezen per test). Waarnemingen uit een verkennend interview
+  kunnen niet aan een aanname worden gekoppeld (databaseguard), dus nooit in kans of status. Wel tellen echte
+  verkennende gesprekken als ontdekkingsbewijs (`hasDiscoveryEvidence`, alleen de volgorde van testadvies) en in N
+- 🟡 Niet gedaan in deze omgeving: e2e (Playwright) en visuele controle op 1440/390 px met login (geen
+  Supabase-toegang); de 390px-weergave is via de opmaakregels in `components/experiments/interviews.css` geborgd.
+  Migratie nog toepassen
+

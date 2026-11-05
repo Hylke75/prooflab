@@ -7,7 +7,8 @@ import { OutcomeFollowUp } from "@/components/forecast/OutcomeFollowUp";
 import { BaseRateSummary } from "@/components/forecast/BaseRate";
 import { BaseRatePicker } from "@/components/forecast/BaseRatePicker";
 import { CalibrationGuide } from "@/components/forecast/CalibrationGuide";
-import { getIdea } from "@/lib/data";
+import { getIdea, getViewMode } from "@/lib/data";
+import { Detail } from "@/components/shell/ViewMode";
 import { loadProgress } from "@/lib/progress";
 import { loadForecastView } from "@/lib/forecast-data";
 import { ActionForm } from "@/components/ui/ActionForm";
@@ -21,6 +22,9 @@ export default async function OutcomePage({ params }: PageProps<"/app/ideas/[id]
   const progress = await loadProgress(id);
   const view = await loadForecastView(access, progress);
   const { idea, canWrite } = access;
+  // Fase 1 · punt 1: in Snel de uitkomstdefinitie, het basispercentage en de eigen voorspelling; uitleg over kalibratie,
+  // de AI-referentie en AI-voorspellingen in Grondig.
+  const quick = (await getViewMode(id)) === "quick";
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Voorspelling & uitkomst"]} coach="outcome" ideaId={id} section="/outcome">
@@ -62,6 +66,7 @@ export default async function OutcomePage({ params }: PageProps<"/app/ideas/[id]
                   </details>
                 )}
                 {canWrite && !view.definitionLocked && !view.resolved && (
+                  <Detail>
                   <div className="note">
                     <strong>Geen passende referentie?</strong> Laat AI op het web zoeken naar een percentage voor vergelijkbare ideeën. ProofLab haalt de bronpagina zelf op
                     en neemt een voorstel alleen op als het citaat met het percentage daar letterlijk staat.
@@ -77,14 +82,17 @@ export default async function OutcomePage({ params }: PageProps<"/app/ideas/[id]
                       <p className="tiny mt-8">AI is niet verbonden in deze omgeving. Kies een referentie met bron of &lsquo;geen goede referentie&rsquo;.</p>
                     )}
                   </div>
+                  </Detail>
                 )}
                 {!view.baseRate && !canWrite && <p className="tiny mt-8">Het onderzoeksteam kiest het basispercentage.</p>}
                 {view.definitionLocked && view.baseRate && <p className="tiny mt-8">Ligt vast: er zijn al voorspellingen vanaf dit vertrekpunt gegeven.</p>}
               </div>
             </div>
             <div className="stack">
-              <ForecastPanel view={view} />
-              <CalibrationGuide view={view} />
+              <ForecastPanel view={view} hideAi={quick} />
+              <Detail>
+                <CalibrationGuide view={view} />
+              </Detail>
             </div>
           </div>
 

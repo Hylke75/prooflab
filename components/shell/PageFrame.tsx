@@ -17,6 +17,10 @@ import Link from "next/link";
 import { StepNotes } from "@/components/steps/StepNotes";
 import { AskAiButton } from "@/components/shell/AskAiButton";
 import { noteStepForSection } from "@/lib/domain/step-files";
+import { ViewModeProvider } from "@/components/shell/ViewMode";
+import { DetailLevelSwitch } from "@/components/shell/DetailLevelSwitch";
+import { setDetailLevel } from "@/app/app/ideas/[id]/view-actions";
+import { asDetailLevel } from "@/lib/view-mode";
 
 // Main column + coach column of the three-column grid from the reference design.
 export async function PageFrame({
@@ -61,8 +65,11 @@ export async function PageFrame({
   const tabs = (step?.tabs ?? []).filter((t) => !t.consultantOnly || access?.canWrite);
   // Eigen notities en documenten onderaan het overzicht en de hoofdpagina's van elke stap (zelfstandig blok).
   const noteStep = ideaId && access ? noteStepForSection(section) : null;
+  // Fase 1 · punt 1: de stand van het dossier (Snel of Grondig); buiten een dossier geldt Grondig (alles zichtbaar).
+  // Eén provider per pagina (key), zodat "één keer per pagina" bij elke pagina opnieuw begint.
+  const level = access ? asDetailLevel((access.idea as { detail_level?: unknown }).detail_level) : "thorough";
   return (
-    <>
+    <ViewModeProvider key={`${ideaId ?? "werkruimte"}${section ?? ""}`} level={level} canWrite={!!access?.canWrite} action={ideaId && access?.canWrite ? setDetailLevel.bind(null, ideaId) : undefined}>
       <main className="main" id="main" tabIndex={-1}>
         <Topbar crumbs={crumbs} initials={initials} email={ws.user.email} name={name} badge={badge} isConsultant={!!ws.org} isOwner={ws.org?.role === "owner"} />
         <div className="workspace">
@@ -71,8 +78,10 @@ export async function PageFrame({
             <>
               <SprintStrip idea={access.idea} progress={progress} canWrite={access.canWrite} today={todayInNL()} />
               <Stepper current={stepKey} ideaId={ideaId} states={stepStates(progress)} />
-              {/* Zoeken binnen dit dossier: knop of sneltoets "/" (alleen wat de gebruiker mag zien, via RLS). */}
+              {/* Zoeken binnen dit dossier: knop of sneltoets "/" (alleen wat de gebruiker mag zien, via RLS).
+                  Fase 1 · punt 1: links daarvan de weergave Snel | Grondig (schrijvers wisselen, opdrachtgevers zien de stand). */}
               <div className="dossier-search-bar no-print">
+                <DetailLevelSwitch />
                 <DossierSearch ideaId={access.idea.id} />
                 {access.canWrite && aiConfigured() && <AskAiButton />}
               </div>
@@ -99,6 +108,6 @@ export async function PageFrame({
       <Coach data={coachFor(coach, progress, { audience, isClientDecider: access?.isClientDecider, currentIdea })} aiConnected={aiConfigured()} notes={notes} collapsed={coachCollapsed} step={noteStep} />
       {ideaId && access?.canWrite && <CoachWatch ideaId={ideaId} />}
       {ideaId && progress && <SyncIdeaSteps ideaId={ideaId} states={stepStates(progress)} />}
-    </>
+    </ViewModeProvider>
   );
 }

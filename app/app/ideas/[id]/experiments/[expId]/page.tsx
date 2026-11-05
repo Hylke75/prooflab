@@ -12,7 +12,7 @@ import { AiQualityCard } from "@/components/research/AiQualityCard";
 import { SurveyResults } from "@/components/survey/SurveyResults";
 import { Distribution } from "@/components/survey/Distribution";
 import { PerPostResults } from "@/components/survey/PerPostResults";
-import { getIdea, getWorkspace } from "@/lib/data";
+import { getIdea, getViewMode, getWorkspace } from "@/lib/data";
 import { loadAiQuality } from "@/lib/ai-quality";
 import { auditGuide, auditTranscript, guideSummary } from "@/lib/domain/interview-audit";
 import { codingIsProposalOnly } from "@/lib/domain/ai-quality";
@@ -42,6 +42,12 @@ import { TestCardStatus } from "@/components/experiments/TestCardStatus";
 import { deadlineFromDays, isoDay } from "@/lib/domain/test-card";
 import { decisive, isExploratory } from "@/lib/domain/customer-research";
 import { StudyView } from "./StudyView";
+import { defaultedLabels } from "@/lib/view-mode";
+import { Detail } from "@/components/shell/ViewMode";
+import { InterviewImport } from "@/components/experiments/InterviewImport";
+import { ThemeCrossTable } from "@/components/experiments/ThemeCrossTable";
+import { FathomField } from "@/components/experiments/FathomField";
+import { loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
 
 export const metadata: Metadata = { title: "Experiment" };
 
@@ -51,6 +57,10 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
   const { id, expId } = await params;
   const sp = await searchParams;
   const { idea, canWrite } = await getIdea(id);
+  // Fase 1 · punt 1: Snel of Grondig (alleen weergave; de meting en het oordeel zijn in beide standen gelijk).
+  const level = await getViewMode(id);
+  // In Snel: geen Bayes-schatting, tabellen per kanaal en prijspunt, resultaten per bericht, auditlijsten en AI-kwaliteit.
+  const quick = level === "quick";
   const supabase = await supabaseServer();
   const { data: exp } = await supabase.from("experiments").select("*, hypotheses(*, assumptions(statement, category, kind))").eq("id", expId).eq("idea_id", id).maybeSingle();
   if (!exp || !exp.hypotheses) notFound();
@@ -98,6 +108,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
     // Gebruikerstest B4: wie kijkt er, om zelfgoedkeuring vooraf te tonen.
     canWrite && state === "ready_for_review" ? getWorkspace().then((ws) => ws.user.id) : Promise.resolve(null),
   ]);
+  const themeCounts = type === "interview" && canWrite ? await loadThemeCountsForConsultant(id, expId) : null;
   const self = selfApproval({ ownerId: exp.owner_id, submittedBy: exp.submitted_by ?? null, approverId: me });
   const role = testRole(exp.id, h.assumption_id, primaryOf ? [primaryOf] : []);
   const { data: currentPrimary } =
@@ -201,7 +212,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
               <span className="pill orange">{exclusion.text.charAt(0).toUpperCase() + exclusion.text.slice(1)}</span> Deze test verandert de kans en de rangorde van de aanname niet. De waarnemingen blijven zichtbaar.
             </p>
           )}
-          {v.kind !== "running" && <ResultMeter v={v} success={Number(h.success_threshold_pct)} fail={h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct)} bayes={m.bayes} />}
+          {v.kind !== "running" && <ResultMeter v={v} success={Number(h.success_threshold_pct)} fail={h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct)} bayes={quick ? null : m.bayes} />}
         </div>
       )}
       {m.warnings.map((w) => <div className="note" key={w}>{w}</div>)}
@@ -276,6 +287,13 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                   : "Niet vastgelegd (telt als onbekend)"}
             </strong>
           </div>
+          {/* Fase 1 · punt 1: velden die bij het opslaan nog de standaardwaarde van ProofLab hadden (ook in het auditspoor). */}
+          {defaultedLabels("hypotheses", (h as { defaulted_fields?: unknown }).defaulted_fields).length > 0 && (
+            <div className="data-row" id="tc-standaardwaarden">
+              <span>Standaardwaarden van ProofLab</span>
+              <strong style={{ textAlign: "right" }}>{defaultedLabels("hypotheses", (h as { defaulted_fields?: unknown }).defaulted_fields).join(", ")}</strong>
+            </div>
+          )}
           {surveyDraft && (
             <div className="data-row">
               <span>Enquête</span>
@@ -397,6 +415,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
       </div>
 
       {(m.byChannel.length > 0 || m.byVariant.length > 0) && (
+        <Detail>
         <div className="grid-2 mt-18">
           {m.byChannel.length > 0 && (
             <div className="card">
@@ -426,9 +445,10 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
             </div>
           )}
         </div>
+        </Detail>
       )}
 
-      {canWrite && type !== "interview" && <PerPostResults expId={expId} type={type} rows={m.byContent} metricLabel={h.metric_label} />}
+      {canWrite && type !== "interview" && <Detail><PerPostResults expId={expId} type={type} rows={m.byContent} metricLabel={h.metric_label} /></Detail>}
 
       <Distribution ideaId={id} exp={exp} canWrite={canWrite} plan={h} />
 
@@ -444,7 +464,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
             {guideSummary(guideAudit).flagged > 0 ? (
               <div className="note">
                 <strong>Leidraadcontrole: {guideSummary(guideAudit).flagged} van {guideAudit.length} vragen verdienen aandacht.</strong> Waarschuwing, geen blokkade.
-                <GuideAuditList audit={guideAudit} />
+                {!quick && <GuideAuditList audit={guideAudit} />}
               </div>
             ) : (
               <p className="tiny mt-8">Leidraadcontrole: geen hypothetische, sturende of verkopende vragen gevonden.</p>
@@ -452,9 +472,12 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
           </div>
           {quality && (
             <div className="mt-18">
-              <AiQualityCard measures={[{ title: "AI-codering van interviews: geaccepteerd", measure: quality.coding }]} />
+              <Detail><AiQualityCard measures={[{ title: "AI-codering van interviews: geaccepteerd", measure: quality.coding }, { title: "AI-thema's: geaccepteerd", measure: quality.themes }]} /></Detail>
             </div>
           )}
+          {/* Fase 1 · punt 3: thema's in deze interviewronde (X van N). Tellen nooit mee in de kans. */}
+          {themeCounts && <ThemeCrossTable counts={themeCounts} ideaId={id} quotes={themeCounts.quotes} title="Thema's in deze interviewronde" scope="test" />}
+          <p className="tiny mt-8"><Link className="text-link" href={`/app/ideas/${id}/interviews`}>Alle interviews en thema&apos;s van het dossier →</Link></p>
           {interviews.map((iv) => {
             // B0: echt gesprek, oefening of nog niet aangegeven. Alleen een echt gesprek telt als bewijs.
             const practice = practiceStatus(iv.is_practice);
@@ -492,8 +515,12 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                   <summary className="text-link">Transcript tonen</summary>
                   <div className="quote" style={{ whiteSpace: "pre-wrap", maxHeight: 280, overflow: "auto" }}>{iv.transcript}</div>
                 </details>
-                <TranscriptAuditList turns={auditTranscript(iv.transcript, { productNames, interviewerNames })} />
-                {(iv.observations ?? []).map((o) => (
+                {!quick && <TranscriptAuditList turns={auditTranscript(iv.transcript, { productNames, interviewerNames })} />}
+                <p className="mt-8">
+                  <Link className="btn soft sm" href={`/app/ideas/${id}/experiments/${expId}/interviews/${iv.id}`}>Open transcript en markeer citaten →</Link>
+                </p>
+                {/* Thema-citaten (theme_only) staan bij de thema's, niet tussen de observaties: ze tellen nergens mee. */}
+                {(iv.observations ?? []).filter((o) => !(o as { theme_only?: boolean }).theme_only).map((o) => (
                   <div className="evidence-event" key={o.id}>
                     <div className="icon-circle">{o.kind === "problem_confirmed" ? "✓" : o.kind === "problem_absent" || o.kind === "counter_example" ? "✕" : "•"}</div>
                     <div style={{ flex: 1 }}>
@@ -507,7 +534,10 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                             ? `AI-codering, geaccepteerd door consultant${o.reviewed_at ? ` op ${new Date(o.reviewed_at).toLocaleDateString("nl-NL")}` : ""}`
                             : o.review_status === "rejected"
                               ? `AI-codering, afgewezen door consultant${o.reviewed_at ? ` op ${new Date(o.reviewed_at).toLocaleDateString("nl-NL")}` : ""}; telt niet mee`
-                              : `AI-voorstel, citaat letterlijk gecontroleerd; nog niet beoordeeld${quality && codingIsProposalOnly(quality.coding) ? " (AI-codering blijft een voorstel)" : ""}`}
+                              : level === "quick"
+                                ? // Fase 1 · punt 1: in Snel per observatie alleen de pil; de uitleg staat in de tooltip.
+                                  <span className="pill blue"><Term k="ai-voorstel">voorstel</Term></span>
+                                : `AI-voorstel, citaat letterlijk gecontroleerd; nog niet beoordeeld${quality && codingIsProposalOnly(quality.coding) ? " (AI-codering blijft een voorstel)" : ""}`}
                       </p>
                       {o.origin === "ai" && !o.review_status && (
                         <div className="row mt-8">
@@ -535,9 +565,15 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                       </ActionForm>
                     </details>
                     <div className="row" style={{ alignItems: "flex-start", justifyContent: "flex-end" }}>
-                      {aiConfigured() && (
+                      {/* Keuze product owner (5 nov): AI ziet alleen gepseudonimiseerde tekst. Een zelf geplakt transcript is
+                          niet gepseudonimiseerd en gaat dus niet naar de AI. */}
+                      {aiConfigured() && ((iv as { pseudonymized_at?: string | null }).pseudonymized_at ? (
                         <ActionForm action={analyzeInterviewWithAi.bind(null, id, expId, iv.id)} submitLabel="Laat AI uitspraken markeren" submitClass="btn ai sm" pendingLabel="Analyseren…"><span /></ActionForm>
-                      )}
+                      ) : (
+                        <p className="tiny" style={{ maxWidth: 280, margin: "8px 0 0" }}>
+                          AI-markering kan alleen bij een gepseudonimiseerd transcript. Gebruik &ldquo;Transcript importeren&rdquo; om namen eerst te vervangen.
+                        </p>
+                      ))}
                       <form action={deleteInterview.bind(null, id, iv.id)}><button className="text-link" style={{ color: "var(--color-risk-text)", marginTop: 12 }}>Interview verwijderen</button><FormPendingOverlay /></form>
                     </div>
                   </div>
@@ -546,8 +582,17 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
             );
           })}
           {running && (
+            <div className="card mt-18" id="importeren">
+              <h3>Transcript importeren</h3>
+              <p className="sub">Een bestand uit Teams, Zoom, Fathom of Otter (of geplakte tekst). ProofLab pseudonimiseert vóór opslag en vóór elke AI-stap; het bestand zelf wordt niet bewaard.</p>
+              <div className="mt-12">
+                <InterviewImport ideaId={id} expId={expId} testGroup={exp.recruitment_group ?? null} fathom={<FathomField ideaId={id} />} />
+              </div>
+            </div>
+          )}
+          {running && (
             <div className="card mt-18">
-              <h3>Interview toevoegen</h3>
+              <h3>Interview toevoegen (zelf plakken, zonder pseudonimisering)</h3>
               <ActionForm action={addInterview.bind(null, id, expId)} submitLabel="Interview opslaan" pendingLabel="Interview opslaan…" resetOnSuccess noValidate>
                 <div className="double-field mt-12">
                   <Field name="participant_label" id="iv-l" label="Pseudoniem" required><input className="field" placeholder="Bijv. Deelnemer A" maxLength={80} /></Field>

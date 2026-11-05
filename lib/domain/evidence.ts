@@ -230,7 +230,9 @@ export const SENSITIVITY = 0.5;
 // recruitmentGroup: de wervingsgroep van het signaal (lib/domain/recruitment.ts); alleen gebruikt door methode 2026-11-c.
 // relevance: 'direct' of 'indirect' (golf C, claims.relevance; lib/domain/claim-scope.ts); alleen gebruikt door
 // methode 2026-11-c, waar een indirecte bevinding met halve sterkte telt.
+// id (fase 1, punt 2): alleen voor het bewijsregister (welke bevinding of waarneming het is); rekent niet mee.
 export type ProbabilityClaim = {
+  id?: string | null;
   status: ClaimStatus;
   relation: "supports" | "contradicts";
   sourceKey?: string | null;
@@ -239,6 +241,7 @@ export type ProbabilityClaim = {
   relevance?: string | null;
 };
 export type ProbabilityObservation = {
+  id?: string | null;
   kind: string;
   relation: "supports" | "contradicts";
   isSynthetic: boolean;
@@ -281,7 +284,140 @@ export type AssumptionProbability = {
   recruitment?: RecruitmentRepeat[];
   // Alleen methode 2026-11-c: aantal meetellende bevindingen dat als indirect bewijs met halve sterkte telt.
   indirect?: number;
+  // Fase 1, punt 2: het bewijsregister. Per gekoppeld item (bevinding of waarneming, in invoervolgorde) of het meetelt
+  // in deze kans en waarom niet. Alleen uitleg: de getallen hierboven veranderen er niet door.
+  items: RegisterItem[];
 };
+
+// ---------------------------------------------------------------------------
+// Bewijsregister (fase 1, punt 2): één bron van waarheid voor "telt mee" en "telt niet mee, want …", gemaakt door
+// dezelfde rekenmodule die de kans berekent. Zo kan een scherm nooit iets anders zeggen dan de berekening doet.
+// ---------------------------------------------------------------------------
+
+export type RegisterReason =
+  | "synthetic" // oefengesprek of synthetische data
+  | "ai_unreviewed" // AI-codering nog niet beoordeeld (vanaf 2026-11-c telt die niet)
+  | "ai_rejected" // AI-codering afgekeurd
+  | "claim_insufficient"
+  | "claim_contested"
+  | "claim_outdated"
+  | "claim_refuted_old_method"
+  | "claim_refuted_counter"
+  | "neutral" // factor 1: verandert de kans niet (soort "overig", of een geleerde factor van 1)
+  | "merged" // samengevoegd met een sterker signaal uit dezelfde bron
+  | "excluded_test"; // uit een test die onbeslist is of onder de minimale steekproef bleef
+
+// Opmerking bij een item dat wel meetelt.
+export type RegisterNote = "capped" | "ai_half" | "indirect";
+
+export type RegisterItem = {
+  itemType: "claim" | "observation";
+  id: string | null;
+  kind: string; // status van de bevinding of soort waarneming
+  label: string; // "Demo aangevraagd", "Geverifieerde bevinding"
+  // De richting waarin het item werkt (of zou werken): bezwaren en tegenvoorbeelden zijn altijd tegenbewijs; een weerlegde
+  // bevinding waarop de aanname leunt telt vanaf 2026-11-e als tegenbewijs.
+  direction: "supports" | "contradicts";
+  level: EvidenceLevel;
+  sourceLabel: string | null;
+  sourceKey: string | null; // evidenceSourceKey (interview:…, experiment:…); null zonder herkenbare bron
+  fate: "counted" | "not_counted";
+  code: RegisterReason | null; // reden bij not_counted
+  notes: RegisterNote[]; // opmerkingen bij counted
+  reason: string | null; // gewone taal: waarom niet, of de opmerking bij een meetellend item
+};
+
+const pctWhole = (x: number) => `${Math.round(x * 100)}%`;
+
+export const REGISTER_REASON: Record<Exclude<RegisterReason, "merged" | "excluded_test" | "neutral">, string> = {
+  synthetic: "oefengesprek of synthetische data: telt nooit als bewijs",
+  ai_unreviewed: "AI-codering nog niet beoordeeld: telt pas mee na akkoord van een consultant",
+  ai_rejected: "AI-codering afgekeurd door een consultant",
+  claim_insufficient: DESK_SKIP_REASON.insufficient,
+  claim_contested: DESK_SKIP_REASON.contested,
+  claim_outdated: "verouderde bevinding: telt pas weer mee na een nieuwe controle",
+  claim_refuted_old_method: DESK_SKIP_REASON.refuted_old_method,
+  claim_refuted_counter: DESK_SKIP_REASON.refuted_counter,
+};
+
+export function capNote(max: number, level: EvidenceLevel): string {
+  const meta = EVIDENCE_LEVELS.find((l) => l.level === level)!;
+  return `telt mee, maar het plafond van ${pctWhole(max)} is bereikt (${meta.missing})`;
+}
+
+const NOTE_TEXT: Record<Exclude<RegisterNote, "capped">, string> = {
+  ai_half: "telt half mee: AI-codering nog niet beoordeeld",
+  indirect: "telt half mee: indirect bewijs (andere populatie, regio of peildatum)",
+};
+
+function claimSkip(status: ClaimStatus, relation: "supports" | "contradicts", refutedCounts: boolean): RegisterReason {
+  if (status === "insufficient") return "claim_insufficient";
+  if (status === "contested") return "claim_contested";
+  if (status === "outdated") return "claim_outdated";
+  if (status === "refuted") return refutedCounts && relation === "contradicts" ? "claim_refuted_counter" : "claim_refuted_old_method";
+  return "neutral";
+}
+
+function registerEntry(
+  base: Pick<RegisterItem, "itemType" | "id" | "kind" | "label" | "direction" | "level" | "sourceLabel"> & { sourceKey?: string | null },
+  fate: RegisterItem["fate"],
+  code: RegisterReason | null = null,
+  reason: string | null = null,
+): RegisterItem {
+  return { ...base, sourceKey: base.sourceKey ?? null, fate, code, notes: [], reason: reason ?? (code && code in REGISTER_REASON ? REGISTER_REASON[code as keyof typeof REGISTER_REASON] : null) };
+}
+
+const NEUTRAL_TEXT = "verandert de kans niet (factor 1)";
+
+function noteOn(item: RegisterItem, note: RegisterNote, text: string) {
+  if (item.notes.includes(note)) return;
+  item.notes.push(note);
+  item.reason = item.reason ? `${item.reason}; ${text}` : text;
+}
+
+// Telling voor scherm en rapport: "3 voor (2 tellen mee) · 1 tegen".
+export type RegisterTally = { supports: number; supportsCounted: number; contradicts: number; contradictsCounted: number; notCounted: number };
+
+export function registerTally(items: RegisterItem[]): RegisterTally {
+  const t: RegisterTally = { supports: 0, supportsCounted: 0, contradicts: 0, contradictsCounted: 0, notCounted: 0 };
+  for (const i of items) {
+    const counted = i.fate === "counted";
+    if (i.direction === "supports") {
+      t.supports++;
+      if (counted) t.supportsCounted++;
+    } else {
+      t.contradicts++;
+      if (counted) t.contradictsCounted++;
+    }
+    if (!counted) t.notCounted++;
+  }
+  return t;
+}
+
+export function registerLine(t: RegisterTally): string {
+  const part = (n: number, counted: number, word: string) => (n === counted ? `${n} ${word}` : `${n} ${word} (${counted} ${counted === 1 ? "telt" : "tellen"} mee)`);
+  return `${part(t.supports, t.supportsCounted, "voor")} · ${part(t.contradicts, t.contradictsCounted, "tegen")}`;
+}
+
+// Een item dat vóór de berekening is weggelaten omdat het uit een niet-meetellende test komt (lib/domain/test-counts.ts).
+export function excludedRegisterItem(
+  item: { itemType: "claim"; id: string | null; status: ClaimStatus; relation: "supports" | "contradicts"; sourceLabel?: string | null } | { itemType: "observation"; id: string | null; kind: string; relation: "supports" | "contradicts"; sourceLabel?: string | null },
+  test: { title: string; reason: "under_sample" | "inconclusive"; text: string },
+): RegisterItem {
+  const why = test.reason === "inconclusive" ? "onbeslist" : test.text.replace(/^telt niet mee: /, "");
+  const reason = `komt uit de test "${test.title}", die niet meetelt: ${why}`;
+  if (item.itemType === "claim") {
+    return registerEntry({ itemType: "claim", id: item.id, kind: item.status, label: CLAIM_LR[item.status].label, direction: item.relation, level: CLAIM_LEVEL, sourceLabel: item.sourceLabel ?? null }, "not_counted", "excluded_test", reason);
+  }
+  const kind = (item.kind in OBSERVATION_LR ? item.kind : "other") as ObservationKind;
+  const entry = OBSERVATION_LR[kind];
+  return registerEntry(
+    { itemType: "observation", id: item.id, kind, label: entry.label, direction: entry.against ? "contradicts" : item.relation, level: KIND_LEVEL[kind], sourceLabel: item.sourceLabel ?? null },
+    "not_counted",
+    "excluded_test",
+    reason,
+  );
+}
 
 const clampP = (p: number) => Math.min(PROBABILITY_CEIL, Math.max(PROBABILITY_FLOOR, p));
 const logit = (p: number) => Math.log(p / (1 - p));
@@ -311,12 +447,13 @@ export function assumptionProbability(
 ): AssumptionProbability {
   const groups = new Map<string, Omit<Contribution, "logOdds">>();
   const ignored = { synthetic: 0, rejected: 0, neutral: 0 };
+  const items: RegisterItem[] = [];
   let counted = 0;
   const add = (key: string, label: string, entry: LrEntry, supports: boolean, weight: number) => {
     const factor = supports ? entry.lr : (entry.lrAgainst ?? entry.lr);
     if (factor === 1) {
       ignored.neutral++;
-      return;
+      return false;
     }
     const direction = supports ? "supports" : "contradicts";
     const k = `${key}:${direction}:${weight}`;
@@ -324,29 +461,39 @@ export function assumptionProbability(
     g.count++;
     groups.set(k, g);
     counted++;
+    return true;
   };
   for (const c of claims) {
-    add(`claim:${c.status}`, CLAIM_LR[c.status].label, CLAIM_LR[c.status], c.relation === "supports", 1);
+    const counts = add(`claim:${c.status}`, CLAIM_LR[c.status].label, CLAIM_LR[c.status], c.relation === "supports", 1);
+    const base = { itemType: "claim" as const, id: c.id ?? null, kind: c.status, label: CLAIM_LR[c.status].label, direction: c.relation, level: CLAIM_LEVEL, sourceLabel: c.sourceLabel ?? null, sourceKey: c.sourceKey ?? null };
+    items.push(counts ? registerEntry(base, "counted") : registerEntry(base, "not_counted", claimSkip(c.status, c.relation, false)));
   }
   for (const o of observations) {
+    const kind = (o.kind in OBSERVATION_LR ? o.kind : "other") as ObservationKind;
+    const base = OBSERVATION_LR[o.kind as ObservationKind] ?? OBSERVATION_LR.other;
+    const reg = { itemType: "observation" as const, id: o.id ?? null, kind, label: base.label, direction: base.against ? ("contradicts" as const) : o.relation, level: KIND_LEVEL[kind], sourceLabel: o.sourceLabel ?? null, sourceKey: o.sourceKey ?? null };
     if (o.isSynthetic) {
       ignored.synthetic++;
+      items.push(registerEntry(reg, "not_counted", "synthetic"));
       continue;
     }
     let weight = 1;
     if (o.origin === "ai") {
       if (o.reviewStatus === "rejected") {
         ignored.rejected++;
+        items.push(registerEntry(reg, "not_counted", "ai_rejected"));
         continue;
       }
       if (o.reviewStatus !== "accepted") weight = AI_UNREVIEWED_WEIGHT;
     }
-    const base = OBSERVATION_LR[o.kind as ObservationKind] ?? OBSERVATION_LR.other;
     const learned = overrides[o.kind as ObservationKind];
     const entry: LrEntry = learned ? { ...base, lr: learned.lr, lrAgainst: learned.lrAgainst, learned: true } : base;
     const supports = entry.against ? false : o.relation === "supports";
     const label = `${entry.label}${learned ? " (geleerde factor)" : ""}${weight < 1 ? " (AI-codering, nog niet beoordeeld)" : ""}`;
-    add(`obs:${o.kind}`, label, entry, supports, weight);
+    const counts = add(`obs:${o.kind}`, label, entry, supports, weight);
+    const item = counts ? registerEntry(reg, "counted") : registerEntry(reg, "not_counted", "neutral", NEUTRAL_TEXT);
+    if (counts && weight < 1) noteOn(item, "ai_half", NOTE_TEXT.ai_half);
+    items.push(item);
   }
   const contributions: Contribution[] = [...groups.values()]
     .map((g) => ({ ...g, logOdds: Math.log(g.lr) * diminishing(g.count) * g.weight }))
@@ -362,6 +509,7 @@ export function assumptionProbability(
     top: contributions.slice(0, 3),
     counted,
     ignored,
+    items,
   };
 }
 
@@ -539,6 +687,7 @@ type Item = {
   level: EvidenceLevel;
   recruitment: string | null;
   damp: number; // afnemende factor binnen dezelfde wervingsgroep (methode 2026-11-c); anders 1
+  reg: RegisterItem; // de regel in het bewijsregister (fase 1, punt 2); rekent niet mee
 };
 
 // Wat methode 2026-11-c toevoegt aan de rekenwijze van 2026-11-b. Zonder opties rekent de kern exact als 2026-11-b.
@@ -566,6 +715,7 @@ function probabilityCore(
 ): AssumptionProbability {
   const ignored: AssumptionProbability["ignored"] = opts.aiNeedsReview ? { synthetic: 0, rejected: 0, neutral: 0, unreviewed: 0 } : { synthetic: 0, rejected: 0, neutral: 0 };
   const items: Item[] = [];
+  const register: RegisterItem[] = [];
   let unique = 0;
   const own = () => `eigen:${unique++}`;
   for (const c of claims) {
@@ -576,7 +726,14 @@ function probabilityCore(
     // (factor 1, dus neutraal). In oudere methodes is een weerlegde bevinding neutraal (CLAIM_LR.refuted).
     const refuted = opts.refutedCounts && c.status === "refuted";
     const entry = refuted && c.relation === "supports" ? REFUTED_LR : CLAIM_LR[c.status];
+    const reg = registerEntry(
+      { itemType: "claim", id: c.id ?? null, kind: c.status, label: entry.label, direction: refuted ? "contradicts" : c.relation, level: CLAIM_LEVEL, sourceLabel: c.sourceLabel ?? null, sourceKey: c.sourceKey ?? null },
+      "counted",
+    );
+    register.push(reg);
+    if (weight < 1) noteOn(reg, "indirect", NOTE_TEXT.indirect);
     items.push({
+      reg,
       kindKey: `claim:${c.status}`,
       label: `${entry.label}${weight < 1 ? " (indirect bewijs)" : ""}`,
       entry,
@@ -590,30 +747,41 @@ function probabilityCore(
     });
   }
   for (const o of observations) {
+    const kind = (o.kind in OBSERVATION_LR ? o.kind : "other") as ObservationKind;
+    const base = OBSERVATION_LR[kind];
+    const reg = registerEntry(
+      { itemType: "observation", id: o.id ?? null, kind, label: base.label, direction: base.against ? "contradicts" : o.relation, level: KIND_LEVEL[kind], sourceLabel: o.sourceLabel ?? null, sourceKey: o.sourceKey ?? null },
+      "counted",
+    );
+    register.push(reg);
+    const skip = (code: RegisterReason) => Object.assign(reg, registerEntry(reg, "not_counted", code));
     if (o.isSynthetic) {
       ignored.synthetic++;
+      skip("synthetic");
       continue;
     }
     let weight = 1;
     if (o.origin === "ai") {
       if (o.reviewStatus === "rejected") {
         ignored.rejected++;
+        skip("ai_rejected");
         continue;
       }
       if (o.reviewStatus !== "accepted") {
         // Methode 2026-11-c: onbeoordeelde AI-codering telt niet mee, pas na beoordeling door een consultant.
         if (opts.aiNeedsReview) {
           ignored.unreviewed = (ignored.unreviewed ?? 0) + 1;
+          skip("ai_unreviewed");
           continue;
         }
         weight = AI_UNREVIEWED_WEIGHT;
+        noteOn(reg, "ai_half", NOTE_TEXT.ai_half);
       }
     }
-    const kind = (o.kind in OBSERVATION_LR ? o.kind : "other") as ObservationKind;
-    const base = OBSERVATION_LR[kind];
     const learned = overrides[kind];
     const entry: LrEntry = learned ? { ...base, lr: learned.lr, lrAgainst: learned.lrAgainst, learned: true } : base;
     items.push({
+      reg,
       kindKey: `obs:${kind}`,
       label: `${entry.label}${learned ? " (geleerde factor)" : ""}${weight < 1 ? " (AI-codering, nog niet beoordeeld)" : ""}`,
       entry,
@@ -631,6 +799,8 @@ function probabilityCore(
   const counting = items.filter((i) => {
     if (factorOf(i) !== 1) return true;
     ignored.neutral++;
+    const code = i.reg.itemType === "claim" ? claimSkip(i.reg.kind as ClaimStatus, i.reg.direction, !!opts.refutedCounts) : "neutral";
+    Object.assign(i.reg, registerEntry(i.reg, "not_counted", code, code === "neutral" ? NEUTRAL_TEXT : null));
     return false;
   });
   const indirect = opts.relevanceWeighting ? counting.filter((i) => i.kindKey.startsWith("claim:") && i.weight < 1).length : 0;
@@ -647,6 +817,10 @@ function probabilityCore(
     for (const [key, group] of bySource) {
       const top = [...group].sort((a, b) => pull(b) - pull(a) || a.kindKey.localeCompare(b.kindKey))[0];
       best.push(top);
+      for (const other of group) {
+        if (other === top) continue;
+        Object.assign(other.reg, registerEntry(other.reg, "not_counted", "merged", `samengevoegd met een sterker signaal uit dezelfde bron (${top.sourceLabel}): alleen "${top.reg.label}" telt`));
+      }
       if (group.length > 1) {
         merged.push(
           direction === "supports"
@@ -713,6 +887,8 @@ function probabilityCore(
   const probability = applyCap(uncapped, max);
   const band = bandFromShift(p0, shift);
   const active = probability < uncapped;
+  // Plafond bereikt: het ondersteunende bewijs telt mee, maar de kans komt niet hoger dan het plafond.
+  if (active && max != null) for (const i of kept) if (i.supports) noteOn(i.reg, "capped", capNote(max, level));
   return {
     prior: p0,
     probability,
@@ -726,6 +902,7 @@ function probabilityCore(
     ...(opts.recruitmentDamping ? { recruitment: recruitment.sort((a, b) => b.sources - a.sources || a.group.localeCompare(b.group)) } : {}),
     ...(opts.relevanceWeighting ? { indirect } : {}),
     cap: { level, levelLabel: EVIDENCE_LEVELS.find((l) => l.level === level)!.label, max, active, uncapped, reason: active ? capReason(level, max) : "" },
+    items: register,
   };
 }
 

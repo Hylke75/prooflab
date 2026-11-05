@@ -40,6 +40,9 @@ import { proposeLearning } from "@/lib/ai/learning";
 import { fictionSignals, fictionWarning } from "@/lib/domain/practice";
 import { coachSurveyDraft } from "@/lib/survey-coach";
 import { approvalChecks, decisive, isExploratory, studyFormatOf } from "@/lib/domain/customer-research";
+import { defaultedTestCardFields } from "@/lib/defaulted-test-card";
+import { withDefaultedFallback, withFields } from "@/lib/defaulted-fields";
+import { cleanDefaultedFields } from "@/lib/view-mode";
 
 export type ActionState = { error: string | null; ok?: string | null; warning?: string | null; fieldErrors?: Record<string, string> };
 
@@ -203,10 +206,21 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
     }
   }
 
+  // Fase 1 · punt 1: welke velden nog precies de standaardwaarde van ProofLab hebben (in Snel ingeklapt onder Details).
+  // Herkomst voor het auditspoor en de Test Card; de waarden zelf en de berekening veranderen er niet door.
+  const defaulted = cleanDefaultedFields(
+    "hypotheses",
+    defaultedTestCardFields({
+      type: v.type,
+      rule,
+      values: { ...v, fail_threshold_pct: v.fail_threshold_pct ?? null, expected_biases: v.expected_biases ?? null, success_threshold_pct: successPct, min_sample: minSample, max_duration_days: maxDays },
+      channels,
+      recruitmentGroup: v.recruitment_group ?? null,
+      requiredN,
+    }),
+  );
   const supabase = await supabaseServer();
-  const { data: h, error: hErr } = await supabase
-    .from("hypotheses")
-    .insert({
+  const hypothesis = {
       idea_id: ideaId,
       assumption_id: v.assumption_id,
       we_believe: v.we_believe,
@@ -228,9 +242,8 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       expected_pct: band ? band.expectedPct : null,
       available_per_week: rule ? (v.available_per_week ?? null) : null,
       required_n: band ? band.requiredN : null,
-    })
-    .select("id")
-    .single();
+  };
+  const { data: h, error: hErr } = await withDefaultedFallback((w) => supabase.from("hypotheses").insert(withFields(hypothesis, defaulted, w)).select("id").single());
   if (hErr || !h) return { error: `De Test Card kon niet worden opgeslagen (hypothese: ${hErr?.message ?? "onbekende fout"}). Probeer het opnieuw.` };
   const { data: exp, error } = await supabase
     .from("experiments")
@@ -433,7 +446,7 @@ export async function deleteDraft(ideaId: string, expId: string) {
 
 const InterviewSchema = z.object({
   participant_label: text(80).min(2, "Gebruik een pseudoniem, bijv. 'Deelnemer A'."),
-  dmu_role: z.enum(["user", "buyer", "decider", "influencer", "other"]),
+  dmu_role: z.enum(["user", "buyer", "payer", "decider", "influencer", "other"]),
   segment: text(160).optional(),
   recruited_via: z.enum(Object.keys(CHANNELS) as [string, ...string[]]),
   held_on: z.string().date("Vul de datum van het gesprek in."),
@@ -452,6 +465,8 @@ const INTERVIEW_MESSAGES: Partial<Record<string, string>> = {
   record_type: "Kies het soort verslag.",
   recruitment_group: "Kies een wervingsgroep.",
 };
+
+const PAYER_SCHEMA_MISSING = "De rol Betaler vraagt een database-update (migratie 20261115090000_interviews_import). Kies tot die tijd Inkoper.";
 
 export async function addInterview(ideaId: string, expId: string, _: ActionState, form: FormData): Promise<ActionState> {
   await requireWritableIdea(ideaId);
@@ -474,7 +489,7 @@ export async function addInterview(ideaId: string, expId: string, _: ActionState
   if (intake.error && form.get("is_practice") === "real") fieldErrors.consent_recorded = intake.error;
   if (!p.success || Object.keys(fieldErrors).length) return { error: savedNothing("Het interview", fieldErrors), fieldErrors };
   if (!exp || exp.type !== "interview" || !["live", "paused"].includes(exp.state)) return { error: "Interviews voeg je toe terwijl het experiment loopt." };
-  const { error } = await supabase.from("interviews").insert({
+  const interview = {
     ...p.data,
     segment: p.data.segment || null,
     experiment_id: expId,
@@ -482,7 +497,12 @@ export async function addInterview(ideaId: string, expId: string, _: ActionState
     recruitment_group: intake.recruitment_group,
     is_acquaintance: intake.is_acquaintance,
     consent_recorded: intake.consent_recorded,
-  });
+  };
+  // Fase 1 · punt 1: zonder eigen keuze is de wervingsgroep afgeleid uit het kanaal (een standaardwaarde, in het auditspoor).
+  const defaulted = p.data.recruitment_group ? [] : ["recruitment_group"];
+  const { error } = await withDefaultedFallback((w) => supabase.from("interviews").insert(withFields(interview, defaulted, w)));
+  // Fase 1 · punt 3: de rol "Betaler" bestaat pas na migratie 20261115090000_interviews_import.
+  if (error && p.data.dmu_role === "payer" && /dmu_role/.test(error.message ?? "")) return { error: PAYER_SCHEMA_MISSING, fieldErrors: { dmu_role: PAYER_SCHEMA_MISSING } };
   if (error) return { error: "Het interview is niet opgeslagen. Probeer het opnieuw." };
   refresh(ideaId);
   // B0: een als echt aangegeven gesprek met woorden als "fictief" of "test": opgeslagen, maar controleer de keuze.
@@ -577,10 +597,15 @@ export async function analyzeInterviewWithAi(ideaId: string, expId: string, inte
   if (!aiConfigured()) return { error: "AI is niet verbonden; codeer het interview handmatig." };
   const supabase = await supabaseServer();
   const [{ data: iv }, { data: exp }] = await Promise.all([
-    supabase.from("interviews").select("transcript, is_practice, participant_label").eq("id", interviewId).eq("idea_id", ideaId).single(),
+    supabase.from("interviews").select("*").eq("id", interviewId).eq("idea_id", ideaId).single(),
     supabase.from("experiments").select("hypotheses(we_believe)").eq("id", expId).eq("idea_id", ideaId).single(),
   ]);
   if (!iv) return { error: "Interview niet gevonden." };
+  // Keuze product owner (5 nov): de AI ziet alleen gepseudonimiseerde tekst. Zonder pseudonimisering (zelf geplakt,
+  // of de import-migratie staat nog niet live) gaat het transcript niet naar de AI.
+  if (!(iv as { pseudonymized_at?: string | null }).pseudonymized_at) {
+    return { error: "AI-markering kan alleen bij een gepseudonimiseerd transcript. Importeer het transcript via \"Transcript importeren\" zodat namen eerst vervangen worden." };
+  }
   try {
     const res = await runAi(ideaId, "interview_analysis", (p) => analyzeInterview(exp?.hypotheses?.we_believe ?? "", iv.transcript, p));
     let kept = 0;

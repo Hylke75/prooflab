@@ -5,6 +5,8 @@ import { getWorkspace } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { configuredProviders, emailConfigured, trackingConfigured } from "@/lib/env";
 import { AiProviderSettings } from "@/components/settings/AiProviderSettings";
+import { FathomSettings } from "@/components/settings/FathomSettings";
+import { fathomEnabled } from "@/lib/integrations/transcripts/fathom";
 import { AiConnectionTest } from "@/components/settings/AiConnectionTest";
 import { aiSettingsForOrg } from "@/lib/ai/settings";
 import { modelFor, PROVIDERS, PROVIDER_LABELS } from "@/lib/ai/providers/config";
@@ -54,6 +56,9 @@ export default async function StatusPage() {
 
   const connected = configuredProviders();
   const aiSettings = await aiSettingsForOrg(ws.org.id);
+  // Fase 1 · punt 3: Fathom-koppeling van de werkruimte (alleen of er een sleutel is en de laatste vier tekens).
+  const { data: transcriptStatus, error: transcriptError } = await supabase.rpc("transcript_settings_status", { p_org: ws.org.id });
+  const fathom = (transcriptStatus ?? [])[0] ?? null;
   const models = Object.fromEntries(PROVIDERS.map((p) => [p, modelFor(p)])) as Record<(typeof PROVIDERS)[number], string>;
   const email = emailConfigured();
   const tracking = trackingConfigured();
@@ -208,6 +213,7 @@ export default async function StatusPage() {
         <AiProviderSettings settings={aiSettings} connected={connected} models={models} />
         <AiConnectionTest />
       </div>
+      <FathomSettings enabled={fathomEnabled()} connected={!!fathom?.fathom_connected} hint={fathom?.fathom_key_hint ?? null} schemaReady={!transcriptError} />
     </PageFrame>
   );
 }

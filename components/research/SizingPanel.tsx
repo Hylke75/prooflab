@@ -6,6 +6,7 @@ import { computeSizing, factorConsistency, MODEL_FACTORS, SCENARIO_LABELS, simul
 import { CLAIM_STATUS, type ClaimStatus } from "@/lib/domain/labels";
 import { numericFromInput } from "@/lib/domain/verify";
 import { Term } from "@/components/ui/Term";
+import { Detail } from "@/components/shell/ViewMode";
 
 type Factor = {
   key: string;
@@ -256,6 +257,8 @@ export function SizingPanel({
         </p>
       )}
 
+      {/* Fase 1 · punt 1: de Monte Carlo-bandbreedtes staan in Grondig; de berekening van de scenario's is gelijk. */}
+      <Detail>
       <div className="card mt-18" aria-live="polite">
         <div className="section-title">
           <h3>Hoe zeker is dit? (simulatie)</h3>
@@ -326,6 +329,7 @@ export function SizingPanel({
           </>
         )}
       </div>
+      </Detail>
     </>
   );
 }

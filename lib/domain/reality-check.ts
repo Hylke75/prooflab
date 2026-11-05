@@ -196,7 +196,7 @@ export function runRealityCheck(f: DossierFacts): RealityCheckResult {
       add("friendly_sample", "warning", "Vooral bekenden geïnterviewd",
         `${acquainted} van de ${f.interviews.length} geïnterviewden zijn bekenden. Dat vertekent naar positief.`);
     }
-    if (f.isB2B && !f.interviews.some((i) => i.dmuRole === "decider" || i.dmuRole === "buyer")) {
+    if (f.isB2B && !f.interviews.some((i) => i.dmuRole === "decider" || i.dmuRole === "buyer" || i.dmuRole === "payer")) {
       add("no_budget_holder", "warning", "Geen budgethouder gesproken",
         "In B2B beslist vaak iemand anders dan de gebruiker. Spreek ook de inkoper of budgethouder.");
     }

@@ -5,13 +5,16 @@ import { useEffect, useOptimistic, useRef, useState } from "react";
 import { layoutRiskPoints } from "@/lib/domain/risk-layout";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { ASSUMPTION_CATEGORIES, ASSUMPTION_STATUS, CLAIM_STATUS, type AssumptionCategory, type AssumptionStatus, type ClaimStatus } from "@/lib/domain/labels";
-import { applyCap, bandFromShift, capReason, deskVerdict, DESK_SKIP_REASON, explainContribution, explainMerged, notCountedLine, probabilityFromShift, type AssumptionProbability } from "@/lib/domain/evidence";
+import { applyCap, bandFromShift, capReason, deskVerdict, DESK_SKIP_REASON, explainContribution, explainMerged, probabilityFromShift, type AssumptionProbability, type RegisterItem } from "@/lib/domain/evidence";
+import { EvidenceRegister } from "@/components/evidence/EvidenceRegister";
 import { MAX_SELECTED_FOR_TEST, splitBySelection, type VoiResult } from "@/lib/domain/recommend";
 import { ASSUMPTION_KINDS, type AssumptionKind } from "@/lib/domain/assumption-kind";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 import { DirectionField } from "@/components/ui/DirectionField";
 import { Probability } from "@/components/ui/Probability";
 import { Term } from "@/components/ui/Term";
+import { Explain } from "@/components/ui/Explain";
+import { Detail, MoreInThorough, useViewMode } from "@/components/shell/ViewMode";
 import { formatProbability } from "@/lib/domain/probability-display";
 import { explainRecruitment } from "@/lib/domain/recruitment";
 import { explainIndirect } from "@/lib/domain/claim-scope";
@@ -38,8 +41,8 @@ export type BoardAssumption = {
   kind: AssumptionKind;
   kindStored: boolean;
   selectedForTest: boolean;
-  // Gebruikerstest A2: gekoppelde bevindingen die (nog) niet meetellen, met de reden.
-  deskNotCounted?: { claimId: string; reason: string }[];
+  // Fase 1, punt 2: het bewijsregister (wat meetelt in de kans en waarom niet); vervangt de A2-lijst.
+  register: RegisterItem[];
 };
 
 // Nederlands label van een bevindingstatus (gebruikerstest A4); onbekende waarden ongewijzigd.
@@ -91,6 +94,9 @@ export function RiskBoard({
   priorActions: Record<string, Action>;
   deleteActions: Record<string, () => Promise<void>>;
 }) {
+  // Fase 1 · punt 1: in Snel de kern (max. 3 aannames in de lijst, geen berekeningsdetails); de berekening is gelijk.
+  const { level } = useViewMode();
+  const quick = level === "quick";
   const firstId = (initialId && assumptions.some((a) => a.id === initialId) ? initialId : null) ?? assumptions[0]?.id ?? null;
   const [sel, setSel] = useState(firstId);
   const [cluster, setCluster] = useState<string | null>(null);
@@ -247,8 +253,8 @@ export function RiskBoard({
         </div>
         <p className="tiny">
           Horizontaal staat de geschatte kans dat de aanname klopt: start op 50% en bijgewerkt met een vaste factor per soort bewijs. Rood = <Term k="kritieke-aanname">kritieke aanname</Term> met een kans onder 70%. Tik op een punt om de aanname te bekijken.
-          {/* Gebruikerstest C6: de kalibratie-uitleg één keer per kaart, niet bij elke kans. */}
-          {calibrated ? "" : " Kansen zijn nog niet gekalibreerd en staan als band van 10 procentpunt rond de berekende waarde."}
+          {/* Gebruikerstest C6: de kalibratie-uitleg één keer per kaart, niet bij elke kans. Fase 1 · punt 1: in Snel één keer per pagina. */}
+          {calibrated ? "" : <> <Explain k="kalibratie" term="Niet gekalibreerd">Kansen zijn nog niet gekalibreerd en staan als band van 10 procentpunt rond de berekende waarde.</Explain></>}
         </p>
       </div>
       <div className="card">
@@ -267,12 +273,25 @@ export function RiskBoard({
             </ul>
           </>
         )}
-        <div className="eyebrow" id="later-testen" style={{ marginTop: chosen.length > 0 ? 14 : 0 }}>
-          {chosen.length > 0 ? "Later" : "Rangorde (nog niets gekozen)"}
-        </div>
-        <ul aria-labelledby="later-testen" style={{ listStyle: "none", margin: 0, padding: 0 }}>
-          {later.map((a) => <li key={a.id}>{item(a)}</li>)}
-        </ul>
+        {/* Snel: de lijst "Later" staat in Grondig. Is er nog niets gekozen, dan de bovenste drie van de rangorde. */}
+        {quick && chosen.length > 0 ? (
+          later.length > 0 && <MoreInThorough />
+        ) : (
+          <>
+            <div className="eyebrow" id="later-testen" style={{ marginTop: chosen.length > 0 ? 14 : 0 }}>
+              {chosen.length > 0 ? "Later" : quick ? `Rangorde (nog niets gekozen${later.length > MAX_SELECTED_FOR_TEST ? `, bovenste ${MAX_SELECTED_FOR_TEST}` : ""})` : "Rangorde (nog niets gekozen)"}
+            </div>
+            <ul aria-labelledby="later-testen" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+              {(quick ? later.slice(0, MAX_SELECTED_FOR_TEST) : later).map((a) => <li key={a.id}>{item(a)}</li>)}
+            </ul>
+            {quick && later.length > MAX_SELECTED_FOR_TEST && (
+              <>
+                <p className="tiny mt-8">Nog {later.length - MAX_SELECTED_FOR_TEST} aannames: kies ze op de risicokaart.</p>
+                <MoreInThorough />
+              </>
+            )}
+          </>
+        )}
         <div className="divider" />
         <div className="eyebrow">Geselecteerde aanname</div>
         <h3 style={{ margin: "6px 0 10px" }}>{current.statement}</h3>
@@ -282,8 +301,9 @@ export function RiskBoard({
           {current.origin === "premortem" && <span className="pill coral">Uit de pre-mortem</span>}
           <span className="pill gray">Bewijsscore {Math.round(current.evidence * 100)} van 100</span>
         </div>
-        <ProbabilityDetail key={current.id} a={current} prior={prior} setPrior={setPrior} save={canWrite ? priorActions[current.id] : undefined} calibrated={calibrated} />
+        <ProbabilityDetail key={current.id} a={current} prior={prior} setPrior={setPrior} save={canWrite ? priorActions[current.id] : undefined} calibrated={calibrated} quick={quick} />
         <p className="sub mt-12" data-testid="rangorde-reden">{current.voi.reason}</p>
+        <Detail>
         <details className="mt-8">
           <summary className="text-link">Score en berekening</summary>
           <p className="tiny mt-8">
@@ -293,11 +313,12 @@ export function RiskBoard({
             {current.probability.cap?.active ? " (begrensd)" : ""}. {current.voi.why}
           </p>
         </details>
+        </Detail>
         <div className="row mt-12">
           <span className="pill blue">Soort: {ASSUMPTION_KINDS[current.kind].label}{current.kindStored ? "" : " (afgeleid uit de tekst)"}</span>
           {current.selectedForTest ? <span className="pill green">Gekozen om nu te testen</span> : <span className="pill gray">Later</span>}
         </div>
-        {canWrite && kindActions[current.id] && (
+        {canWrite && kindActions[current.id] && !quick && (
           <ActionForm key={`kind-${current.id}`} action={kindActions[current.id]} submitLabel="Soort opslaan" submitClass="btn white sm" className="mt-8">
             <label className="tiny" htmlFor={`kind-${current.id}`}>Soort aanname (bepaalt de passende test)</label>
             <select className="field mt-8" id={`kind-${current.id}`} name="kind" defaultValue={current.kindStored ? current.kind : ""} style={{ maxWidth: 260 }}>
@@ -326,25 +347,11 @@ export function RiskBoard({
             )}
           </ActionForm>
         )}
-        <p className="sub mt-12">
-          {current.supporting} ondersteunend en {current.contradicting} tegensprekend bewijs telt mee (waarnemingen per persoon geteld).
-          {current.probability.counted === 0 ? " We weten hier nog weinig van." : ""}
-        </p>
-        {(current.deskNotCounted ?? []).length > 0 && (
-          <div className="tiny mt-8" data-testid="niet-meetellend">
-            <p style={{ margin: 0 }}>{notCountedLine(current.deskNotCounted!.map((c) => c.reason))}.</p>
-            <ul style={{ margin: "4px 0 0 18px", lineHeight: 1.6 }} aria-label="Gekoppelde bevindingen die nog niet meetellen">
-              {current.deskNotCounted!.map((c) => {
-                const claim = current.claims.find((x) => x.id === c.claimId);
-                return (
-                  <li key={c.claimId}>
-                    <Link className="text-link" href={`/app/ideas/${ideaId}/research?tab=overview#claim-${c.claimId}`}>{claim ? truncate(claim.statement, 90) : "Bevinding"}</Link>: {c.reason}.
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
+        {/* Fase 1, punt 2: het bewijsregister uit de rekenmodule vervangt de losse telling en de A2-lijst (één bron van waarheid). */}
+        <div className="mt-12">
+          <EvidenceRegister items={current.register} ideaId={ideaId} claimText={Object.fromEntries(current.claims.map((c) => [c.id, c.statement]))} />
+          {current.probability.counted === 0 && <p className="tiny mt-8">We weten hier nog weinig van.</p>}
+        </div>
         {(current.excludedTests ?? []).length > 0 && (
           <ul className="tiny" style={{ margin: "6px 0 0 18px", lineHeight: 1.6 }} aria-label="Tests die niet meetellen in kans en rangorde">
             {current.excludedTests!.map((t) => (
@@ -401,12 +408,15 @@ function ProbabilityDetail({
   setPrior,
   save,
   calibrated,
+  quick = false,
 }: {
   a: BoardAssumption;
   prior: number;
   setPrior: (p: number) => void;
   save?: Action;
   calibrated: boolean;
+  // Fase 1 · punt 1 (Snel): één getal met de band in de tooltip; de lijsten achter "Waarom deze kans?"; geen startkans-keuze.
+  quick?: boolean;
 }) {
   // Methode 2026-11-b: het plafond van het hoogste bewijsniveau geldt ook voor een andere beginwaarde.
   const cap = a.probability.cap ?? null;
@@ -422,17 +432,24 @@ function ProbabilityDetail({
     <div className="mt-12" style={{ background: "var(--color-surface-muted)", borderRadius: "var(--radius-inner)", padding: "12px 14px" }}>
       <div className="row between">
         <strong style={{ font: "700 24px var(--font-heading),sans-serif", letterSpacing: "-.04em" }}>
-          <Probability p={p} calibrated={calibrated} showLabel={false} />
+          <Probability p={p} calibrated={calibrated} showLabel={false} band={quick ? band : undefined} />
         </strong>
-        <span className="pill gray">
-          {calibrated ? "Geschat" : "Niet gekalibreerd"} · bandbreedte <Probability p={band.low} high={band.high} calibrated={calibrated} showLabel={false} />
-        </span>
+        {!quick && (
+          <span className="pill gray">
+            {calibrated ? "Geschat" : "Niet gekalibreerd"} · bandbreedte <Probability p={band.low} high={band.high} calibrated={calibrated} showLabel={false} />
+          </span>
+        )}
       </div>
       <p className="explain" style={{ marginTop: 2 }}>
-        Geschatte kans dat deze aanname klopt. De bandbreedte laat zien wat er gebeurt als de factoren per bewijssoort 50% zwakker of sterker zijn.
-        {calibrated
-          ? ""
-          : " Niet gekalibreerd: je werkruimte heeft nog te weinig opgeloste dossiers om deze kansen te toetsen, daarom tonen we een band van 10 procentpunt rond de berekende waarde. De exacte waarde staat in de tooltip."}
+        Geschatte kans dat deze aanname klopt.{quick ? " De bandbreedte staat in de tooltip." : " De bandbreedte laat zien wat er gebeurt als de factoren per bewijssoort 50% zwakker of sterker zijn."}
+        {calibrated ? "" : (
+          <>
+            {" "}
+            <Explain k="kalibratie" term="Niet gekalibreerd">
+              Niet gekalibreerd: je werkruimte heeft nog te weinig opgeloste dossiers om deze kansen te toetsen, daarom tonen we een band van 10 procentpunt rond de berekende waarde. De exacte waarde staat in de tooltip.
+            </Explain>
+          </>
+        )}
       </p>
       {capped && cap && (
         <p className="tiny mt-8">
@@ -450,26 +467,50 @@ function ProbabilityDetail({
       ) : (
         <p className="tiny mt-8">Nog geen bewijs dat meetelt: de kans staat op de beginwaarde.</p>
       )}
-      {(a.probability.merged ?? []).length > 0 && (
-        <ul className="tiny" style={{ margin: "8px 0 0 18px", lineHeight: 1.6 }} aria-label="Samengevoegde signalen">
-          {a.probability.merged!.map((m) => <li key={m.key}>{explainMerged(m)}</li>)}
-        </ul>
-      )}
-      {(a.probability.recruitment ?? []).length > 0 && (
-        <ul className="tiny" style={{ margin: "8px 0 0 18px", lineHeight: 1.6 }} aria-label="Signalen uit dezelfde wervingsgroep">
-          {a.probability.recruitment!.map((r) => <li key={r.group}>{explainRecruitment(r)}</li>)}
-        </ul>
-      )}
-      {(a.probability.indirect ?? 0) > 0 && <p className="tiny mt-8">{explainIndirect(a.probability.indirect!)}</p>}
-      {ignored > 0 && (
+      {(() => {
+        const why = (
+          <>
+          {(a.probability.merged ?? []).length > 0 && (
+            <ul className="tiny" style={{ margin: "8px 0 0 18px", lineHeight: 1.6 }} aria-label="Samengevoegde signalen">
+              {a.probability.merged!.map((m) => <li key={m.key}>{explainMerged(m)}</li>)}
+            </ul>
+          )}
+          {(a.probability.recruitment ?? []).length > 0 && (
+            <ul className="tiny" style={{ margin: "8px 0 0 18px", lineHeight: 1.6 }} aria-label="Signalen uit dezelfde wervingsgroep">
+              {a.probability.recruitment!.map((r) => <li key={r.group}>{explainRecruitment(r)}</li>)}
+            </ul>
+          )}
+          {(a.probability.indirect ?? 0) > 0 && <p className="tiny mt-8">{explainIndirect(a.probability.indirect!)}</p>}
+          {ignored > 0 && (
+            <p className="tiny mt-8">
+              Niet meegeteld: {a.probability.ignored.synthetic ? `${a.probability.ignored.synthetic} synthetische observatie(s)` : ""}
+              {a.probability.ignored.synthetic && a.probability.ignored.rejected ? " en " : ""}
+              {a.probability.ignored.rejected ? `${a.probability.ignored.rejected} afgekeurde AI-codering(en)` : ""}
+              {(a.probability.ignored.synthetic || a.probability.ignored.rejected) && unreviewed ? " en " : ""}
+              {unreviewed ? `${unreviewed} AI-codering(en) die nog op beoordeling wachten (tellen pas mee na akkoord)` : ""}.
+            </p>
+          )}
+          </>
+        );
+        const hasWhy = (a.probability.merged ?? []).length > 0 || (a.probability.recruitment ?? []).length > 0 || (a.probability.indirect ?? 0) > 0 || ignored > 0;
+        // Snel: samengevoegde signalen, wervingsgroepen, indirect bewijs en niet-meegeteld achter "Waarom deze kans?".
+        return quick && hasWhy ? (
+          <details className="mt-8">
+            <summary className="text-link">Waarom deze kans?</summary>
+            {why}
+          </details>
+        ) : (
+          why
+        );
+      })()}
+      {quick ? (
+        // Snel: geen startkans-keuze; de opgeslagen startkans blijft (standaard 50%, vastgelegd als standaardwaarde).
         <p className="tiny mt-8">
-          Niet meegeteld: {a.probability.ignored.synthetic ? `${a.probability.ignored.synthetic} synthetische observatie(s)` : ""}
-          {a.probability.ignored.synthetic && a.probability.ignored.rejected ? " en " : ""}
-          {a.probability.ignored.rejected ? `${a.probability.ignored.rejected} afgekeurde AI-codering(en)` : ""}
-          {(a.probability.ignored.synthetic || a.probability.ignored.rejected) && unreviewed ? " en " : ""}
-          {unreviewed ? `${unreviewed} AI-codering(en) die nog op beoordeling wachten (tellen pas mee na akkoord)` : ""}.
+          Startkans {pctR(a.probability.prior)}{a.probability.prior === 0.5 && !a.priorRationale ? " (standaard)" : ""}
+          {a.priorRationale && priorNeedsRationale(a.probability.prior) ? `. Onderbouwing: ${a.priorRationale}` : ""}.
         </p>
-      )}
+      ) : (
+      <>
       <div className="row mt-8">
         <label className="tiny" htmlFor={`prior-${a.id}`}>Startkans (beginwaarde)</label>
         <select
@@ -517,11 +558,12 @@ function ProbabilityDetail({
         {save ? "; een afwijking van 50% bewaar je alleen met een onderbouwing (bijvoorbeeld het basispercentage)." : "."} Opgeslagen: {pctR(a.probability.prior)}.
         {a.priorLocked ? " Vergrendeld: er hangt bewijs aan deze aanname, dus wijzigen kan alleen met een reden." : ""}
       </p>
+      </>
+      )}
     </div>
   );
 }
 
-const truncate = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1).replace(/\s+\S*$/, "")}…`);
 
 // Bevinding koppelen (gebruikerstest A4/A5): statussen als Nederlands label, en vooraf in gewone taal wat de gekozen
 // bevinding met de aanname doet. Er zijn twee richtingen: of de bronnen de bevinding bevestigen (de status) en of de

@@ -15,6 +15,8 @@ import { ladderSummary } from "@/lib/domain/dossier-label";
 import { confirmationAuditLine, decisionParagraph, extendUntilOf, reachableRevenue, sheetDate, sheetFromSnapshot, type DecisionSheet, type LegacySnapshot } from "@/lib/report-sheet";
 import { todayInNL } from "@/lib/domain/sprint";
 import { endSentence } from "@/lib/text";
+import { CERTAINTY_LABEL, standingFromSnapshot, type EvidenceStanding } from "@/lib/domain/evidence-standing";
+import { EVIDENCE_SCALE, scaleIndex } from "@/lib/domain/evidence-scale";
 
 export type Tone = "blue" | "green" | "coral" | "lime" | "gray";
 export type Block =
@@ -33,6 +35,8 @@ export type ReportPdfModel = {
   title: string;
   // Fase B6: pagina 1, het beslisblad. Het volledige dossier (cover en hoofdstukken) volgt als bijlage.
   sheet: DecisionSheet;
+  // Fase 1, punt 2: de Stand van het bewijs, bovenaan pagina 1.
+  standing: StandingPdf;
   sheetEyebrow: string;
   cover: {
     status: string;
@@ -124,6 +128,30 @@ export function claimCountsNote(counts: { verified: number; insufficient: number
 // Het beslisblad van deze momentopname: opgeslagen bij het maken van de versie, of afgeleid voor oudere rapporten.
 export function sheetOf(r: ReportSnapshot): DecisionSheet {
   return sheetFromSnapshot(r as unknown as LegacySnapshot, r.observationCounts ? ladderSummary(r.observationCounts) : null);
+}
+
+// Fase 1, punt 2: de Stand van het bewijs als platte tekst voor de PDF (hetzelfde blok als op het scherm).
+export type StandingPdf = { title: string; summary: string; certainty: string; scale: string; lines: string[]; notes: string[] };
+
+export function standingPdf(st: EvidenceStanding): StandingPdf {
+  const current = scaleIndex(st.strongest.step);
+  const p = (x: number) => formatProbability(x, st.calibrated).text;
+  return {
+    title: "Stand van het bewijs",
+    summary: st.summary,
+    certainty: `Zekerheid ${CERTAINTY_LABEL[st.certainty]}: ${st.certaintyReason}.`,
+    // "Verkenning · Mening · [Gedrag] · Betaling · Herhaling": de huidige trede tussen haken.
+    scale: `Bewijsschaal (sterkste bewijs): ${EVIDENCE_SCALE.map((s, i) => (i === current ? `[${s.label}]` : s.label)).join(" · ")}`,
+    lines: st.assumptions.map(
+      (a) =>
+        `Aanname ${a.number}: ${a.statement} Kans ${p(a.probability)} · ${a.tallyLine}${a.tally.notCounted ? ` · ${a.tally.notCounted} ${a.tally.notCounted === 1 ? "telt" : "tellen"} niet mee` : ""} · ${st.derived ? "Status" : "Hoofdtest"}: ${a.primary ? (st.derived ? a.primary.status : `${a.primary.title}, ${a.primary.status}`) : "nog niet aangewezen"}.`,
+    ),
+    notes: [
+      ...(st.next ? [`Volgende stap: ${st.next.title}. ${st.next.detail}`] : []),
+      ...(st.derived ? ["Afgeleid uit een rapportversie van vóór dit blok: zonder bewijsregister, zonder de keuze \"nu testen\" en zonder hoofdtest."] : []),
+      ...(st.calibrated ? [] : [`Kansen: ${UNCALIBRATED_LABEL}, in banden van 10 procentpunt.`]),
+    ],
+  };
 }
 
 // De datum bij de volgende stap, in woorden.
@@ -523,6 +551,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
   return {
     title: `ProofLab-rapport: ${r.idea.title} (versie ${meta.version})`,
     sheet: sheetOf(r),
+    standing: standingPdf(standingFromSnapshot(r)),
     sheetEyebrow: `BESLISBLAD · VERSIE ${meta.version} · ${nlDate(r.generatedAt).toUpperCase()}`,
     cover: {
       status,

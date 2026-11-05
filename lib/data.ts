@@ -3,6 +3,7 @@ import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
 import type { Database } from "@/lib/database.types";
+import { asDetailLevel, type DetailLevel } from "@/lib/view-mode";
 
 export type Tables<T extends keyof Database["public"]["Tables"]> = Database["public"]["Tables"][T]["Row"];
 export type Idea = Tables<"ideas">;
@@ -65,6 +66,13 @@ export const getIdea = cache(async (id: string): Promise<IdeaAccess> => {
     isClientDecider = me?.role === "client_decider";
   }
   return { idea, canWrite, clientName, isClientDecider };
+});
+
+// Fase 1 · punt 1: de stand van het dossier (Snel of Grondig) voor servercomponenten. Alleen weergave: geen
+// berekening leest dit. Zonder de migratie 20261114090000_fase1_weergave.sql bestaat de kolom niet en geldt Grondig.
+export const getViewMode = cache(async (id: string): Promise<DetailLevel> => {
+  const { idea } = await getIdea(id);
+  return asDetailLevel((idea as Partial<Idea>).detail_level);
 });
 
 export async function requireWritableIdea(id: string): Promise<IdeaAccess> {

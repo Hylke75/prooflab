@@ -22,7 +22,8 @@ import { loadAiQuality } from "@/lib/ai-quality";
 import { isSignalSource, parseSignalQuotes, type SignalKind } from "@/lib/domain/customer-signals";
 import { SUPPORT_LABEL, isSupportCheck, type SupportCheck } from "@/lib/domain/support";
 import { UnitEconomicsPanel } from "@/components/research/UnitEconomicsPanel";
-import { getIdea } from "@/lib/data";
+import { getIdea, getViewMode } from "@/lib/data";
+import { Detail } from "@/components/shell/ViewMode";
 import { supabaseServer } from "@/lib/supabase/server";
 import { aiConfigured, configuredProviders, env } from "@/lib/env";
 import { isProvider, modelFor, PROVIDER_KEY_ENV, PROVIDER_LABELS, PROVIDERS, providerLabel } from "@/lib/ai/providers/config";
@@ -69,6 +70,9 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   const { id } = await params;
   const sp = await searchParams;
   const { idea, canWrite } = await getIdea(id);
+  // Fase 1 · punt 1: in Snel geen kengetallen, zoeklogboek, tegenargumenten, AI-kwaliteit, steuncontrole per citaat
+  // (de statuspil blijft), financiële haalbaarheid en simulatie. Bevindingen, statussen en tabs zijn gelijk.
+  const quick = (await getViewMode(id)) === "quick";
   const supabase = await supabaseServer();
   const [qs, claimsRes, sourcesRes, compRes, segRes, scenRes, ueRes, runRes, signalsRes] = await Promise.all([
     supabase.from("research_questions").select("*").eq("idea_id", id).order("position"),
@@ -252,7 +256,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
 
   const tab = typeof sp.tab === "string" ? sp.tab : "overview";
   const evidenceActions = (claim: (typeof claims)[number]) =>
-    canWrite
+    canWrite && !quick
       ? (eid: string) => {
           const e = claim.evidence.find((x) => x.id === eid);
           if (!e) return null;
@@ -330,6 +334,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
       >
         {/* Marktbeeld */}
         <div key="overview">
+          <Detail>
           <div className="research-kpis">
             <div className="card tight">
               <div className="tiny">Onderzoeksvragen beantwoord</div>
@@ -347,6 +352,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               <span className={`pill ${openQuestion ? "orange" : "green"}`}>{openQuestion ? "Nog niet beantwoord" : "Klaar"}</span>
             </div>
           </div>
+          </Detail>
 
           {/* Eén kolom: de vragen en het onderzoekslogboek bevatten lange zinnen die in een halve kolom onleesbaar werden. */}
           <div className="stack research-stack">
@@ -463,7 +469,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               estimates={runEstimates}
               worker={worker}
               run={run ? { id: run.id, status: run.status, mode: run.mode, cost: Number(run.cost_usd), budget: Number(run.budget_usd), tasks: (tasks ?? []).map((t) => runTaskView(t)) } : null}
-              searchLog={groupSearchLog((logRows ?? []).filter((r) => r.kind !== "counter"), questions)}
+              searchLog={quick ? [] : groupSearchLog((logRows ?? []).filter((r) => r.kind !== "counter"), questions)}
               cbsAction={fetchCbsFigures.bind(null, id)}
             />
             {/* Golf C, punt 10: tegenbewijs apart, met het eigen zoeklogboek. */}
@@ -484,6 +490,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                 )}
                 {/* Systeemcontrole: hoe er gezocht is, staat achter een uitklapper; de tegenbevindingen zelf staan verderop. */}
                 {(counterTasks.length > 0 || counterLog.length > 0) && (
+                  <Detail>
                   <details className="run-details">
                     <summary className="text-link">Hoe is er gezocht naar tegenbewijs?</summary>
                     {counterTasks.map((t, i) => (
@@ -494,10 +501,12 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                     ))}
                     {counterLog.length > 0 && <SearchLogList questions={counterLog} canWrite={canWrite} title="Zoeklogboek tegenbewijs" />}
                   </details>
+                  </Detail>
                 )}
               </div>
             )}
             {challenges.length > 0 && (
+              <Detail>
               <div className="card">
                 <div className="section-title"><h3>Tegenargumenten</h3><span className="pill coral">Advocaat van de duivel</span></div>
                 {challenges.map((c, i) => (
@@ -508,6 +517,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                 ))}
                 <div className="note">Deze punten zijn kritische vragen van de AI, geen bewijs. Neem ze mee in de Reality Check.</div>
               </div>
+              </Detail>
             )}
           </div>
 
@@ -706,6 +716,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
             breakEvenRevenue={breakEvenRevenue({ grossMarginPct: ue?.gross_margin_pct ?? null, fixedCostsYear: ue?.fixed_costs_year ?? null })}
             actions={Object.fromEntries((scenRes.data ?? []).map((s) => [s.id, saveScenario.bind(null, id, s.id)]))}
           />
+          <Detail>
           <UnitEconomicsPanel
             canWrite={canWrite}
             action={saveUnitEconomics.bind(null, id)}
@@ -718,6 +729,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               upfrontInvestment: ue?.upfront_investment ?? null,
             }}
           />
+          </Detail>
         </div>
 
         {/* Bronnen */}
@@ -810,12 +822,14 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
           )}
           {quality && (
             <div className="mt-18">
+              <Detail>
               <AiQualityCard
                 measures={[
                   { title: "Steuncontrole: eens met de consultant", measure: quality.support },
                   { title: "AI-codering van interviews: geaccepteerd", measure: quality.coding },
                 ]}
               />
+              </Detail>
             </div>
           )}
           <div className="note">

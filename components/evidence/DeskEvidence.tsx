@@ -1,25 +1,40 @@
 import Link from "next/link";
-import { deskTally } from "@/lib/domain/evidence";
+import type { RegisterItem } from "@/lib/domain/evidence";
 import { CLAIM_STATUS, type ClaimStatus } from "@/lib/domain/labels";
 
 export type DeskLinkRow = { assumptionId: string; claimId: string; relation: "supports" | "contradicts"; statement: string; status: ClaimStatus };
 
 // Gebruikerstest A2: bureauonderzoek per aanname op de pagina Bewijs & besluit. Per aanname de gekoppelde bevindingen
 // die meetellen als steun of als tegenbewijs, en apart de bevindingen die (nog) niet meetellen, met de reden en een
-// link naar de bevinding. Dezelfde regel (deskTally) als de risicokaart en de kans.
+// link naar de bevinding. Fase 1, punt 2: of een bevinding meetelt, komt uit het bewijsregister van de kansberekening
+// (register op de aanname), dezelfde bron als de risicokaart; zo zeggen beide schermen altijd hetzelfde.
+type Row = DeskLinkRow & { reasonText: string };
+
+export function deskRows(links: DeskLinkRow[], register: RegisterItem[]): { supporting: DeskLinkRow[]; contradicting: DeskLinkRow[]; notCounted: Row[] } {
+  const supporting: DeskLinkRow[] = [];
+  const contradicting: DeskLinkRow[] = [];
+  const notCounted: Row[] = [];
+  for (const l of links) {
+    const r = register.find((i) => i.itemType === "claim" && i.id === l.claimId);
+    if (!r) continue;
+    if (r.fate === "not_counted") notCounted.push({ ...l, reasonText: r.reason ?? "telt niet mee" });
+    else if (r.direction === "supports") supporting.push(l);
+    else contradicting.push(l);
+  }
+  return { supporting, contradicting, notCounted };
+}
+
 export function DeskEvidence({
   ideaId,
   assumptions,
   links,
-  refutedCounts,
 }: {
   ideaId: string;
-  assumptions: { id: string; statement: string; importance: number }[];
+  assumptions: { id: string; statement: string; importance: number; register: RegisterItem[] }[];
   links: DeskLinkRow[];
-  refutedCounts: boolean;
 }) {
   const rows = assumptions
-    .map((a) => ({ a, tally: deskTally(links.filter((l) => l.assumptionId === a.id), { refutedCounts }) }))
+    .map((a) => ({ a, tally: deskRows(links.filter((l) => l.assumptionId === a.id), a.register) }))
     .filter((r) => r.tally.supporting.length + r.tally.contradicting.length + r.tally.notCounted.length > 0);
   const href = (claimId: string) => `/app/ideas/${ideaId}/research?tab=overview#claim-${claimId}`;
   const item = (l: DeskLinkRow, extra?: string) => (

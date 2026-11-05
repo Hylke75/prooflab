@@ -5,6 +5,11 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   // PDF-tekstextractie (lib/pdf-text.ts) draait alleen op de server; niet bundelen, Node laadt het pakket zelf.
   serverExternalPackages: ["unpdf"],
+  // Fase 1 · punt 3: een transcriptbestand gaat alleen in het geheugen naar een server action (nooit naar Storage).
+  // Bestanden tot 4 MB (lib/domain/transcript-parse.ts) plus de formuliervelden; Vercel staat 4,5 MB per verzoek toe.
+  experimental: {
+    serverActions: { bodySizeLimit: "4.5mb" },
+  },
   turbopack: {
     rules: {
       "*.css": {

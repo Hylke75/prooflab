@@ -360,3 +360,39 @@ lezen en downloaden. Zonder migratie toont het blok "nog niet beschikbaar" en we
 bucket staan; ruim die zo nodig op via het pad (`<idea_id>/…`). Een upload die halverwege wordt afgebroken (na het
 uploaden, vóór het vastleggen) laat een los object achter. De inhoud van een bestand wordt niet gescand (alleen
 extensie, mime-type en grootte); downloads gaan altijd als bijlage.
+
+## 13. Interviews importeren en Fathom (fase 1 · punt 3)
+
+**Migratie**: `20261115090000_interviews_import.sql` (idempotent). Zonder migratie meldt het importscherm dat de
+database nog moet worden bijgewerkt; plakken bij "Interview toevoegen" blijft werken, thema's zijn niet beschikbaar.
+
+**Bestanden**: TXT, MD, DOCX (ook Teams), VTT (Teams/Zoom) en SRT tot 4 MB (`lib/domain/transcript-parse.ts`). Het
+bestand gaat alleen in het geheugen naar een server action (`experimental.serverActions.bodySizeLimit: "4.5mb"` in
+`next.config.ts`, net onder de grens van Vercel) en wordt **nergens bewaard** (niet in Storage of `step_documents`).
+Bewaard worden de gepseudonimiseerde tekst, segmenten zonder tekst, labels met aantallen en een SHA-256 van de
+originele tekst tegen dubbele import. Pseudonimiseren is regelgebaseerd; een AI-dienst ziet alleen het resultaat.
+
+**Bewaartermijn**: `retention_until` = gespreksdatum (`held_on`) + 12 maanden, door de database gezet bij een import.
+`purge_expired_personal_data()` (pg_cron, §5) wist daarna transcript, segmenten en citaatposities; thema's,
+toewijzingen, labels en de aantallen ("X van N") blijven.
+
+**Fathom instellen** (optioneel; zonder koppeling exporteert het team het transcript uit Fathom als tekst en
+importeert het als bestand):
+
+1. Zet in de omgeving (Vercel → Project → Settings → Environment Variables, per omgeving) `FATHOM_ENABLED=1`.
+   Optioneel `FATHOM_API_URL` als Fathom een andere basis-URL gebruikt (standaard `https://api.fathom.ai/external/v1`).
+2. Redeploy.
+3. Een eigenaar van de werkruimte maakt in Fathom een API-sleutel (Settings → API Access) en plakt die op
+   `/app/status` onder "Fathom (interviewtranscripten)". De sleutel staat per werkruimte in
+   `org_transcript_settings`: geen policies, alleen via `set_fathom_api_key`, `transcript_settings_status` (alleen
+   of er een sleutel is en de laatste vier tekens) en `fathom_api_key_for_idea` (alleen voor wie het dossier mag
+   bewerken). Hij komt niet in het auditspoor; wel wie hem zette of verwijderde.
+4. Controle: op een lopende interviewtest staat bij "Transcript importeren" een keuzelijst met recente
+   Fathom-opnames. Ophalen gebeurt pas bij "Lees het transcript in"; daarna dezelfde controle als bij een bestand.
+
+**Sleutel roteren**: maak in Fathom een nieuwe sleutel, plak hem op `/app/status` ("Vervang sleutel") en trek de oude
+in bij Fathom. Verwijderen kan met "Verwijder sleutel"; de koppeling staat dan op "niet verbonden".
+
+**Bekende grenzen**: de sleutel staat onversleuteld in de database (alleen via functies leesbaar); versleutelen met
+Supabase Vault is een mogelijke vervolgstap. Het auditspoor van een kort transcript kan
+(≤ 300 tekens) de oude tekst bevatten na "Een gemiste naam vervangen".

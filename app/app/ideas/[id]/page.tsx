@@ -4,13 +4,17 @@ import { redirect } from "next/navigation";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { Icon, type IconName } from "@/components/Icon";
 import { calendarDate } from "@/components/sprint/SprintCard";
-import { getIdea } from "@/lib/data";
+import { getIdea, getViewMode } from "@/lib/data";
+import { MoreInThorough } from "@/components/shell/ViewMode";
 import { loadProgress } from "@/lib/progress";
 import { loadOpenNotes } from "@/lib/coach/review";
 import { NOTE_KINDS, NOTES_SHOWN, byNotePriority, type NoteKind } from "@/lib/coach/rules";
 import { nextAction, predictionTip, sprintStage } from "@/lib/domain/coach";
 import { SPRINT_PHASES, sprintStatus, todayInNL } from "@/lib/domain/sprint";
 import { dossierStatus, IDEA_OVERVIEW, IDEA_REPORT, STEPS, stepOverview } from "@/lib/steps";
+import { forecastFirstLock } from "@/lib/domain/forecast";
+import { loadEvidenceStanding } from "@/lib/standing-data";
+import { EvidenceStanding } from "@/components/evidence/EvidenceStanding";
 
 export const metadata: Metadata = { title: IDEA_OVERVIEW.label };
 
@@ -26,13 +30,17 @@ const SHORTCUTS: { suffix: string; label: string; icon: IconName }[] = [
 export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id]">) {
   const { id } = await params;
   const { idea, canWrite } = await getIdea(id);
+  // Fase 1 · punt 1: in Snel geen sprintkaart en geen snelkoppelingen (de sprintbalk en het menu blijven).
+  const quick = (await getViewMode(id)) === "quick";
   if (!canWrite) redirect(`/app/ideas/${id}/report`);
   const progress = await loadProgress(id);
   const today = todayInNL();
   const next = nextAction(progress);
   const tip = predictionTip(progress);
   const steps = stepOverview(progress);
-  const notes = await loadOpenNotes(id, "consultant");
+  // Fase 1, punt 2: Stand van het bewijs. Golf B, punt 15: zolang de eigen voorspelling open staat, geen kansen.
+  const lock = forecastFirstLock(progress);
+  const [notes, standing] = await Promise.all([loadOpenNotes(id, "consultant"), lock ? Promise.resolve(null) : loadEvidenceStanding(id, "overview")]);
   const s = sprintStatus({
     start: idea.sprint_start,
     weeks: idea.sprint_weeks,
@@ -50,6 +58,8 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
   // B1c: één huidige stap, en apart hoeveel stappen echt bewijs hebben (niet hetzelfde als "klaar").
   const status = dossierStatus(progress);
   const withEvidence = status.stepsWithEvidence;
+  // Eén volgende stap op Overzicht: die uit de Stand van het bewijs (informatiewaarde) als die er is, anders de coach.
+  const nextStep = standing?.next ? { ...standing.next, icon: standing.next.href === next.href ? next.icon : null } : next;
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, IDEA_OVERVIEW.label]} coach="overview" ideaId={id} section="">
@@ -61,12 +71,23 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
         </div>
       </div>
 
-      <div className="grid-3">
-        <div className="card tight">
-          <div className="eyebrow">Sprint</div>
-          <strong>{sprintText}</strong>
-          {s.planned && s.behind && <p className="tiny mt-8">{s.behindReason}</p>}
+      {standing ? (
+        <EvidenceStanding standing={standing} ideaId={id} showNext={false} />
+      ) : (
+        <div className="note" role="status" style={{ marginBottom: 24 }}>
+          <strong>Stand van het bewijs:</strong> eerst je eigen voorspelling, daarna zie je de kansen en de zekerheid.{" "}
+          <Link className="text-link" href={`/app/ideas/${id}/evidence`} prefetch={false}>Naar de voorspelling →</Link>
         </div>
+      )}
+
+      <div className={quick ? "grid-2" : "grid-3"}>
+        {!quick && (
+          <div className="card tight">
+            <div className="eyebrow">Sprint</div>
+            <strong>{sprintText}</strong>
+            {s.planned && s.behind && <p className="tiny mt-8">{s.behindReason}</p>}
+          </div>
+        )}
         <div className="card tight">
           <div className="eyebrow">Huidige stap</div>
           <strong>{status.currentLabel}</strong>
@@ -84,10 +105,10 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
           <h2 className="as-h3">Volgende stap</h2>
           <span className="pill blue">Aanbevolen</span>
         </div>
-        <p style={{ fontSize: 16, fontWeight: 700 }}>{next.title}</p>
-        <p className="sub">{next.detail}</p>
-        <Link className="btn primary mt-12" href={next.href} prefetch={false}>
-          <Icon name={next.icon} /> {next.title} <Icon name="arrow" size="sm" />
+        <p style={{ fontSize: 16, fontWeight: 700 }}>{nextStep.title}</p>
+        <p className="sub">{nextStep.detail}</p>
+        <Link className="btn primary mt-12" href={nextStep.href} prefetch={false}>
+          {nextStep.icon && <Icon name={nextStep.icon} />} {nextStep.title} <Icon name="arrow" size="sm" />
         </Link>
         {tip && tip.href !== next.href && (
           <p className="tiny mt-12">
@@ -147,14 +168,22 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
         </div>
       </div>
 
-      <div className="section-title mt-24"><h2>Snelkoppelingen</h2></div>
-      <div className="chat-suggestions" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
-        {SHORTCUTS.map((sc) => (
-          <Link key={sc.suffix} className="suggestion card tight" href={`/app/ideas/${id}${sc.suffix}`} prefetch={false}>
-            <Icon name={sc.icon} /> {sc.label}
-          </Link>
-        ))}
-      </div>
+      {quick ? (
+        <div className="mt-24">
+          <MoreInThorough />
+        </div>
+      ) : (
+        <>
+          <div className="section-title mt-24"><h2>Snelkoppelingen</h2></div>
+          <div className="chat-suggestions" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+            {SHORTCUTS.map((sc) => (
+              <Link key={sc.suffix} className="suggestion card tight" href={`/app/ideas/${id}${sc.suffix}`} prefetch={false}>
+                <Icon name={sc.icon} /> {sc.label}
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
     </PageFrame>
   );
 }
