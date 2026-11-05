@@ -25,13 +25,23 @@ export const NOT_MIGRATED = "De wervingsregistratie is nog niet beschikbaar: de 
 // Agenda (punt 4)
 // ---------------------------------------------------------------------------
 
-// Geboekte afspraken uit Calendly/Cal.com voor één test.
-// LET OP: wordt na samenvoegen met punt 4 gekoppeld aan test_bookings (kolommen person_key, status 'booked' of
-// 'cancelled', booked_at, scheduled_for). Tot dan bestaat die tabel in deze branch niet en is de lijst leeg; de
-// trechter en "deadline in gevaar" rekenen er al mee (bron "agenda", toekomstige afspraken tellen als gepland).
+// Geboekte afspraken uit Calendly/Cal.com voor één test (tabel test_bookings, fase 2 · punt 4). De trechter telt ze
+// per persoon (person_key) als "afspraak"; toekomstige afspraken tellen als gepland voor "deadline in gevaar".
+// Zonder migratie 20261116090000_fase2_testen.sql bestaat de tabel niet: dan is de lijst leeg.
 export async function loadBookedAppointments(experimentId: string): Promise<BookedAppointment[]> {
-  void experimentId;
-  return [];
+  const db = await supabaseServer();
+  const { data, error } = await db
+    .from("test_bookings")
+    .select("person_key, status, booked_at, scheduled_for")
+    .eq("experiment_id", experimentId)
+    .order("booked_at");
+  if (error || !data) return [];
+  return data.map((b) => ({
+    person_key: b.person_key,
+    status: b.status === "cancelled" ? "cancelled" : "booked",
+    booked_at: b.booked_at,
+    scheduled_for: b.scheduled_for ?? null,
+  }));
 }
 
 // ---------------------------------------------------------------------------
