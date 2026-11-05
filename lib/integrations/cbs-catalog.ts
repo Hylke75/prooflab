@@ -269,3 +269,26 @@ export function cbsCellLine(r: CbsCellRow): string {
   const dims = r.dims.map((d) => `${d.label}: ${d.title}`).join("; ");
   return `CBS ${r.tableId} (${r.tableTitle}); ${dims}; Periode: ${r.period.title}${r.period.status ? ` (${r.period.status})` : ""}; Onderwerp: ${r.measure.title}; Waarde: ${cbsNumber(r.value)} ${r.measure.unit}`;
 }
+
+// Het getal voor het invoerveld van een bevinding. Let op "1.234": dat leest ProofLab (zoals in Nederlandse tekst)
+// als duizendtal. Met precies drie decimalen schrijven we daarom een extra nul, zodat het een decimaal getal blijft.
+export function cbsNumericInput(v: number): string {
+  const s = cbsNumber(v);
+  return /\.\d{3}$/.test(s) ? `${s}0` : s;
+}
+
+// De regio van een cel (de titel bij de regiodimensie, zonder het achtervoegsel "(PV)" e.d.), of "Nederland" voor
+// een tabel zonder regiodimensie (bijv. 81589NED is landelijk).
+export function cbsRegionTitle(table: Pick<CbsTableDef, "dimensions">, row: Pick<CbsCellRow, "dims">): string {
+  const i = table.dimensions.findIndex((d) => d.role === "region");
+  if (i < 0) return "Nederland";
+  return (row.dims[i]?.title ?? "onbekend").replace(/\s*\((PV|CR|LD|GM)\)$/, "");
+}
+
+// De bevinding bij een cel: alleen onderdelen uit de letterlijke regel, zodat elk getal erin ook in het citaat
+// staat (de citaatcontrole eist dat). Bijv. "CBS 03759ned: Bevolking op 1 januari (…; Regio: Amsterdam), periode
+// 2026: 941927 aantal."
+export function cbsStatement(row: CbsCellRow): string {
+  const dims = row.dims.map((d) => `${d.label}: ${d.title}`).join("; ");
+  return `CBS ${row.tableId}: ${row.measure.title} (${dims}), periode ${row.period.title}: ${cbsNumber(row.value)} ${row.measure.unit}.`;
+}

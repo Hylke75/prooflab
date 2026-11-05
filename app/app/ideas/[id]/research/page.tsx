@@ -15,6 +15,7 @@ import { isNoteStep } from "@/lib/domain/step-files";
 import { CompetitorPanel, type CompetitorView } from "@/components/research/CompetitorPanel";
 import { isProposal, withoutProposals } from "@/lib/domain/competitor-proposals";
 import { SizingPanel } from "@/components/research/SizingPanel";
+import { cbsCellPreview, cbsTableMetadata, saveCbsFactor } from "./data-actions";
 import { SupportControls } from "@/components/research/SupportControls";
 import { AiQualityCard } from "@/components/research/AiQualityCard";
 import { CustomerSignals, type SignalView } from "@/components/research/CustomerSignals";
@@ -702,7 +703,9 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
         <div key="sizing">
           <SizingPanel
             // D5: opnieuw opbouwen als de omzet per klant op de server verandert (bijv. na "Neem intakeprijs over").
-            key={(scenRes.data ?? []).map((sc) => (sc.sizing_factors ?? []).find((f) => f.key === "revenue_per_customer")?.value ?? "").join("|")}
+            // Fase 2, punt 6: ook na "Haal uit CBS" (andere waarde en bron bij een factor).
+            key={(scenRes.data ?? []).map((sc) => (sc.sizing_factors ?? []).map((f) => `${f.key}:${f.value}:${f.claim_id ?? ""}`).join(",")).join("|")}
+            cbsActions={canWrite ? { metadata: cbsTableMetadata.bind(null, id), preview: cbsCellPreview.bind(null, id), save: saveCbsFactor.bind(null, id) } : null}
             intakePrice={intakePrice}
             adoptIntakePrice={canWrite && intakePrice ? adoptIntakePrice.bind(null, id) : null}
             canWrite={canWrite}
