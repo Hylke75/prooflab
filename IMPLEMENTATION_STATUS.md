@@ -11,6 +11,7 @@ Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van e
 | Migraties `integrity` (29-10), `prediction` en `coach_and_signals` (3-11) toepassen en migratiegeschiedenis rechtzetten | Zonder deze migraties werken testpagina's, inloglinks, sprints, rapport delen, voorspellingen, coach en koppelingen niet tegen de live database | Claude, na bevestiging in Supabase |
 | Migratie `20261114090000_fase1_weergave.sql` toepassen (Snel en Grondig) | Zonder de migratie staat elk dossier op Grondig en kan de stand niet worden bewaard; standaardwaarden worden zonder `defaulted_fields` opgeslagen | Claude, na bevestiging in Supabase |
 | Migratie `20261115090000_interviews_import.sql` toepassen (interviews importeren, thema's, Fathom-sleutel) | Zonder de migratie meldt het importscherm dat de database moet worden bijgewerkt; plakken blijft werken, thema's en "X van N" zijn niet beschikbaar, de rol Betaler kan niet worden opgeslagen | Claude, na bevestiging in Supabase |
+| Migratie `20261117090000_fase2_werving.sql` toepassen (werving bijhouden) | Zonder de migratie meldt de testpagina dat de wervingsregistratie nog niet beschikbaar is; de trechter toont dan alleen interviews of metingen, "Leg vast als bevinding" en campagnes koppelen werken niet | Claude, na bevestiging in Supabase |
 | Optioneel: `FATHOM_ENABLED=1` (Vercel) en een Fathom-API-sleutel op `/app/status` | Opnames rechtstreeks uit Fathom kiezen; zonder koppeling werkt importeren via een bestand | Hylke |
 | Auth-hook "Before user created" → `public.hook_before_user_created` (Authentication → Hooks) | Registratie alleen op uitnodiging, ook bij directe aanroepen van Supabase Auth | Hylke |
 | E-mailsjabloon "Magic Link": link naar `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next={{ .RedirectTo }}` | Uitnodigingen werken dan op elk apparaat | Hylke |
@@ -801,3 +802,87 @@ de migratie werkt de app zoals voorheen en meldt het importscherm dat de databas
   Supabase-toegang); de 390px-weergave is via de opmaakregels in `components/experiments/interviews.css` geborgd.
   Migratie nog toepassen
 
+## Fase 2 · punt 5: Werving bijhouden (5 november)
+
+Per test (vooral interviewtests, ook andere tests met werving) en per kanaal de trechter **benaderd → gereageerd →
+afspraak → gesprek gehouden**, de respons per kanaal met Wilson-interval, "Leg vast als bevinding" en een melding als
+de deadline in gevaar komt. Vijf commits op branch `fase2-werving` en één migratie
+`20261117090000_fase2_werving.sql` (**nog niet toegepast**; idempotent, twee keer uitgevoerd in de DB-test; zonder de
+migratie werkt de app zoals voorheen, zie terugval).
+
+- ✅ **Migratie**: `recruitment_entries` (datum, kanaal, stap, aantal, notitie, `corrects_id`) met RLS (lezen en
+  toevoegen alleen `can_write_idea`: notities kunnen over personen gaan), `audit_row` en `guard_recruitment_entry`:
+  alleen toevoegen (geen update/delete-rechten, en de guard weigert ook de beheerder; alleen een cascade van dossier
+  of test haalt regels weg); een correctie is een nieuwe regel met negatief aantal en reden (min. 5 tekens), een
+  tegenboeking hoort bij dezelfde test, hetzelfde kanaal en dezelfde stap, en netto komt een stap nooit onder nul
+  (advisory lock tegen gelijktijdige correcties). Stappen handmatig: benaderd, gereageerd, afspraak (afspraak alleen
+  bij interviewtests); "gesprek gehouden" nooit handmatig. Vanaf een goedgekeurde test, geen datum in de toekomst.
+  `recruitment_campaigns` (Expandi-campagne ↔ test, één campagne per dossier zodat contacten nooit in twee tests
+  tellen; RLS team-only, audit). Brontype `recruitment_log` ("Eigen wervingsregistratie") in de check op `sources`;
+  nooit `is_primary`; het brontype van een bron kan niet naar of van dit type; guards op `claim_sources` en `claims`
+  weigeren `official_statistic` en `primary_document` bij zo'n bron. Geen bestaande functie vervangen; `revoke
+  execute` op alle nieuwe triggerfuncties
+- ✅ **Kanalen**: één lijst, `CHANNELS` uit `lib/domain/tracking.ts` (dezelfde als `utm_source` en
+  `interviews.recruited_via`; ook in de DB-check). Expandi telt onder "Outreach (e-mail/DM)", agenda-afspraken (nog
+  zonder kanaal) onder "Direct / onbekend"
+- ✅ **Rekenen** (`lib/domain/recruitment-funnel.ts`, puur): `buildFunnel` met herkomst per getal (handmatig netto;
+  Expandi = unieke gepseudonimiseerde contacten, benaderd = verzoek/bericht/acceptatie/antwoord, gereageerd =
+  antwoord; agenda = laatste boeking per persoon, geannuleerd telt niet; gehouden = echte gesprekken met toestemming
+  per `recruited_via`, bij andere tests "deelgenomen" uit de meting per kanaal). `responseRate` (Wilson, geen respons
+  bij 0 benaderd of meer reacties dan benaderd, met waarschuwing). Gepland = toekomstige agenda-afspraken + (overige
+  afspraken − gehouden). `deadlineRisk`: gehouden + gepland + tempo (vanaf 2 dagen looptijd) tegen `min_sample` en
+  de eerste van einddatum en beslisdatum; zonder tempo alleen een risico binnen 7 dagen; `missed` na de deadline
+- ✅ **Loader** (`lib/recruitment-data.ts`): `loadRecruitment` (gepagineerde outreach-gebeurtenissen, campagnes die
+  nog aan geen test hangen), `plannedByExperiment` (coach), `loadDeadlineRisks` (Overzicht).
+  **`loadBookedAppointments(experimentId)`** staat in `lib/recruitment-data.ts` en geeft nu een lege lijst: wordt na
+  samenvoegen met punt 4 gekoppeld aan `test_bookings` (vorm `BookedAppointment` in `lib/domain/recruitment-funnel.ts`
+  = `person_key`, `status`, `booked_at`, `scheduled_for`)
+- ✅ **Testpagina** (`components/experiments/RecruitmentFunnel.tsx`, `recruitment-actions.ts`), alleen het team, vanaf
+  goedgekeurd: tabel per kanaal met de bron onder elk getal en de respons; "+ Werving registreren" (toevoegen of
+  correctie met reden), "Expandi-campagne koppelen" (alleen campagnes die echt in de ontvangen gebeurtenissen staan),
+  per kanaal "Leg vast als bevinding". Snel: trechter, percentage, registreren en vastleggen; Grondig: ook het
+  95%-interval en de registratie met "Tegenboeken". Tabel scrolt zelf op 390 px
+- ✅ **Bevinding**: de server rekent de respons opnieuw uit (nooit getallen uit het formulier) en maakt een bron
+  "Eigen wervingsregistratie" (uitgever "ProofLab (eigen wervingsregistratie)", niet primair) met als fragment de
+  telling zelf: "Eigen wervingsregistratie, test "…". Kanaal X levert Y% respons (n = …, periode …). Benaderd: …;
+  gereageerd: …; 95%-interval (Wilson): … tot …. Herkomst …". Bevinding = "Kanaal X levert Y% respons (n = …, periode
+  …)." via `insertClaimWithQuote`; het citaat staat letterlijk in het fragment, dus de citaatcontrole is exact. Soort
+  informatie "Waargenomen handeling" (eigen meting); de status volgt uit `recomputeClaim` (één eigen bron = schatting).
+  Optioneel direct gekoppeld aan een aanname (kanaal-aannames eerst) met de richting (bestaand patroon
+  `assumption_claims`); anders later via Aannames. Het brontype is niet handmatig te kiezen in het bronformulier
+- ✅ **Deadline in gevaar**: één regel, drie plekken. Testpagina: melding "Deadline in gevaar" / "Deadline verstreken"
+  onder de kerngetallen; Overzicht: één compacte regel "Werving: …" (de test die het eerst in gevaar komt, "en N
+  andere tests"), geen tweede volgende stap; coach: `test_pace` gebruikt nu `deadlineRisk` met geplande gesprekken en
+  de beslisdatum (zelfde code `test_pace:<test>`, dus nooit een dubbele melding; zonder planning en beslisdatum
+  precies het oude tempo). Wervingsregels tellen mee in de vingerafdruk van de coach (alleen als ze er zijn)
+- ✅ **Tests**: unit `recruitment-funnel` (trechter, correctie, Expandi-uniek, agenda, andere tests, waarschuwing,
+  Wilson, claimtekst + exacte citaatcontrole, brontyperegels, deadline in alle varianten, gelijk aan het oude tempo),
+  `coach-rules` (test_pace met gepland, beslisdatum, verstreken), `source-defaults` bijgewerkt; DB
+  `tests/db/fase2-werving.test.ts` (8 tests: idempotent, RLS team/opdrachtgever/buitenstaander, alleen toevoegen,
+  correctie en netto ≥ 0, vaste regels, één campagne per dossier + audit, brontype-guards, cascade). Typecheck, lint,
+  `vitest run tests/unit` (1291) en `scripts/test-db.sh` met eigen database `prooflab_fase2_werving` (25 bestanden,
+  159 tests) groen
+- **UI-teststappen** (dossier "AI-communicatie voor sportclubs", na het toepassen van de migratie):
+  1. Open de lopende interviewtest (Testen → test). Onder de Test Card staat de kaart **Werving** met "Nog niets
+     geregistreerd" (of de gehouden gesprekken per kanaal, bron "interviews").
+  2. "+ Werving registreren": vandaag, LinkedIn (organisch), Benaderd, 30 → Vastleggen. Daarna Gereageerd 7 en
+     Afspraak 4. De rij toont 30 / 7 / 4 / gehouden met "handmatig" eronder en respons 23%.
+  3. Correctie: Benaderd 2 als "Correctie" zonder reden → foutmelding; met reden "dubbel geteld" → benaderd 28. In
+     Grondig staat onder "Registratie" de oorspronkelijke regel én de correctie; "Tegenboeken" vraagt een reden.
+  4. Zijn er Expandi-gebeurtenissen met een campagnenaam: "Expandi-campagne koppelen" → kies de campagne. Onder
+     Outreach staan benaderd en gereageerd met "Expandi".
+  5. "Leg vast als bevinding: LinkedIn (organisch)" → kies een kanaal-aanname, "Bevestigt de aanname" → de melding
+     noemt de bevinding en "letterlijk teruggevonden". Markt → Bronnen toont de bron "Eigen wervingsregistratie"; de
+     bevinding staat als schatting; Aannames toont de koppeling.
+  6. Bij een lopende test met minder gehouden + geplande gesprekken dan de minimale steekproef en een einddatum of
+     beslisdatum binnen een week (of een tempo dat de steekproef niet haalt): de testpagina toont "Deadline in gevaar", Overzicht één regel "Werving: …", de coach één
+     notitie "… haalt de steekproef waarschijnlijk niet" (na "Laat de coach meekijken").
+  7. Snel: geen interval, geen registratielijst; Grondig: wel. 390 px: alleen de tabel scrolt.
+  8. Als opdrachtgever: geen kaart Werving en geen melding (alleen het team ziet de registratie).
+- **Open punten**: (1) `loadBookedAppointments` koppelen aan `test_bookings` na samenvoegen met punt 4 (en dan het
+  kanaal van een boeking vastleggen zodra punt 4 dat kent; nu "Direct / onbekend"); (2) verkennend klantonderzoek
+  (StudyView) toont de trechter nog niet; (3) een verlopen afspraak zonder ingevoerd gesprek telt als gepland (bewuste,
+  zichtbare keuze; met agendadata uit punt 4 kan een no-show apart worden geteld); (4) niet gedaan in deze omgeving:
+  e2e (Playwright), visuele controle op 1440/390 px met login en `next build` (Turbopack volgt de gedeelde
+  `node_modules`-symlink van de worktree niet; de webpack-build faalt al vóór deze wijziging op `node:crypto` in
+  `ExperimentBuilder`); (5) migratie nog toepassen
