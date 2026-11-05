@@ -3606,7 +3606,6 @@ export type Database = {
           origin: string
           review_status: string | null
           created_at: string
-          evidence_type?: string | null
         }[]
       }
     }

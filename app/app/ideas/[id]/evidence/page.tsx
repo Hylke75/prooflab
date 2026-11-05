@@ -87,7 +87,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
     );
   }
   const supabase = await supabaseServer();
-  const [d, ruleCheck, calibration, { data: deskRows }, standing] = await Promise.all([
+  const [d, ruleCheck, calibration, { data: deskRows }, standing, { data: autoRows }] = await Promise.all([
     loadDossier(idea),
     loadRuleCheck(id),
     loadCalibration(id),
@@ -95,7 +95,12 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
     supabase.from("assumption_claims").select("assumption_id, claim_id, relation, claims(statement, status)").eq("idea_id", id),
     // Fase 1, punt 2: Stand van het bewijs bovenaan; de volgende stap komt hier eerst van het besluit (coach).
     loadEvidenceStanding(id, "evidence"),
+    // Fase 2 · punt 4: soort bewijs van de systeemwaarnemingen (alleen het team; zonder migratie: geen).
+    canWrite
+      ? supabase.from("observations").select("id, evidence_type").eq("idea_id", id).eq("origin", "system").then((r) => (r.error ? { data: [] } : r))
+      : Promise.resolve({ data: [] as { id: string; evidence_type?: string | null }[] }),
   ]);
+  const autoEvidence = new Map((autoRows ?? []).map((r) => [r.id, (r as { evidence_type?: string | null }).evidence_type ?? null]));
   const deskLinks: DeskLinkRow[] = (deskRows ?? []).flatMap((l) =>
     l.claims && l.claims.status in CLAIM_STATUS
       ? [{ assumptionId: l.assumption_id, claimId: l.claim_id, relation: l.relation === "contradicts" ? ("contradicts" as const) : ("supports" as const), statement: l.claims.statement, status: l.claims.status as ClaimStatus }]
@@ -190,7 +195,11 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                 <div>
                   <strong>{OBSERVATION_KINDS[o.kind as ObservationKind]}: {o.summary}</strong>
                   {/* Fase 2 · punt 4: soort bewijs van een automatische waarneming (alleen systeemwaarnemingen). */}
-                  {evidenceTypeOf(o) && <p className="tiny" style={{ margin: "4px 0 0" }}><span className="pill blue">{EVIDENCE_TYPES[evidenceTypeOf(o)!]}</span> automatisch geteld uit de test</p>}
+                  {evidenceTypeOf({ ...o, evidence_type: autoEvidence.get(o.id) }) && (
+                    <p className="tiny" style={{ margin: "4px 0 0" }}>
+                      <span className="pill blue">{EVIDENCE_TYPES[evidenceTypeOf({ ...o, evidence_type: autoEvidence.get(o.id) })!]}</span> automatisch geteld uit de test
+                    </p>
+                  )}
                   {o.quote && <blockquote className="quote">“{o.quote}”</blockquote>}
                   <p><span className={`pill ${s.pill}`}>{s.label}</span> {explainStrength(dims)}</p>
                 </div>

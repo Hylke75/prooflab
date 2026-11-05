@@ -12,6 +12,8 @@ Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van e
 | Migratie `20261114090000_fase1_weergave.sql` toepassen (Snel en Grondig) | Zonder de migratie staat elk dossier op Grondig en kan de stand niet worden bewaard; standaardwaarden worden zonder `defaulted_fields` opgeslagen | Claude, na bevestiging in Supabase |
 | Migratie `20261115090000_interviews_import.sql` toepassen (interviews importeren, thema's, Fathom-sleutel) | Zonder de migratie meldt het importscherm dat de database moet worden bijgewerkt; plakken blijft werken, thema's en "X van N" zijn niet beschikbaar, de rol Betaler kan niet worden opgeslagen | Claude, na bevestiging in Supabase |
 | Optioneel: `FATHOM_ENABLED=1` (Vercel) en een Fathom-API-sleutel op `/app/status` | Opnames rechtstreeks uit Fathom kiezen; zonder koppeling werkt importeren via een bestand | Hylke |
+| Migratie `20261116090000_fase2_testen.sql` toepassen (testen uitvoeren) | Zonder de migratie kent de Test Card alleen "aanmelding" en melden aanbetalingen, toezeggingen en afspraken dat de database moet worden bijgewerkt | Claude, na bevestiging in Supabase |
+| Optioneel: `SECRETS_ENCRYPTION_KEY` + `MOLLIE_ENABLED=1` (Vercel) en een Mollie-sleutel op `/app/status` | Terugbetaalbare aanbetalingen; zonder: "Mollie niet ingesteld", betaalstap niet te kiezen | Hylke |
 | Auth-hook "Before user created" → `public.hook_before_user_created` (Authentication → Hooks) | Registratie alleen op uitnodiging, ook bij directe aanroepen van Supabase Auth | Hylke |
 | E-mailsjabloon "Magic Link": link naar `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next={{ .RedirectTo }}` | Uitnodigingen werken dan op elk apparaat | Hylke |
 | Eigen adres of domein op de toegangslijst (`insert into public.signup_allowlist (entry) values ('naam@bureau.nl')`) | Registratie staat dicht; consultants hebben een plek op de lijst nodig | Claude of Hylke |
@@ -799,5 +801,100 @@ de migratie werkt de app zoals voorheen en meldt het importscherm dat de databas
   verkennende gesprekken als ontdekkingsbewijs (`hasDiscoveryEvidence`, alleen de volgorde van testadvies) en in N
 - 🟡 Niet gedaan in deze omgeving: e2e (Playwright) en visuele controle op 1440/390 px met login (geen
   Supabase-toegang); de 390px-weergave is via de opmaakregels in `components/experiments/interviews.css` geborgd.
+  Migratie nog toepassen
+
+## Fase 2 · punt 4: Testen uitvoeren in ProofLab (5 november)
+
+Een test uitvoeren zonder ProofLab te verlaten: testpagina uit de Test Card, links per kanaal, automatische
+waarneming per persoon, betaalde intentie via Mollie, geverifieerde toezeggingen en afspraken uit Calendly/Cal.com,
+met de beslisregel op die handelingen. Negen commits op branch `fase2-testen` en één migratie
+`20261116090000_fase2_testen.sql` (**nog niet toegepast**; idempotent, twee keer uitgevoerd in de test). Strengheid
+blijft: vergrendelde criteria, berekende statussen, auditspoor; een AI-bewering telt nooit als klantbewijs.
+
+- ✅ **Testpagina uit de Test Card** (`lib/domain/test-page-generator.ts`, `ExperimentBuilder`): knop "Maak testpagina uit
+  de Test Card" vult kop (aanbod uit de intake, anders de belofte uit "Wij denken dat …"), ondertitel (doelgroep en
+  reden), aanbod, knoptekst (volgt de succesmaat) en bij een prijstest prijspunten rond de intakeprijs (zonder
+  intakeprijs leeg: nooit verzonnen). Deterministisch, zonder AI; alles aanpasbaar; de eerlijkheidscontrole kijkt mee
+  en een lijst zegt waar elk deel vandaan komt
+- ✅ **Linkbouwer** (`ChannelLinkBuilder`): vanaf goedkeuring per kanaal een kant-en-klare link met `utm_source`,
+  optioneel een berichtcode (`utm_content`, zelfde schoonmaakregel als de meting) en een kopieerknop
+- ✅ **Automatische waarneming per persoon** (`lib/domain/action-counts.ts`, `lib/action-counts-data.ts`,
+  `experiment_action_counts`): unieke bezoekers, klikkers, aanmelders, betalers (live), toezeggers en bookers. De
+  systeemwaarneming bij de Learning Card heet expliciet "Waargenomen handeling" (`observations.evidence_type =
+  observed_action`), of "Geverifieerde betaling"/"Geverifieerde toezegging", en noemt de telling per persoon in de
+  toelichting; de Learning Card bewaart `per_person` en `success_metric`. Testpagina: kaart "Per persoon geteld";
+  Bewijs & besluit: pil met het soort bewijs. Eén persoonssleutel = HMAC(TRACKING_SALT, genormaliseerd e-mailadres)
+  (zelfde als `emailHash`, dus vindbaar via een privacyverzoek), voor anonieme bezoekers de bezoekerscode
+- ✅ **Mollie** (`lib/integrations/mollie.ts`, `mollie-flow.ts`, `mollie-server.ts`, `app/api/t/[slug]/pay`,
+  `app/api/webhooks/mollie/[slug]`, `payment-actions.ts`, `DepositsPanel`, `MollieSettings`): optionele stap per test
+  (standaard uit) "Reserveer met een terugbetaalbare aanbetaling van €X" met verplichte eerlijke tekst (product bestaat
+  nog niet, volledige terugbetaling). Server maakt de betaling (API v2, bedrag uit de goedgekeurde configuratie, alleen
+  na een klik, niet als dezelfde persoon al betaalde), redirect terug naar de testpagina, webhook met alleen het id:
+  de server haalt de status zelf op met de sleutel van die werkruimte. Live + paid = Geverifieerde betaling (trede
+  Betaling); terugbetaald/teruggeboekt telt niet meer en blijft zo; testmodus telt nooit. "Terugbetalen", "Alles
+  terugbetalen", "Status bij Mollie verversen"; coachregel `deposits_refund` na een besluit. Sleutel per werkruimte door
+  een eigenaar op `/app/status`, versleuteld met AES-256-GCM (`lib/domain/secret-box.ts`), nooit terug naar de client
+  (alleen "eindigt op …" en test/live). Per betaling alleen Mollie-id, bedrag, valuta, status, modus,
+  persoonssleutel en tijden
+- ✅ **Geverifieerde toezegging** (`lib/domain/commitments.ts`, `commitment-actions.ts`, `CommitmentsPanel`, `/c/[token]`,
+  `app/api/c/[token]`): (a) upload van een getekende intentieverklaring (pdf/png/jpeg/webp, type gecontroleerd aan de
+  inhoud, tot 4 MB) met organisatie en ondertekenaar in de privé bucket `commitment-documents` (alleen het team);
+  (b) persoonlijke link met eenmalige code (14 dagen) waar iemand naam, organisatie, getypte naam en vinkje invult; de
+  database legt tijdstip en gehashte IP vast. Zonder document of akkoord geen telling (database-check
+  `test_commitments_proof`); intrekken kan, verder ligt een toezegging vast
+- ✅ **Afspraken** (`lib/integrations/bookings.ts`, `app/api/webhooks/bookings/[provider]/[token]`, `booking-actions.ts`,
+  `BookingsPanel`): per test een webhookadres met eigen geheime sleutel voor Calendly én Cal.com (één adapter-interface,
+  twee implementaties). Handtekening (Calendly `t=..,v1=..` over `t.body`; Cal.com `X-Cal-Signature-256` over de body)
+  en een tijdsvenster van 5 minuten tegen replay. Geboekt = Waargenomen handeling in `test_bookings` (schema zoals
+  punt 5 het leest); geannuleerd telt niet en een afgespeelde boeking maakt een annulering niet ongedaan
+- ✅ **Beslisregels** (`lib/domain/success-metric.ts`, `test-card.ts`, `experiment-metrics.ts`): de Test Card kiest de
+  succesmaat (aanmelding, betaling, toezegging, afspraak; `hypotheses.success_metric`, vergrendeld via
+  `guard_hypothesis_lock`). Kansregel met unieke betalers/toezeggers/bookers als successen en unieke bezoekers als n;
+  vast aantal ("3 betaalde aanbetalingen") nu ook bij betaling, toezegging en afspraak. Betaling als succesmaat vraagt
+  de betaalstap; bewijsniveau en de controle op prijsaannames volgen de succesmaat
+- ✅ **Privacy** (`lib/domain/test-privacy.ts`): AVG-tekst onderaan de testpagina met naam en contact van de
+  verwerkingsverantwoordelijke; een nieuwe landing-/prijstest gaat pas live als die zijn ingevuld (scherm, server en
+  database-trigger `guard_experiment_go_live`); bestaande tests zonder privacyblok en hervatten na een pauze blijven
+  werken. Nieuwe aanmeldingen 12 maanden (`consentText`, default `retention_until`; bestaande rijen ongewijzigd).
+  `purge_expired_personal_data` wist toezeggingsnamen, getypte naam en gehashte IP en vervangt de persoonssleutel
+  van betalingen en afspraken; `dsr_search` vindt betalingen, afspraken en toezeggingen; `audit_row` bewaart
+  persoonssleutels, namen, codes en paden alleen als md5. Losse `test_events` niet in het auditspoor
+- **Migratie** `20261116090000_fase2_testen.sql`: `hypotheses.success_metric`, `observations.evidence_type` (alleen
+  systeem), `org_payment_settings` (geen policies), `test_payments`, `test_commitments` (+ bucket), `test_booking_hooks`,
+  `test_bookings`, RPC's met de ingest-sleutel (`deposit_checkout`, `register_test_payment`, `mollie_webhook_lookup`,
+  `record_mollie_status`, `get_commitment_invite`, `sign_commitment`, `record_test_booking`), `experiment_action_counts`,
+  `mark_refund_requested`, nieuwe versies van `guard_hypothesis_lock`, `purge_expired_personal_data`, `dsr_search`,
+  `audit_row` (laatste versies letterlijk overgenomen). RLS op alle nieuwe tabellen; triggerfuncties zonder execute.
+  **Terugval zonder migratie**: de app werkt zoals voorheen (zie docs/OPERATIONS.md §14)
+- **Env vars**: `SECRETS_ENCRYPTION_KEY` (32 bytes base64), `MOLLIE_ENABLED=1` (in `.env.example`). Instellen van
+  Mollie, Calendly en Cal.com: `docs/OPERATIONS.md` §14
+- ✅ **Tests**: unit `tests/unit/fase2-testen.test.ts` (33 tests: versleuteling, Mollie-status, webhook met onbekend id
+  telt niets, vervalste webhook verandert niets, terugbetaald blijft terugbetaald, testmodus, handtekeningen
+  Calendly/Cal.com geldig/vervalst/oud, geannuleerde afspraak, per persoon tellen, beslisregel met betalingen (kansregel
+  en vast aantal), generator, linkbouwer, privacy, toezeggingen, coach); DB `tests/db/fase2-testen.test.ts` (10 tests:
+  idempotent, privacy- en betaalstapcontrole bij live gaan, 12 maanden, sleutel alleen eigenaar en nooit leesbaar,
+  dubbele betaling zelfde persoon telt één keer, testmodus/terugbetaald/onbekend id, afspraken met annulering en
+  replay, toezeggingen met document/akkoord/eenmalige link, opschoning, vergrendelde succesmaat, evidence_type alleen
+  systeem). `tsc`, lint, alle unit-tests en alle 25 DB-testbestanden groen
+- **UI-teststappen** (dossier "AI-communicatie voor sportclubs", na de migratie en met testsleutel van Mollie):
+  1. `/app/status` als eigenaar: Mollie-testsleutel plakken → "Verbonden · testmodus", "eindigt op …"
+  2. Testen → nieuwe Test Card, landingpage-test: "Wat telt als succes?" → Betalde aanbetaling; beslisregel Vast aantal,
+     3 van 40; onder Details de betaalstap (€ 10) en verwerkingsverantwoordelijke + contact; "Maak testpagina uit de
+     Test Card" en controleer de voorstellen; opslaan, ter review, goedkeuren, publiceren
+  3. Linkbouwer: berichtcode `post-1`, kopieer de LinkedIn-link, open hem in een privévenster, klik op de knop, vul een
+     e-mailadres in, betaal in de Mollie-testomgeving → terug op de testpagina "Dank je wel"
+  4. Testpagina: "Per persoon geteld" en "Aanbetalingen" (pil Testmodus; telt niet als bewijs). Lokaal: "Status bij
+     Mollie verversen". "Terugbetalen" → status Terugbetaald
+  5. Toezeggingen: upload een pdf met organisatie/naam/e-mail; maak een persoonlijke link en geef akkoord via `/c/…`;
+     dezelfde e-mail twee keer telt één keer; "Intrekken" haalt hem uit de telling
+  6. Afspraken: maak een Cal.com-webhook, zet adres en sleutel in Cal.com, boek en annuleer een afspraak
+  7. Rond af, maak de Learning Card: de waarneming heet "Geverifieerde betaling" (of "Waargenomen handeling") met de
+     telling per persoon; leg een besluit vast → coach "aanbetalingen nog niet terugbetaald" tot "Alles terugbetalen"
+- 🟡 **Open punten**: e2e (Playwright) en visuele controle op 1440/390 px niet gedaan (geen Supabase-toegang); echte
+  Mollie-, Calendly- en Cal.com-aanroepen niet getest (alleen met nep-fetch en nep-handtekeningen). Het bestand van een
+  verlopen toezegging verwijdert het team met een knop (Postgres kan Storage-bestanden niet verwijderen). Bij betaling,
+  toezegging en afspraak telt ProofLab per kanaal alleen het bezoek (de handelingen zijn per persoon geteld, niet per
+  kanaal). Afspraken komen niet via de testpagina binnen: n blijft de unieke bezoekers van de pagina, ook als iemand
+  rechtstreeks via de Calendly-link boekt. De afspraakwebhooks hangen aan `TRACKING_SALT` (bij rotatie opnieuw maken).
   Migratie nog toepassen
 

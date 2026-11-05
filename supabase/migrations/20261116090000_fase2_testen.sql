@@ -73,25 +73,6 @@ alter table public.observations add constraint observations_evidence_type_check
 comment on column public.observations.evidence_type is
   'Fase 2 · punt 4: soort bewijs van een automatische (systeem)waarneming. Een AI-bewering of handmatige waarneming heeft er nooit een.';
 
--- Laatste versie uit 20261115090000_interviews_import.sql; alleen evidence_type toegevoegd (aan het eind, zodat bestaande
--- aanroepers niets merken). Het retourtype verandert, dus eerst drop.
-drop function if exists public.observations_for_idea(uuid);
-create or replace function public.observations_for_idea(p_idea uuid)
-returns table (
-  id uuid, idea_id uuid, experiment_id uuid, interview_id uuid, kind text, summary text, quote text,
-  quote_check text, is_fact boolean, is_behaviour boolean, is_real_context boolean, is_costly boolean,
-  is_synthetic boolean, origin text, review_status text, created_at timestamptz, evidence_type text)
-language sql stable security definer set search_path = '' as $$
-  select o.id, o.idea_id, o.experiment_id, o.interview_id, o.kind, o.summary,
-         case when public.can_write_idea(o.idea_id) then o.quote else null end,
-         o.quote_check, o.is_fact, o.is_behaviour, o.is_real_context, o.is_costly, o.is_synthetic,
-         o.origin, o.review_status, o.created_at, o.evidence_type
-  from public.observations o
-  where o.idea_id = p_idea and public.can_read_idea(p_idea) and not o.theme_only;
-$$;
-revoke execute on function public.observations_for_idea(uuid) from public, anon;
-grant execute on function public.observations_for_idea(uuid) to authenticated;
-
 -- ---------------------------------------------------------------------------
 -- 3. Mollie-sleutel per werkruimte (versleuteld door de app)
 -- ---------------------------------------------------------------------------
