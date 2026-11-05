@@ -51,6 +51,7 @@ import { ChannelLinkBuilder } from "@/components/experiments/ChannelLinkBuilder"
 import { privacyBlock, privacyOf } from "@/lib/domain/test-privacy";
 import { PerPersonCounts } from "@/components/experiments/PerPersonCounts";
 import { DepositsPanel } from "@/components/experiments/DepositsPanel";
+import { CommitmentsPanel } from "@/components/experiments/CommitmentsPanel";
 import { loadActionCounts } from "@/lib/action-counts-data";
 import { asSuccessMetric } from "@/lib/domain/test-page-generator";
 import { loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
@@ -232,6 +233,12 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
       {canWrite && pagesTest && isStarted(state) && (exp.config as LandingConfig).deposit?.enabled && (
         <DepositsPanel ideaId={id} expId={expId} amount={Number((exp.config as LandingConfig).deposit?.amount_eur) || 0} />
       )}
+      {canWrite && pagesTest && isStarted(state) &&
+        (successMetric === "commitment" ? (
+          <CommitmentsPanel ideaId={id} expId={expId} open={running} />
+        ) : (
+          <Detail><CommitmentsPanel ideaId={id} expId={expId} open={running} /></Detail>
+        ))}
 
       <div className="grid-2 mt-18">
         <div className="card">

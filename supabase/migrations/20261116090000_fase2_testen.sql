@@ -398,6 +398,12 @@ begin
          (old.method, old.person_key, old.signer_name, old.signer_org, old.typed_name, old.consent, old.document_path, old.token_hash, old.signed_at, old.experiment_id, old.idea_id) then
     return new;
   end if;
+  -- Na de bewaartermijn mag het team de verwijzing naar het (verwijderde) bestand wissen; verder niets.
+  if old.purged_at is not null and old.document_path is not null and new.document_path is null
+     and (new.status, new.method, new.person_key, new.signed_at, new.experiment_id, new.idea_id)
+         is not distinct from (old.status, old.method, old.person_key, old.signed_at, old.experiment_id, old.idea_id) then
+    return new;
+  end if;
   raise exception 'COMMITMENT_LOCKED: een toezegging ligt vast; alleen intrekken is mogelijk' using errcode = 'P0001';
 end $$;
 drop trigger if exists test_commitments_guard on public.test_commitments;
