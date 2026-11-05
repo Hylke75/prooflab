@@ -49,6 +49,9 @@ import { ThemeCrossTable } from "@/components/experiments/ThemeCrossTable";
 import { FathomField } from "@/components/experiments/FathomField";
 import { ChannelLinkBuilder } from "@/components/experiments/ChannelLinkBuilder";
 import { privacyBlock, privacyOf } from "@/lib/domain/test-privacy";
+import { PerPersonCounts } from "@/components/experiments/PerPersonCounts";
+import { loadActionCounts } from "@/lib/action-counts-data";
+import { asSuccessMetric } from "@/lib/domain/test-page-generator";
 import { loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
 
 export const metadata: Metadata = { title: "Experiment" };
@@ -111,6 +114,10 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
     canWrite && state === "ready_for_review" ? getWorkspace().then((ws) => ws.user.id) : Promise.resolve(null),
   ]);
   const themeCounts = type === "interview" && canWrite ? await loadThemeCountsForConsultant(id, expId) : null;
+  // Fase 2 · punt 4: telling per persoon (landing en prijs), vanaf de start.
+  const pagesTest = type === "landing" || type === "pricing";
+  const perPerson = pagesTest && isStarted(state) ? await loadActionCounts(expId) : null;
+  const successMetric = asSuccessMetric((h as { success_metric?: string | null }).success_metric);
   const self = selfApproval({ ownerId: exp.owner_id, submittedBy: exp.submitted_by ?? null, approverId: me });
   const role = testRole(exp.id, h.assumption_id, primaryOf ? [primaryOf] : []);
   const { data: currentPrimary } =
@@ -220,6 +227,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
         </div>
       )}
       {m.warnings.map((w) => <div className="note" key={w}>{w}</div>)}
+      {perPerson && <PerPersonCounts counts={perPerson.counts} available={perPerson.available} metric={successMetric} deposit={!!(exp.config as LandingConfig).deposit?.enabled} />}
 
       <div className="grid-2 mt-18">
         <div className="card">

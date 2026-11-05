@@ -29,7 +29,9 @@ import type { DraftResult } from "@/lib/domain/survey-draft";
 import { openAnswers } from "@/lib/domain/survey-results";
 import { contentHash } from "@/lib/claims";
 import { dedupeFragments } from "@/lib/signals/import";
-import type { Json } from "@/lib/database.types";
+import type { Database, Json } from "@/lib/database.types";
+
+type ObservationInsert = Database["public"]["Tables"]["observations"]["Insert"];
 import type { AssumptionCategory, ObservationKind } from "@/lib/domain/labels";
 import { assumptionKind, metricFitsAssumption } from "@/lib/domain/assumption-kind";
 import { checkEnd, goRuleBlock, selfApproval, thresholdBlock } from "@/lib/domain/experiment-gates";
@@ -44,6 +46,9 @@ import { defaultedTestCardFields } from "@/lib/defaulted-test-card";
 import { withDefaultedFallback, withFields } from "@/lib/defaulted-fields";
 import { cleanDefaultedFields } from "@/lib/view-mode";
 import { privacyBlock, type TestPrivacy } from "@/lib/domain/test-privacy";
+import { EMPTY_COUNTS, systemObservationKind, systemObservationSummary } from "@/lib/domain/action-counts";
+import { asSuccessMetric } from "@/lib/domain/test-page-generator";
+import { loadActionCounts, schemaMissing } from "@/lib/action-counts-data";
 
 export type ActionState = { error: string | null; ok?: string | null; warning?: string | null; fieldErrors?: Record<string, string> };
 
@@ -694,34 +699,43 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
   const draft = (cards ?? []).find((c) => c.status === "draft");
 
   const s = m.survey;
+  // Fase 2 · punt 4: de telling per persoon (bezoekers, klikkers, aanmelders, betalers, toezeggers, bookers).
+  const perPerson = exp.type === "landing" || exp.type === "pricing" ? await loadActionCounts(expId) : { counts: EMPTY_COUNTS, available: false };
   if (exp.type !== "interview") {
     // One system observation summarises the measured behaviour (or, for a survey, the self-reported answers);
     // raw events stay untouched. Generating the card again reuses it, so the evidence for the assumption is
     // never counted twice. A survey answer is never behaviour (KIND_DEFAULTS.survey_answer).
-    const kind: ObservationKind =
-      exp.type === "survey" ? "survey_answer" : exp.type === "pricing" ? "quote_request" : (exp.config as LandingConfig).collect_email ? "demo_request" : "waitlist_signup";
+    // Fase 2 · punt 4: de waarneming zegt expliciet welk soort bewijs het is (Waargenomen handeling, Geverifieerde
+    // betaling of toezegging) en hoeveel personen er per stap zijn geteld. Een betaling telt alleen live en betaald.
+    const metric = asSuccessMetric((h as { success_metric?: string | null }).success_metric);
+    const collectEmail = !!(exp.config as LandingConfig).collect_email;
+    const { kind, evidenceType } = systemObservationKind(exp.type, metric, collectEmail);
     const dims = KIND_DEFAULTS[kind];
+    const interval = `${pct(v.interval.point)}, 95%-interval ${pct(v.interval.low)}–${pct(v.interval.high)}`;
     const { data: existing } = await supabase.from("observations").select("id").eq("experiment_id", expId).eq("origin", "system").maybeSingle();
-    const { data: obs } = existing
-      ? { data: existing }
-      : await supabase
-      .from("observations")
-      .insert({
-        idea_id: ideaId,
-        experiment_id: expId,
-        kind,
-        summary: (s
-          ? `Enquête (zelfrapportage, geen waargenomen gedrag): ${m.successes} van ${m.n} respondenten: ${h.metric_numerator} (${pct(v.interval.point)}, 95%-interval ${pct(v.interval.low)}–${pct(v.interval.high)}); uitgenodigd ${s.invitation.successes}/${s.invitation.n}, open link ${s.openLink.successes}/${s.openLink.n}.`
-          : `${m.successes} van ${m.n} unieke relevante bezoekers: ${h.metric_label.toLowerCase()} (${pct(v.interval.point)}, 95%-interval ${pct(v.interval.low)}–${pct(v.interval.high)}).`
-        ).slice(0, 400),
-        is_fact: dims.isFact,
-        is_behaviour: dims.isBehaviour,
-        is_real_context: dims.isRealContext,
-        is_costly: dims.isCostly,
-        origin: "system",
-      })
-      .select("id")
-      .single();
+    const observation = {
+      idea_id: ideaId,
+      experiment_id: expId,
+      kind,
+      summary: (s
+        ? `Enquête (zelfrapportage, geen waargenomen gedrag): ${m.successes} van ${m.n} respondenten: ${h.metric_numerator} (${interval}); uitgenodigd ${s.invitation.successes}/${s.invitation.n}, open link ${s.openLink.successes}/${s.openLink.n}.`
+        : perPerson.available
+          ? systemObservationSummary({ type: exp.type, metric, counts: perPerson.counts, successes: m.successes, n: m.n, metricLabel: h.metric_label, interval })
+          : `${m.successes} van ${m.n} unieke relevante bezoekers: ${h.metric_label.toLowerCase()} (${interval}).`
+      ).slice(0, 400),
+      is_fact: dims.isFact,
+      is_behaviour: dims.isBehaviour,
+      is_real_context: dims.isRealContext,
+      is_costly: dims.isCostly,
+      origin: "system",
+    };
+    let obs: { id: string } | null = existing;
+    if (!existing) {
+      // Zonder de migratie bestaat evidence_type nog niet: dan zonder (zelfde waarneming, zonder het label).
+      const row: ObservationInsert = { ...observation, ...(evidenceType && perPerson.available ? { evidence_type: evidenceType } : {}) };
+      const first = await supabase.from("observations").insert(row).select("id").single();
+      obs = first.data ?? (schemaMissing(first.error) ? (await supabase.from("observations").insert(observation).select("id").single()).data : null);
+    }
     if (obs && !existing && verdictKind !== "inconclusive") {
       await supabase.from("assumption_observations").insert({ assumption_id: h.assumption_id, observation_id: obs.id, idea_id: ideaId, relation: verdictKind === "pass" ? "supports" : "contradicts" });
     }
@@ -789,6 +803,8 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
       byChannel: m.byChannel,
       byVariant: m.byVariant,
       warnings: m.warnings,
+      // Fase 2 · punt 4: wat als succes telde en de telling per persoon op het moment van analyseren.
+      ...(perPerson.available ? { success_metric: asSuccessMetric((h as { success_metric?: string | null }).success_metric), per_person: perPerson.counts } : {}),
       ended_early: exp.ended_early,
       ended_below_sample: belowSample,
       end_reason: exp.end_reason ?? null,

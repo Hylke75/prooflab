@@ -17,7 +17,14 @@ import { loadProgress } from "@/lib/progress";
 import { loadCalibration } from "@/lib/method-data";
 import { Probability } from "@/components/ui/Probability";
 import { asEvidenceLevel, explainStrength, outcomeWithLevel, strength, strengthLabel, testEvidenceLevel, type EvidenceLevel } from "@/lib/domain/evidence";
-import { ASSUMPTION_CATEGORIES, DECISIONS, OBSERVATION_KINDS, type DecisionAction, type ObservationKind } from "@/lib/domain/labels";
+import { ASSUMPTION_CATEGORIES, DECISIONS, EVIDENCE_TYPES, OBSERVATION_KINDS, type DecisionAction, type EvidenceType, type ObservationKind } from "@/lib/domain/labels";
+
+// Fase 2 · punt 4: soort bewijs van een systeemwaarneming (kolom bestaat pas na de migratie).
+const AUTO_EVIDENCE = ["observed_action", "verified_transaction", "verified_commitment"];
+function evidenceTypeOf(o: object): EvidenceType | null {
+  const t = (o as { evidence_type?: unknown; origin?: unknown }).evidence_type;
+  return (o as { origin?: unknown }).origin === "system" && typeof t === "string" && AUTO_EVIDENCE.includes(t) ? (t as EvidenceType) : null;
+}
 import type { Finding } from "@/lib/domain/reality-check";
 import { evidenceLadder } from "@/lib/domain/dossier-label";
 import { perPersonLabel } from "@/lib/domain/per-person";
@@ -182,6 +189,8 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                 <div className="icon-circle">{o.is_behaviour ? "✓" : "?"}</div>
                 <div>
                   <strong>{OBSERVATION_KINDS[o.kind as ObservationKind]}: {o.summary}</strong>
+                  {/* Fase 2 · punt 4: soort bewijs van een automatische waarneming (alleen systeemwaarnemingen). */}
+                  {evidenceTypeOf(o) && <p className="tiny" style={{ margin: "4px 0 0" }}><span className="pill blue">{EVIDENCE_TYPES[evidenceTypeOf(o)!]}</span> automatisch geteld uit de test</p>}
                   {o.quote && <blockquote className="quote">“{o.quote}”</blockquote>}
                   <p><span className={`pill ${s.pill}`}>{s.label}</span> {explainStrength(dims)}</p>
                 </div>
