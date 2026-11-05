@@ -47,7 +47,7 @@ import { withDefaultedFallback, withFields } from "@/lib/defaulted-fields";
 import { cleanDefaultedFields } from "@/lib/view-mode";
 import { privacyBlock, type TestPrivacy } from "@/lib/domain/test-privacy";
 import { EMPTY_COUNTS, systemObservationKind, systemObservationSummary } from "@/lib/domain/action-counts";
-import { asSuccessMetric } from "@/lib/domain/test-page-generator";
+import { asSuccessMetric, type SuccessMetric } from "@/lib/domain/success-metric";
 import { loadActionCounts, schemaMissing } from "@/lib/action-counts-data";
 import { depositAvailability } from "@/lib/integrations/mollie-server";
 
@@ -120,6 +120,8 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
     v.success_threshold_pct = Math.min(100, Math.round((v.success_count / v.min_sample) * 1000) / 10);
     v.fail_threshold_pct = undefined;
   }
+  // Fase 2 · punt 4: wat telt als succes bij een landing- of prijstest (aanmelding, betaling, toezegging, afspraak).
+  const successMetric: SuccessMetric = v.type === "landing" || v.type === "pricing" ? asSuccessMetric(raw.success_metric) : "signup";
   const channels = form.getAll("channels").map(String).filter((c) => c in CHANNELS);
   const pricePoints: PricingConfig["price_points"] = [];
   for (let i = 0; i < 3; i++) {
@@ -172,7 +174,12 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       required_n: requiredN,
       sample_below_reason: sampleReason,
       ...(v.type === "landing" || v.type === "pricing"
-        ? { privacy_controller: String(raw.privacy_controller ?? ""), privacy_contact: String(raw.privacy_contact ?? "") }
+        ? {
+            privacy_controller: String(raw.privacy_controller ?? ""),
+            privacy_contact: String(raw.privacy_contact ?? ""),
+            success_metric: successMetric,
+            deposit_enabled: raw.deposit_enabled === "on",
+          }
         : {}),
     }),
   );
@@ -266,8 +273,11 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       expected_pct: band ? band.expectedPct : null,
       available_per_week: rule ? (v.available_per_week ?? null) : null,
       required_n: band ? band.requiredN : null,
+      // Alleen meegestuurd als het geen aanmelding is: zo werkt opslaan zonder de migratie zoals voorheen.
+      ...(successMetric !== "signup" ? { success_metric: successMetric } : {}),
   };
   const { data: h, error: hErr } = await withDefaultedFallback((w) => supabase.from("hypotheses").insert(withFields(hypothesis, defaulted, w)).select("id").single());
+  if (hErr && successMetric !== "signup" && schemaMissing(hErr)) return { error: "Betaling, toezegging of afspraak als succesmaat vraagt een database-update (migratie 20261116090000_fase2_testen). Kies tot die tijd aanmelding." };
   if (hErr || !h) return { error: `De Test Card kon niet worden opgeslagen (hypothese: ${hErr?.message ?? "onbekende fout"}). Probeer het opnieuw.` };
   const { data: exp, error } = await supabase
     .from("experiments")
@@ -319,7 +329,7 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
     // B0 punt 3: een Test Card waarvan de maatstaf niet bij de aanname past, kan niet worden goedgekeurd.
     const h = exp.hypotheses;
     if (h?.assumptions) {
-      const fit = metricFitsAssumption(assumptionKind(h.assumptions), { type: exp.type, metric_label: h.metric_label, metric_numerator: h.metric_numerator, decision_rule: h.decision_rule });
+      const fit = metricFitsAssumption(assumptionKind(h.assumptions), { type: exp.type, metric_label: h.metric_label, metric_numerator: h.metric_numerator, decision_rule: h.decision_rule, success_metric: (h as { success_metric?: string | null }).success_metric });
       if (!fit.ok) return { error: fit.reason ?? "De maatstaf past niet bij de aanname." };
     }
     // B0 punt 6: meldt ProofLab "drempel niet haalbaar", dan kan de test niet worden goedgekeurd.
@@ -808,7 +818,7 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
       fail_threshold_pct: h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct),
       required_n: h.required_n ?? null,
       // Bewijsniveau van wat deze test meet (golf A, punt 14): "Geslaagd · niveau: mening".
-      evidence_level: testEvidenceLevel(exp.type, { decisionRule: h.decision_rule }),
+      evidence_level: testEvidenceLevel(exp.type, { decisionRule: h.decision_rule, successMetric: (h as { success_metric?: string | null }).success_metric }),
       byChannel: m.byChannel,
       byVariant: m.byVariant,
       warnings: m.warnings,

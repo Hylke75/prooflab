@@ -52,7 +52,7 @@ export const metadata: Metadata = { title: "Bewijs & besluit" };
 // Het bewijsniveau op een Learning Card: zoals vastgelegd, of (oudere kaarten) afgeleid uit het testtype.
 function cardLevel(metrics: unknown, exp: { type: string; hypotheses: { decision_rule?: string | null } | null } | undefined): EvidenceLevel | null {
   const stored = asEvidenceLevel((metrics as { evidence_level?: unknown } | null)?.evidence_level);
-  return stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule }) : null);
+  return stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule, successMetric: (exp.hypotheses as { success_metric?: string | null } | null)?.success_metric }) : null);
 }
 
 const SEV = { blocker: ["Blokkerend", "coral"], warning: ["Let op", "orange"], info: ["Ter info", "gray"] } as const;

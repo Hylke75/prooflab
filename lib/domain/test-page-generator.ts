@@ -5,27 +5,11 @@
 
 import { honestyWarnings } from "./copy-honesty";
 import { formatAmount, headlineFromIdea, type IntakePrice } from "./test-card";
+import { SUCCESS_METRICS, ctaFor, type SuccessMetric } from "./success-metric";
 
-export const SUCCESS_METRICS = {
-  signup: { label: "Aanmelding of klik", short: "aanmelding", evidence: "Waargenomen handeling" },
-  payment: { label: "Betaalde aanbetaling (terugbetaalbaar)", short: "betaling", evidence: "Geverifieerde betaling" },
-  commitment: { label: "Getekende toezegging", short: "toezegging", evidence: "Geverifieerde toezegging" },
-  booking: { label: "Geboekte afspraak", short: "afspraak", evidence: "Waargenomen handeling" },
-} as const;
-export type SuccessMetric = keyof typeof SUCCESS_METRICS;
-export const SUCCESS_METRIC_KEYS = Object.keys(SUCCESS_METRICS) as [SuccessMetric, ...SuccessMetric[]];
-
-export function asSuccessMetric(v: unknown): SuccessMetric {
-  return typeof v === "string" && v in SUCCESS_METRICS ? (v as SuccessMetric) : "signup";
-}
-
-// Knoptekst per succesmaat: de knop zegt wat er na de klik gebeurt.
-export function ctaFor(type: "landing" | "pricing", metric: SuccessMetric): string {
-  if (metric === "payment") return "Reserveer je plek";
-  if (metric === "booking") return "Plan een kennismaking";
-  if (metric === "commitment") return "Ik wil dit gebruiken";
-  return type === "pricing" ? "Kies dit aanbod" : "Zet me op de lijst";
-}
+// De succesmaten staan in success-metric.ts (zonder imports, zodat test-card.ts ze kan gebruiken); hier opnieuw
+// geëxporteerd voor de bestaande aanroepers.
+export { SUCCESS_METRICS, SUCCESS_METRIC_KEYS, SUCCESS_METRIC_CARD, absoluteRuleAllowed, asSuccessMetric, ctaFor, type SuccessMetric } from "./success-metric";
 
 export type GeneratedPage = {
   headline: string;

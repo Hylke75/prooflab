@@ -30,6 +30,7 @@ import { RECRUITMENT_GROUPS, RECRUITMENT_KEYS, RECRUITMENT_REQUIRED_TYPES, type 
 import { auditGuide, guideSummary } from "@/lib/domain/interview-audit";
 import { honestyWarnings, type PreparedVariant } from "@/lib/domain/copy-honesty";
 import { pageFromTestCard, type GeneratedPage } from "@/lib/domain/test-page-generator";
+import { absoluteRuleAllowed, ctaFor, SUCCESS_METRIC_CARD, SUCCESS_METRIC_KEYS, SUCCESS_METRICS, type SuccessMetric } from "@/lib/domain/success-metric";
 import { GuideAuditList } from "@/components/experiments/InterviewAudit";
 import { SurveyEditor, type SurveyDraftAction } from "@/components/survey/SurveyEditor";
 import { SamplePlanner } from "@/components/survey/SamplePlanner";
@@ -65,6 +66,7 @@ const FIELD_FOCUS: Record<string, string> = {
   success_threshold_pct: "tc-succ",
   fail_threshold_pct: "tc-fail",
   success_count: "tc-count",
+  success_metric: "tc-metric-choice",
   thresholds: "tc-lock",
   min_sample: "tc-n",
   sample_below_reason: "tc-n-reason",
@@ -158,6 +160,8 @@ export function ExperimentBuilder({
   // Fase 2 · punt 4: optionele betaalstap (standaard uit).
   const [depositOn, setDepositOn] = useState(false);
   const [depositAmount, setDepositAmount] = useState("10");
+  // Fase 2 · punt 4: wat telt als succes (landing en prijs). Standaard aanmelding, zoals voorheen.
+  const [successMetric, setSuccessMetric] = useState<SuccessMetric>("signup");
   // B5: vandaag (lokale datum) voor de deadline; de looptijd in dagen gaat naar de database.
   const [today] = useState(() => isoDay(new Date()));
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -179,6 +183,7 @@ export function ExperimentBuilder({
     setLastKey(`${type}|${assumption.id}`);
     setCard(withSurveyMetric(defaults, survey));
     setRule("probability");
+    setSuccessMetric("signup");
     if (!titleTouched) setTitle(titleFor());
     setAutoSample(null);
     setSampleReason("");
@@ -212,6 +217,8 @@ export function ExperimentBuilder({
   const [perWeek, setPerWeek] = useState("");
   const chooseRule = (r: DecisionRule) => {
     setRule(r);
+    // Op een testpagina volgt de maatstaf de succesmaat, niet de beslisregel.
+    if (type === "landing" || type === "pricing") return;
     // Bij de aantalregel telt een gesprek alleen met een sterke handeling (aanbetaling of herhaalaankoop).
     setCard((c) =>
       r === "absolute"
@@ -238,7 +245,7 @@ export function ExperimentBuilder({
   const [generated, setGenerated] = useState<GeneratedPage | null>(null);
   const generatePage = () => {
     if (type !== "landing" && type !== "pricing") return;
-    const g = pageFromTestCard({ type, weBelieve: card.we_believe, targetGroup: card.target_group, ideaTitle, description: intake.description, intakePrice: fromIntake });
+    const g = pageFromTestCard({ type, weBelieve: card.we_believe, targetGroup: card.target_group, ideaTitle, description: intake.description, intakePrice: fromIntake, successMetric });
     setPage({ headline: g.headline, subline: g.subline, offer: g.offer, cta_label: g.cta_label, product_name: g.product_name });
     if (type === "pricing") setPrices(g.price_points);
     setGenerated(g);
@@ -258,13 +265,24 @@ export function ExperimentBuilder({
   // Beslisregel (methode 2026-11-b): vooraf rekenen hoeveel deelnemers nodig zijn.
   // Dossiers met methode 2026-11-a houden de intervalregel: geen beslisregel en geen vooraf berekend aantal.
   const v2 = METHODS[method].usesRules;
-  const absoluteAllowed = v2 && type === "interview";
+  const absoluteAllowed = v2 && absoluteRuleAllowed(type, type === "landing" || type === "pricing" ? successMetric : null);
+  const chooseMetric = (m: SuccessMetric) => {
+    setSuccessMetric(m);
+    setCard((c) => (m === "signup" ? { ...c, metric_label: defaults.metric_label, metric_numerator: defaults.metric_numerator, metric_denominator: defaults.metric_denominator } : { ...c, ...SUCCESS_METRIC_CARD[m] }));
+    if (m === "signup") setRule("probability");
+    if (m === "payment" && deposit.available) setDepositOn(true);
+    // De knoptekst volgt de succesmaat, tenzij de gebruiker hem zelf aanpaste.
+    if (type === "landing" || type === "pricing") {
+      const auto = [...Object.values(CTA_DEFAULT), ...SUCCESS_METRIC_KEYS.map((k) => ctaFor(type, k))];
+      setPage((pg) => (auto.includes(pg.cta_label) ? { ...pg, cta_label: ctaFor(type, m) } : pg));
+    }
+  };
   const activeRule: DecisionRule = absoluteAllowed ? rule : "probability";
   const countN = Number(successCount) || 0;
   const thresholdPct = activeRule === "absolute" ? (n > 0 && countN > 0 ? Math.min(100, Math.round((countN / n) * 1000) / 10) : 0) : Number(card.success_threshold_pct);
   const prior = priors[type] ?? FLAT_PRIOR;
   // B0 punt 3: past de maatstaf bij de soort aanname? Opslaan als concept mag; goedkeuren niet.
-  const fit = metricFitsAssumption(kind, { type, metric_label: card.metric_label, metric_numerator: card.metric_numerator, decision_rule: v2 ? activeRule : null });
+  const fit = metricFitsAssumption(kind, { type, metric_label: card.metric_label, metric_numerator: card.metric_numerator, decision_rule: v2 ? activeRule : null, success_metric: type === "landing" || type === "pricing" ? successMetric : null });
   const suggestedTier = fit.suggestedType ? options.findIndex((o) => o.type === fit.suggestedType) : -1;
   const band =
     v2 && locked && thresholdPct > 0
@@ -330,7 +348,9 @@ export function ExperimentBuilder({
       guide_questions: guide.split("\n").map((x) => x.trim()).filter(Boolean).length,
       required_n: v2 && activeRule !== "absolute" ? (band?.requiredN ?? null) : null,
       sample_below_reason: sampleReason,
-      ...(type === "landing" || type === "pricing" ? { privacy_controller: privacy.controller, privacy_contact: privacy.contact } : {}),
+      ...(type === "landing" || type === "pricing"
+        ? { privacy_controller: privacy.controller, privacy_contact: privacy.contact, success_metric: successMetric, deposit_enabled: depositOn && deposit.available }
+        : {}),
     }),
     ...(surveyIssues.length ? { survey: "Maak de enquête eerst compleet (zie de meldingen bij de vragen)." } : {}),
   };
@@ -471,6 +491,28 @@ export function ExperimentBuilder({
           </div>
           <div className="form-line"><label htmlFor="tc-target">Bij wie?<RequiredMark /></label><input className="field" id="tc-target" name="target_group" value={card.target_group} onChange={(e) => set("target_group", e.target.value)} {...aria("target_group")} />{fieldError("target_group")}</div>
           {v2 && <input type="hidden" name="decision_rule" value={activeRule} />}
+          {(type === "landing" || type === "pricing") && (
+            <fieldset className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }} disabled={locked} id="tc-metric-choice" aria-describedby="tc-metric-hint">
+              <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Wat telt als succes?</legend>
+              <input type="hidden" name="success_metric" value={successMetric} />
+              <div className="row" role="radiogroup" aria-label="Succesmaat">
+                {SUCCESS_METRIC_KEYS.map((m) => {
+                  const off = m === "payment" && !deposit.available;
+                  return (
+                    <label key={m} className="check-row" style={{ margin: "2px 12px 2px 0", opacity: off ? 0.55 : 1 }}>
+                      <input type="radio" name="success_metric_choice" value={m} checked={successMetric === m} disabled={off} onChange={() => chooseMetric(m)} /> {SUCCESS_METRICS[m].label}
+                    </label>
+                  );
+                })}
+              </div>
+              {fieldError("success_metric")}
+              <p className="field-hint" id="tc-metric-hint" style={{ marginTop: 6 }}>
+                Telt als {SUCCESS_METRICS[successMetric].evidence}, per persoon: dezelfde persoon telt één keer. n = unieke bezoekers van de testpagina.
+                {successMetric === "payment" ? " Alleen live en betaald telt; terugbetaald of testmodus niet." : successMetric === "booking" ? " Geannuleerd telt niet; koppel Calendly of Cal.com bij de test." : successMetric === "commitment" ? " Alleen met getekend document of digitaal akkoord." : ""}
+                {!deposit.available && " Betaling is niet te kiezen: " + (deposit.reason ?? "Mollie niet ingesteld.")}
+              </p>
+            </fieldset>
+          )}
           <section className="tc-step" aria-labelledby="tc-step1">
           <h3 id="tc-step1" className="tc-step-title"><span className="num">1</span> Wanneer is de test geslaagd?</h3>
           {v2 && (
@@ -489,7 +531,9 @@ export function ExperimentBuilder({
             )}
             <p className="field-hint" style={{ marginTop: 6 }}>
               {activeRule === "absolute"
-                ? <><Term k="aantalregel">Voor sterke handelingen</Term> (aanbetaling, herhaalaankoop): geslaagd als het afgesproken aantal na de eindconditie is gehaald. Een gesprek telt alleen mee met een vastgelegde aanbetaling of herhaalaankoop.</>
+                ? type === "interview"
+                  ? <><Term k="aantalregel">Voor sterke handelingen</Term> (aanbetaling, herhaalaankoop): geslaagd als het afgesproken aantal na de eindconditie is gehaald. Een gesprek telt alleen mee met een vastgelegde aanbetaling of herhaalaankoop.</>
+                  : <><Term k="aantalregel">Vast aantal</Term>: geslaagd als na de eindconditie minstens het afgesproken aantal unieke personen {SUCCESS_METRICS[successMetric].short === "betaling" ? "betaald heeft (live, niet terugbetaald)" : SUCCESS_METRICS[successMetric].short === "toezegging" ? "een toezegging heeft getekend" : "een afspraak heeft geboekt (niet geannuleerd)"}, bijvoorbeeld 3 betaalde aanbetalingen.</>
                 : <>Geslaagd als de kans dat het echte percentage boven de <Term k="succesdrempel">succesdrempel</Term> ligt minstens {PASS_PROBABILITY * 100}% is; niet geslaagd als de kans dat het boven de <Term k="faaldrempel">faaldrempel</Term> ligt {FAIL_PROBABILITY * 100}% of minder is. Daartussen onbeslist.</>}
             </p>
           </fieldset>

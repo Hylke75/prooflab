@@ -54,7 +54,7 @@ import { DepositsPanel } from "@/components/experiments/DepositsPanel";
 import { CommitmentsPanel } from "@/components/experiments/CommitmentsPanel";
 import { BookingsPanel } from "@/components/experiments/BookingsPanel";
 import { loadActionCounts } from "@/lib/action-counts-data";
-import { asSuccessMetric } from "@/lib/domain/test-page-generator";
+import { asSuccessMetric, SUCCESS_METRICS } from "@/lib/domain/success-metric";
 import { loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
 
 export const metadata: Metadata = { title: "Experiment" };
@@ -137,7 +137,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
   const v = m.verdict;
   // B0 punt 3: past de maatstaf bij de soort aanname? Zo niet, dan kan de Test Card niet ter review of goedgekeurd.
   const kind = h.assumptions ? assumptionKind(h.assumptions) : null;
-  const fit = kind ? metricFitsAssumption(kind, { type, metric_label: h.metric_label, metric_numerator: h.metric_numerator, decision_rule: h.decision_rule }) : { ok: true };
+  const fit = kind ? metricFitsAssumption(kind, { type, metric_label: h.metric_label, metric_numerator: h.metric_numerator, decision_rule: h.decision_rule, success_metric: (h as { success_metric?: string | null }).success_metric }) : { ok: true };
   // B0 punt 6: en meldt ProofLab "drempel niet haalbaar", dan evenmin. De server dwingt beide af.
   const approvalBlocks = [fit.ok ? null : (fit.reason ?? "De maatstaf past niet bij de aanname."), thresholdBlock(h)].filter((x): x is string => !!x);
   const blocked = approvalBlocks.length > 0;
@@ -270,6 +270,12 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
           <div className="data-row"><span>Bij</span><strong style={{ textAlign: "right" }}>{h.target_group}</strong></div>
           <div className="data-row"><span>Dat toetsen we door</span><strong style={{ textAlign: "right" }}>{h.test_method}</strong></div>
           <div className="data-row"><span>We meten</span><strong style={{ textAlign: "right" }}>{h.metric_numerator} / {h.metric_denominator}</strong></div>
+          {pagesTest && (
+            <div className="data-row">
+              <span>Succes telt als</span>
+              <strong style={{ textAlign: "right" }}>{SUCCESS_METRICS[successMetric].label} · {SUCCESS_METRICS[successMetric].evidence}</strong>
+            </div>
+          )}
           <div className="data-row"><span>Beslisregel</span><strong style={{ textAlign: "right" }}>{ruleName(h.decision_rule ?? "interval")}</strong></div>
           {h.decision_rule === "absolute" ? (
             <div className="data-row"><span>Het klopt als</span><strong className="num">≥ {h.success_count} van {h.min_sample}</strong></div>
@@ -458,23 +464,24 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
             <div className="card">
               <h2 className="as-h3">Per kanaal</h2>
               <table className="table mt-12">
-                <thead><tr><th>Kanaal</th><th>Deelnemers</th><th>{h.metric_label}</th><th>Ratio</th></tr></thead>
+                <thead><tr><th>Kanaal</th><th>Deelnemers</th>{m.perChannelActions !== false && <><th>{h.metric_label}</th><th>Ratio</th></>}</tr></thead>
                 <tbody>
                   {m.byChannel.map((c) => (
-                    <tr key={c.channel}><td>{CHANNELS[c.channel as keyof typeof CHANNELS] ?? c.channel}</td><td className="num">{c.visitors}</td><td className="num">{c.actions}</td><td className="num">{c.visitors ? pct(c.actions / c.visitors) : "—"}</td></tr>
+                    <tr key={c.channel}><td>{CHANNELS[c.channel as keyof typeof CHANNELS] ?? c.channel}</td><td className="num">{c.visitors}</td>{m.perChannelActions !== false && <><td className="num">{c.actions}</td><td className="num">{c.visitors ? pct(c.actions / c.visitors) : "—"}</td></>}</tr>
                   ))}
                 </tbody>
               </table>
+              {m.perChannelActions === false && <p className="tiny mt-8">Bij deze succesmaat telt ProofLab per kanaal alleen het bezoek; betalingen, toezeggingen en afspraken worden per persoon geteld (zie Per persoon geteld).</p>}
             </div>
           )}
           {m.byVariant.length > 0 && (
             <div className="card">
               <h2 className="as-h3">Per prijspunt</h2>
               <table className="table mt-12">
-                <thead><tr><th>Aanbod</th><th>Bezoekers</th><th>Gekozen</th><th>Ratio</th></tr></thead>
+                <thead><tr><th>Aanbod</th><th>Bezoekers</th>{m.perChannelActions !== false && <><th>Gekozen</th><th>Ratio</th></>}</tr></thead>
                 <tbody>
                   {m.byVariant.map((r) => (
-                    <tr key={r.variant}><td>{r.label}</td><td className="num">{r.visitors}</td><td className="num">{r.actions}</td><td className="num">{r.visitors ? pct(r.actions / r.visitors) : "—"}</td></tr>
+                    <tr key={r.variant}><td>{r.label}</td><td className="num">{r.visitors}</td>{m.perChannelActions !== false && <><td className="num">{r.actions}</td><td className="num">{r.visitors ? pct(r.actions / r.visitors) : "—"}</td></>}</tr>
                   ))}
                 </tbody>
               </table>
