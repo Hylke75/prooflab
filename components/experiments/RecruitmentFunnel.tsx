@@ -1,5 +1,3 @@
-import { ActionForm, Field } from "@/components/ui/ActionForm";
-import { DirectionField } from "@/components/ui/DirectionField";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 import { Detail } from "@/components/shell/ViewMode";
 import { Term } from "@/components/ui/Term";
@@ -22,6 +20,7 @@ import {
   reverseRecruitmentEntry,
   unlinkRecruitmentCampaign,
 } from "@/app/app/ideas/[id]/experiments/[expId]/recruitment-actions";
+import { RecruitmentCampaignForm, RecruitmentEntryForm, RecruitmentResponseForm, RecruitmentReverseForm } from "./RecruitmentForms";
 import "./recruitment.css";
 
 // Fase 2 · punt 5: de wervingstrechter op de testpagina (alleen het onderzoeksteam). Per kanaal benaderd → gereageerd →
@@ -140,36 +139,12 @@ export function RecruitmentFunnel({
         <div className="recruit-actions mt-12">
           <details>
             <summary className="text-link">+ Werving registreren</summary>
-            <ActionForm action={addRecruitmentEntry.bind(null, ideaId, expId)} submitLabel="Vastleggen" submitClass="btn primary sm" resetOnSuccess noValidate>
-              <div className="double-field mt-8">
-                <Field name="entry_date" id="rec-date" label="Datum" required>
-                  <input className="field" type="date" defaultValue={todayInNL()} max={todayInNL()} />
-                </Field>
-                <Field name="channel" id="rec-channel" label="Kanaal" required>
-                  <select className="field" defaultValue="linkedin">
-                    {Object.entries(CHANNELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                  </select>
-                </Field>
-              </div>
-              <div className="double-field">
-                <Field name="step" id="rec-step" label="Stap" required>
-                  <select className="field" defaultValue="approached">
-                    {manualStepsFor(testType).map((s) => <option key={s} value={s}>{FUNNEL_STEPS[s].label}</option>)}
-                  </select>
-                </Field>
-                <Field name="quantity" id="rec-qty" label="Aantal" required>
-                  <input className="field" type="number" min={1} max={10000} step={1} inputMode="numeric" />
-                </Field>
-              </div>
-              <fieldset className="recruit-kind">
-                <legend className="field-label">Soort regel</legend>
-                <label className="check-row"><input type="radio" name="kind" value="add" defaultChecked /> Toevoegen</label>
-                <label className="check-row"><input type="radio" name="kind" value="correction" /> Correctie: dit aantal aftrekken (reden verplicht)</label>
-              </fieldset>
-              <Field name="note" id="rec-note" label="Notitie (optioneel; bij een correctie de reden)" hint="Geen namen of contactgegevens: alleen aantallen en context.">
-                <input className="field" maxLength={500} />
-              </Field>
-            </ActionForm>
+            <RecruitmentEntryForm
+              action={addRecruitmentEntry.bind(null, ideaId, expId)}
+              channels={Object.entries(CHANNELS).map(([key, label]) => ({ key, label }))}
+              steps={manualStepsFor(testType).map((key) => ({ key, label: FUNNEL_STEPS[key].label }))}
+              today={todayInNL()}
+            />
             <p className="field-hint">Een regel wordt nooit gewijzigd of verwijderd. Een vergissing herstel je met een correctie; beide blijven zichtbaar in het auditspoor.</p>
           </details>
 
@@ -190,13 +165,7 @@ export function RecruitmentFunnel({
                 </ul>
               )}
               {view.campaignOptions.length > 0 ? (
-                <ActionForm action={linkRecruitmentCampaign.bind(null, ideaId, expId)} submitLabel="Koppel campagne" submitClass="btn white sm">
-                  <Field name="campaign" id="rec-campaign" label="Campagne uit de ontvangen Expandi-gebeurtenissen" required>
-                    <select className="field">
-                      {view.campaignOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </Field>
-                </ActionForm>
+                <RecruitmentCampaignForm action={linkRecruitmentCampaign.bind(null, ideaId, expId)} options={view.campaignOptions} />
               ) : (
                 <p className="tiny">
                   {view.campaigns.length ? "Geen andere campagnes beschikbaar." : "Nog geen Expandi-gebeurtenissen met een campagnenaam in dit dossier."} Koppel de webhook via{" "}
@@ -215,24 +184,7 @@ export function RecruitmentFunnel({
           {recordable.map((c) => (
             <details key={c.channel} className="mt-8">
               <summary className="text-link">Leg vast als bevinding: {c.label} ({wholePct(c.response!.rate)}, n = {c.response!.approached})</summary>
-              <ActionForm action={recordResponseFinding.bind(null, ideaId, expId)} submitLabel="Leg vast als bevinding" submitClass="btn primary sm">
-                <input type="hidden" name="channel" value={c.channel} />
-                <p className="tiny">
-                  Wordt een bevinding met als bron &ldquo;Eigen wervingsregistratie&rdquo; (een eigen meting, geen officiële of primaire bron). Het fragment is
-                  de telling zelf, zodat de citaatcontrole exact is.
-                </p>
-                {sortedAssumptions.length > 0 && (
-                  <>
-                    <Field name="assumption_id" id={`rec-a-${c.channel}`} label="Koppel aan een aanname (optioneel)">
-                      <select className="field" defaultValue="">
-                        <option value="">Niet koppelen</option>
-                        {sortedAssumptions.map((a) => <option key={a.id} value={a.id}>{a.channel ? "Kanaal · " : ""}{a.statement.slice(0, 110)}</option>)}
-                      </select>
-                    </Field>
-                    <DirectionField kind="finding" id={`rec-rel-${c.channel}`} name="relation" />
-                  </>
-                )}
-              </ActionForm>
+              <RecruitmentResponseForm action={recordResponseFinding.bind(null, ideaId, expId)} channel={c.channel} assumptions={sortedAssumptions} />
             </details>
           ))}
         </div>
@@ -254,11 +206,7 @@ export function RecruitmentFunnel({
                   {e.quantity > 0 && !reversed.has(e.id) && view.available && (
                     <details>
                       <summary className="text-link">Tegenboeken</summary>
-                      <ActionForm action={reverseRecruitmentEntry.bind(null, ideaId, expId, e.id)} submitLabel="Tegenboeken" submitClass="btn white sm">
-                        <Field name="note" id={`rev-${e.id}`} label="Reden" required>
-                          <input className="field" minLength={5} maxLength={500} />
-                        </Field>
-                      </ActionForm>
+                      <RecruitmentReverseForm action={reverseRecruitmentEntry.bind(null, ideaId, expId, e.id)} entryId={e.id} />
                     </details>
                   )}
                 </li>
