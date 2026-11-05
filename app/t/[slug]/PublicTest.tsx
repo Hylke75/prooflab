@@ -15,7 +15,54 @@ type Props = {
   honestReveal: string;
   consentText: string;
   price: { label: string; amount: number; period: string } | null;
+  // Fase 2 · punt 4: optionele terugbetaalbare aanbetaling (alleen als Mollie is ingesteld). lines = de eerlijke tekst.
+  deposit?: { amount: number; lines: string[] } | null;
 };
+
+const euro = (n: number) => `€ ${n.toLocaleString("nl-NL", { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
+
+// De betaalstap: eerst de eerlijke uitleg, dan e-mailadres en een bevestiging, daarna door naar Mollie.
+function DepositForm({ slug, live, deposit }: { slug: string; live: boolean; deposit: { amount: number; lines: string[] } }) {
+  const [email, setEmail] = useState("");
+  const [agree, setAgree] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <form
+      className="tp-deposit"
+      style={{ textAlign: "left", maxWidth: 460, margin: "18px auto 0", borderTop: "1px solid var(--line)", paddingTop: 16 }}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setError(null);
+        if (!agree) return setError("Bevestig dat je begrijpt dat dit een terugbetaalbare aanbetaling is.");
+        if (!live) return setError("Voorbeeld: in een voorbeeld wordt niet betaald.");
+        setBusy(true);
+        try {
+          const hp = (e.currentTarget.elements.namedItem("website") as HTMLInputElement).value;
+          const res = await fetch(`/api/t/${slug}/pay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, agree: true, website: hp }) });
+          const j = (await res.json().catch(() => ({}))) as { ok?: boolean; checkoutUrl?: string; message?: string };
+          if (j.ok && j.checkoutUrl) {
+            window.location.href = j.checkoutUrl;
+            return;
+          }
+          setError(j.message ?? "De betaling kon niet worden gestart.");
+        } catch {
+          setError("De betaling kon niet worden gestart. Probeer het later opnieuw.");
+        }
+        setBusy(false);
+      }}
+    >
+      <h2 style={{ fontSize: 20, margin: "0 0 6px" }}>Reserveer met een terugbetaalbare aanbetaling van {euro(deposit.amount)}</h2>
+      {deposit.lines.map((l) => <p key={l} style={{ fontSize: 14, margin: "4px 0" }}>{l}</p>)}
+      <label className="field-label" htmlFor="tp-dep-email">E-mailadres</label>
+      <input className="field" id="tp-dep-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+      <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" style={{ position: "absolute", left: -9999 }} />
+      <label className="check-row"><input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} /> Ik begrijp dat het product nog niet bestaat en dat ik het volledige bedrag terugkrijg.</label>
+      {error && <div className="form-error" role="alert">{error}</div>}
+      <button className="btn primary" style={{ width: "100%", marginTop: 8 }} disabled={busy}>{busy ? "Even geduld…" : `Reserveer met aanbetaling (${euro(deposit.amount)})`}</button>
+    </form>
+  );
+}
 
 export function PublicTest(p: Props) {
   const [step, setStep] = useState<"offer" | "reveal" | "done">("offer");
@@ -72,6 +119,7 @@ export function PublicTest(p: Props) {
           <h1 style={{ fontSize: 34 }}>Bedankt voor je interesse.</h1>
           <p>{p.honestReveal}</p>
           {p.revealMessage && <p style={{ fontSize: 14 }}>{p.revealMessage}</p>}
+          {p.deposit && <DepositForm slug={p.slug} live={p.live} deposit={p.deposit} />}
           {p.collectEmail ? (
             <form
               onSubmit={async (e) => {

@@ -73,10 +73,12 @@ export type MetricFit = { ok: boolean; reason?: string; suggestedType?: Experime
 
 export function metricFitsAssumption(
   kind: AssumptionKind,
-  test: { type: string; metric_label: string; metric_numerator: string; decision_rule?: string | null },
+  test: { type: string; metric_label: string; metric_numerator: string; decision_rule?: string | null; success_metric?: string | null },
 ): MetricFit {
   if (kind === "price") {
     if (test.type === "pricing") return { ok: true };
+    // Fase 2 · punt 4: een betaalde aanbetaling of getekende toezegging op de testpagina is geld of een toezegging.
+    if (test.success_metric === "payment" || test.success_metric === "commitment") return { ok: true };
     // De aantalregel telt alleen aanbetalingen en herhaalaankopen: dat is geld.
     if (test.decision_rule === "absolute") return { ok: true };
     if (MONEY_OR_COMMITMENT.test(`${test.metric_label} ${test.metric_numerator}`.toLowerCase())) return { ok: true };

@@ -6,6 +6,7 @@ import { OWN_BASE_RATE_MIN, openMoment } from "@/lib/domain/forecast";
 import { OVERCONFIDENT_GAP, overconfidence } from "@/lib/domain/calibration";
 import { extendedPhase } from "@/lib/domain/extension";
 import { dedupeByPerson } from "@/lib/domain/per-person";
+import { deadlineRisk, deadlineRiskText } from "@/lib/domain/recruitment-funnel";
 
 export type NoteKind = "tip" | "warning" | "question" | "praise";
 export type NoteAudience = "consultant" | "everyone";
@@ -69,6 +70,9 @@ export type CoachFacts = {
     guide: string[];
     // The assumption the experiment tests (optional for callers that do not know it).
     assumptionId?: string | null;
+    // Fase 2 · punt 5: geplande gesprekken (afspraken nog niet gehouden) uit de wervingsregistratie en de agenda.
+    // Ontbreekt bij oudere aanroepers en zonder registratie: dan rekent test_pace zoals voorheen met alleen n.
+    planned?: number;
   }[];
   interviews: { isAcquaintance: boolean }[];
   // interviewId: om per persoon te tellen (fase B0, punt 1); zonder interview telt elke waarneming apart.
@@ -95,6 +99,8 @@ export type CoachFacts = {
   // Golf B, punt 6: of het dossier een beslisregel heeft (undefined = onbekend; dan blijft de regel stil).
   decisionRule?: { defined: boolean; locked: boolean };
   outreach: { replies: number; latestReplyAt: string | null; latestImportAt: string | null };
+  // Fase 2 · punt 4: betaalde aanbetalingen die nog niet zijn terugbetaald (undefined = onbekend; dan blijft de regel stil).
+  depositsOutstanding?: number;
 };
 
 const DAY = 86_400_000;
@@ -238,18 +244,34 @@ export const RULES: Record<string, Rule> = {
     };
   },
 
+  // Fase 2 · punt 5: één regel voor tempo en deadline (geen aparte melding naast deze). Gehouden + gepland tegen de
+  // minimale steekproef en de eerste van einddatum en beslisdatum. Zonder planning en beslisdatum precies het oude tempo.
   test_pace: (f, base) =>
     f.experiments.flatMap((e) => {
-      if (e.state !== "live" || e.minSample <= 0 || e.n >= e.minSample) return [];
-      const p = projectedSample(e, f.now);
-      if (!p || p.elapsedDays < 2 || p.projected >= e.minSample) return [];
+      if (e.state !== "live") return [];
+      const r = deadlineRisk({
+        state: e.state,
+        held: e.n,
+        planned: e.planned ?? 0,
+        minSample: e.minSample,
+        startedAt: e.startedAt,
+        endsAt: e.endsAt,
+        decisionDeadline: f.decisionDeadline,
+        now: f.now,
+      });
+      const text = deadlineRiskText(r, e.type);
+      if (!text) return [];
       return [
         {
           code: `test_pace:${e.id}`,
           kind: "warning" as const,
-          title: `"${short(e.title, 60)}" haalt de steekproef waarschijnlijk niet`,
-          body: `In ${Math.floor(p.elapsedDays)} dagen kwamen ${e.n} deelnemers; in dit tempo zijn het er rond ${p.projected} van de minimaal ${e.minSample} op de einddatum. Werf nu extra via een ander kanaal, anders eindigt de test onbeslist.`,
-          href: `${base}/experiments/${e.id}`,
+          title: r.level === "missed" ? `"${short(e.title, 60)}": de deadline is verstreken` : `"${short(e.title, 60)}" haalt de steekproef waarschijnlijk niet`,
+          body: `${text} ${
+            r.level === "missed"
+              ? "Rond af (met reden) of verleng bewust; een uitspraak onder de steekproef telt niet mee."
+              : "Werf nu extra via het kanaal met de beste respons (zie Werving op de testpagina), anders eindigt de test onbeslist."
+          }`,
+          href: `${base}/experiments/${e.id}#werving`,
           audience: "consultant" as const,
         },
       ];
@@ -352,6 +374,20 @@ export const RULES: Record<string, Rule> = {
       title: left < 0 ? "De besluitdatum is verstreken" : left === 0 ? "Vandaag is de besluitdatum" : `Besluitdatum over ${plural(left, "dag", "dagen")}`,
       body: "Er is nog geen besluit vastgelegd. Plan de besluitsessie met de opdrachtgever en zorg dat Learning Cards en Reality Check vooraf klaar zijn.",
       href: `${base}/evidence`,
+      audience: "consultant",
+    };
+  },
+
+  // Fase 2 · punt 4: op de testpagina is volledige terugbetaling beloofd. Na het besluit herinnert de coach daaraan.
+  deposits_refund: (f, base) => {
+    const n = f.depositsOutstanding ?? 0;
+    if (n <= 0 || f.decisions.length === 0) return null;
+    return {
+      code: "deposits_refund",
+      kind: "warning",
+      title: `${plural(n, "aanbetaling", "aanbetalingen")} nog niet terugbetaald`,
+      body: "Er is een besluit vastgelegd. Op de testpagina is beloofd dat elke aanbetaling volledig wordt terugbetaald: doe dat nu bij de test (Terugbetalen of Alles terugbetalen).",
+      href: `${base}/experiments`,
       audience: "consultant",
     };
   },
@@ -583,7 +619,7 @@ export const RULE_LABELS: Record<string, string> = {
   single_secondary_source: "Eén secundaire bron",
   opinions_no_behaviour: "Veel meningen, geen gedrag",
   critical_untested: "Kritieke aanname niet getest",
-  test_pace: "Steekproef niet op tempo",
+  test_pace: "Steekproef of deadline in gevaar",
   interview_hypothetical: "Hypothetische interviewvragen",
   survey_suggest: "Enquête voorstellen",
   acquaintances_majority: "Vooral bekenden geïnterviewd",
@@ -603,6 +639,7 @@ export const RULE_LABELS: Record<string, string> = {
   sprint_behind: "Sprint loopt achter",
   no_customer_voice: "Stem van de klant ontbreekt",
   outreach_unimported: "LinkedIn-antwoorden niet opgenomen",
+  deposits_refund: "Aanbetalingen terugbetalen",
   praise_first_behaviour: "Eerste klantgedrag (compliment)",
   praise_prereg: "Test vooraf vastgelegd (compliment)",
   ai: "AI-coach",
@@ -631,7 +668,7 @@ export const NOT_DONE: Record<string, string> = {
   single_secondary_source: "We zien nog geen tweede onafhankelijke of primaire bron bij deze bevinding(en).",
   opinions_no_behaviour: "We zien nog geen waargenomen klantgedrag (een aanvraag, aanmelding of aanbetaling).",
   critical_untested: "We zien nog geen test of nieuwe status voor deze kritieke aanname.",
-  test_pace: "We zien nog geen extra deelnemers: in dit tempo haalt de test de steekproef nog niet.",
+  test_pace: "We zien nog niet genoeg extra deelnemers of geplande gesprekken: in dit tempo haalt de test de steekproef niet voor de deadline.",
   interview_hypothetical: "We zien nog geen aangepaste gespreksleidraad: er staan nog hypothetische vragen in.",
   survey_suggest: "We zien nog geen enquête of extra datapunten bij deze aanname.",
   acquaintances_majority: "We zien nog geen extra gesprekken buiten je eigen netwerk.",
@@ -651,6 +688,7 @@ export const NOT_DONE: Record<string, string> = {
   sprint_behind: "We zien nog niet dat het dossier de sprintweek heeft ingehaald.",
   no_customer_voice: "We zien nog geen bron met de stem van de klant (review, forum, interview of enquête).",
   outreach_unimported: "We zien nog geen opgenomen LinkedIn-antwoorden bij de bronnen.",
+  deposits_refund: "We zien nog betaalde aanbetalingen die niet zijn terugbetaald.",
   assumptions_early: "We zien nog geen aannames in het dossier.",
 };
 

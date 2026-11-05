@@ -11,7 +11,10 @@ Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van e
 | Migraties `integrity` (29-10), `prediction` en `coach_and_signals` (3-11) toepassen en migratiegeschiedenis rechtzetten | Zonder deze migraties werken testpagina's, inloglinks, sprints, rapport delen, voorspellingen, coach en koppelingen niet tegen de live database | Claude, na bevestiging in Supabase |
 | Migratie `20261114090000_fase1_weergave.sql` toepassen (Snel en Grondig) | Zonder de migratie staat elk dossier op Grondig en kan de stand niet worden bewaard; standaardwaarden worden zonder `defaulted_fields` opgeslagen | Claude, na bevestiging in Supabase |
 | Migratie `20261115090000_interviews_import.sql` toepassen (interviews importeren, thema's, Fathom-sleutel) | Zonder de migratie meldt het importscherm dat de database moet worden bijgewerkt; plakken blijft werken, thema's en "X van N" zijn niet beschikbaar, de rol Betaler kan niet worden opgeslagen | Claude, na bevestiging in Supabase |
+| Migratie `20261117090000_fase2_werving.sql` toepassen (werving bijhouden) | Zonder de migratie meldt de testpagina dat de wervingsregistratie nog niet beschikbaar is; de trechter toont dan alleen interviews of metingen, "Leg vast als bevinding" en campagnes koppelen werken niet | Claude, na bevestiging in Supabase |
 | Optioneel: `FATHOM_ENABLED=1` (Vercel) en een Fathom-API-sleutel op `/app/status` | Opnames rechtstreeks uit Fathom kiezen; zonder koppeling werkt importeren via een bestand | Hylke |
+| Migratie `20261116090000_fase2_testen.sql` toepassen (testen uitvoeren) | Zonder de migratie kent de Test Card alleen "aanmelding" en melden aanbetalingen, toezeggingen en afspraken dat de database moet worden bijgewerkt | Claude, na bevestiging in Supabase |
+| Optioneel: `SECRETS_ENCRYPTION_KEY` + `MOLLIE_ENABLED=1` (Vercel) en een Mollie-sleutel op `/app/status` | Terugbetaalbare aanbetalingen; zonder: "Mollie niet ingesteld", betaalstap niet te kiezen | Hylke |
 | Auth-hook "Before user created" → `public.hook_before_user_created` (Authentication → Hooks) | Registratie alleen op uitnodiging, ook bij directe aanroepen van Supabase Auth | Hylke |
 | E-mailsjabloon "Magic Link": link naar `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next={{ .RedirectTo }}` | Uitnodigingen werken dan op elk apparaat | Hylke |
 | Eigen adres of domein op de toegangslijst (`insert into public.signup_allowlist (entry) values ('naam@bureau.nl')`) | Registratie staat dicht; consultants hebben een plek op de lijst nodig | Claude of Hylke |
@@ -799,5 +802,301 @@ de migratie werkt de app zoals voorheen en meldt het importscherm dat de databas
   verkennende gesprekken als ontdekkingsbewijs (`hasDiscoveryEvidence`, alleen de volgorde van testadvies) en in N
 - 🟡 Niet gedaan in deze omgeving: e2e (Playwright) en visuele controle op 1440/390 px met login (geen
   Supabase-toegang); de 390px-weergave is via de opmaakregels in `components/experiments/interviews.css` geborgd.
+  Migratie nog toepassen
+
+## Fase 2 · punt 5: Werving bijhouden (5 november)
+
+Per test (vooral interviewtests, ook andere tests met werving) en per kanaal de trechter **benaderd → gereageerd →
+afspraak → gesprek gehouden**, de respons per kanaal met Wilson-interval, "Leg vast als bevinding" en een melding als
+de deadline in gevaar komt. Vijf commits op branch `fase2-werving` en één migratie
+`20261117090000_fase2_werving.sql` (**nog niet toegepast**; idempotent, twee keer uitgevoerd in de DB-test; zonder de
+migratie werkt de app zoals voorheen, zie terugval).
+
+- ✅ **Migratie**: `recruitment_entries` (datum, kanaal, stap, aantal, notitie, `corrects_id`) met RLS (lezen en
+  toevoegen alleen `can_write_idea`: notities kunnen over personen gaan), `audit_row` en `guard_recruitment_entry`:
+  alleen toevoegen (geen update/delete-rechten, en de guard weigert ook de beheerder; alleen een cascade van dossier
+  of test haalt regels weg); een correctie is een nieuwe regel met negatief aantal en reden (min. 5 tekens), een
+  tegenboeking hoort bij dezelfde test, hetzelfde kanaal en dezelfde stap, en netto komt een stap nooit onder nul
+  (advisory lock tegen gelijktijdige correcties). Stappen handmatig: benaderd, gereageerd, afspraak (afspraak alleen
+  bij interviewtests); "gesprek gehouden" nooit handmatig. Vanaf een goedgekeurde test, geen datum in de toekomst.
+  `recruitment_campaigns` (Expandi-campagne ↔ test, één campagne per dossier zodat contacten nooit in twee tests
+  tellen; RLS team-only, audit). Brontype `recruitment_log` ("Eigen wervingsregistratie") in de check op `sources`;
+  nooit `is_primary`; het brontype van een bron kan niet naar of van dit type; guards op `claim_sources` en `claims`
+  weigeren `official_statistic` en `primary_document` bij zo'n bron. Geen bestaande functie vervangen; `revoke
+  execute` op alle nieuwe triggerfuncties
+- ✅ **Kanalen**: één lijst, `CHANNELS` uit `lib/domain/tracking.ts` (dezelfde als `utm_source` en
+  `interviews.recruited_via`; ook in de DB-check). Expandi telt onder "Outreach (e-mail/DM)", agenda-afspraken (nog
+  zonder kanaal) onder "Direct / onbekend"
+- ✅ **Rekenen** (`lib/domain/recruitment-funnel.ts`, puur): `buildFunnel` met herkomst per getal (handmatig netto;
+  Expandi = unieke gepseudonimiseerde contacten, benaderd = verzoek/bericht/acceptatie/antwoord, gereageerd =
+  antwoord; agenda = laatste boeking per persoon, geannuleerd telt niet; gehouden = echte gesprekken met toestemming
+  per `recruited_via`, bij andere tests "deelgenomen" uit de meting per kanaal). `responseRate` (Wilson, geen respons
+  bij 0 benaderd of meer reacties dan benaderd, met waarschuwing). Gepland = toekomstige agenda-afspraken + (overige
+  afspraken − gehouden). `deadlineRisk`: gehouden + gepland + tempo (vanaf 2 dagen looptijd) tegen `min_sample` en
+  de eerste van einddatum en beslisdatum; zonder tempo alleen een risico binnen 7 dagen; `missed` na de deadline
+- ✅ **Loader** (`lib/recruitment-data.ts`): `loadRecruitment` (gepagineerde outreach-gebeurtenissen, campagnes die
+  nog aan geen test hangen), `plannedByExperiment` (coach), `loadDeadlineRisks` (Overzicht).
+  **`loadBookedAppointments(experimentId)`** staat in `lib/recruitment-data.ts` en geeft nu een lege lijst: wordt na
+  samenvoegen met punt 4 gekoppeld aan `test_bookings` (vorm `BookedAppointment` in `lib/domain/recruitment-funnel.ts`
+  = `person_key`, `status`, `booked_at`, `scheduled_for`)
+- ✅ **Testpagina** (`components/experiments/RecruitmentFunnel.tsx`, `recruitment-actions.ts`), alleen het team, vanaf
+  goedgekeurd: tabel per kanaal met de bron onder elk getal en de respons; "+ Werving registreren" (toevoegen of
+  correctie met reden), "Expandi-campagne koppelen" (alleen campagnes die echt in de ontvangen gebeurtenissen staan),
+  per kanaal "Leg vast als bevinding". Snel: trechter, percentage, registreren en vastleggen; Grondig: ook het
+  95%-interval en de registratie met "Tegenboeken". Tabel scrolt zelf op 390 px
+- ✅ **Bevinding**: de server rekent de respons opnieuw uit (nooit getallen uit het formulier) en maakt een bron
+  "Eigen wervingsregistratie" (uitgever "ProofLab (eigen wervingsregistratie)", niet primair) met als fragment de
+  telling zelf: "Eigen wervingsregistratie, test "…". Kanaal X levert Y% respons (n = …, periode …). Benaderd: …;
+  gereageerd: …; 95%-interval (Wilson): … tot …. Herkomst …". Bevinding = "Kanaal X levert Y% respons (n = …, periode
+  …)." via `insertClaimWithQuote`; het citaat staat letterlijk in het fragment, dus de citaatcontrole is exact. Soort
+  informatie "Waargenomen handeling" (eigen meting); de status volgt uit `recomputeClaim` (één eigen bron = schatting).
+  Optioneel direct gekoppeld aan een aanname (kanaal-aannames eerst) met de richting (bestaand patroon
+  `assumption_claims`); anders later via Aannames. Het brontype is niet handmatig te kiezen in het bronformulier
+- ✅ **Deadline in gevaar**: één regel, drie plekken. Testpagina: melding "Deadline in gevaar" / "Deadline verstreken"
+  onder de kerngetallen; Overzicht: één compacte regel "Werving: …" (de test die het eerst in gevaar komt, "en N
+  andere tests"), geen tweede volgende stap; coach: `test_pace` gebruikt nu `deadlineRisk` met geplande gesprekken en
+  de beslisdatum (zelfde code `test_pace:<test>`, dus nooit een dubbele melding; zonder planning en beslisdatum
+  precies het oude tempo). Wervingsregels tellen mee in de vingerafdruk van de coach (alleen als ze er zijn)
+- ✅ **Tests**: unit `recruitment-funnel` (trechter, correctie, Expandi-uniek, agenda, andere tests, waarschuwing,
+  Wilson, claimtekst + exacte citaatcontrole, brontyperegels, deadline in alle varianten, gelijk aan het oude tempo),
+  `coach-rules` (test_pace met gepland, beslisdatum, verstreken), `source-defaults` bijgewerkt; DB
+  `tests/db/fase2-werving.test.ts` (8 tests: idempotent, RLS team/opdrachtgever/buitenstaander, alleen toevoegen,
+  correctie en netto ≥ 0, vaste regels, één campagne per dossier + audit, brontype-guards, cascade). Typecheck, lint,
+  `vitest run tests/unit` (1291) en `scripts/test-db.sh` met eigen database `prooflab_fase2_werving` (25 bestanden,
+  159 tests) groen
+- **UI-teststappen** (dossier "AI-communicatie voor sportclubs", na het toepassen van de migratie):
+  1. Open de lopende interviewtest (Testen → test). Onder de Test Card staat de kaart **Werving** met "Nog niets
+     geregistreerd" (of de gehouden gesprekken per kanaal, bron "interviews").
+  2. "+ Werving registreren": vandaag, LinkedIn (organisch), Benaderd, 30 → Vastleggen. Daarna Gereageerd 7 en
+     Afspraak 4. De rij toont 30 / 7 / 4 / gehouden met "handmatig" eronder en respons 23%.
+  3. Correctie: Benaderd 2 als "Correctie" zonder reden → foutmelding; met reden "dubbel geteld" → benaderd 28. In
+     Grondig staat onder "Registratie" de oorspronkelijke regel én de correctie; "Tegenboeken" vraagt een reden.
+  4. Zijn er Expandi-gebeurtenissen met een campagnenaam: "Expandi-campagne koppelen" → kies de campagne. Onder
+     Outreach staan benaderd en gereageerd met "Expandi".
+  5. "Leg vast als bevinding: LinkedIn (organisch)" → kies een kanaal-aanname, "Bevestigt de aanname" → de melding
+     noemt de bevinding en "letterlijk teruggevonden". Markt → Bronnen toont de bron "Eigen wervingsregistratie"; de
+     bevinding staat als schatting; Aannames toont de koppeling.
+  6. Bij een lopende test met minder gehouden + geplande gesprekken dan de minimale steekproef en een einddatum of
+     beslisdatum binnen een week (of een tempo dat de steekproef niet haalt): de testpagina toont "Deadline in gevaar", Overzicht één regel "Werving: …", de coach één
+     notitie "… haalt de steekproef waarschijnlijk niet" (na "Laat de coach meekijken").
+  7. Snel: geen interval, geen registratielijst; Grondig: wel. 390 px: alleen de tabel scrolt.
+  8. Als opdrachtgever: geen kaart Werving en geen melding (alleen het team ziet de registratie).
+- **Open punten**: (1) `loadBookedAppointments` koppelen aan `test_bookings` na samenvoegen met punt 4 (en dan het
+  kanaal van een boeking vastleggen zodra punt 4 dat kent; nu "Direct / onbekend"); (2) verkennend klantonderzoek
+  (StudyView) toont de trechter nog niet; (3) een verlopen afspraak zonder ingevoerd gesprek telt als gepland (bewuste,
+  zichtbare keuze; met agendadata uit punt 4 kan een no-show apart worden geteld); (4) niet gedaan in deze omgeving:
+  e2e (Playwright), visuele controle op 1440/390 px met login en `next build` (Turbopack volgt de gedeelde
+  `node_modules`-symlink van de worktree niet; de webpack-build faalt al vóór deze wijziging op `node:crypto` in
+  `ExperimentBuilder`); (5) migratie nog toepassen
+
+## Fase 2 · punt 6: Nederlandse databronnen (5 november)
+
+CBS StatLine breder (vaste catalogus en generieke client), "Haal uit CBS" bij een factor in het marktpotentieel, en
+sectorregisters als CSV met de regel dat een register alleen als primaire bron telt wanneer het origineel erbij ligt
+en de aantallen daarin letterlijk staan. Vijf commits op branch `fase2-databronnen`. **Geen migratie**: alles
+hergebruikt `sources`, `source_excerpts`, `claims`, `claim_sources` en `sizing_factors`, dus het werkt meteen tegen de
+live database.
+
+- ✅ **CBS-catalogus** (`lib/integrations/cbs-catalog.ts`, puur, ook in de browser bruikbaar): zeven tabellen, elk op
+  5 november 2026 gecontroleerd tegen de live OData v4-API (`datasets.cbs.nl/odata/v1/CBS/{tabel}`: Dimensions,
+  MeasureCodes, alle codelijsten en een echte waarde voor het standaardonderwerp):
+
+  | Tabel | Titel (CBS) | Dimensies | Onderwerpen in ProofLab |
+  |---|---|---|---|
+  | `03759ned` | Bevolking op 1 januari en gemiddeld; geslacht, leeftijd en regio | burgerlijke staat, geslacht, leeftijd (per jaar), regio (NL, landsdeel, provincie, COROP, gemeente) | bevolking op 1 januari |
+  | `70072ned` | Regionale kerncijfers Nederland | regio | bevolking (totaal, geslacht, 6 leeftijdsgroepen), particuliere huishoudens (aantal en %), bedrijfsvestigingen (totaal en 8 sectorgroepen) |
+  | `71486ned` | Huishoudens; samenstelling, grootte, regio, 1 januari | leeftijd referentiepersoon, regio | 13 onderwerpen (samenstelling en grootte) |
+  | `81589NED` | Bedrijven; bedrijfstak | SBI 2008 (tot 5 cijfers), kwartaal; landelijk | totaal, 10 grootteklassen (werkzame personen), rechtsvorm |
+  | `81578NED` | Vestigingen van bedrijven; bedrijfstak, regio | SBI 2008 (tot 5 cijfers), provincie/COROP/grote gemeenten | vestigingen |
+  | `81575NED` | Vestigingen van bedrijven; bedrijfstak, gemeente | SBI-sectie (A–U), gemeente | vestigingen |
+  | `81644NED` | Vestigingen van bedrijven; grootte, rechtsvorm, bedrijfstak, regio | SBI-sectie (A–U), provincie/COROP | vestigingen, 4 grootteklassen, 4 rechtsvormen |
+
+  Alleen onderwerpen in "aantal" of "%" (geen bedragen in "1 000 euro" of "x 1 000"). Bedrijven naar SBI én
+  grootteklasse én regio bestaat bij CBS alleen op sectieniveau (`81644NED`); fijnere SBI-codes zijn er landelijk
+  (`81589NED`, met grootteklasse) of regionaal zonder grootteklasse (`81578NED`). Een tabel die niet zo is
+  gecontroleerd zou `verified: null` krijgen en in de interface als "Niet geverifieerd" verschijnen; dat is nu bij
+  geen enkele tabel het geval. Opnieuw controleren: `CBS_LIVE=1 npx vitest run tests/unit/cbs-live.test.ts`
+- ✅ **Generieke client** (`lib/integrations/cbs.ts`, server-only): `fetchCbsMetadata` (dimensies, codes, perioden
+  nieuwste eerst, toegestane onderwerpen; meldt `tabel_gewijzigd` als CBS de indeling verandert) en `fetchCbsCell`
+  (één onderwerp, één code per dimensie, een periode of "meest recente periode met een waarde"; elke code wordt eerst
+  tegen de codelijst gecontroleerd). Geen waarde (geheim, niet van toepassing) blijft `null` met de reden in gewone
+  taal, nooit een getal. Letterlijke regel (`cbsCellLine`) met de titels zoals CBS ze levert; peildatum uit de periode
+  (`2026JJ00` → 2026, of 2026-01-01 bij een stand op 1 januari). Alleen `datasets.cbs.nl` via `fetchPublic`
+  (SSRF-veilig, time-out 10 s), één nieuwe poging bij een netwerkfout
+- ✅ **Onderzoeksrunner**: de automatische stap (81589NED, bedrijven per passende branche en grootteklasse bij een
+  omvangvraag met verwacht brontype officiële statistiek) loopt via de nieuwe client; tabelregel en gedrag zijn gelijk
+  (bestaande fragmenten worden hergebruikt). Een gewijzigde tabel wordt apart gemeld. Bewaren van een officiële bron
+  staat in `lib/official-source.ts` (gedeeld met "Haal uit CBS"; zoekt nu ook op brontype)
+- ✅ **"Haal uit CBS" bij een factor** (`components/research/CbsFactorPicker.tsx`, `lib/cbs-factor.ts`,
+  `app/app/ideas/[id]/research/data-actions.ts`): knop bij elke factor met een aantal of percentage (alleen voor het
+  onderzoeksteam). Paneel (drawer, sluit met Escape): tabel kiezen (met "Gecontroleerd op …"), onderwerp in de eenheid
+  van de factor, periode, regio (gegroepeerd en doorzoekbaar) en filters → "Toon waarde" met de letterlijke tabelregel →
+  "Opslaan". De server haalt de waarde opnieuw op en maakt: bron (officiële statistiek, uitgever CBS, URL naar de
+  StatLine-tabel), fragment = de tabelregel, bevinding via `insertClaimWithQuote` (dus `checkQuote` en
+  `recomputeClaim`; `quote_check` exact → geverifieerd) met regio, peildatum, periode, eenheid en "bewijst niet", en
+  zet de factor op de waarde met jaar en regio. Dezelfde regel opnieuw opslaan hergebruikt bron, fragment en
+  bevinding. CBS onbereikbaar: eerlijke melding met "vul de waarde zelf in en koppel een bron onder Bronnen" en
+  opnieuw proberen. Telt vanzelf als "officiële statistiek" in het dossierlabel (getest)
+- ✅ **Sectorregisters** (`lib/domain/sector-register.ts` puur, `lib/sector-register-data.ts`,
+  `components/research/SectorRegisterPanel.tsx`, sjabloon op `/app/ideas/[id]/research/sectorregister-sjabloon.csv`):
+  - Sjabloon met de kolommen `uitgever, bron_url, peildatum, categorie, grootteklasse, regio, aantal` en optioneel
+    `opmerking`; alleen kolomkoppen, bewust zonder voorbeeldregels (geen verzonnen aantallen). Uitleg per kolom in Grondig
+  - Import: puntkomma, komma of tab; verplichte velden, hele getallen (1234 of 1.234), geldige http(s)-URL, peildatum
+    (2025, 2025-06, 2025-06-30 of 30-06-2025, niet in de toekomst). Fouten per regel met het echte regelnummer, al in de
+    browser vóór het uploaden; de server controleert opnieuw en importeert bij één fout niets. Per uitgever + bron +
+    peildatum één bron (`dataset_upload`, niet primair) met elke regel als letterlijk fragment; dezelfde inhoud
+    opnieuw importeren hergebruikt de bron
+  - Origineel bijvoegen: bestand (PDF, DOCX, TXT, MD, CSV; uitgelezen zoals bij rapportimport) of "Haal bronpagina op"
+    (SSRF-veilig). Per regel zoekt ProofLab een passage (één regel, of tot drie regels voor tabelcellen) waarin de
+    categorie én het aantal letterlijk staan. Alleen die passages worden bewaard, als fragmenten van een tweede bron
+    (`primary_document`, `is_primary`). Per regel "Teruggevonden" of "Nee"
+  - Koppelen aan een factor (aantal): één regel die in het origineel is teruggevonden → bevinding op de passage uit het
+    origineel (primair document → geverifieerd, telt als primaire bron). Zonder origineel of zonder teruggevonden
+    aantal → bevinding op de registerregel als schatting van derden (status schatting, telt niet als officieel of
+    primair). Meerdere regels → een uitdrukkelijk door ProofLab berekende optelling als fragment ("geen tekst van de
+    uitgever") en een bevinding van het type aanname: altijd schatting. De regel staat in `registerClaimPlan` en is
+    getest, ook in het dossierlabel
+  - **Keuze opslag**: geen tabellen `registers`/`register_rows`, maar de bestaande bronnen en fragmenten. Redenen: de
+    citaatcontrole, statusberekening, RLS, audit, verwijderen met het dossier en de bronnenlijst werken dan ongewijzigd;
+    het origineel is een gewone primaire bron; er is geen migratie nodig, dus niets breekt zolang de live database
+    achterloopt. De structuur zit in een vast, terug te lezen regelformaat (`registerLine`/`parseRegisterLine`), en een
+    register herkent ProofLab aan een vaste markering in de toegangsnotitie. Een toekomstige API-koppeling (bijv. een
+    bondsregister) roept `storeRegister(…, { origin: "api" })` aan met dezelfde regels. Nadeel: geen kolomfilters in de
+    database; worden registers groot of gedeeld tussen dossiers, dan alsnog aparte tabellen
+- ✅ **Tests**: `cbs-catalog` (catalogus, URL- en filterbouw, peildatum, eenheden, metadata en waarde op opgenomen
+  API-antwoorden in `tests/unit/fixtures/cbs/` (2 × ~4,5 KB), onbekend/geheim, gewijzigde tabel, ongeldige code, nieuwe
+  poging), `sector-register` (sjabloon, validatie per regel, regelnummers, fragment, de primair-regel),
+  `databronnen-opslaan` (CBS opslaan → bron/fragment/bevinding gecontroleerd/factor, hergebruik, foutmeldingen;
+  register zonder en met origineel, optelling, dossierlabel), bestaande `cbs` aangepast (metadata-controle), en
+  `cbs-live` (alleen met `CBS_LIVE=1`, tegen de live API; op 5 november groen). Typecheck, lint, alle unittests en de
+  DB-tests (eigen database `prooflab_fase2_data`) groen
+
+**UI-teststappen** (dossier "AI-communicatie voor sportclubs", als lid van het onderzoeksteam):
+
+1. Markt › Marktpotentieel, scenario Realistisch. Bij "Relevante organisaties in het gebied": **Haal uit CBS** → kies
+   "Vestigingen van bedrijven; bedrijfstak, regio" (81578NED) → zoek bij Bedrijfstak "sport" en kies "931 Sport" (of
+   "9312 Buitensport") → Regio "Nederland" → Periode "Meest recente periode met een waarde" → **Toon waarde**. Je ziet
+   het aantal en de letterlijke tabelregel. **Opslaan** → de factor krijgt de waarde, jaar en regio, en de pil "Bron:
+   Geverifieerd". Onder Bronnen staat "CBS StatLine 81578NED" (officiële statistiek) met de regel als fragment.
+2. Nogmaals opslaan met dezelfde keuzes: geen tweede bron of bevinding ("hergebruikt").
+3. Kies een combinatie zonder waarde (bijv. een oude periode bij een nieuwe gemeente): "Onbekend" met de reden van CBS.
+4. Bij "Deel met het probleem en budget" toont "Haal uit CBS" alleen de regionale kerncijfers (percentages).
+5. Sectorregister: **Download CSV-sjabloon**, vul twee regels in (bijv. aantallen clubs per sport van een bond, met
+   echte bron-URL), importeer. Fout in een regel → melding met het regelnummer, niets geïmporteerd.
+6. Zonder origineel: kies één regel, factor "Realistisch scenario: Relevante organisaties in het gebied", **Koppel aan
+   factor** → bevinding "Schatting". Voeg het origineel toe (bestand of **Haal bronpagina op**) → per regel
+   "Teruggevonden"; koppel die regel opnieuw → bevinding "Geverifieerd" op de passage uit het origineel. Twee regels
+   kiezen → optelling, altijd "Schatting".
+7. Het dossierlabel (Overzicht/Rapport) mist niet langer "een officiële statistiek of primaire bron" zodra een CBS- of
+   bevestigde registerbevinding er is.
+
+**Open punten**
+
+- 🟡 Niet gedaan in deze omgeving: e2e (Playwright) en visuele controle op 1440/390 px met login (geen
+  Supabase-toegang)
+- CBS publiceert sinds 2026 ook tabellen naar SBI 2025 (bijv. `86280NED`, `86281NED`); de catalogus gebruikt nog SBI
+  2008 omdat die reeksen langer en regionaal beschikbaar zijn. Overstappen zodra de SBI 2008-tabellen stoppen
+- Een optelling van regels (CBS of register) telt nooit als gecontroleerd, omdat het totaal niet letterlijk in de bron
+  staat; desgewenst later "som van gecontroleerde regels" als aparte, uitgelegde status
+- Leeftijdsgroepen per gemeente komen uit `70072ned` (zes vaste groepen); een eigen leeftijdsband uit `03759ned` zou
+  een optelling van losse jaren zijn en is daarom niet aangeboden
+- Een register hoort bij één dossier; voor gedeelde of grote registers (of een API zoals een bondsregister) liever
+  eigen tabellen met RLS en audit
+- Geen caching van CBS-metadata; elke keuze van een tabel haalt de codelijsten opnieuw op (enkele honderden KB bij
+  gemeenten en SBI-codes)
+
+## Fase 2 · punt 4: Testen uitvoeren in ProofLab (5 november)
+
+Een test uitvoeren zonder ProofLab te verlaten: testpagina uit de Test Card, links per kanaal, automatische
+waarneming per persoon, betaalde intentie via Mollie, geverifieerde toezeggingen en afspraken uit Calendly/Cal.com,
+met de beslisregel op die handelingen. Negen commits op branch `fase2-testen` en één migratie
+`20261116090000_fase2_testen.sql` (**nog niet toegepast**; idempotent, twee keer uitgevoerd in de test). Strengheid
+blijft: vergrendelde criteria, berekende statussen, auditspoor; een AI-bewering telt nooit als klantbewijs.
+
+- ✅ **Testpagina uit de Test Card** (`lib/domain/test-page-generator.ts`, `ExperimentBuilder`): knop "Maak testpagina uit
+  de Test Card" vult kop (aanbod uit de intake, anders de belofte uit "Wij denken dat …"), ondertitel (doelgroep en
+  reden), aanbod, knoptekst (volgt de succesmaat) en bij een prijstest prijspunten rond de intakeprijs (zonder
+  intakeprijs leeg: nooit verzonnen). Deterministisch, zonder AI; alles aanpasbaar; de eerlijkheidscontrole kijkt mee
+  en een lijst zegt waar elk deel vandaan komt
+- ✅ **Linkbouwer** (`ChannelLinkBuilder`): vanaf goedkeuring per kanaal een kant-en-klare link met `utm_source`,
+  optioneel een berichtcode (`utm_content`, zelfde schoonmaakregel als de meting) en een kopieerknop
+- ✅ **Automatische waarneming per persoon** (`lib/domain/action-counts.ts`, `lib/action-counts-data.ts`,
+  `experiment_action_counts`): unieke bezoekers, klikkers, aanmelders, betalers (live), toezeggers en bookers. De
+  systeemwaarneming bij de Learning Card heet expliciet "Waargenomen handeling" (`observations.evidence_type =
+  observed_action`), of "Geverifieerde betaling"/"Geverifieerde toezegging", en noemt de telling per persoon in de
+  toelichting; de Learning Card bewaart `per_person` en `success_metric`. Testpagina: kaart "Per persoon geteld";
+  Bewijs & besluit: pil met het soort bewijs. Eén persoonssleutel = HMAC(TRACKING_SALT, genormaliseerd e-mailadres)
+  (zelfde als `emailHash`, dus vindbaar via een privacyverzoek), voor anonieme bezoekers de bezoekerscode
+- ✅ **Mollie** (`lib/integrations/mollie.ts`, `mollie-flow.ts`, `mollie-server.ts`, `app/api/t/[slug]/pay`,
+  `app/api/webhooks/mollie/[slug]`, `payment-actions.ts`, `DepositsPanel`, `MollieSettings`): optionele stap per test
+  (standaard uit) "Reserveer met een terugbetaalbare aanbetaling van €X" met verplichte eerlijke tekst (product bestaat
+  nog niet, volledige terugbetaling). Server maakt de betaling (API v2, bedrag uit de goedgekeurde configuratie, alleen
+  na een klik, niet als dezelfde persoon al betaalde), redirect terug naar de testpagina, webhook met alleen het id:
+  de server haalt de status zelf op met de sleutel van die werkruimte. Live + paid = Geverifieerde betaling (trede
+  Betaling); terugbetaald/teruggeboekt telt niet meer en blijft zo; testmodus telt nooit. "Terugbetalen", "Alles
+  terugbetalen", "Status bij Mollie verversen"; coachregel `deposits_refund` na een besluit. Sleutel per werkruimte door
+  een eigenaar op `/app/status`, versleuteld met AES-256-GCM (`lib/domain/secret-box.ts`), nooit terug naar de client
+  (alleen "eindigt op …" en test/live). Per betaling alleen Mollie-id, bedrag, valuta, status, modus,
+  persoonssleutel en tijden
+- ✅ **Geverifieerde toezegging** (`lib/domain/commitments.ts`, `commitment-actions.ts`, `CommitmentsPanel`, `/c/[token]`,
+  `app/api/c/[token]`): (a) upload van een getekende intentieverklaring (pdf/png/jpeg/webp, type gecontroleerd aan de
+  inhoud, tot 4 MB) met organisatie en ondertekenaar in de privé bucket `commitment-documents` (alleen het team);
+  (b) persoonlijke link met eenmalige code (14 dagen) waar iemand naam, organisatie, getypte naam en vinkje invult; de
+  database legt tijdstip en gehashte IP vast. Zonder document of akkoord geen telling (database-check
+  `test_commitments_proof`); intrekken kan, verder ligt een toezegging vast
+- ✅ **Afspraken** (`lib/integrations/bookings.ts`, `app/api/webhooks/bookings/[provider]/[token]`, `booking-actions.ts`,
+  `BookingsPanel`): per test een webhookadres met eigen geheime sleutel voor Calendly én Cal.com (één adapter-interface,
+  twee implementaties). Handtekening (Calendly `t=..,v1=..` over `t.body`; Cal.com `X-Cal-Signature-256` over de body)
+  en een tijdsvenster van 5 minuten tegen replay. Geboekt = Waargenomen handeling in `test_bookings` (schema zoals
+  punt 5 het leest); geannuleerd telt niet en een afgespeelde boeking maakt een annulering niet ongedaan
+- ✅ **Beslisregels** (`lib/domain/success-metric.ts`, `test-card.ts`, `experiment-metrics.ts`): de Test Card kiest de
+  succesmaat (aanmelding, betaling, toezegging, afspraak; `hypotheses.success_metric`, vergrendeld via
+  `guard_hypothesis_lock`). Kansregel met unieke betalers/toezeggers/bookers als successen en unieke bezoekers als n;
+  vast aantal ("3 betaalde aanbetalingen") nu ook bij betaling, toezegging en afspraak. Betaling als succesmaat vraagt
+  de betaalstap; bewijsniveau en de controle op prijsaannames volgen de succesmaat
+- ✅ **Privacy** (`lib/domain/test-privacy.ts`): AVG-tekst onderaan de testpagina met naam en contact van de
+  verwerkingsverantwoordelijke; een nieuwe landing-/prijstest gaat pas live als die zijn ingevuld (scherm, server en
+  database-trigger `guard_experiment_go_live`); bestaande tests zonder privacyblok en hervatten na een pauze blijven
+  werken. Nieuwe aanmeldingen 12 maanden (`consentText`, default `retention_until`; bestaande rijen ongewijzigd).
+  `purge_expired_personal_data` wist toezeggingsnamen, getypte naam en gehashte IP en vervangt de persoonssleutel
+  van betalingen en afspraken; `dsr_search` vindt betalingen, afspraken en toezeggingen; `audit_row` bewaart
+  persoonssleutels, namen, codes en paden alleen als md5. Losse `test_events` niet in het auditspoor
+- **Migratie** `20261116090000_fase2_testen.sql`: `hypotheses.success_metric`, `observations.evidence_type` (alleen
+  systeem), `org_payment_settings` (geen policies), `test_payments`, `test_commitments` (+ bucket), `test_booking_hooks`,
+  `test_bookings`, RPC's met de ingest-sleutel (`deposit_checkout`, `register_test_payment`, `mollie_webhook_lookup`,
+  `record_mollie_status`, `get_commitment_invite`, `sign_commitment`, `record_test_booking`), `experiment_action_counts`,
+  `mark_refund_requested`, nieuwe versies van `guard_hypothesis_lock`, `purge_expired_personal_data`, `dsr_search`,
+  `audit_row` (laatste versies letterlijk overgenomen). RLS op alle nieuwe tabellen; triggerfuncties zonder execute.
+  **Terugval zonder migratie**: de app werkt zoals voorheen (zie docs/OPERATIONS.md §14)
+- **Env vars**: `SECRETS_ENCRYPTION_KEY` (32 bytes base64), `MOLLIE_ENABLED=1` (in `.env.example`). Instellen van
+  Mollie, Calendly en Cal.com: `docs/OPERATIONS.md` §14
+- ✅ **Tests**: unit `tests/unit/fase2-testen.test.ts` (33 tests: versleuteling, Mollie-status, webhook met onbekend id
+  telt niets, vervalste webhook verandert niets, terugbetaald blijft terugbetaald, testmodus, handtekeningen
+  Calendly/Cal.com geldig/vervalst/oud, geannuleerde afspraak, per persoon tellen, beslisregel met betalingen (kansregel
+  en vast aantal), generator, linkbouwer, privacy, toezeggingen, coach); DB `tests/db/fase2-testen.test.ts` (10 tests:
+  idempotent, privacy- en betaalstapcontrole bij live gaan, 12 maanden, sleutel alleen eigenaar en nooit leesbaar,
+  dubbele betaling zelfde persoon telt één keer, testmodus/terugbetaald/onbekend id, afspraken met annulering en
+  replay, toezeggingen met document/akkoord/eenmalige link, opschoning, vergrendelde succesmaat, evidence_type alleen
+  systeem). `tsc`, lint, alle unit-tests en alle 25 DB-testbestanden groen
+- **UI-teststappen** (dossier "AI-communicatie voor sportclubs", na de migratie en met testsleutel van Mollie):
+  1. `/app/status` als eigenaar: Mollie-testsleutel plakken → "Verbonden · testmodus", "eindigt op …"
+  2. Testen → nieuwe Test Card, landingpage-test: "Wat telt als succes?" → Betalde aanbetaling; beslisregel Vast aantal,
+     3 van 40; onder Details de betaalstap (€ 10) en verwerkingsverantwoordelijke + contact; "Maak testpagina uit de
+     Test Card" en controleer de voorstellen; opslaan, ter review, goedkeuren, publiceren
+  3. Linkbouwer: berichtcode `post-1`, kopieer de LinkedIn-link, open hem in een privévenster, klik op de knop, vul een
+     e-mailadres in, betaal in de Mollie-testomgeving → terug op de testpagina "Dank je wel"
+  4. Testpagina: "Per persoon geteld" en "Aanbetalingen" (pil Testmodus; telt niet als bewijs). Lokaal: "Status bij
+     Mollie verversen". "Terugbetalen" → status Terugbetaald
+  5. Toezeggingen: upload een pdf met organisatie/naam/e-mail; maak een persoonlijke link en geef akkoord via `/c/…`;
+     dezelfde e-mail twee keer telt één keer; "Intrekken" haalt hem uit de telling
+  6. Afspraken: maak een Cal.com-webhook, zet adres en sleutel in Cal.com, boek en annuleer een afspraak
+  7. Rond af, maak de Learning Card: de waarneming heet "Geverifieerde betaling" (of "Waargenomen handeling") met de
+     telling per persoon; leg een besluit vast → coach "aanbetalingen nog niet terugbetaald" tot "Alles terugbetalen"
+- 🟡 **Open punten**: e2e (Playwright) en visuele controle op 1440/390 px niet gedaan (geen Supabase-toegang); echte
+  Mollie-, Calendly- en Cal.com-aanroepen niet getest (alleen met nep-fetch en nep-handtekeningen). Het bestand van een
+  verlopen toezegging verwijdert het team met een knop (Postgres kan Storage-bestanden niet verwijderen). Bij betaling,
+  toezegging en afspraak telt ProofLab per kanaal alleen het bezoek (de handelingen zijn per persoon geteld, niet per
+  kanaal). Afspraken komen niet via de testpagina binnen: n blijft de unieke bezoekers van de pagina, ook als iemand
+  rechtstreeks via de Calendly-link boekt. De afspraakwebhooks hangen aan `TRACKING_SALT` (bij rotatie opnieuw maken).
   Migratie nog toepassen
 

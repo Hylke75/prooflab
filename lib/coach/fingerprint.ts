@@ -21,6 +21,7 @@ export const FINGERPRINT_LABELS: Record<string, string> = {
   test_events: "Meetgebeurtenissen in tests",
   interviews: "Interviews",
   interviews_real: "Interviews aangegeven als echt gesprek",
+  recruitment_entries: "Wervingsregels",
   observations: "Observaties",
   observations_at: "Laatste observatie",
   learning_cards: "Learning Cards",

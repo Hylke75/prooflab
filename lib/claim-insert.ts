@@ -52,7 +52,8 @@ export async function insertClaimWithQuote(
 ): Promise<InsertClaimResult> {
   const supabase = await supabaseServer();
   // Gebruikerstest B2: wat mensen zelf zeggen (interview, outreach, enquête) is nooit een officiële statistiek.
-  if (v.evidence_type === "official_statistic") {
+  // Fase 2 · punt 5: een eigen wervingsregistratie ook niet, en evenmin een primaire bron.
+  if (v.evidence_type === "official_statistic" || v.evidence_type === "primary_document") {
     const { data: src } = await supabase.from("sources").select("source_type").eq("id", excerpt.source_id).maybeSingle();
     const typeError = evidenceTypeError(src?.source_type, v.evidence_type);
     if (typeError) return { error: typeError };
