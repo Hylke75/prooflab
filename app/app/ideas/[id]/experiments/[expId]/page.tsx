@@ -52,6 +52,7 @@ import { privacyBlock, privacyOf } from "@/lib/domain/test-privacy";
 import { PerPersonCounts } from "@/components/experiments/PerPersonCounts";
 import { DepositsPanel } from "@/components/experiments/DepositsPanel";
 import { CommitmentsPanel } from "@/components/experiments/CommitmentsPanel";
+import { BookingsPanel } from "@/components/experiments/BookingsPanel";
 import { loadActionCounts } from "@/lib/action-counts-data";
 import { asSuccessMetric } from "@/lib/domain/test-page-generator";
 import { loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
@@ -238,6 +239,12 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
           <CommitmentsPanel ideaId={id} expId={expId} open={running} />
         ) : (
           <Detail><CommitmentsPanel ideaId={id} expId={expId} open={running} /></Detail>
+        ))}
+      {canWrite && pagesTest && (isStarted(state) || state === "approved") &&
+        (successMetric === "booking" ? (
+          <BookingsPanel ideaId={id} expId={expId} open={running || state === "approved"} />
+        ) : (
+          <Detail><BookingsPanel ideaId={id} expId={expId} open={running || state === "approved"} /></Detail>
         ))}
 
       <div className="grid-2 mt-18">
