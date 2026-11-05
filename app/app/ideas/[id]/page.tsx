@@ -58,6 +58,8 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
   // B1c: één huidige stap, en apart hoeveel stappen echt bewijs hebben (niet hetzelfde als "klaar").
   const status = dossierStatus(progress);
   const withEvidence = status.stepsWithEvidence;
+  // Eén volgende stap op Overzicht: die uit de Stand van het bewijs (informatiewaarde) als die er is, anders de coach.
+  const nextStep = standing?.next ? { ...standing.next, icon: standing.next.href === next.href ? next.icon : null } : next;
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, IDEA_OVERVIEW.label]} coach="overview" ideaId={id} section="">
@@ -70,7 +72,7 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
       </div>
 
       {standing ? (
-        <EvidenceStanding standing={standing} ideaId={id} />
+        <EvidenceStanding standing={standing} ideaId={id} showNext={false} />
       ) : (
         <div className="note" role="status" style={{ marginBottom: 24 }}>
           <strong>Stand van het bewijs:</strong> eerst je eigen voorspelling, daarna zie je de kansen en de zekerheid.{" "}
@@ -103,10 +105,10 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
           <h2 className="as-h3">Volgende stap</h2>
           <span className="pill blue">Aanbevolen</span>
         </div>
-        <p style={{ fontSize: 16, fontWeight: 700 }}>{next.title}</p>
-        <p className="sub">{next.detail}</p>
-        <Link className="btn primary mt-12" href={next.href} prefetch={false}>
-          <Icon name={next.icon} /> {next.title} <Icon name="arrow" size="sm" />
+        <p style={{ fontSize: 16, fontWeight: 700 }}>{nextStep.title}</p>
+        <p className="sub">{nextStep.detail}</p>
+        <Link className="btn primary mt-12" href={nextStep.href} prefetch={false}>
+          {nextStep.icon && <Icon name={nextStep.icon} />} {nextStep.title} <Icon name="arrow" size="sm" />
         </Link>
         {tip && tip.href !== next.href && (
           <p className="tiny mt-12">

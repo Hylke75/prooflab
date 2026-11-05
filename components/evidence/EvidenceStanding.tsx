@@ -10,7 +10,8 @@ const CERTAINTY_PILL: Record<Certainty, string> = { low: "coral", medium: "orang
 // kritieke aanname de details (inklapbaar). Kansen staan als één waarde; de bandbreedte staat in de tooltip en
 // "niet gekalibreerd" één keer onderaan. Geen citaten: bewijs staat er met soort en bron, ook voor opdrachtgevers.
 // className: "card" op een pagina; in het rapport een rustige sectie zonder kaartschaduw.
-export function EvidenceStanding({ standing, ideaId, links = true, className = "card" }: { standing: Standing; ideaId: string; links?: boolean; className?: string }) {
+// showNext: op Overzicht staat de volgende stap al in een eigen kaart; het blok herhaalt hem daar niet (één advies per pagina).
+export function EvidenceStanding({ standing, ideaId, links = true, showNext = true, className = "card" }: { standing: Standing; ideaId: string; links?: boolean; showNext?: boolean; className?: string }) {
   const s = standing;
   return (
     <section className={className} aria-labelledby="stand-van-het-bewijs" data-testid="stand-van-het-bewijs" style={{ marginBottom: 24 }}>
@@ -24,7 +25,7 @@ export function EvidenceStanding({ standing, ideaId, links = true, className = "
         <div className="eyebrow" style={{ fontSize: 13, marginBottom: 6 }}>Sterkste bewijs op de schaal</div>
         <EvidenceScale step={s.strongest.step} label="Sterkste bewijs op de bewijsschaal" />
       </div>
-      {s.next && (
+      {showNext && s.next && (
         <p className="sub mt-12" style={{ fontSize: 15, lineHeight: 1.5 }}>
           <strong>Volgende stap:</strong>{" "}
           {links ? <Link className="text-link" href={s.next.href} prefetch={false} style={{ fontSize: 15 }}>{s.next.title}</Link> : s.next.title}. {s.next.detail}
