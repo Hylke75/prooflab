@@ -2022,6 +2022,105 @@ export type Database = {
           },
         ]
       }
+      recruitment_entries: {
+        Row: {
+          id: string
+          idea_id: string
+          experiment_id: string
+          entry_date: string
+          channel: string
+          step: string
+          quantity: number
+          note: string | null
+          corrects_id: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          idea_id: string
+          experiment_id: string
+          entry_date: string
+          channel: string
+          step: string
+          quantity: number
+          note?: string | null
+          corrects_id?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          idea_id?: string
+          experiment_id?: string
+          entry_date?: string
+          channel?: string
+          step?: string
+          quantity?: number
+          note?: string | null
+          corrects_id?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recruitment_entries_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "ideas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recruitment_entries_experiment_id_fkey"
+            columns: ["experiment_id"]
+            isOneToOne: false
+            referencedRelation: "experiments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recruitment_campaigns: {
+        Row: {
+          id: string
+          idea_id: string
+          experiment_id: string
+          campaign: string
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          idea_id: string
+          experiment_id: string
+          campaign: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          idea_id?: string
+          experiment_id?: string
+          campaign?: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recruitment_campaigns_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "ideas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recruitment_campaigns_experiment_id_fkey"
+            columns: ["experiment_id"]
+            isOneToOne: false
+            referencedRelation: "experiments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       observations: {
         Row: {
           review_status: string | null
