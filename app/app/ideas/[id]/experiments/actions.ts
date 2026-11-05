@@ -597,10 +597,15 @@ export async function analyzeInterviewWithAi(ideaId: string, expId: string, inte
   if (!aiConfigured()) return { error: "AI is niet verbonden; codeer het interview handmatig." };
   const supabase = await supabaseServer();
   const [{ data: iv }, { data: exp }] = await Promise.all([
-    supabase.from("interviews").select("transcript, is_practice, participant_label").eq("id", interviewId).eq("idea_id", ideaId).single(),
+    supabase.from("interviews").select("*").eq("id", interviewId).eq("idea_id", ideaId).single(),
     supabase.from("experiments").select("hypotheses(we_believe)").eq("id", expId).eq("idea_id", ideaId).single(),
   ]);
   if (!iv) return { error: "Interview niet gevonden." };
+  // Keuze product owner (5 nov): de AI ziet alleen gepseudonimiseerde tekst. Zonder pseudonimisering (zelf geplakt,
+  // of de import-migratie staat nog niet live) gaat het transcript niet naar de AI.
+  if (!(iv as { pseudonymized_at?: string | null }).pseudonymized_at) {
+    return { error: "AI-markering kan alleen bij een gepseudonimiseerd transcript. Importeer het transcript via \"Transcript importeren\" zodat namen eerst vervangen worden." };
+  }
   try {
     const res = await runAi(ideaId, "interview_analysis", (p) => analyzeInterview(exp?.hypotheses?.we_believe ?? "", iv.transcript, p));
     let kept = 0;

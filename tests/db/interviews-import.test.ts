@@ -295,6 +295,11 @@ d("fase 1 · punt 3: interviews importeren in de database", () => {
       await c.query("insert into public.observation_codes (observation_id, code_id, idea_id) values ($1, $2, $3)", [obs, code, C.idea]);
       return { obs, code };
     });
+    // Een gesprek ouder dan 12 maanden mag (keuze product owner): de bewaartermijn telt dan vanaf de import.
+    const kept = (await db.query("select retention_until = (current_date + interval '12 months')::date as from_import from public.interviews where id = $1", [iv.id])).rows[0];
+    expect(kept.from_import).toBe(true);
+    // Laat de termijn verlopen (als beheerder, buiten de app) en schoon op.
+    await db.query("update public.interviews set retention_until = current_date - 1 where id = $1", [iv.id]);
     await db.query("select public.purge_expired_personal_data()");
     const ivRow = (await db.query("select transcript, segments, pseudonym_labels from public.interviews where id = $1", [iv.id])).rows[0];
     expect(ivRow.transcript).toBe("[verwijderd na afloop van de bewaartermijn]");

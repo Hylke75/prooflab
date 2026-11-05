@@ -21,7 +21,7 @@ import {
   parseNamesField,
   participantLabelError,
   prepareImport,
-  retentionFrom,
+  retentionFor,
 } from "@/lib/domain/interview-import";
 import { todayInNL } from "@/lib/domain/sprint";
 import { readSource } from "@/lib/interview-source";
@@ -165,9 +165,10 @@ export async function saveImportedInterview(ideaId: string, expId: string | null
     source_hash: src.hash,
     segments: prepared.segments as unknown as Json,
     pseudonym_labels: prepared.labels as unknown as Json,
-    // De database zet tijd en gebruiker zelf (stamp_interview_import) en rekent de bewaartermijn vanaf de gespreksdatum.
+    // De database zet tijd en gebruiker zelf (stamp_interview_import) en rekent de bewaartermijn vanaf de gespreksdatum,
+    // of vanaf vandaag als het gesprek al ouder is dan 12 maanden.
     pseudonymized_at: new Date().toISOString(),
-    retention_until: retentionFrom(p.data.held_on),
+    retention_until: retentionFor(p.data.held_on, todayInNL()).until,
   };
   // Zonder eigen keuze is de wervingsgroep afgeleid uit het kanaal (fase 1 · punt 1).
   const defaulted = p.data.recruitment_group ? [] : ["recruitment_group"];

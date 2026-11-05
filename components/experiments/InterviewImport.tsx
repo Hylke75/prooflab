@@ -7,7 +7,7 @@ import { PseudonymReview } from "@/components/experiments/PseudonymReview";
 import { parseInterviewFile, saveImportedInterview, type ParsedPreview } from "@/app/app/ideas/[id]/experiments/interview-import-actions";
 import { DMU_ROLES } from "@/lib/domain/labels";
 import { MAX_TRANSCRIPT_BYTES, TRANSCRIPT_ACCEPT, TRANSCRIPT_FILE_LABEL } from "@/lib/domain/transcript-parse";
-import { DUPLICATE_IMPORT, EXPLORATORY_INTERVIEW_NOTE } from "@/lib/domain/interview-import";
+import { DUPLICATE_IMPORT, EXPLORATORY_INTERVIEW_NOTE, oldInterviewNote } from "@/lib/domain/interview-import";
 import "./interviews.css";
 
 // Fase 1 · punt 3: een transcript importeren. Eén formulier in twee stappen:
@@ -23,6 +23,8 @@ export function InterviewImport({ ideaId, expId, testGroup, fathom }: { ideaId: 
   const [error, setError] = useState<{ text: string; field?: string } | null>(null);
   const [reading, start] = useTransition();
   const [version, setVersion] = useState(0);
+  const [heldOn, setHeldOn] = useState("");
+  const oldNote = oldInterviewNote(heldOn, new Date().toISOString().slice(0, 10));
 
   const read = (form: HTMLFormElement | null) => {
     if (!form) return;
@@ -110,8 +112,8 @@ export function InterviewImport({ ideaId, expId, testGroup, fathom }: { ideaId: 
               <Field name="participant_label" id={`${uid}-l`} label="Pseudoniem van de deelnemer" required hint="Geen naam: bijv. 'Deelnemer A' of 'Penningmeester club 2'.">
                 <input className="field" placeholder="Bijv. Deelnemer A" maxLength={80} />
               </Field>
-              <Field name="held_on" id={`${uid}-d`} label="Datum gesprek" required hint="De bewaartermijn (12 maanden) telt vanaf deze datum.">
-                <input className="field" type="date" />
+              <Field name="held_on" id={`${uid}-d`} label="Datum gesprek" required hint={oldNote ?? "De bewaartermijn (12 maanden) telt vanaf deze datum."}>
+                <input className="field" type="date" onChange={(e) => setHeldOn(e.target.value)} />
               </Field>
             </div>
             <div className="double-field">

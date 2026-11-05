@@ -565,9 +565,15 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                       </ActionForm>
                     </details>
                     <div className="row" style={{ alignItems: "flex-start", justifyContent: "flex-end" }}>
-                      {aiConfigured() && (
+                      {/* Keuze product owner (5 nov): AI ziet alleen gepseudonimiseerde tekst. Een zelf geplakt transcript is
+                          niet gepseudonimiseerd en gaat dus niet naar de AI. */}
+                      {aiConfigured() && ((iv as { pseudonymized_at?: string | null }).pseudonymized_at ? (
                         <ActionForm action={analyzeInterviewWithAi.bind(null, id, expId, iv.id)} submitLabel="Laat AI uitspraken markeren" submitClass="btn ai sm" pendingLabel="Analyseren…"><span /></ActionForm>
-                      )}
+                      ) : (
+                        <p className="tiny" style={{ maxWidth: 280, margin: "8px 0 0" }}>
+                          AI-markering kan alleen bij een gepseudonimiseerd transcript. Gebruik &ldquo;Transcript importeren&rdquo; om namen eerst te vervangen.
+                        </p>
+                      ))}
                       <form action={deleteInterview.bind(null, id, iv.id)}><button className="text-link" style={{ color: "var(--color-risk-text)", marginTop: 12 }}>Interview verwijderen</button><FormPendingOverlay /></form>
                     </div>
                   </div>

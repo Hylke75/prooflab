@@ -83,7 +83,10 @@ begin
     if new.pseudonymized_at is not null then
       new.pseudonymized_at := now();
       new.pseudonymized_by := auth.uid();
-      new.retention_until := (new.held_on + interval '12 months')::date;
+      -- 12 maanden na het gesprek; is het gesprek al ouder, dan 12 maanden na de import (lib/domain/interview-import.ts).
+      new.retention_until := case when new.held_on + interval '12 months' >= current_date
+                                  then (new.held_on + interval '12 months')::date
+                                  else (current_date + interval '12 months')::date end;
     else
       new.pseudonymized_by := null;
     end if;

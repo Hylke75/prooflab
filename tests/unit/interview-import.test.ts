@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
   heldOnError,
+  oldInterviewNote,
+  retentionFor,
   missingImportSchema,
   parseDecisionsField,
   parseNamesField,
@@ -27,7 +29,12 @@ describe("bewaartermijn vanaf de gespreksdatum", () => {
 
   it("geen gesprek in de toekomst of van vóór de bewaartermijn", () => {
     expect(heldOnError("2026-11-05", "2026-11-04")).toMatch(/toekomst/);
-    expect(heldOnError("2025-10-01", "2026-11-04")).toMatch(/bewaartermijn/);
+    // Ouder dan 12 maanden mag: de bewaartermijn telt dan vanaf de import.
+    expect(heldOnError("2025-10-01", "2026-11-04")).toBeNull();
+    expect(retentionFor("2025-10-01", "2026-11-04")).toEqual({ until: "2027-11-04", fromImport: true });
+    expect(retentionFor("2026-03-10", "2026-11-04")).toEqual({ until: "2027-03-10", fromImport: false });
+    expect(oldInterviewNote("2025-10-01", "2026-11-04")).toMatch(/vanaf vandaag.*2027-11-04/);
+    expect(oldInterviewNote("2026-03-10", "2026-11-04")).toBeNull();
     expect(heldOnError("2026-01-15", "2026-11-04")).toBeNull();
     expect(heldOnError("", "2026-11-04")).toMatch(/datum/);
   });

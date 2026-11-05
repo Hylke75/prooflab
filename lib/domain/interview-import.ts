@@ -40,12 +40,28 @@ export function retentionFrom(heldOn: string): string {
   return target.toISOString().slice(0, 10);
 }
 
-// Een gesprek in de toekomst bestaat niet; een gesprek ouder dan de bewaartermijn hoort niet meer in ProofLab.
+// Een gesprek in de toekomst bestaat niet. Een gesprek ouder dan de bewaartermijn mag wel (keuze product owner,
+// 5 november): dan telt de bewaartermijn vanaf de importdatum, anders zou het transcript meteen gewist worden.
 export function heldOnError(heldOn: string, today: string): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(heldOn)) return "Vul de datum van het gesprek in.";
   if (heldOn > today) return "De datum van het gesprek ligt in de toekomst.";
-  if (retentionFrom(heldOn) < today) return `Dit gesprek is ouder dan ${RETENTION_MONTHS} maanden: de bewaartermijn is al verstreken. Importeer het niet.`;
   return null;
+}
+
+// Bewaartermijn bij import: 12 maanden na het gesprek, of 12 maanden na de import als het gesprek ouder is.
+// Dezelfde regel staat in de database (stamp_interview_import).
+export function retentionFor(heldOn: string, today: string): { until: string; fromImport: boolean } {
+  const fromTalk = retentionFrom(heldOn);
+  return fromTalk >= today ? { until: fromTalk, fromImport: false } : { until: retentionFrom(today), fromImport: true };
+}
+
+// Uitleg bij een oud gesprek, voor het importscherm.
+export function oldInterviewNote(heldOn: string, today: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(heldOn) || heldOn > today) return null;
+  const r = retentionFor(heldOn, today);
+  return r.fromImport
+    ? `Dit gesprek is ouder dan ${RETENTION_MONTHS} maanden. De bewaartermijn telt daarom vanaf vandaag: het transcript wordt bewaard tot ${r.until}.`
+    : null;
 }
 
 // Het pseudoniem van de deelnemer mag geen gevonden naam bevatten ("Peter (penningmeester)").
