@@ -16,7 +16,8 @@ import { aiSourceType, checkQuote, figuresAppearIn, normalizeText, registrableDo
 import { AiBudgetError, AiRefusedError } from "@/lib/ai/client";
 import { RunBudget, withRunBudget } from "@/lib/ai/budget";
 import { passagesPerRun, twoZeroRunsInARow } from "@/lib/domain/research-health";
-import { CBS_STATLINE_URL, CBS_TABLE, cbsKeywords, cbsLine, fetchCbsCompanyCounts, isSizeQuestion, type JsonFetcher } from "@/lib/integrations/cbs";
+import { CBS_STATLINE_URL, CBS_TABLE, CbsError, cbsKeywords, cbsLine, fetchCbsCompanyCounts, isSizeQuestion, type JsonFetcher } from "@/lib/integrations/cbs";
+import { storeOfficialSource } from "@/lib/official-source";
 import type { Idea } from "@/lib/data";
 import type { Json } from "@/lib/database.types";
 import { isSupportCheck, keepAfterSupportCheck, type SupportCheck } from "@/lib/domain/support";
@@ -576,7 +577,7 @@ export async function collectCbsFigures(
         detail: "CBS gaf geen waarden voor deze branches.",
       };
     }
-    const excerptIds = await storeOfficialSource(idea.id, runId, {
+    const { excerptIds } = await storeOfficialSource(idea.id, runId, {
       url: res.url,
       title: res.title,
       publisher: "CBS",
@@ -594,61 +595,14 @@ export async function collectCbsFigures(
     };
   } catch (e) {
     await log.warn("cbs_fetch_failed", { ideaId: idea.id }, e);
+    // Een gewijzigde tabel is iets anders dan een storing: zeg welke van de twee het is.
+    const changed = e instanceof CbsError && e.reason === "tabel_gewijzigd";
     return {
       excerptIds: [],
-      log: { provider: "prooflab", entries: [{ query, passages: 0, urls: [{ url: CBS_STATLINE_URL, title: CBS_TABLE, status: "geblokkeerd", reason: "CBS open data niet bereikbaar." }] }] },
-      detail: "CBS-cijfers konden niet worden opgehaald.",
+      log: { provider: "prooflab", entries: [{ query, passages: 0, urls: [{ url: CBS_STATLINE_URL, title: CBS_TABLE, status: "geblokkeerd", reason: changed ? "CBS heeft de tabel gewijzigd." : "CBS open data niet bereikbaar." }] }] },
+      detail: changed ? "CBS-cijfers konden niet worden gelezen: CBS heeft de tabel gewijzigd." : "CBS-cijfers konden niet worden opgehaald.",
     };
   }
-}
-
-// One source (official statistic) with verbatim excerpts; an existing source with the same URL is reused and only
-// new excerpts are added.
-async function storeOfficialSource(
-  ideaId: string,
-  runId: string | null,
-  s: { url: string; title: string; publisher: string; accessNote: string; location: string; excerpts: string[] },
-): Promise<string[]> {
-  const supabase = await supabaseServer();
-  const { data: existing } = await supabase.from("sources").select("id").eq("idea_id", ideaId).eq("url", s.url).maybeSingle();
-  let sourceId = existing?.id;
-  if (!sourceId) {
-    const { data: created } = await supabase
-      .from("sources")
-      .insert({
-        idea_id: ideaId,
-        run_id: runId,
-        url: s.url,
-        domain: registrableDomain(s.url),
-        title: s.title.slice(0, 300),
-        publisher: s.publisher,
-        source_type: "official_statistic",
-        is_primary: true,
-        origin: "ai_search",
-        access_note: s.accessNote.slice(0, 500),
-        content_hash: contentHash(s.excerpts.join("\n")),
-      })
-      .select("id")
-      .single();
-    sourceId = created?.id;
-  }
-  if (!sourceId) return [];
-  const { data: known } = await supabase.from("source_excerpts").select("id, text").eq("source_id", sourceId);
-  const byText = new Map((known ?? []).map((k) => [normalizeText(k.text), k.id]));
-  const ids: string[] = [];
-  for (const text of s.excerpts) {
-    const hit = byText.get(normalizeText(text));
-    if (hit) {
-      ids.push(hit);
-      continue;
-    }
-    const { data: ex } = await supabase.from("source_excerpts").insert({ source_id: sourceId, idea_id: ideaId, text: text.slice(0, 6000), location: s.location }).select("id").single();
-    if (ex) {
-      ids.push(ex.id);
-      byText.set(normalizeText(text), ex.id);
-    }
-  }
-  return ids;
 }
 
 const REUSE_DAYS = 7;
