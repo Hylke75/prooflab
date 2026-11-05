@@ -19,6 +19,7 @@ import { loadDecisionRule } from "@/lib/decision-rule-data";
 import { proposeGoRule } from "@/lib/domain/decision-rule-proposal";
 import { describeRule } from "@/lib/domain/decision-rule";
 import { GoRuleProposalCard } from "@/components/experiments/GoRuleProposal";
+import { depositAvailability } from "@/lib/integrations/mollie-server";
 
 export const metadata: Metadata = { title: "Experimenten" };
 
@@ -36,6 +37,8 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
   // Fase 1 · punt 1: in Snel één test per aanname op het bord (de hoofdtest, anders de nieuwste); de rest in Grondig.
   const quick = (await getViewMode(id)) === "quick";
   const ws = await getWorkspace();
+  // Fase 2 · punt 4: kan de Test Card een betaalstap krijgen (Mollie ingesteld voor deze werkruimte)?
+  const deposit = canWrite ? await depositAvailability(idea.org_id) : { available: false, reason: null, mode: null };
   const supabase = await supabaseServer();
   // Ordered by information value (research 3.9): the default suggestion is the test that can change the decision most per euro and week.
   // B0: alleen waarnemingen uit echte gesprekken tellen als ontdekkingsbewijs.
@@ -202,6 +205,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           priors={priors}
           intake={intake}
           goRuleMissing={rule === null}
+          deposit={deposit}
           key={`${selected.id}|${wantedType ?? ""}`}
         />
       ) : (

@@ -36,6 +36,10 @@ export const env = {
   // Optional: signing secret of the Resend webhook ("whsec_..."), for bounces and spam complaints.
   resendWebhookSecret: process.env.RESEND_WEBHOOK_SECRET ?? "",
   researchBudgetUsd: Number(process.env.RESEARCH_BUDGET_USD ?? "3") || 3,
+  // Fase 2 · punt 4: 32 bytes (base64) om geheimen per werkruimte te versleutelen (AES-256-GCM), zoals de Mollie-sleutel.
+  secretsEncryptionKey: process.env.SECRETS_ENCRYPTION_KEY ?? "",
+  // Fase 2 · punt 4: betaalde intentie via Mollie staat alleen aan met MOLLIE_ENABLED=1.
+  mollieEnabled: process.env.MOLLIE_ENABLED === "1",
 };
 
 export function providerKey(p: ProviderId): string {

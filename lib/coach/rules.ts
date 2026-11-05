@@ -99,6 +99,8 @@ export type CoachFacts = {
   // Golf B, punt 6: of het dossier een beslisregel heeft (undefined = onbekend; dan blijft de regel stil).
   decisionRule?: { defined: boolean; locked: boolean };
   outreach: { replies: number; latestReplyAt: string | null; latestImportAt: string | null };
+  // Fase 2 · punt 4: betaalde aanbetalingen die nog niet zijn terugbetaald (undefined = onbekend; dan blijft de regel stil).
+  depositsOutstanding?: number;
 };
 
 const DAY = 86_400_000;
@@ -376,6 +378,20 @@ export const RULES: Record<string, Rule> = {
     };
   },
 
+  // Fase 2 · punt 4: op de testpagina is volledige terugbetaling beloofd. Na het besluit herinnert de coach daaraan.
+  deposits_refund: (f, base) => {
+    const n = f.depositsOutstanding ?? 0;
+    if (n <= 0 || f.decisions.length === 0) return null;
+    return {
+      code: "deposits_refund",
+      kind: "warning",
+      title: `${plural(n, "aanbetaling", "aanbetalingen")} nog niet terugbetaald`,
+      body: "Er is een besluit vastgelegd. Op de testpagina is beloofd dat elke aanbetaling volledig wordt terugbetaald: doe dat nu bij de test (Terugbetalen of Alles terugbetalen).",
+      href: `${base}/experiments`,
+      audience: "consultant",
+    };
+  },
+
   decision_confirm: (f, base) => {
     const last = f.decisions[f.decisions.length - 1];
     if (!last || last.confirmed || !f.clientDeciderInvited) return null;
@@ -623,6 +639,7 @@ export const RULE_LABELS: Record<string, string> = {
   sprint_behind: "Sprint loopt achter",
   no_customer_voice: "Stem van de klant ontbreekt",
   outreach_unimported: "LinkedIn-antwoorden niet opgenomen",
+  deposits_refund: "Aanbetalingen terugbetalen",
   praise_first_behaviour: "Eerste klantgedrag (compliment)",
   praise_prereg: "Test vooraf vastgelegd (compliment)",
   ai: "AI-coach",
@@ -671,6 +688,7 @@ export const NOT_DONE: Record<string, string> = {
   sprint_behind: "We zien nog niet dat het dossier de sprintweek heeft ingehaald.",
   no_customer_voice: "We zien nog geen bron met de stem van de klant (review, forum, interview of enquête).",
   outreach_unimported: "We zien nog geen opgenomen LinkedIn-antwoorden bij de bronnen.",
+  deposits_refund: "We zien nog betaalde aanbetalingen die niet zijn terugbetaald.",
   assumptions_early: "We zien nog geen aannames in het dossier.",
 };
 

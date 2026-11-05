@@ -599,8 +599,14 @@ export const LEVEL_SHORT: Record<EvidenceLevel, string> = {
 // Het bewijsniveau van een testuitkomst: het niveau van wat de test meet (dezelfde indeling als de plafonds).
 // Enquête = zelfrapportage (mening); landingpagina = kleine handeling; prijstest = keuze bij een prijs;
 // interviews meten het probleem in eigen gedrag, of met de aantalregel een aanbetaling.
-export function testEvidenceLevel(type: string, opts: { decisionRule?: string | null } = {}): EvidenceLevel {
+export function testEvidenceLevel(type: string, opts: { decisionRule?: string | null; successMetric?: string | null } = {}): EvidenceLevel {
   if (type === "survey") return KIND_LEVEL.survey_answer;
+  // Fase 2 · punt 4: de succesmaat van een testpagina bepaalt het niveau (zelfde soort als de systeemwaarneming).
+  if (type === "landing" || type === "pricing") {
+    if (opts.successMetric === "payment") return KIND_LEVEL.deposit;
+    if (opts.successMetric === "commitment") return KIND_LEVEL.quote_request;
+    if (opts.successMetric === "booking") return KIND_LEVEL.demo_request;
+  }
   if (type === "landing") return KIND_LEVEL.waitlist_signup;
   if (type === "pricing") return KIND_LEVEL.quote_request;
   if (type === "interview") return opts.decisionRule === "absolute" ? KIND_LEVEL.deposit : KIND_LEVEL.problem_confirmed;

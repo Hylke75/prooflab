@@ -47,6 +47,14 @@ import { Detail } from "@/components/shell/ViewMode";
 import { InterviewImport } from "@/components/experiments/InterviewImport";
 import { ThemeCrossTable } from "@/components/experiments/ThemeCrossTable";
 import { FathomField } from "@/components/experiments/FathomField";
+import { ChannelLinkBuilder } from "@/components/experiments/ChannelLinkBuilder";
+import { privacyBlock, privacyOf } from "@/lib/domain/test-privacy";
+import { PerPersonCounts } from "@/components/experiments/PerPersonCounts";
+import { DepositsPanel } from "@/components/experiments/DepositsPanel";
+import { CommitmentsPanel } from "@/components/experiments/CommitmentsPanel";
+import { BookingsPanel } from "@/components/experiments/BookingsPanel";
+import { loadActionCounts } from "@/lib/action-counts-data";
+import { asSuccessMetric, SUCCESS_METRICS } from "@/lib/domain/success-metric";
 import { loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
 import { RecruitmentFunnel } from "@/components/experiments/RecruitmentFunnel";
 import { loadRecruitment } from "@/lib/recruitment-data";
@@ -127,6 +135,10 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
         supabase.from("assumptions").select("id, statement, category, kind").eq("idea_id", id),
       ])
     : [null, { data: null }];
+  // Fase 2 · punt 4: telling per persoon (landing en prijs), vanaf de start.
+  const pagesTest = type === "landing" || type === "pricing";
+  const perPerson = pagesTest && isStarted(state) ? await loadActionCounts(expId) : null;
+  const successMetric = asSuccessMetric((h as { success_metric?: string | null }).success_metric);
   const self = selfApproval({ ownerId: exp.owner_id, submittedBy: exp.submitted_by ?? null, approverId: me });
   const role = testRole(exp.id, h.assumption_id, primaryOf ? [primaryOf] : []);
   const { data: currentPrimary } =
@@ -143,7 +155,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
   const v = m.verdict;
   // B0 punt 3: past de maatstaf bij de soort aanname? Zo niet, dan kan de Test Card niet ter review of goedgekeurd.
   const kind = h.assumptions ? assumptionKind(h.assumptions) : null;
-  const fit = kind ? metricFitsAssumption(kind, { type, metric_label: h.metric_label, metric_numerator: h.metric_numerator, decision_rule: h.decision_rule }) : { ok: true };
+  const fit = kind ? metricFitsAssumption(kind, { type, metric_label: h.metric_label, metric_numerator: h.metric_numerator, decision_rule: h.decision_rule, success_metric: (h as { success_metric?: string | null }).success_metric }) : { ok: true };
   // B0 punt 6: en meldt ProofLab "drempel niet haalbaar", dan evenmin. De server dwingt beide af.
   const approvalBlocks = [fit.ok ? null : (fit.reason ?? "De maatstaf past niet bij de aanname."), thresholdBlock(h)].filter((x): x is string => !!x);
   const blocked = approvalBlocks.length > 0;
@@ -172,6 +184,8 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
   const deadline = exp.ends_at ? new Date(exp.ends_at) : new Date(`${deadlineFromDays(h.max_duration_days, isoDay(new Date()))}T12:00:00`);
 
   const shortTitle = truncateWords(exp.title, TITLE_MAX);
+  // Fase 2 · punt 4: zonder verwerkingsverantwoordelijke gaat een nieuwe testpagina niet live (ook in de database).
+  const privacyGate = privacyBlock(exp.config, type);
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Testen", exp.title]} coach="experiments" ideaId={id} section={`/experiments/${expId}`}>
       <div className="section-row">
@@ -241,6 +255,22 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
           <a className="text-link" href="#werving">Bekijk de werving per kanaal</a>
         </div>
       )}
+      {perPerson && <PerPersonCounts counts={perPerson.counts} available={perPerson.available} metric={successMetric} deposit={!!(exp.config as LandingConfig).deposit?.enabled} />}
+      {canWrite && pagesTest && isStarted(state) && (exp.config as LandingConfig).deposit?.enabled && (
+        <DepositsPanel ideaId={id} expId={expId} amount={Number((exp.config as LandingConfig).deposit?.amount_eur) || 0} />
+      )}
+      {canWrite && pagesTest && isStarted(state) &&
+        (successMetric === "commitment" ? (
+          <CommitmentsPanel ideaId={id} expId={expId} open={running} />
+        ) : (
+          <Detail><CommitmentsPanel ideaId={id} expId={expId} open={running} /></Detail>
+        ))}
+      {canWrite && pagesTest && (isStarted(state) || state === "approved") &&
+        (successMetric === "booking" ? (
+          <BookingsPanel ideaId={id} expId={expId} open={running || state === "approved"} />
+        ) : (
+          <Detail><BookingsPanel ideaId={id} expId={expId} open={running || state === "approved"} /></Detail>
+        ))}
 
       <div className="grid-2 mt-18">
         <div className="card">
@@ -265,6 +295,12 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
           <div className="data-row"><span>Bij</span><strong style={{ textAlign: "right" }}>{h.target_group}</strong></div>
           <div className="data-row"><span>Dat toetsen we door</span><strong style={{ textAlign: "right" }}>{h.test_method}</strong></div>
           <div className="data-row"><span>We meten</span><strong style={{ textAlign: "right" }}>{h.metric_numerator} / {h.metric_denominator}</strong></div>
+          {pagesTest && (
+            <div className="data-row">
+              <span>Succes telt als</span>
+              <strong style={{ textAlign: "right" }}>{SUCCESS_METRICS[successMetric].label} · {SUCCESS_METRICS[successMetric].evidence}</strong>
+            </div>
+          )}
           <div className="data-row"><span>Beslisregel</span><strong style={{ textAlign: "right" }}>{ruleName(h.decision_rule ?? "interval")}</strong></div>
           {h.decision_rule === "absolute" ? (
             <div className="data-row"><span>Het klopt als</span><strong className="num">≥ {h.success_count} van {h.min_sample}</strong></div>
@@ -312,6 +348,12 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                   : "Niet vastgelegd (telt als onbekend)"}
             </strong>
           </div>
+          {privacyOf(exp.config) && (
+            <div className="data-row">
+              <span>Privacy (AVG)</span>
+              <strong style={{ textAlign: "right" }}>{privacyOf(exp.config)!.controller_name || "—"} · {privacyOf(exp.config)!.controller_contact || "contact ontbreekt"}</strong>
+            </div>
+          )}
           {/* Fase 1 · punt 1: velden die bij het opslaan nog de standaardwaarde van ProofLab hadden (ook in het auditspoor). */}
           {defaultedLabels("hypotheses", (h as { defaulted_fields?: unknown }).defaulted_fields).length > 0 && (
             <div className="data-row" id="tc-standaardwaarden">
@@ -367,7 +409,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
               ) : (
                 <>
                   <label className="check-row"><input type="checkbox" name="check_reveal" /> De pagina belooft niets wat niet waar is; na de klik volgt altijd de eerlijke uitleg.</label>
-                  <label className="check-row"><input type="checkbox" name="check_privacy" /> Er worden geen cookies geplaatst; e-mailadressen alleen met toestemming en bewaartermijn van 180 dagen.</label>
+                  <label className="check-row"><input type="checkbox" name="check_privacy" /> Er worden geen cookies geplaatst; e-mailadressen alleen met toestemming en {privacyOf(exp.config) ? "een bewaartermijn van 12 maanden; de testpagina noemt de verwerkingsverantwoordelijke" : "bewaartermijn van 180 dagen"}.</label>
                   <label className="check-row"><input type="checkbox" name="check_budget" /> Advertentie-uitgaven (indien van toepassing) zijn goedgekeurd en vastgelegd.</label>
                 </>
               )}
@@ -383,11 +425,16 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                   <p style={{ margin: 0 }}>{goBlock}</p>
                 </div>
               )}
+              {privacyGate && (
+                <div className="form-error" id="privacy-block" role="status">
+                  <p style={{ margin: 0 }}>{privacyGate}</p>
+                </div>
+              )}
               <ActionForm
                 action={transitionExperiment.bind(null, id, expId, "live")}
                 submitLabel={type === "interview" ? "Start de interviewronde" : "Publiceer en start de meting"}
-                disabled={!!goBlock}
-                describedBy={goBlock ? "go-rule-block" : undefined}
+                disabled={!!goBlock || !!privacyGate}
+                describedBy={goBlock ? "go-rule-block" : privacyGate ? "privacy-block" : undefined}
               >
                 <span />
               </ActionForm>
@@ -424,17 +471,13 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
           )}
           {(cards ?? []).length > 0 && <Link className="btn primary" href={`/app/ideas/${id}/evidence`}>Naar bewijs & besluit →</Link>}
 
-          {publicUrl && running && type !== "interview" && type !== "survey" && (
-            <div className="mt-18">
-              <div className="eyebrow">Deel per kanaal</div>
-              {channels.map((c) => (
-                <div key={c.channel} className="form-line">
-                  <label htmlFor={`link-${c.channel}`}>{CHANNELS[c.channel as keyof typeof CHANNELS] ?? c.channel}</label>
-                  <input className="field mono" id={`link-${c.channel}`} readOnly value={`${publicUrl}?utm_source=${c.channel}`} />
-                </div>
-              ))}
-              <p className="field-hint">Elke link meet zijn eigen kanaal. Zet advertenties zelf live in Ads Manager en gebruik daar de juiste link.</p>
-            </div>
+          {/* Fase 2 · punt 4: linkbouwer per kanaal (met optionele berichtcode en kopieerknop), vanaf goedkeuring. */}
+          {publicUrl && canWrite && (running || state === "approved") && (type === "landing" || type === "pricing") && (
+            <ChannelLinkBuilder
+              publicUrl={publicUrl}
+              live={state === "live"}
+              channels={channels.map((c) => ({ key: c.channel, label: CHANNELS[c.channel as keyof typeof CHANNELS] ?? c.channel }))}
+            />
           )}
         </div>
       </div>
@@ -457,23 +500,24 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
             <div className="card">
               <h2 className="as-h3">Per kanaal</h2>
               <table className="table mt-12">
-                <thead><tr><th>Kanaal</th><th>Deelnemers</th><th>{h.metric_label}</th><th>Ratio</th></tr></thead>
+                <thead><tr><th>Kanaal</th><th>Deelnemers</th>{m.perChannelActions !== false && <><th>{h.metric_label}</th><th>Ratio</th></>}</tr></thead>
                 <tbody>
                   {m.byChannel.map((c) => (
-                    <tr key={c.channel}><td>{CHANNELS[c.channel as keyof typeof CHANNELS] ?? c.channel}</td><td className="num">{c.visitors}</td><td className="num">{c.actions}</td><td className="num">{c.visitors ? pct(c.actions / c.visitors) : "—"}</td></tr>
+                    <tr key={c.channel}><td>{CHANNELS[c.channel as keyof typeof CHANNELS] ?? c.channel}</td><td className="num">{c.visitors}</td>{m.perChannelActions !== false && <><td className="num">{c.actions}</td><td className="num">{c.visitors ? pct(c.actions / c.visitors) : "—"}</td></>}</tr>
                   ))}
                 </tbody>
               </table>
+              {m.perChannelActions === false && <p className="tiny mt-8">Bij deze succesmaat telt ProofLab per kanaal alleen het bezoek; betalingen, toezeggingen en afspraken worden per persoon geteld (zie Per persoon geteld).</p>}
             </div>
           )}
           {m.byVariant.length > 0 && (
             <div className="card">
               <h2 className="as-h3">Per prijspunt</h2>
               <table className="table mt-12">
-                <thead><tr><th>Aanbod</th><th>Bezoekers</th><th>Gekozen</th><th>Ratio</th></tr></thead>
+                <thead><tr><th>Aanbod</th><th>Bezoekers</th>{m.perChannelActions !== false && <><th>Gekozen</th><th>Ratio</th></>}</tr></thead>
                 <tbody>
                   {m.byVariant.map((r) => (
-                    <tr key={r.variant}><td>{r.label}</td><td className="num">{r.visitors}</td><td className="num">{r.actions}</td><td className="num">{r.visitors ? pct(r.actions / r.visitors) : "—"}</td></tr>
+                    <tr key={r.variant}><td>{r.label}</td><td className="num">{r.visitors}</td>{m.perChannelActions !== false && <><td className="num">{r.actions}</td><td className="num">{r.visitors ? pct(r.actions / r.visitors) : "—"}</td></>}</tr>
                   ))}
                 </tbody>
               </table>

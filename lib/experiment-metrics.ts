@@ -7,6 +7,9 @@ import { QUALITY_VALUES, SurveyConfigSchema, type Answers, type Quality, type Su
 import { surveySplitFromCounts, type ExportRow, type SurveySplit } from "@/lib/domain/survey-results";
 import { interviewRecruitment, type RecruitmentGroup } from "@/lib/domain/recruitment";
 import { countsAsEvidence } from "@/lib/domain/practice";
+import { asSuccessMetric } from "@/lib/domain/success-metric";
+import { successesFor } from "@/lib/domain/action-counts";
+import { loadActionCounts } from "@/lib/action-counts-data";
 
 export type LandingConfig = {
   headline: string;
@@ -17,6 +20,9 @@ export type LandingConfig = {
   reveal_message: string;
   product_name: string;
   researcher: string;
+  // Fase 2 · punt 4 (nieuwe tests): verwerkingsverantwoordelijke voor de AVG-tekst en de optionele betaalstap.
+  privacy?: { controller_name: string; controller_contact: string };
+  deposit?: { enabled: boolean; amount_eur: number };
 };
 
 export type PricingConfig = LandingConfig & {
@@ -53,6 +59,9 @@ export type ExperimentMetrics = {
   // Interviews only: n en successen per wervingsgroep van het gesprek (golf A; een bekende is eigen netwerk).
   // Alleen aantallen, voor de momentopname in het rapport (golf C, punt 19).
   byRecruitment?: { group: RecruitmentGroup; n: number; successes: number }[];
+  // Fase 2 · punt 4: false = per kanaal en prijspunt telt alleen het bezoek (betalingen, toezeggingen en afspraken worden
+  // per persoon geteld, niet per kanaal); de tabellen tonen dan geen acties.
+  perChannelActions?: boolean;
 };
 
 // The key metric per source × channel, counted in the database (survey_key_counts) from the quality flags the
@@ -194,6 +203,8 @@ type Hyp = {
   metric_label: string;
   decision_rule?: string | null;
   success_count?: number | null;
+  // Fase 2 · punt 4: wat telt als succes bij een landing- of prijstest (leeg = aanmelding/klik).
+  success_metric?: string | null;
 };
 
 // Sterke handelingen die bij de aantalregel in een gesprek meetellen.
@@ -211,6 +222,7 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
   let byContent: ContentRow[] = [];
   let survey: SurveySplit | null = null;
   let byRecruitment: ExperimentMetrics["byRecruitment"];
+  let perChannelActions: boolean | undefined;
 
   if (exp.type === "survey") {
     // The verdict uses every believable response (all sources), as pre-registered; the split per source shows
@@ -298,6 +310,21 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
       .map((r) => ({ content: r.content, visitors: Number(r.viewers), actions: Number(useSubmit ? r.submitters : r.clickers) }))
       .sort((a, b) => b.visitors - a.visitors);
     byVariant = exp.type === "pricing" ? [...va.values()].sort((a, b) => a.variant.localeCompare(b.variant)) : [];
+    // Fase 2 · punt 4: betaling, toezegging of afspraak als succesmaat. Successen = unieke personen (live betaald, getekend,
+    // geboekt; terugbetaald, testmodus en geannuleerd tellen niet), n = unieke bezoekers. Zonder de migratie telt er geen
+    // succes (nooit een geschat aantal).
+    const metric = asSuccessMetric(h.success_metric);
+    if (metric !== "signup") {
+      const { counts, available } = await loadActionCounts(exp.id);
+      if (available) n = counts.visitors;
+      successes = available ? successesFor(metric, counts, { collectEmail: useSubmit }) : 0;
+      if (!available) warnings.push("De telling van betalingen, toezeggingen en afspraken vraagt een database-update (migratie 20261116090000_fase2_testen); tot die tijd telt geen enkel succes.");
+      if (metric === "payment" && counts.testPayers > 0) warnings.push(`${counts.testPayers} ${counts.testPayers === 1 ? "betaling" : "betalingen"} in testmodus: die tellen niet als bewijs.`);
+      perChannelActions = false;
+      byChannel = byChannel.map((c) => ({ ...c, actions: 0 }));
+      byVariant = byVariant.map((v) => ({ ...v, actions: 0 }));
+      byContent = [];
+    }
     if (byChannel.length === 1 && byChannel[0].channel === "network") warnings.push("Alle bezoekers komen uit het eigen netwerk; dat is warm verkeer.");
     if (byChannel.some((c) => c.channel === "direct") && n > 0 && (byChannel.find((c) => c.channel === "direct")!.visitors / n) > 0.5) {
       warnings.push("Meer dan de helft van de bezoekers heeft geen herkomst. Gebruik de kanaallinks zodat je weet wie er reageert.");
@@ -319,5 +346,5 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
     endConditionReached,
   });
   const bayes = endConditionReached ? betaBinomial(await priorFor(exp), successes, n, Number(h.success_threshold_pct)) : null;
-  return { n, successes, label: h.metric_label, byChannel, byVariant, byContent, endConditionReached, verdict: v, bayes, warnings, survey, ...(byRecruitment ? { byRecruitment } : {}) };
+  return { n, successes, label: h.metric_label, byChannel, byVariant, byContent, endConditionReached, verdict: v, bayes, warnings, survey, ...(byRecruitment ? { byRecruitment } : {}), ...(perChannelActions === false ? { perChannelActions } : {}) };
 }
