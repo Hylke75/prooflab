@@ -48,6 +48,8 @@ import { InterviewImport } from "@/components/experiments/InterviewImport";
 import { ThemeCrossTable } from "@/components/experiments/ThemeCrossTable";
 import { FathomField } from "@/components/experiments/FathomField";
 import { loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
+import { RecruitmentFunnel } from "@/components/experiments/RecruitmentFunnel";
+import { loadRecruitment } from "@/lib/recruitment-data";
 
 export const metadata: Metadata = { title: "Experiment" };
 
@@ -109,6 +111,21 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
     canWrite && state === "ready_for_review" ? getWorkspace().then((ws) => ws.user.id) : Promise.resolve(null),
   ]);
   const themeCounts = type === "interview" && canWrite ? await loadThemeCountsForConsultant(id, expId) : null;
+  // Fase 2 · punt 5: wervingstrechter (alleen het onderzoeksteam, vanaf een goedgekeurde test). "Gesprek gehouden" en
+  // "deelgenomen" komen uit dezelfde meting als hierboven (per kanaal), nooit uit handmatige invoer.
+  const recruitingOpen = canWrite && !["draft", "ready_for_review"].includes(state);
+  const [recruitment, { data: assumptionRows }] = recruitingOpen
+    ? await Promise.all([
+        loadRecruitment({
+          ideaId: id,
+          exp,
+          minSample: h.min_sample,
+          held: m.byChannel.map((c) => ({ channel: c.channel, n: c.visitors })),
+          decisionDeadline: idea.decision_deadline,
+        }),
+        supabase.from("assumptions").select("id, statement, category, kind").eq("idea_id", id),
+      ])
+    : [null, { data: null }];
   const self = selfApproval({ ownerId: exp.owner_id, submittedBy: exp.submitted_by ?? null, approverId: me });
   const role = testRole(exp.id, h.assumption_id, primaryOf ? [primaryOf] : []);
   const { data: currentPrimary } =
@@ -413,6 +430,17 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
           )}
         </div>
       </div>
+
+      {recruitment && (
+        <RecruitmentFunnel
+          ideaId={id}
+          expId={expId}
+          testType={type}
+          state={state}
+          view={recruitment}
+          assumptions={(assumptionRows ?? []).map((a) => ({ id: a.id, statement: a.statement, channel: assumptionKind(a) === "channel" }))}
+        />
+      )}
 
       {(m.byChannel.length > 0 || m.byVariant.length > 0) && (
         <Detail>

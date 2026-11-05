@@ -19,6 +19,8 @@ import {
 // Zonder migratie 20261117090000_fase2_werving.sql ontbreken de tabellen: dan telt de trechter alleen wat de test
 // zelf meet (interviews of deelnemers) en meldt de pagina dat de registratie nog niet beschikbaar is.
 
+export const NOT_MIGRATED = "De wervingsregistratie is nog niet beschikbaar: de database moet eerst worden bijgewerkt (migratie 20261117090000_fase2_werving.sql).";
+
 // ---------------------------------------------------------------------------
 // Agenda (punt 4)
 // ---------------------------------------------------------------------------
