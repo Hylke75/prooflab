@@ -29,6 +29,7 @@ import { METHODS, type MethodVersion } from "@/lib/domain/method";
 import { RECRUITMENT_GROUPS, RECRUITMENT_KEYS, RECRUITMENT_REQUIRED_TYPES, type RecruitmentGroup } from "@/lib/domain/recruitment";
 import { auditGuide, guideSummary } from "@/lib/domain/interview-audit";
 import { honestyWarnings, type PreparedVariant } from "@/lib/domain/copy-honesty";
+import { pageFromTestCard, type GeneratedPage } from "@/lib/domain/test-page-generator";
 import { GuideAuditList } from "@/components/experiments/InterviewAudit";
 import { SurveyEditor, type SurveyDraftAction } from "@/components/survey/SurveyEditor";
 import { SamplePlanner } from "@/components/survey/SamplePlanner";
@@ -222,6 +223,17 @@ export function ExperimentBuilder({
   const audit = useMemo(() => auditGuide(guide.split("\n"), { productNames: [ideaTitle, page.product_name] }), [guide, ideaTitle, page.product_name]);
   const auditSum = guideSummary(audit);
   const [variants, setVariants] = useState<VariantsResult | null>(null);
+  // Fase 2 · punt 4: "Maak testpagina uit de Test Card" (deterministisch, zonder AI). Overschrijft de paginavelden met
+  // een voorstel; alles blijft daarna aanpasbaar en de eerlijkheidscontrole kijkt mee.
+  const [generated, setGenerated] = useState<GeneratedPage | null>(null);
+  const generatePage = () => {
+    if (type !== "landing" && type !== "pricing") return;
+    const g = pageFromTestCard({ type, weBelieve: card.we_believe, targetGroup: card.target_group, ideaTitle, description: intake.description, intakePrice: fromIntake });
+    setPage({ headline: g.headline, subline: g.subline, offer: g.offer, cta_label: g.cta_label, product_name: g.product_name });
+    if (type === "pricing") setPrices(g.price_points);
+    setGenerated(g);
+    setDetailsOpen(true);
+  };
   const [variantsPending, startVariants] = useTransition();
   const draftWarnings = honestyWarnings(page.headline, page.subline, page.offer);
   const askVariants = () => {
@@ -837,6 +849,18 @@ export function ExperimentBuilder({
                 <span className="btn dark sm">{page.cta_label} →</span>
               </div>
               <div className="mt-12">
+                <button type="button" className="btn white sm" id="tc-generate" onClick={generatePage} aria-describedby="tc-generate-hint">
+                  Maak testpagina uit de Test Card
+                </button>
+                <p className="field-hint" id="tc-generate-hint">
+                  Vult kop, ondertitel, aanbod, knoptekst{type === "pricing" ? " en prijspunten" : ""} in uit de hypothese, de doelgroep en de intake. Je past alles daarna zelf aan onder Details.
+                </p>
+                {generated && (
+                  <div className="note" role="status" style={{ marginTop: 8 }}>
+                    <strong>Voorstel ingevuld.</strong> Controleer het onder Details:
+                    <ul style={{ margin: "6px 0 0 16px", padding: 0 }}>{generated.notes.map((n) => <li key={n}>{n}</li>)}</ul>
+                  </div>
+                )}
                 {draftWarnings.length > 0 && (
                   <div className="note" style={{ marginTop: 0 }} role="status">
                     <strong>Eerlijkheidscontrole:</strong>

@@ -47,6 +47,7 @@ import { Detail } from "@/components/shell/ViewMode";
 import { InterviewImport } from "@/components/experiments/InterviewImport";
 import { ThemeCrossTable } from "@/components/experiments/ThemeCrossTable";
 import { FathomField } from "@/components/experiments/FathomField";
+import { ChannelLinkBuilder } from "@/components/experiments/ChannelLinkBuilder";
 import { loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
 
 export const metadata: Metadata = { title: "Experiment" };
@@ -399,17 +400,13 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
           )}
           {(cards ?? []).length > 0 && <Link className="btn primary" href={`/app/ideas/${id}/evidence`}>Naar bewijs & besluit →</Link>}
 
-          {publicUrl && running && type !== "interview" && type !== "survey" && (
-            <div className="mt-18">
-              <div className="eyebrow">Deel per kanaal</div>
-              {channels.map((c) => (
-                <div key={c.channel} className="form-line">
-                  <label htmlFor={`link-${c.channel}`}>{CHANNELS[c.channel as keyof typeof CHANNELS] ?? c.channel}</label>
-                  <input className="field mono" id={`link-${c.channel}`} readOnly value={`${publicUrl}?utm_source=${c.channel}`} />
-                </div>
-              ))}
-              <p className="field-hint">Elke link meet zijn eigen kanaal. Zet advertenties zelf live in Ads Manager en gebruik daar de juiste link.</p>
-            </div>
+          {/* Fase 2 · punt 4: linkbouwer per kanaal (met optionele berichtcode en kopieerknop), vanaf goedkeuring. */}
+          {publicUrl && canWrite && (running || state === "approved") && (type === "landing" || type === "pricing") && (
+            <ChannelLinkBuilder
+              publicUrl={publicUrl}
+              live={state === "live"}
+              channels={channels.map((c) => ({ key: c.channel, label: CHANNELS[c.channel as keyof typeof CHANNELS] ?? c.channel }))}
+            />
           )}
         </div>
       </div>
