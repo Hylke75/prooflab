@@ -201,6 +201,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           variantsAction={proposeCopyVariants.bind(null, id)}
           initialType={wantedType}
           researcher={ws.org?.name ?? ""}
+          privacyContact={ws.user.email ?? ""}
           surveyDraftAction={draftSurveyWithCoach.bind(null, id)}
           priors={priors}
           intake={intake}

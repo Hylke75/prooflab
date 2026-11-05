@@ -101,6 +101,7 @@ export function ExperimentBuilder({
   variantsAction,
   initialType,
   researcher = "",
+  privacyContact = "",
   surveyDraftAction,
   method = "2026-11-e",
   priors = {},
@@ -118,6 +119,8 @@ export function ExperimentBuilder({
   method?: MethodVersion;
   initialType?: ExperimentType;
   researcher?: string;
+  // Fase 2 · punt 4: standaard contact in de privacytekst (het e-mailadres van de maker); aanpasbaar.
+  privacyContact?: string;
   surveyDraftAction?: SurveyDraftAction;
   ideaTitle?: string;
   aiConnected?: boolean;
@@ -156,7 +159,7 @@ export function ExperimentBuilder({
     product_name: "",
   }));
   // Fase 2 · punt 4: verwerkingsverantwoordelijke voor de AVG-tekst op de testpagina (vooringevuld met de werkruimte).
-  const [privacy, setPrivacy] = useState({ controller: researcher, contact: "" });
+  const [privacy, setPrivacy] = useState({ controller: researcher, contact: privacyContact });
   // Fase 2 · punt 4: optionele betaalstap (standaard uit).
   const [depositOn, setDepositOn] = useState(false);
   const [depositAmount, setDepositAmount] = useState("10");
