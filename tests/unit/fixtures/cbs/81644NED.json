@@ -1,0 +1,191 @@
+{
+ "Dimensions": {
+  "@odata.context": "https://datasets.cbs.nl/odata/v1/CBS/81644NED/$metadata#Dimensions",
+  "value": [
+   {
+    "Identifier": "BedrijfstakkenBranchesSBI2008",
+    "Title": "Bedrijfstakken/branches (SBI 2008)",
+    "Kind": "Dimension"
+   },
+   {
+    "Identifier": "RegioS",
+    "Title": "Regio's",
+    "Kind": "GeoDimension"
+   },
+   {
+    "Identifier": "Perioden",
+    "Title": "Perioden",
+    "Kind": "TimeDimension"
+   }
+  ]
+ },
+ "MeasureCodes": {
+  "@odata.context": "https://datasets.cbs.nl/odata/v1/CBS/81644NED/$metadata#MeasureCodes",
+  "value": [
+   {
+    "Identifier": "M000200",
+    "Index": 3,
+    "Title": "Vestigingen",
+    "MeasureGroupId": null,
+    "DataType": "Long",
+    "Unit": "aantal",
+    "Decimals": 0,
+    "PresentationType": "Absolute"
+   },
+   {
+    "Identifier": "WP19073",
+    "Index": 5,
+    "Title": "0 werkzame personen",
+    "MeasureGroupId": "T001098",
+    "DataType": "Long",
+    "Unit": "aantal",
+    "Decimals": 0,
+    "PresentationType": "Absolute"
+   },
+   {
+    "Identifier": "WP19079",
+    "Index": 6,
+    "Title": "1 werkzame persoon",
+    "MeasureGroupId": "T001098",
+    "DataType": "Long",
+    "Unit": "aantal",
+    "Decimals": 0,
+    "PresentationType": "Absolute"
+   },
+   {
+    "Identifier": "WP19080",
+    "Index": 7,
+    "Title": "2 tot 10 werkzame personen",
+    "MeasureGroupId": "T001098",
+    "DataType": "Long",
+    "Unit": "aantal",
+    "Decimals": 0,
+    "PresentationType": "Absolute"
+   },
+   {
+    "Identifier": "WP19088",
+    "Index": 8,
+    "Title": "10 of meer werkzame personen",
+    "MeasureGroupId": "T001098",
+    "DataType": "Long",
+    "Unit": "aantal",
+    "Decimals": 0,
+    "PresentationType": "Absolute"
+   },
+   {
+    "Identifier": "A028820",
+    "Index": 10,
+    "Title": "Eenmanszaken",
+    "MeasureGroupId": "T001243",
+    "DataType": "Long",
+    "Unit": "aantal",
+    "Decimals": 0,
+    "PresentationType": "Absolute"
+   },
+   {
+    "Identifier": "A028836",
+    "Index": 11,
+    "Title": "VOF, CV en maatschap",
+    "MeasureGroupId": "T001243",
+    "DataType": "Long",
+    "Unit": "aantal",
+    "Decimals": 0,
+    "PresentationType": "Absolute"
+   },
+   {
+    "Identifier": "A047600",
+    "Index": 12,
+    "Title": "NV's en BV's",
+    "MeasureGroupId": "T001243",
+    "DataType": "Long",
+    "Unit": "aantal",
+    "Decimals": 0,
+    "PresentationType": "Absolute"
+   },
+   {
+    "Identifier": "A047603",
+    "Index": 13,
+    "Title": "Overige rechtsvormen",
+    "MeasureGroupId": "T001243",
+    "DataType": "Long",
+    "Unit": "aantal",
+    "Decimals": 0,
+    "PresentationType": "Absolute"
+   }
+  ]
+ },
+ "BedrijfstakkenBranchesSBI2008Codes": {
+  "@odata.context": "https://datasets.cbs.nl/odata/v1/CBS/81644NED/$metadata#BedrijfstakkenBranchesSBI2008Codes(Identifier,Title,DimensionGroupId)",
+  "value": [
+   {
+    "Identifier": "T001081",
+    "Title": "A-U Alle economische activiteiten",
+    "DimensionGroupId": "1"
+   },
+   {
+    "Identifier": "354200",
+    "Title": "G Handel",
+    "DimensionGroupId": "3"
+   }
+  ]
+ },
+ "RegioSCodes": {
+  "@odata.context": "https://datasets.cbs.nl/odata/v1/CBS/81644NED/$metadata#RegioSCodes(Identifier,Title,DimensionGroupId)",
+  "value": [
+   {
+    "Identifier": "NL01",
+    "Title": "Nederland",
+    "DimensionGroupId": "NL"
+   },
+   {
+    "Identifier": "PV26",
+    "Title": "Utrecht (PV)",
+    "DimensionGroupId": "PV"
+   },
+   {
+    "Identifier": "CR17",
+    "Title": "Utrecht (CR)",
+    "DimensionGroupId": "CRPV26"
+   }
+  ]
+ },
+ "PeriodenCodes": {
+  "@odata.context": "https://datasets.cbs.nl/odata/v1/CBS/81644NED/$metadata#PeriodenCodes(Identifier,Title,DimensionGroupId,Status)",
+  "value": [
+   {
+    "Identifier": "2024JJ00",
+    "Title": "2024",
+    "DimensionGroupId": "0",
+    "Status": "Definitief"
+   },
+   {
+    "Identifier": "2025JJ00",
+    "Title": "2025",
+    "DimensionGroupId": "0",
+    "Status": "Voorlopig"
+   },
+   {
+    "Identifier": "2026JJ00",
+    "Title": "2026",
+    "DimensionGroupId": "0",
+    "Status": "Voorlopig"
+   }
+  ]
+ },
+ "Observations": {
+  "@odata.context": "https://datasets.cbs.nl/odata/v1/CBS/81644NED/$metadata#Observations",
+  "value": [
+   {
+    "Id": 2135,
+    "Measure": "WP19079",
+    "ValueAttribute": "None",
+    "Value": 177440.0,
+    "StringValue": null,
+    "BedrijfstakkenBranchesSBI2008": "T001081",
+    "RegioS": "PV26",
+    "Perioden": "2026JJ00"
+   }
+  ]
+ },
+ "_herkomst": "2026-11-05 opgehaald uit datasets.cbs.nl (OData v4); codelijsten ingekort tot de gebruikte codes, omschrijvingen weggelaten"
+}

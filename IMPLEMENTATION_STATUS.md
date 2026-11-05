@@ -801,3 +801,119 @@ de migratie werkt de app zoals voorheen en meldt het importscherm dat de databas
   Supabase-toegang); de 390px-weergave is via de opmaakregels in `components/experiments/interviews.css` geborgd.
   Migratie nog toepassen
 
+## Fase 2 · punt 6: Nederlandse databronnen (5 november)
+
+CBS StatLine breder (vaste catalogus en generieke client), "Haal uit CBS" bij een factor in het marktpotentieel, en
+sectorregisters als CSV met de regel dat een register alleen als primaire bron telt wanneer het origineel erbij ligt
+en de aantallen daarin letterlijk staan. Vijf commits op branch `fase2-databronnen`. **Geen migratie**: alles
+hergebruikt `sources`, `source_excerpts`, `claims`, `claim_sources` en `sizing_factors`, dus het werkt meteen tegen de
+live database.
+
+- ✅ **CBS-catalogus** (`lib/integrations/cbs-catalog.ts`, puur, ook in de browser bruikbaar): zeven tabellen, elk op
+  5 november 2026 gecontroleerd tegen de live OData v4-API (`datasets.cbs.nl/odata/v1/CBS/{tabel}`: Dimensions,
+  MeasureCodes, alle codelijsten en een echte waarde voor het standaardonderwerp):
+
+  | Tabel | Titel (CBS) | Dimensies | Onderwerpen in ProofLab |
+  |---|---|---|---|
+  | `03759ned` | Bevolking op 1 januari en gemiddeld; geslacht, leeftijd en regio | burgerlijke staat, geslacht, leeftijd (per jaar), regio (NL, landsdeel, provincie, COROP, gemeente) | bevolking op 1 januari |
+  | `70072ned` | Regionale kerncijfers Nederland | regio | bevolking (totaal, geslacht, 6 leeftijdsgroepen), particuliere huishoudens (aantal en %), bedrijfsvestigingen (totaal en 8 sectorgroepen) |
+  | `71486ned` | Huishoudens; samenstelling, grootte, regio, 1 januari | leeftijd referentiepersoon, regio | 13 onderwerpen (samenstelling en grootte) |
+  | `81589NED` | Bedrijven; bedrijfstak | SBI 2008 (tot 5 cijfers), kwartaal; landelijk | totaal, 10 grootteklassen (werkzame personen), rechtsvorm |
+  | `81578NED` | Vestigingen van bedrijven; bedrijfstak, regio | SBI 2008 (tot 5 cijfers), provincie/COROP/grote gemeenten | vestigingen |
+  | `81575NED` | Vestigingen van bedrijven; bedrijfstak, gemeente | SBI-sectie (A–U), gemeente | vestigingen |
+  | `81644NED` | Vestigingen van bedrijven; grootte, rechtsvorm, bedrijfstak, regio | SBI-sectie (A–U), provincie/COROP | vestigingen, 4 grootteklassen, 4 rechtsvormen |
+
+  Alleen onderwerpen in "aantal" of "%" (geen bedragen in "1 000 euro" of "x 1 000"). Bedrijven naar SBI én
+  grootteklasse én regio bestaat bij CBS alleen op sectieniveau (`81644NED`); fijnere SBI-codes zijn er landelijk
+  (`81589NED`, met grootteklasse) of regionaal zonder grootteklasse (`81578NED`). Een tabel die niet zo is
+  gecontroleerd zou `verified: null` krijgen en in de interface als "Niet geverifieerd" verschijnen; dat is nu bij
+  geen enkele tabel het geval. Opnieuw controleren: `CBS_LIVE=1 npx vitest run tests/unit/cbs-live.test.ts`
+- ✅ **Generieke client** (`lib/integrations/cbs.ts`, server-only): `fetchCbsMetadata` (dimensies, codes, perioden
+  nieuwste eerst, toegestane onderwerpen; meldt `tabel_gewijzigd` als CBS de indeling verandert) en `fetchCbsCell`
+  (één onderwerp, één code per dimensie, een periode of "meest recente periode met een waarde"; elke code wordt eerst
+  tegen de codelijst gecontroleerd). Geen waarde (geheim, niet van toepassing) blijft `null` met de reden in gewone
+  taal, nooit een getal. Letterlijke regel (`cbsCellLine`) met de titels zoals CBS ze levert; peildatum uit de periode
+  (`2026JJ00` → 2026, of 2026-01-01 bij een stand op 1 januari). Alleen `datasets.cbs.nl` via `fetchPublic`
+  (SSRF-veilig, time-out 10 s), één nieuwe poging bij een netwerkfout
+- ✅ **Onderzoeksrunner**: de automatische stap (81589NED, bedrijven per passende branche en grootteklasse bij een
+  omvangvraag met verwacht brontype officiële statistiek) loopt via de nieuwe client; tabelregel en gedrag zijn gelijk
+  (bestaande fragmenten worden hergebruikt). Een gewijzigde tabel wordt apart gemeld. Bewaren van een officiële bron
+  staat in `lib/official-source.ts` (gedeeld met "Haal uit CBS"; zoekt nu ook op brontype)
+- ✅ **"Haal uit CBS" bij een factor** (`components/research/CbsFactorPicker.tsx`, `lib/cbs-factor.ts`,
+  `app/app/ideas/[id]/research/data-actions.ts`): knop bij elke factor met een aantal of percentage (alleen voor het
+  onderzoeksteam). Paneel (drawer, sluit met Escape): tabel kiezen (met "Gecontroleerd op …"), onderwerp in de eenheid
+  van de factor, periode, regio (gegroepeerd en doorzoekbaar) en filters → "Toon waarde" met de letterlijke tabelregel →
+  "Opslaan". De server haalt de waarde opnieuw op en maakt: bron (officiële statistiek, uitgever CBS, URL naar de
+  StatLine-tabel), fragment = de tabelregel, bevinding via `insertClaimWithQuote` (dus `checkQuote` en
+  `recomputeClaim`; `quote_check` exact → geverifieerd) met regio, peildatum, periode, eenheid en "bewijst niet", en
+  zet de factor op de waarde met jaar en regio. Dezelfde regel opnieuw opslaan hergebruikt bron, fragment en
+  bevinding. CBS onbereikbaar: eerlijke melding met "vul de waarde zelf in en koppel een bron onder Bronnen" en
+  opnieuw proberen. Telt vanzelf als "officiële statistiek" in het dossierlabel (getest)
+- ✅ **Sectorregisters** (`lib/domain/sector-register.ts` puur, `lib/sector-register-data.ts`,
+  `components/research/SectorRegisterPanel.tsx`, sjabloon op `/app/ideas/[id]/research/sectorregister-sjabloon.csv`):
+  - Sjabloon met de kolommen `uitgever, bron_url, peildatum, categorie, grootteklasse, regio, aantal` en optioneel
+    `opmerking`; alleen kolomkoppen, bewust zonder voorbeeldregels (geen verzonnen aantallen). Uitleg per kolom in Grondig
+  - Import: puntkomma, komma of tab; verplichte velden, hele getallen (1234 of 1.234), geldige http(s)-URL, peildatum
+    (2025, 2025-06, 2025-06-30 of 30-06-2025, niet in de toekomst). Fouten per regel met het echte regelnummer, al in de
+    browser vóór het uploaden; de server controleert opnieuw en importeert bij één fout niets. Per uitgever + bron +
+    peildatum één bron (`dataset_upload`, niet primair) met elke regel als letterlijk fragment; dezelfde inhoud
+    opnieuw importeren hergebruikt de bron
+  - Origineel bijvoegen: bestand (PDF, DOCX, TXT, MD, CSV; uitgelezen zoals bij rapportimport) of "Haal bronpagina op"
+    (SSRF-veilig). Per regel zoekt ProofLab een passage (één regel, of tot drie regels voor tabelcellen) waarin de
+    categorie én het aantal letterlijk staan. Alleen die passages worden bewaard, als fragmenten van een tweede bron
+    (`primary_document`, `is_primary`). Per regel "Teruggevonden" of "Nee"
+  - Koppelen aan een factor (aantal): één regel die in het origineel is teruggevonden → bevinding op de passage uit het
+    origineel (primair document → geverifieerd, telt als primaire bron). Zonder origineel of zonder teruggevonden
+    aantal → bevinding op de registerregel als schatting van derden (status schatting, telt niet als officieel of
+    primair). Meerdere regels → een uitdrukkelijk door ProofLab berekende optelling als fragment ("geen tekst van de
+    uitgever") en een bevinding van het type aanname: altijd schatting. De regel staat in `registerClaimPlan` en is
+    getest, ook in het dossierlabel
+  - **Keuze opslag**: geen tabellen `registers`/`register_rows`, maar de bestaande bronnen en fragmenten. Redenen: de
+    citaatcontrole, statusberekening, RLS, audit, verwijderen met het dossier en de bronnenlijst werken dan ongewijzigd;
+    het origineel is een gewone primaire bron; er is geen migratie nodig, dus niets breekt zolang de live database
+    achterloopt. De structuur zit in een vast, terug te lezen regelformaat (`registerLine`/`parseRegisterLine`), en een
+    register herkent ProofLab aan een vaste markering in de toegangsnotitie. Een toekomstige API-koppeling (bijv. een
+    bondsregister) roept `storeRegister(…, { origin: "api" })` aan met dezelfde regels. Nadeel: geen kolomfilters in de
+    database; worden registers groot of gedeeld tussen dossiers, dan alsnog aparte tabellen
+- ✅ **Tests**: `cbs-catalog` (catalogus, URL- en filterbouw, peildatum, eenheden, metadata en waarde op opgenomen
+  API-antwoorden in `tests/unit/fixtures/cbs/` (2 × ~4,5 KB), onbekend/geheim, gewijzigde tabel, ongeldige code, nieuwe
+  poging), `sector-register` (sjabloon, validatie per regel, regelnummers, fragment, de primair-regel),
+  `databronnen-opslaan` (CBS opslaan → bron/fragment/bevinding gecontroleerd/factor, hergebruik, foutmeldingen;
+  register zonder en met origineel, optelling, dossierlabel), bestaande `cbs` aangepast (metadata-controle), en
+  `cbs-live` (alleen met `CBS_LIVE=1`, tegen de live API; op 5 november groen). Typecheck, lint, alle unittests en de
+  DB-tests (eigen database `prooflab_fase2_data`) groen
+
+**UI-teststappen** (dossier "AI-communicatie voor sportclubs", als lid van het onderzoeksteam):
+
+1. Markt › Marktpotentieel, scenario Realistisch. Bij "Relevante organisaties in het gebied": **Haal uit CBS** → kies
+   "Vestigingen van bedrijven; bedrijfstak, regio" (81578NED) → zoek bij Bedrijfstak "sport" en kies "931 Sport" (of
+   "9312 Buitensport") → Regio "Nederland" → Periode "Meest recente periode met een waarde" → **Toon waarde**. Je ziet
+   het aantal en de letterlijke tabelregel. **Opslaan** → de factor krijgt de waarde, jaar en regio, en de pil "Bron:
+   Geverifieerd". Onder Bronnen staat "CBS StatLine 81578NED" (officiële statistiek) met de regel als fragment.
+2. Nogmaals opslaan met dezelfde keuzes: geen tweede bron of bevinding ("hergebruikt").
+3. Kies een combinatie zonder waarde (bijv. een oude periode bij een nieuwe gemeente): "Onbekend" met de reden van CBS.
+4. Bij "Deel met het probleem en budget" toont "Haal uit CBS" alleen de regionale kerncijfers (percentages).
+5. Sectorregister: **Download CSV-sjabloon**, vul twee regels in (bijv. aantallen clubs per sport van een bond, met
+   echte bron-URL), importeer. Fout in een regel → melding met het regelnummer, niets geïmporteerd.
+6. Zonder origineel: kies één regel, factor "Realistisch scenario: Relevante organisaties in het gebied", **Koppel aan
+   factor** → bevinding "Schatting". Voeg het origineel toe (bestand of **Haal bronpagina op**) → per regel
+   "Teruggevonden"; koppel die regel opnieuw → bevinding "Geverifieerd" op de passage uit het origineel. Twee regels
+   kiezen → optelling, altijd "Schatting".
+7. Het dossierlabel (Overzicht/Rapport) mist niet langer "een officiële statistiek of primaire bron" zodra een CBS- of
+   bevestigde registerbevinding er is.
+
+**Open punten**
+
+- 🟡 Niet gedaan in deze omgeving: e2e (Playwright) en visuele controle op 1440/390 px met login (geen
+  Supabase-toegang)
+- CBS publiceert sinds 2026 ook tabellen naar SBI 2025 (bijv. `86280NED`, `86281NED`); de catalogus gebruikt nog SBI
+  2008 omdat die reeksen langer en regionaal beschikbaar zijn. Overstappen zodra de SBI 2008-tabellen stoppen
+- Een optelling van regels (CBS of register) telt nooit als gecontroleerd, omdat het totaal niet letterlijk in de bron
+  staat; desgewenst later "som van gecontroleerde regels" als aparte, uitgelegde status
+- Leeftijdsgroepen per gemeente komen uit `70072ned` (zes vaste groepen); een eigen leeftijdsband uit `03759ned` zou
+  een optelling van losse jaren zijn en is daarom niet aangeboden
+- Een register hoort bij één dossier; voor gedeelde of grote registers (of een API zoals een bondsregister) liever
+  eigen tabellen met RLS en audit
+- Geen caching van CBS-metadata; elke keuze van een tabel haalt de codelijsten opnieuw op (enkele honderden KB bij
+  gemeenten en SBI-codes)
+
