@@ -28,13 +28,14 @@ export function ChannelLinkBuilder({ publicUrl, channels, live }: { publicUrl: s
         {problem && <p className="field-error" id={`${id}-err`} role="alert">{problem} De links hieronder krijgen dan geen code.</p>}
         <p className="field-hint" id={`${id}-hint`}>Met een code zie je per bericht of advertentie hoeveel bezoekers en acties het oplevert (utm_content).</p>
       </div>
+      {/* Vaste id's link-<kanaal> (één linkbouwer per pagina): handig voor ondersteuning en de e2e-journey. */}
       {channels.map((c) => {
         const url = testLink(publicUrl, c.key, problem ? null : content);
         return (
           <div key={c.key} className="form-line">
-            <label htmlFor={`${id}-${c.key}`}>{c.label}</label>
+            <label htmlFor={`link-${c.key}`}>{c.label}</label>
             <div className="row" style={{ flexWrap: "nowrap" }}>
-              <input className="field mono" id={`${id}-${c.key}`} readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
+              <input className="field mono" id={`link-${c.key}`} readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
               <CopyButton text={url} label="Kopieer" />
             </div>
           </div>
