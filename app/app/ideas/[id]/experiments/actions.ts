@@ -43,6 +43,7 @@ import { approvalChecks, decisive, isExploratory, studyFormatOf } from "@/lib/do
 import { defaultedTestCardFields } from "@/lib/defaulted-test-card";
 import { withDefaultedFallback, withFields } from "@/lib/defaulted-fields";
 import { cleanDefaultedFields } from "@/lib/view-mode";
+import { privacyBlock, type TestPrivacy } from "@/lib/domain/test-privacy";
 
 export type ActionState = { error: string | null; ok?: string | null; warning?: string | null; fieldErrors?: Record<string, string> };
 
@@ -164,6 +165,9 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       guide_questions: guideLines.length,
       required_n: requiredN,
       sample_below_reason: sampleReason,
+      ...(v.type === "landing" || v.type === "pricing"
+        ? { privacy_controller: String(raw.privacy_controller ?? ""), privacy_contact: String(raw.privacy_contact ?? "") }
+        : {}),
     }),
   );
   if (Object.keys(fieldErrors).length) return { error: errorSummary(fieldErrors), fieldErrors };
@@ -199,6 +203,12 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       product_name: String(raw.product_name ?? "").trim().slice(0, 80) || v.title,
       researcher: ws.org?.name ?? "de onderzoeker",
     };
+    // Fase 2 · punt 4: de verwerkingsverantwoordelijke voor de AVG-tekst; de database laat de test zonder niet live gaan.
+    const privacy: TestPrivacy = {
+      controller_name: String(raw.privacy_controller ?? "").trim().slice(0, 120),
+      controller_contact: String(raw.privacy_contact ?? "").trim().slice(0, 200),
+    };
+    landing.privacy = privacy;
     if (v.type === "pricing") {
       config = { ...landing, price_points: pricePoints } satisfies PricingConfig;
     } else {
@@ -312,6 +322,9 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
     const rule = await loadDecisionRule(ideaId);
     const blocked = goRuleBlock({ isPrimary: a?.primary_experiment_id === expId, rule: rule === undefined ? "unknown" : rule ? "saved" : "missing" });
     if (blocked) return { error: blocked };
+    // Fase 2 · punt 4: een nieuwe testpagina gaat pas live met naam en contact van de verwerkingsverantwoordelijke.
+    const privacy = privacyBlock(exp.config, exp.type);
+    if (privacy) return { error: privacy };
   }
   // B0 punt 6: afronden onder de minimale steekproef vraagt een reden en een bevestiging. Het aantal deelnemers
   // wordt hier opnieuw bepaald uit de ruwe metingen, niet uit wat het formulier meestuurt.
@@ -342,7 +355,11 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
     .update(endReason ? { state: to, end_reason: endReason } : { state: to })
     .eq("id", expId)
     .eq("idea_id", ideaId);
-  if (error) return { error: error.message.includes("EXPERIMENT") ? error.message.replace(/^.*?: /, "") : "De status kon niet worden gewijzigd." };
+  if (error) {
+    const known = /EXPERIMENT|PRIVACY_CONTROLLER|DEPOSIT_NOT_CONFIGURED/.test(error.message);
+    const msg = error.message.replace(/^.*?: /, "");
+    return { error: known ? msg.charAt(0).toUpperCase() + msg.slice(1) : "De status kon niet worden gewijzigd." };
+  }
   // Gebruikerstest A10: alleen deze testpagina en het testbord opnieuw opbouwen; de stappenbalk staat op de pagina zelf.
   revalidatePath(`/app/ideas/${ideaId}/experiments/${expId}`);
   revalidatePath(`/app/ideas/${ideaId}/experiments`);

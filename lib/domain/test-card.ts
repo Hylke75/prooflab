@@ -5,6 +5,7 @@
 import { checkHypothesis } from "./hypothesis";
 import { recruitmentMissing } from "./recruitment";
 import { betaQuantile, requiredSample, type BetaPrior, type DecisionRule } from "./stats";
+import { contactProblem } from "./test-privacy";
 
 export type TestCardInput = {
   type: string;
@@ -31,6 +32,10 @@ export type TestCardInput = {
   // daaronder ligt. Zonder berekening (oude methode, aantalregel) geen controle.
   required_n?: number | null;
   sample_below_reason?: string | null;
+  // Fase 2 · punt 4: verwerkingsverantwoordelijke op de testpagina (landing en prijs). Ontbreekt het veld (undefined),
+  // dan geen controle (oudere aanroepers).
+  privacy_controller?: string;
+  privacy_contact?: string;
 };
 
 // Gebruikerstest C3: een minimale steekproef onder het berekende aantal vraagt een motivering van minstens 10 tekens.
@@ -63,6 +68,8 @@ export const FIELD_LABELS: Record<string, string> = {
   guide: "Gespreksleidraad",
   headline: "Kop",
   price_points: "Prijspunten",
+  privacy_controller: "Verwerkingsverantwoordelijke",
+  privacy_contact: "Contact voor privacy",
   survey: "Enquête",
 };
 
@@ -108,6 +115,15 @@ export function validateTestCard(c: TestCardInput): FieldErrors {
   if (c.type === "interview" && c.guide_questions < 3) add("guide", "Een gespreksleidraad heeft minstens drie vragen.");
   if ((c.type === "landing" || c.type === "pricing") && c.headline.trim().length < 5) add("headline", "Schrijf een kop voor de testpagina (minstens 5 tekens).");
   if (c.type === "pricing" && c.price_points === 0) add("price_points", "Voeg minstens één prijspunt toe, met naam en bedrag.");
+  if (c.type === "landing" || c.type === "pricing") {
+    if (c.privacy_controller !== undefined && c.privacy_controller.trim().length < 2) {
+      add("privacy_controller", "Vul de naam van de verwerkingsverantwoordelijke in (de organisatie die het onderzoek laat doen). Die staat in de privacytekst op de testpagina.");
+    }
+    if (c.privacy_contact !== undefined) {
+      const problem = contactProblem(c.privacy_contact);
+      if (problem) add("privacy_contact", problem);
+    }
+  }
   return e;
 }
 

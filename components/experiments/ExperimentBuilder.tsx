@@ -74,6 +74,8 @@ const FIELD_FOCUS: Record<string, string> = {
   guide: "tc-guide",
   headline: "pg-head",
   price_points: "pp-l-0",
+  privacy_controller: "pg-controller",
+  privacy_contact: "pg-contact",
   survey: "tc-survey",
 };
 
@@ -148,6 +150,8 @@ export function ExperimentBuilder({
     cta_label: CTA_DEFAULT[type],
     product_name: "",
   }));
+  // Fase 2 · punt 4: verwerkingsverantwoordelijke voor de AVG-tekst op de testpagina (vooringevuld met de werkruimte).
+  const [privacy, setPrivacy] = useState({ controller: researcher, contact: "" });
   // B5: vandaag (lokale datum) voor de deadline; de looptijd in dagen gaat naar de database.
   const [today] = useState(() => isoDay(new Date()));
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -320,6 +324,7 @@ export function ExperimentBuilder({
       guide_questions: guide.split("\n").map((x) => x.trim()).filter(Boolean).length,
       required_n: v2 && activeRule !== "absolute" ? (band?.requiredN ?? null) : null,
       sample_below_reason: sampleReason,
+      ...(type === "landing" || type === "pricing" ? { privacy_controller: privacy.controller, privacy_contact: privacy.contact } : {}),
     }),
     ...(surveyIssues.length ? { survey: "Maak de enquête eerst compleet (zie de meldingen bij de vragen)." } : {}),
   };
@@ -764,6 +769,22 @@ export function ExperimentBuilder({
               <label className="check-row"><input type="checkbox" name="collect_email" defaultChecked={type === "landing"} /> Na de klik om een e-mailadres vragen (met toestemming)</label>
               <div className="form-line"><label htmlFor="pg-reveal">Bericht na de klik</label><textarea className="field" id="pg-reveal" name="reveal_message" rows={3} defaultValue="Bedankt! We nemen contact op zodra we kunnen starten." /></div>
               <p className="field-hint">Na elke klik toont ProofLab altijd ook: “{HONEST_REVEAL}” Dit is niet uit te zetten.</p>
+              <fieldset className="mt-12" style={{ border: 0, padding: 0, margin: 0 }}>
+                <legend className="field-label">Privacy op de testpagina (AVG)</legend>
+                <div className="double-field">
+                  <div className="form-line">
+                    <label htmlFor="pg-controller">Verwerkingsverantwoordelijke<RequiredMark /></label>
+                    <input className="field" id="pg-controller" name="privacy_controller" maxLength={120} value={privacy.controller} onChange={(e) => setPrivacy({ ...privacy, controller: e.target.value })} {...aria("privacy_controller")} aria-required />
+                    {fieldError("privacy_controller")}
+                  </div>
+                  <div className="form-line">
+                    <label htmlFor="pg-contact">Contact voor privacyvragen<RequiredMark /></label>
+                    <input className="field" id="pg-contact" name="privacy_contact" maxLength={200} placeholder="privacy@organisatie.nl" value={privacy.contact} onChange={(e) => setPrivacy({ ...privacy, contact: e.target.value })} {...aria("privacy_contact")} aria-required />
+                    {fieldError("privacy_contact")}
+                  </div>
+                </div>
+                <p className="field-hint">De organisatie die het onderzoek laat doen en waar bezoekers hun privacyrechten uitoefenen. Staat onderaan de testpagina; zonder deze gegevens gaat de test niet live. Aanmeldingen worden hooguit 12 maanden bewaard.</p>
+              </fieldset>
             </>
           )}
           </details>

@@ -5,6 +5,7 @@ import { consentText, variantFor, visitorFromRequest } from "@/lib/public-test";
 import { HONEST_REVEAL } from "@/lib/domain/labels";
 import type { PricingConfig } from "@/lib/experiment-metrics";
 import { PublicTest } from "./PublicTest";
+import { privacyNotice, privacyOf } from "@/lib/domain/test-privacy";
 
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
@@ -22,6 +23,7 @@ export default async function TestPage({ params }: PageProps<"/t/[slug]">) {
   const price = test.type === "pricing" ? c.price_points[variantFor(visitor.hash, c.price_points.length)] ?? null : null;
   const live = test.state === "live";
   const closed = ["ended", "analyzed", "decided"].includes(test.state);
+  const privacy = privacyOf(c);
 
   return (
     <div className="tp">
@@ -53,6 +55,14 @@ export default async function TestPage({ params }: PageProps<"/t/[slug]">) {
       <footer className="tp-foot">
         Dit is een marktonderzoek van {c.researcher}. Er worden geen cookies geplaatst en er wordt niets verkocht. Je bezoek wordt
         anoniem en zonder tracking meegeteld.
+        {/* Fase 2 · punt 4: AVG-tekst met de verwerkingsverantwoordelijke (nieuwe tests; oudere tests houden de tekst hierboven). */}
+        {privacy && (
+          <section aria-label="Privacy" style={{ marginTop: 10 }}>
+            {privacyNotice(privacy, { deposit: !!c.deposit?.enabled, researcher: c.researcher }).map((line) => (
+              <p key={line} style={{ margin: "4px 0" }}>{line}</p>
+            ))}
+          </section>
+        )}
       </footer>
     </div>
   );

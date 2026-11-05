@@ -17,6 +17,9 @@ export type LandingConfig = {
   reveal_message: string;
   product_name: string;
   researcher: string;
+  // Fase 2 · punt 4 (nieuwe tests): verwerkingsverantwoordelijke voor de AVG-tekst en de optionele betaalstap.
+  privacy?: { controller_name: string; controller_contact: string };
+  deposit?: { enabled: boolean; amount_eur: number };
 };
 
 export type PricingConfig = LandingConfig & {

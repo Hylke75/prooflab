@@ -48,6 +48,7 @@ import { InterviewImport } from "@/components/experiments/InterviewImport";
 import { ThemeCrossTable } from "@/components/experiments/ThemeCrossTable";
 import { FathomField } from "@/components/experiments/FathomField";
 import { ChannelLinkBuilder } from "@/components/experiments/ChannelLinkBuilder";
+import { privacyBlock, privacyOf } from "@/lib/domain/test-privacy";
 import { loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
 
 export const metadata: Metadata = { title: "Experiment" };
@@ -155,6 +156,8 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
   const deadline = exp.ends_at ? new Date(exp.ends_at) : new Date(`${deadlineFromDays(h.max_duration_days, isoDay(new Date()))}T12:00:00`);
 
   const shortTitle = truncateWords(exp.title, TITLE_MAX);
+  // Fase 2 · punt 4: zonder verwerkingsverantwoordelijke gaat een nieuwe testpagina niet live (ook in de database).
+  const privacyGate = privacyBlock(exp.config, type);
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Testen", exp.title]} coach="experiments" ideaId={id} section={`/experiments/${expId}`}>
       <div className="section-row">
@@ -288,6 +291,12 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                   : "Niet vastgelegd (telt als onbekend)"}
             </strong>
           </div>
+          {privacyOf(exp.config) && (
+            <div className="data-row">
+              <span>Privacy (AVG)</span>
+              <strong style={{ textAlign: "right" }}>{privacyOf(exp.config)!.controller_name || "—"} · {privacyOf(exp.config)!.controller_contact || "contact ontbreekt"}</strong>
+            </div>
+          )}
           {/* Fase 1 · punt 1: velden die bij het opslaan nog de standaardwaarde van ProofLab hadden (ook in het auditspoor). */}
           {defaultedLabels("hypotheses", (h as { defaulted_fields?: unknown }).defaulted_fields).length > 0 && (
             <div className="data-row" id="tc-standaardwaarden">
@@ -343,7 +352,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
               ) : (
                 <>
                   <label className="check-row"><input type="checkbox" name="check_reveal" /> De pagina belooft niets wat niet waar is; na de klik volgt altijd de eerlijke uitleg.</label>
-                  <label className="check-row"><input type="checkbox" name="check_privacy" /> Er worden geen cookies geplaatst; e-mailadressen alleen met toestemming en bewaartermijn van 180 dagen.</label>
+                  <label className="check-row"><input type="checkbox" name="check_privacy" /> Er worden geen cookies geplaatst; e-mailadressen alleen met toestemming en {privacyOf(exp.config) ? "een bewaartermijn van 12 maanden; de testpagina noemt de verwerkingsverantwoordelijke" : "bewaartermijn van 180 dagen"}.</label>
                   <label className="check-row"><input type="checkbox" name="check_budget" /> Advertentie-uitgaven (indien van toepassing) zijn goedgekeurd en vastgelegd.</label>
                 </>
               )}
@@ -359,11 +368,16 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                   <p style={{ margin: 0 }}>{goBlock}</p>
                 </div>
               )}
+              {privacyGate && (
+                <div className="form-error" id="privacy-block" role="status">
+                  <p style={{ margin: 0 }}>{privacyGate}</p>
+                </div>
+              )}
               <ActionForm
                 action={transitionExperiment.bind(null, id, expId, "live")}
                 submitLabel={type === "interview" ? "Start de interviewronde" : "Publiceer en start de meting"}
-                disabled={!!goBlock}
-                describedBy={goBlock ? "go-rule-block" : undefined}
+                disabled={!!goBlock || !!privacyGate}
+                describedBy={goBlock ? "go-rule-block" : privacyGate ? "privacy-block" : undefined}
               >
                 <span />
               </ActionForm>
