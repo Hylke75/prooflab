@@ -8,9 +8,9 @@ Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van e
 | Stap | Waarom | Wie |
 |---|---|---|
 | ~~Migraties toepassen~~ | Gedaan 28-10: `core_schema`, `security`, `hardening` staan op project `prooflab`; ingest-sleutel geregistreerd | ✅ |
-| Migraties `integrity` (29-10), `prediction` en `coach_and_signals` (3-11) toepassen en migratiegeschiedenis rechtzetten | Zonder deze migraties werken testpagina's, inloglinks, sprints, rapport delen, voorspellingen, coach en koppelingen niet tegen de live database | Claude, na bevestiging in Supabase |
-| Migratie `20261114090000_fase1_weergave.sql` toepassen (Snel en Grondig) | Zonder de migratie staat elk dossier op Grondig en kan de stand niet worden bewaard; standaardwaarden worden zonder `defaulted_fields` opgeslagen | Claude, na bevestiging in Supabase |
-| Migratie `20261115090000_interviews_import.sql` toepassen (interviews importeren, thema's, Fathom-sleutel) | Zonder de migratie meldt het importscherm dat de database moet worden bijgewerkt; plakken blijft werken, thema's en "X van N" zijn niet beschikbaar, de rol Betaler kan niet worden opgeslagen | Claude, na bevestiging in Supabase |
+| ~~Migraties `integrity` t/m `method_d` en `b3_intake` t/m `interviews_import`~~ | Toegepast op project `prooflab` (gecontroleerd 6-11 met de migratielijst) | ✅ |
+| ~~Migratie `20261114090000_fase1_weergave.sql` toepassen (Snel en Grondig)~~ | Toegepast op project `prooflab` (gecontroleerd 6-11) | ✅ |
+| ~~Migratie `20261115090000_interviews_import.sql` toepassen (interviews importeren, thema's, Fathom-sleutel)~~ | Toegepast op project `prooflab` (gecontroleerd 6-11) | ✅ |
 | Migratie `20261117090000_fase2_werving.sql` toepassen (werving bijhouden) | Zonder de migratie meldt de testpagina dat de wervingsregistratie nog niet beschikbaar is; de trechter toont dan alleen interviews of metingen, "Leg vast als bevinding" en campagnes koppelen werken niet | Claude, na bevestiging in Supabase |
 | Optioneel: `FATHOM_ENABLED=1` (Vercel) en een Fathom-API-sleutel op `/app/status` | Opnames rechtstreeks uit Fathom kiezen; zonder koppeling werkt importeren via een bestand | Hylke |
 | Migratie `20261116090000_fase2_testen.sql` toepassen (testen uitvoeren) | Zonder de migratie kent de Test Card alleen "aanmelding" en melden aanbetalingen, toezeggingen en afspraken dat de database moet worden bijgewerkt | Claude, na bevestiging in Supabase |
@@ -108,7 +108,16 @@ opgelost in code; de databasekant wordt live zodra migratie `integrity` is toege
 - [x] Visuele controle 1440/768/390/320 van alle ingelogde schermen; overloop opgelost (DESIGN_DIFF_LOG #17)
 - [x] Dogfood-dossier "ProofLab op ProofLab" in de app, ingevoerd via de echte UI (`npm run dogfood`): beslisvraag, 3 bronnen met letterlijk fragment dat live is teruggevonden (Strategyzer, ValidatorAI, IdeaProof), 6 aanbieders/alternatieven (Rapidly: website blokkeert broncontrole → positionering en prijs onbekend), aannamekaart, interview-Test Card als concept (niet gepubliceerd). Staat nu in de E2E-werkruimte; na je eerste login draai je het script met `DOGFOOD_EMAIL`/`DOGFOOD_PASSWORD` voor je eigen werkruimte
 
-## Testresultaten (laatste run, 3-11)
+## Testresultaten (laatste run, 6-11, na samenvoegen fase 2)
+
+- `npm run lint` en `npm run typecheck` — schoon
+- `npm test` — 1387 geslaagd, 10 overgeslagen (live evals zonder API-sleutel)
+- `npm run test:db` — 169 geslaagd in 26 bestanden (Postgres 16, alle 38 migraties)
+- `npm run build` — geslaagd
+- Live Supabase (`prooflab`): alle migraties toegepast behalve `20261116090000_fase2_testen` en `20261117090000_fase2_werving`
+- Niet gedaan: E2E (Playwright) en visuele controle met login; geen E2E-account of Supabase-sleutels in deze omgeving
+
+## Testresultaten (run 3-11)
 
 - `npm run lint` en `npm run typecheck` — schoon
 - `npm test` — 224 geslaagd, 3 overgeslagen (live eval zonder API-sleutel)
@@ -881,13 +890,12 @@ migratie werkt de app zoals voorheen, zie terugval).
      notitie "… haalt de steekproef waarschijnlijk niet" (na "Laat de coach meekijken").
   7. Snel: geen interval, geen registratielijst; Grondig: wel. 390 px: alleen de tabel scrolt.
   8. Als opdrachtgever: geen kaart Werving en geen melding (alleen het team ziet de registratie).
-- **Open punten**: (1) `loadBookedAppointments` koppelen aan `test_bookings` na samenvoegen met punt 4 (en dan het
-  kanaal van een boeking vastleggen zodra punt 4 dat kent; nu "Direct / onbekend"); (2) verkennend klantonderzoek
+- **Open punten**: (1) ~~`loadBookedAppointments` koppelen aan `test_bookings`~~ gedaan na het samenvoegen met punt 4
+  (commit 486aced); het kanaal van een boeking is nog "Direct / onbekend"; (2) verkennend klantonderzoek
   (StudyView) toont de trechter nog niet; (3) een verlopen afspraak zonder ingevoerd gesprek telt als gepland (bewuste,
   zichtbare keuze; met agendadata uit punt 4 kan een no-show apart worden geteld); (4) niet gedaan in deze omgeving:
-  e2e (Playwright), visuele controle op 1440/390 px met login en `next build` (Turbopack volgt de gedeelde
-  `node_modules`-symlink van de worktree niet; de webpack-build faalt al vóór deze wijziging op `node:crypto` in
-  `ExperimentBuilder`); (5) migratie nog toepassen
+  e2e (Playwright) en visuele controle op 1440/390 px met login (`next build` slaagt sinds 6-11 op de
+  samengevoegde branch); (5) migratie nog toepassen
 
 ## Fase 2 · punt 6: Nederlandse databronnen (5 november)
 
