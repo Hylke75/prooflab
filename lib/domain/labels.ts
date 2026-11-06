@@ -58,6 +58,8 @@ export const SOURCE_TYPES = {
   survey: "Enquête (open antwoorden)",
   dataset_upload: "Eigen dataset",
   interview: "Interview",
+  // Fase 2 · punt 5: respons per kanaal uit de eigen wervingsregistratie. Een eigen meting, nooit primair of officieel.
+  recruitment_log: "Eigen wervingsregistratie",
   other: "Overig",
 } as const;
 export type SourceType = keyof typeof SOURCE_TYPES;

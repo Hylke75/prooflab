@@ -2,6 +2,7 @@ import "server-only";
 import { headers } from "next/headers";
 import { env } from "@/lib/env";
 import { assignVariant, clientIp, isLikelyBot, rateBucket, visitorHash } from "@/lib/domain/tracking";
+import { consentTextFor } from "@/lib/domain/test-privacy";
 
 export async function visitorFromRequest(slug: string) {
   const h = await headers();
@@ -29,6 +30,8 @@ export function variantFor(hash: string, count: number): number {
   return assignVariant(hash, count);
 }
 
+// Fase 2 · punt 4: nieuwe aanmeldingen worden maximaal 12 maanden bewaard (test_submissions.retention_until). Zonder
+// de migratie is de bewaartermijn nog 180 dagen; "maximaal 12 maanden" blijft dan waar.
 export function consentText(researcher: string): string {
-  return `Ik geef ${researcher} toestemming om mijn e-mailadres te gebruiken om mij over dit aanbod te informeren. Het adres wordt maximaal 180 dagen bewaard en niet gedeeld. Intrekken kan altijd door te reageren op de e-mail.`;
+  return consentTextFor(researcher);
 }

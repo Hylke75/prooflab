@@ -7,6 +7,7 @@ import { CLAIM_STATUS, type ClaimStatus } from "@/lib/domain/labels";
 import { numericFromInput } from "@/lib/domain/verify";
 import { Term } from "@/components/ui/Term";
 import { Detail } from "@/components/shell/ViewMode";
+import { CbsFactorButton, type CbsActions } from "@/components/research/CbsFactorPicker";
 
 type Factor = {
   key: string;
@@ -46,6 +47,7 @@ export function SizingPanel({
   breakEvenRevenue = null,
   intakePrice = null,
   adoptIntakePrice = null,
+  cbsActions = null,
 }: {
   scenarios: Scenario[];
   claims: Claim[];
@@ -55,6 +57,8 @@ export function SizingPanel({
   // Gebruikerstest D5: de prijs uit de intake als jaaromzet per klant (aanname), en de actie om hem over te nemen.
   intakePrice?: { value: number; note: string; offer: string } | null;
   adoptIntakePrice?: Action | null;
+  // Fase 2, punt 6: "Haal uit CBS" bij factoren met een aantal of percentage.
+  cbsActions?: CbsActions | null;
 }) {
   const order: ScenarioKind[] = ["conservative", "realistic", "optimistic"];
   const sorted = order.map((k) => scenarios.find((s) => s.kind === k)).filter(Boolean) as Scenario[];
@@ -187,6 +191,9 @@ export function SizingPanel({
                             <option key={c.id} value={c.id}>{c.statement.slice(0, 70)}</option>
                           ))}
                         </select>
+                      )}
+                      {canWrite && cbsActions && (def.unit === "count" || def.unit === "percent") && (
+                        <CbsFactorButton actions={cbsActions} scenarioId={scenario.id} factor={{ key: def.key, label: def.label, unit: def.unit }} model={scenario.model} />
                       )}
                     </label>
                     <input

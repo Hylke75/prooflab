@@ -86,6 +86,219 @@ export type Database = {
         }
         Relationships: []
       }
+      test_payments: {
+        Row: {
+          id: string
+          experiment_id: string
+          idea_id: string
+          mollie_id: string
+          amount: number
+          currency: string
+          status: string
+          mode: string
+          person_key: string
+          created_at: string
+          paid_at: string | null
+          refund_requested_at: string | null
+          refund_requested_by: string | null
+          refunded_at: string | null
+          updated_at: string
+          retention_until: string
+          purged_at: string | null
+        }
+        Insert: {
+          id?: string
+          experiment_id: string
+          idea_id: string
+          mollie_id: string
+          amount: number
+          currency?: string
+          status: string
+          mode: string
+          person_key: string
+          created_at?: string
+          paid_at?: string | null
+          refund_requested_at?: string | null
+          refund_requested_by?: string | null
+          refunded_at?: string | null
+          updated_at?: string
+          retention_until?: string
+          purged_at?: string | null
+        }
+        Update: {
+          id?: string
+          experiment_id?: string
+          idea_id?: string
+          mollie_id?: string
+          amount?: number
+          currency?: string
+          status?: string
+          mode?: string
+          person_key?: string
+          created_at?: string
+          paid_at?: string | null
+          refund_requested_at?: string | null
+          refund_requested_by?: string | null
+          refunded_at?: string | null
+          updated_at?: string
+          retention_until?: string
+          purged_at?: string | null
+        }
+        Relationships: []
+      }
+      test_commitments: {
+        Row: {
+          id: string
+          experiment_id: string
+          idea_id: string
+          method: string
+          status: string
+          person_key: string
+          signer_name: string | null
+          signer_org: string | null
+          typed_name: string | null
+          consent: boolean
+          document_path: string | null
+          document_mime: string | null
+          document_size: number | null
+          token_hash: string | null
+          token_expires_at: string | null
+          ip_hash: string | null
+          signed_at: string | null
+          created_by: string | null
+          created_at: string
+          retention_until: string
+          purged_at: string | null
+        }
+        Insert: {
+          id?: string
+          experiment_id: string
+          idea_id: string
+          method: string
+          status?: string
+          person_key: string
+          signer_name?: string | null
+          signer_org?: string | null
+          typed_name?: string | null
+          consent?: boolean
+          document_path?: string | null
+          document_mime?: string | null
+          document_size?: number | null
+          token_hash?: string | null
+          token_expires_at?: string | null
+          ip_hash?: string | null
+          signed_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          retention_until?: string
+          purged_at?: string | null
+        }
+        Update: {
+          id?: string
+          experiment_id?: string
+          idea_id?: string
+          method?: string
+          status?: string
+          person_key?: string
+          signer_name?: string | null
+          signer_org?: string | null
+          typed_name?: string | null
+          consent?: boolean
+          document_path?: string | null
+          document_mime?: string | null
+          document_size?: number | null
+          token_hash?: string | null
+          token_expires_at?: string | null
+          ip_hash?: string | null
+          signed_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          retention_until?: string
+          purged_at?: string | null
+        }
+        Relationships: []
+      }
+      test_booking_hooks: {
+        Row: {
+          id: string
+          experiment_id: string
+          idea_id: string
+          provider: string
+          token_hash: string
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          experiment_id: string
+          idea_id: string
+          provider: string
+          token_hash: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          experiment_id?: string
+          idea_id?: string
+          provider?: string
+          token_hash?: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      test_bookings: {
+        Row: {
+          id: string
+          experiment_id: string
+          idea_id: string
+          provider: string
+          external_id: string
+          person_key: string
+          status: string
+          booked_at: string
+          scheduled_for: string | null
+          created_at: string
+          cancelled_at: string | null
+          updated_at: string
+          retention_until: string
+          purged_at: string | null
+        }
+        Insert: {
+          id?: string
+          experiment_id: string
+          idea_id: string
+          provider: string
+          external_id: string
+          person_key: string
+          status: string
+          booked_at: string
+          scheduled_for?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          updated_at?: string
+          retention_until?: string
+          purged_at?: string | null
+        }
+        Update: {
+          id?: string
+          experiment_id?: string
+          idea_id?: string
+          provider?: string
+          external_id?: string
+          person_key?: string
+          status?: string
+          booked_at?: string
+          scheduled_for?: string | null
+          created_at?: string
+          cancelled_at?: string | null
+          updated_at?: string
+          retention_until?: string
+          purged_at?: string | null
+        }
+        Relationships: []
+      }
       email_suppressions: {
         Row: {
           org_id: string
@@ -1471,6 +1684,7 @@ export type Database = {
           required_n: number | null
           research_question_id: string | null
           success_count: number | null
+          success_metric: string | null
           success_threshold_pct: number | null
           superseded_by: string | null
           target_group: string
@@ -1500,6 +1714,7 @@ export type Database = {
           required_n?: number | null
           research_question_id?: string | null
           success_count?: number | null
+          success_metric?: string | null
           success_threshold_pct?: number | null
           superseded_by?: string | null
           target_group: string
@@ -1529,6 +1744,7 @@ export type Database = {
           required_n?: number | null
           research_question_id?: string | null
           success_count?: number | null
+          success_metric?: string | null
           success_threshold_pct?: number | null
           superseded_by?: string | null
           target_group?: string
@@ -2022,6 +2238,105 @@ export type Database = {
           },
         ]
       }
+      recruitment_entries: {
+        Row: {
+          id: string
+          idea_id: string
+          experiment_id: string
+          entry_date: string
+          channel: string
+          step: string
+          quantity: number
+          note: string | null
+          corrects_id: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          idea_id: string
+          experiment_id: string
+          entry_date: string
+          channel: string
+          step: string
+          quantity: number
+          note?: string | null
+          corrects_id?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          idea_id?: string
+          experiment_id?: string
+          entry_date?: string
+          channel?: string
+          step?: string
+          quantity?: number
+          note?: string | null
+          corrects_id?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recruitment_entries_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "ideas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recruitment_entries_experiment_id_fkey"
+            columns: ["experiment_id"]
+            isOneToOne: false
+            referencedRelation: "experiments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recruitment_campaigns: {
+        Row: {
+          id: string
+          idea_id: string
+          experiment_id: string
+          campaign: string
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          idea_id: string
+          experiment_id: string
+          campaign: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          idea_id?: string
+          experiment_id?: string
+          campaign?: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recruitment_campaigns_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "ideas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recruitment_campaigns_experiment_id_fkey"
+            columns: ["experiment_id"]
+            isOneToOne: false
+            referencedRelation: "experiments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       observations: {
         Row: {
           review_status: string | null
@@ -2047,6 +2362,7 @@ export type Database = {
           quote_end: number | null
           segment_index: number | null
           theme_only: boolean
+          evidence_type: string | null
         }
         Insert: {
           review_status?: string | null
@@ -2072,6 +2388,7 @@ export type Database = {
           quote_end?: number | null
           segment_index?: number | null
           theme_only?: boolean
+          evidence_type?: string | null
         }
         Update: {
           review_status?: string | null
@@ -2097,6 +2414,7 @@ export type Database = {
           quote_end?: number | null
           segment_index?: number | null
           theme_only?: boolean
+          evidence_type?: string | null
         }
         Relationships: [
           {
@@ -3300,6 +3618,65 @@ export type Database = {
       set_fathom_api_key: {
         Args: { p_org: string; p_key: string | null }
         Returns: undefined
+      }
+      payment_settings_status: {
+        Args: { p_org: string }
+        Returns: { mollie_connected: boolean; mollie_mode: string | null; mollie_key_hint: string | null; updated_at: string }[]
+      }
+      set_mollie_key: {
+        Args: { p_org: string; p_cipher: string | null; p_mode: string | null; p_hint: string | null }
+        Returns: undefined
+      }
+      mollie_key_for_idea: {
+        Args: { p_idea: string }
+        Returns: { cipher: string; mode: string }[]
+      }
+      deposit_checkout: {
+        Args: { p_key: string; p_slug: string; p_visitor: string; p_person_key: string; p_rate_bucket: string }
+        Returns: Json
+      }
+      register_test_payment: {
+        Args: { p_key: string; p_slug: string; p_person_key: string; p_mollie_id: string; p_amount: number; p_currency: string; p_mode: string; p_status: string }
+        Returns: string
+      }
+      mollie_webhook_lookup: {
+        Args: { p_key: string; p_slug: string; p_mollie_id: string }
+        Returns: Json
+      }
+      record_mollie_status: {
+        Args: { p_key: string; p_mollie_id: string; p_status: string; p_mode: string }
+        Returns: string
+      }
+      mark_refund_requested: {
+        Args: { p_payment: string }
+        Returns: undefined
+      }
+      get_commitment_invite: {
+        Args: { p_key: string; p_token_hash: string }
+        Returns: Json
+      }
+      sign_commitment: {
+        Args: { p_key: string; p_token_hash: string; p_name: string; p_org: string; p_typed_name: string; p_consent: boolean; p_ip_hash: string | null }
+        Returns: string
+      }
+      record_test_booking: {
+        Args: { p_key: string; p_token_hash: string; p_provider: string; p_external_id: string; p_person_key: string; p_status: string; p_booked_at: string | null; p_scheduled_for: string | null }
+        Returns: string
+      }
+      experiment_action_counts: {
+        Args: { p_experiment: string }
+        Returns: {
+          visitors: number
+          clickers: number
+          submitters: number
+          payers: number
+          test_payers: number
+          refunded: number
+          unrefunded: number
+          committers: number
+          bookers: number
+          cancelled_bookings: number
+        }[]
       }
       fathom_api_key_for_idea: {
         Args: { p_idea: string }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultsForSource, deviationHint, evidenceTypeDeviates, evidenceTypeError, SELF_REPORTED_SOURCES, SOURCE_DEFAULTS } from "@/lib/domain/source-defaults";
+import { defaultsForSource, deviationHint, evidenceTypeDeviates, evidenceTypeError, OWN_MEASUREMENT_SOURCES, SELF_REPORTED_SOURCES, SOURCE_DEFAULTS } from "@/lib/domain/source-defaults";
 import { EVIDENCE_TYPES, SOURCE_TYPES, type SourceType } from "@/lib/domain/labels";
 import { FRESHNESS_MONTHS } from "@/lib/domain/verify";
 
@@ -18,6 +18,7 @@ const expected: Record<SourceType, [string, string]> = {
   outreach: ["qualitative_observation", "general"],
   survey: ["self_reported_intent", "general"],
   dataset_upload: ["third_party_estimate", "statistic"],
+  recruitment_log: ["observed_action", "general"],
   other: ["qualitative_observation", "general"],
 };
 
@@ -55,7 +56,7 @@ describe("evidenceTypeError", () => {
     expect(evidenceTypeError(s, "official_statistic")).toMatch(/geen officiële statistiek/);
   });
   it("staat officiële statistiek toe bij andere bronnen", () => {
-    for (const s of (Object.keys(SOURCE_TYPES) as SourceType[]).filter((x) => !SELF_REPORTED_SOURCES.includes(x))) {
+    for (const s of (Object.keys(SOURCE_TYPES) as SourceType[]).filter((x) => !SELF_REPORTED_SOURCES.includes(x) && !OWN_MEASUREMENT_SOURCES.includes(x))) {
       expect(evidenceTypeError(s, "official_statistic")).toBeNull();
     }
   });

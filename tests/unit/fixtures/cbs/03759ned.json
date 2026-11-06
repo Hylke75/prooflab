@@ -1,0 +1,198 @@
+{
+ "Dimensions": {
+  "@odata.context": "https://datasets.cbs.nl/odata/v1/CBS/03759ned/$metadata#Dimensions",
+  "value": [
+   {
+    "Identifier": "BurgerlijkeStaat",
+    "Title": "Burgerlijke staat",
+    "Kind": "Dimension"
+   },
+   {
+    "Identifier": "Geslacht",
+    "Title": "Geslacht",
+    "Kind": "Dimension"
+   },
+   {
+    "Identifier": "Leeftijd",
+    "Title": "Leeftijd",
+    "Kind": "Dimension"
+   },
+   {
+    "Identifier": "RegioS",
+    "Title": "Regio's",
+    "Kind": "GeoDimension"
+   },
+   {
+    "Identifier": "Perioden",
+    "Title": "Perioden",
+    "Kind": "TimeDimension"
+   }
+  ]
+ },
+ "MeasureCodes": {
+  "@odata.context": "https://datasets.cbs.nl/odata/v1/CBS/03759ned/$metadata#MeasureCodes",
+  "value": [
+   {
+    "Identifier": "M000352",
+    "Index": 5,
+    "Title": "Bevolking op 1 januari",
+    "MeasureGroupId": null,
+    "DataType": "Long",
+    "Unit": "aantal",
+    "Decimals": 0,
+    "PresentationType": "Absolute"
+   },
+   {
+    "Identifier": "M000365",
+    "Index": 6,
+    "Title": "Gemiddelde bevolking ",
+    "MeasureGroupId": null,
+    "DataType": "Double",
+    "Unit": "aantal",
+    "Decimals": 1,
+    "PresentationType": "Absolute"
+   }
+  ]
+ },
+ "BurgerlijkeStaatCodes": {
+  "@odata.context": "https://datasets.cbs.nl/odata/v1/CBS/03759ned/$metadata#BurgerlijkeStaatCodes(Identifier,Title,DimensionGroupId)",
+  "value": [
+   {
+    "Identifier": "T001019",
+    "Title": "Totaal burgerlijke staat",
+    "DimensionGroupId": null
+   },
+   {
+    "Identifier": "1010",
+    "Title": "Ongehuwd",
+    "DimensionGroupId": null
+   },
+   {
+    "Identifier": "1020",
+    "Title": "Gehuwd",
+    "DimensionGroupId": null
+   },
+   {
+    "Identifier": "1050",
+    "Title": "Verweduwd",
+    "DimensionGroupId": null
+   },
+   {
+    "Identifier": "1080",
+    "Title": "Gescheiden",
+    "DimensionGroupId": null
+   }
+  ]
+ },
+ "GeslachtCodes": {
+  "@odata.context": "https://datasets.cbs.nl/odata/v1/CBS/03759ned/$metadata#GeslachtCodes(Identifier,Title,DimensionGroupId)",
+  "value": [
+   {
+    "Identifier": "T001038",
+    "Title": "Totaal mannen en vrouwen",
+    "DimensionGroupId": null
+   },
+   {
+    "Identifier": "3000",
+    "Title": "Mannen",
+    "DimensionGroupId": null
+   },
+   {
+    "Identifier": "4000",
+    "Title": "Vrouwen",
+    "DimensionGroupId": null
+   }
+  ]
+ },
+ "LeeftijdCodes": {
+  "@odata.context": "https://datasets.cbs.nl/odata/v1/CBS/03759ned/$metadata#LeeftijdCodes(Identifier,Title,DimensionGroupId)",
+  "value": [
+   {
+    "Identifier": "10000",
+    "Title": "Totaal",
+    "DimensionGroupId": "1"
+   },
+   {
+    "Identifier": "11800",
+    "Title": "18 jaar",
+    "DimensionGroupId": "3"
+   },
+   {
+    "Identifier": "12500",
+    "Title": "25 jaar",
+    "DimensionGroupId": "4"
+   },
+   {
+    "Identifier": "22000",
+    "Title": "95 jaar of ouder",
+    "DimensionGroupId": "13"
+   }
+  ]
+ },
+ "RegioSCodes": {
+  "@odata.context": "https://datasets.cbs.nl/odata/v1/CBS/03759ned/$metadata#RegioSCodes(Identifier,Title,DimensionGroupId)",
+  "value": [
+   {
+    "Identifier": "NL01",
+    "Title": "Nederland",
+    "DimensionGroupId": "NL"
+   },
+   {
+    "Identifier": "PV27",
+    "Title": "Noord-Holland (PV)",
+    "DimensionGroupId": "PV"
+   },
+   {
+    "Identifier": "GM0363",
+    "Title": "Amsterdam",
+    "DimensionGroupId": "GMPV27"
+   },
+   {
+    "Identifier": "GM0599",
+    "Title": "Rotterdam",
+    "DimensionGroupId": "GMPV28"
+   }
+  ]
+ },
+ "PeriodenCodes": {
+  "@odata.context": "https://datasets.cbs.nl/odata/v1/CBS/03759ned/$metadata#PeriodenCodes(Identifier,Title,DimensionGroupId,Status)",
+  "value": [
+   {
+    "Identifier": "2024JJ00",
+    "Title": "2024",
+    "DimensionGroupId": "0",
+    "Status": "Definitief"
+   },
+   {
+    "Identifier": "2025JJ00",
+    "Title": "2025",
+    "DimensionGroupId": "0",
+    "Status": "Definitief"
+   },
+   {
+    "Identifier": "2026JJ00",
+    "Title": "2026",
+    "DimensionGroupId": "0",
+    "Status": "Definitief"
+   }
+  ]
+ },
+ "Observations": {
+  "@odata.context": "https://datasets.cbs.nl/odata/v1/CBS/03759ned/$metadata#Observations",
+  "value": [
+   {
+    "Id": 6213,
+    "Measure": "M000352",
+    "ValueAttribute": "None",
+    "Value": 941927.0,
+    "StringValue": null,
+    "BurgerlijkeStaat": "T001019",
+    "Geslacht": "T001038",
+    "Leeftijd": "10000",
+    "RegioS": "GM0363",
+    "Perioden": "2026JJ00"
+   }
+  ]
+ },
+ "_herkomst": "2026-11-05 opgehaald uit datasets.cbs.nl (OData v4); codelijsten ingekort tot de gebruikte codes, omschrijvingen weggelaten"
+}

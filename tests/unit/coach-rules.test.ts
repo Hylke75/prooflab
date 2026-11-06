@@ -148,6 +148,24 @@ describe("coach rules", () => {
     expect(codes(facts({ experiments: [tooEarly] }))).not.toContain("test_pace:e1");
   });
 
+  it("fase 2 · punt 5: test_pace rekent geplande gesprekken en de beslisdatum mee, in één melding", () => {
+    const iv = exp({ type: "interview", title: "Interviews sportclubs", state: "live", startedAt: iso(-10), endsAt: iso(4), n: 2, minSample: 8 });
+    const note = evaluateRules(facts({ experiments: [iv] })).filter((x) => x.code.startsWith("test_pace"));
+    expect(note).toHaveLength(1);
+    expect(note[0].body).toMatch(/^2 gehouden van minimaal 8 gesprekken: nog 6 gesprekken nodig in 4 dagen/);
+    expect(note[0].href).toBe(`${base}/experiments/e1#werving`);
+    // Genoeg afspraken gepland: geen melding.
+    expect(codes(facts({ experiments: [{ ...iv, planned: 6 }] }))).not.toContain("test_pace:e1");
+    // Op tempo voor de einddatum, maar de beslisdatum ligt eerder.
+    const onPace = exp({ state: "live", startedAt: iso(-5), endsAt: iso(9), n: 40, minSample: 80 });
+    expect(codes(facts({ experiments: [onPace] }))).not.toContain("test_pace:e1");
+    const early = evaluateRules(facts({ experiments: [onPace], decisionDeadline: "2026-11-05" })).find((x) => x.code === "test_pace:e1");
+    expect(early?.body).toContain("tot de beslisdatum (5 november)");
+    // Verstreken einddatum met een te kleine steekproef.
+    const late = evaluateRules(facts({ experiments: [{ ...iv, endsAt: iso(-1) }] })).find((x) => x.code === "test_pace:e1");
+    expect(late?.title).toMatch(/de deadline is verstreken/);
+  });
+
   it("spots hypothetical questions in an interview guide", () => {
     expect(hypotheticalQuestions(["Wanneer deed u dit voor het laatst?", "Zou u dit gebruiken?", "Stel dat het gratis is, wat dan?"])).toEqual([
       "Zou u dit gebruiken?",

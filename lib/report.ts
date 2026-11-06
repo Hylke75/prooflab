@@ -231,7 +231,7 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         successCount: e.metrics?.verdict.successCount ?? null,
         requiredN: e.hypotheses?.required_n ?? null,
         // Bewijsniveau van wat deze test meet (golf A, punt 14).
-        level: testEvidenceLevel(e.type, { decisionRule: e.hypotheses?.decision_rule }),
+        level: testEvidenceLevel(e.type, { decisionRule: e.hypotheses?.decision_rule, successMetric: (e.hypotheses as { success_metric?: string | null } | null)?.success_metric }),
         byChannel: e.metrics?.byChannel ?? [],
         byVariant: e.metrics?.byVariant ?? [],
         warnings: e.metrics?.warnings ?? [],
@@ -280,7 +280,7 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         locked: !!e.hypotheses?.locked_at,
         endedEarly: !!e.ended_early,
         label: e.metrics?.verdict.label ?? null,
-        level: testEvidenceLevel(e.type, { decisionRule: e.hypotheses?.decision_rule }),
+        level: testEvidenceLevel(e.type, { decisionRule: e.hypotheses?.decision_rule, successMetric: (e.hypotheses as { success_metric?: string | null } | null)?.success_metric }),
         n: e.metrics?.n ?? 0,
         successes: e.metrics?.successes ?? 0,
         // Gebruikerstest B4: zonder de migratie bestaat de kolom niet en is niets als zelf goedgekeurd bekend.
@@ -300,7 +300,7 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
           verdict: c.verdict,
           reliability: c.data_reliability,
           // "Geslaagd · niveau: mening" (golf A, punt 14).
-          level: stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule }) : null),
+          level: stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule, successMetric: (exp.hypotheses as { success_metric?: string | null } | null)?.success_metric }) : null),
           title: exp?.title ?? null,
         };
       }),

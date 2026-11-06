@@ -25,6 +25,8 @@ export const SOURCE_DEFAULTS: Record<SourceType, SourceDefaults> = {
   outreach: { evidenceType: "qualitative_observation", freshness: "general" },
   survey: { evidenceType: "self_reported_intent", freshness: "general" },
   dataset_upload: { evidenceType: "third_party_estimate", freshness: "statistic" },
+  // Een eigen meting: wie benaderd is en wie reageerde, waargenomen in de eigen registratie.
+  recruitment_log: { evidenceType: "observed_action", freshness: "general" },
   other: { evidenceType: "qualitative_observation", freshness: "general" },
 };
 
@@ -43,8 +45,16 @@ export function evidenceTypeDeviates(sourceType: string | null | undefined, evid
 // Bronnen met wat mensen zelf zeggen: nooit een officiële statistiek.
 export const SELF_REPORTED_SOURCES: readonly SourceType[] = ["interview", "outreach", "survey"];
 
-// De harde regel, voor addClaim en insertClaimWithQuote: null als de combinatie mag.
+// Fase 2 · punt 5: een eigen wervingsregistratie is een eigen meting, nooit een officiële statistiek of primaire bron.
+// De database weigert die combinatie ook (guard_recruitment_log_claim_source).
+export const OWN_MEASUREMENT_SOURCES: readonly SourceType[] = ["recruitment_log"];
+export const NOT_FOR_OWN_MEASUREMENT: readonly string[] = ["official_statistic", "primary_document"];
+
+// De harde regels, voor addClaim en insertClaimWithQuote: null als de combinatie mag.
 export function evidenceTypeError(sourceType: string | null | undefined, evidenceType: string | null | undefined): string | null {
+  if (evidenceType && NOT_FOR_OWN_MEASUREMENT.includes(evidenceType) && isSourceType(sourceType) && OWN_MEASUREMENT_SOURCES.includes(sourceType)) {
+    return `Een ${SOURCE_TYPES[sourceType].toLowerCase()} is een eigen meting, geen ${EVIDENCE_TYPES[evidenceType as EvidenceType].toLowerCase()}. Kies bij "Soort informatie" bijvoorbeeld "${EVIDENCE_TYPES[defaultsForSource(sourceType).evidenceType]}".`;
+  }
   if (evidenceType === "official_statistic" && isSourceType(sourceType) && SELF_REPORTED_SOURCES.includes(sourceType)) {
     return `Een ${SOURCE_TYPES[sourceType].toLowerCase()} is geen officiële statistiek. Kies bij "Soort informatie" bijvoorbeeld "${EVIDENCE_TYPES[defaultsForSource(sourceType).evidenceType]}".`;
   }

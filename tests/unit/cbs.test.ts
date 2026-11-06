@@ -23,6 +23,7 @@ vi.mock("@/lib/fetch-page", async (importOriginal) => {
   };
 });
 
+const DIMENSIONS = { value: [{ Identifier: "BedrijfstakkenBranchesSBI2008" }, { Identifier: "Perioden" }] };
 const PERIODS = { value: [{ Identifier: "2026KW03", Title: "2026 3e kwartaal", Status: "Voorlopig" }, { Identifier: "2026KW04", Title: "2026 4e kwartaal", Status: "Voorlopig" }, { Identifier: "2025KW04", Title: "2025 4e kwartaal", Status: "NaderVoorlopig" }] };
 const MEASURES = {
   value: [
@@ -56,6 +57,7 @@ function odata(urls: string[]) {
   return (url: string) => {
     urls.push(url);
     if (!url.startsWith(CBS_BASE)) throw new Error(`onverwachte host: ${url}`);
+    if (url.includes("/Dimensions")) return DIMENSIONS;
     if (url.includes("/PeriodenCodes")) return PERIODS;
     if (url.includes("/MeasureCodes")) return MEASURES;
     if (url.includes("/BedrijfstakkenBranchesSBI2008Codes")) return BRANCHES;
