@@ -185,7 +185,9 @@ alter table public.canvas_items enable row level security;
 alter table public.canvas_versions enable row level security;
 
 drop policy if exists canvas_items_select on public.canvas_items;
-create policy canvas_items_select on public.canvas_items for select to authenticated using (public.can_read_idea(idea_id));
+-- Een opdrachtgever ziet geen AI-voorstel dat nog door niemand is beoordeeld; het team ziet alles.
+create policy canvas_items_select on public.canvas_items for select to authenticated
+  using (public.can_write_idea(idea_id) or (public.can_read_idea(idea_id) and (origin <> 'ai' or accepted_at is not null)));
 drop policy if exists canvas_items_insert on public.canvas_items;
 create policy canvas_items_insert on public.canvas_items for insert to authenticated with check (public.can_write_idea(idea_id));
 drop policy if exists canvas_items_update on public.canvas_items;

@@ -142,7 +142,11 @@ d("canvas: onderdelen", () => {
     expect(ai.accepted_by).toBeNull();
     await expect(as(owner, (c) => c.query("update public.canvas_items set assumption_id = $1 where id = $2", [assumption, ai.id]))).rejects.toThrow();
     await expect(insertItem(owner, { idea_id: idea, canvas: "value", block: "pains", body: "Direct gekoppeld", origin: "ai", assumption_id: assumption })).rejects.toThrow();
+    // Zolang niemand het voorstel beoordeelde, ziet de opdrachtgever het niet.
+    const clientSees = () => as(client, async (c) => (await c.query("select id from public.canvas_items where id = $1", [ai.id])).rows.length);
+    expect(await clientSees()).toBe(0);
     const accepted = await as(owner, async (c) => (await c.query("update public.canvas_items set accepted_at = '2000-01-01', accepted_by = $1 where id = $2 returning *", [outsider.id, ai.id])).rows[0]);
+    expect(await clientSees()).toBe(1);
     expect(accepted.accepted_by).toBe(owner.id);
     expect(new Date(accepted.accepted_at).getFullYear()).toBeGreaterThan(2020);
     // Daarna wel koppelen; de acceptatie kan niet worden teruggedraaid of verplaatst.
