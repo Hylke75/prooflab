@@ -357,14 +357,14 @@ export function checkProposedQuestion(text: string, opts: { productNames?: strin
 // ---------------------------------------------------------------------------
 
 const INJECTION = [
-  /\b(negeer|vergeet|overschrijf|omzeil)\b.{0,40}\b(opdracht|instructie|instructies|regels|prompt|systeem|vorige|eerdere|alles)\b/i,
-  /\bignore\b.{0,40}\b(instruction|instructions|prompt|rules|previous|above|all)\b/i,
-  /\b(disregard|forget)\b.{0,40}\b(instruction|instructions|prompt|rules|previous)\b/i,
-  /\b(je bent nu|jij bent nu|vanaf nu ben je|doe alsof je|speel (de rol|dat je)|gedraag je als)\b/i,
-  /\b(you are now|act as|pretend (to be|you are)|roleplay as)\b/i,
-  /\b(system ?prompt|systeemprompt|jailbreak|developer mode|ontwikkelaarsmodus|DAN)\b/,
-  /\b(laat|geef|toon|print|herhaal)\b.{0,30}\b(je|jouw|de)\s+(instructies|prompt|opdracht|regels)\b/i,
-  /\b(show|reveal|print|repeat)\b.{0,30}\b(your )?(instructions|prompt|rules)\b/i,
+  /\b(negeer|vergeet|overschrijf|omzeil)\b.{0,30}\b(je|jouw|uw|de|alle|eerdere|vorige|bovenstaande)\s+(opdracht(en)?|instructies?|prompt|systeemprompt|programmering)\b/i,
+  /\b(negeer|vergeet)\b.{0,10}\b(je|jouw|uw)\s+regels\b/i,
+  /\b(ignore|disregard|forget|override)\b.{0,30}\b(all|the|your|previous|prior|above|earlier)\s+(instructions?|prompts?|rules|directives)\b/i,
+  /\b(je bent nu|jij bent nu|vanaf nu ben je|doe alsof je|speel de rol van|gedraag je als)\b/i,
+  /\b(you are now|act as an?|pretend (to be|you are)|roleplay as)\b/i,
+  /\b(system ?prompt|systeemprompt|jailbreak|developer mode|ontwikkelaarsmodus)\b/i,
+  /\b(laat|geef|toon|print|herhaal)\b.{0,20}\b(je|jouw)\s+(instructies|prompt|opdracht|regels)\b/i,
+  /\b(show|reveal|print|repeat)\b.{0,20}\b(your|the)\s+(instructions|prompt|rules)\b/i,
   /<\/?(system|assistant|instructions?)>/i,
 ];
 
