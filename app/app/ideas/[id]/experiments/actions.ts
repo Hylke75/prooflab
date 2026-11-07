@@ -50,6 +50,8 @@ import { EMPTY_COUNTS, systemObservationKind, systemObservationSummary } from "@
 import { asSuccessMetric, type SuccessMetric } from "@/lib/domain/success-metric";
 import { loadActionCounts, schemaMissing } from "@/lib/action-counts-data";
 import { depositAvailability } from "@/lib/integrations/mollie-server";
+import { catalogMethod, manualConfigOf, manualConfigFor } from "@/lib/domain/experiment-catalog";
+import { MANUAL_SCHEMA_MISSING, manualSummary } from "@/lib/domain/manual-results";
 
 export type ActionState = { error: string | null; ok?: string | null; warning?: string | null; fieldErrors?: Record<string, string> };
 
@@ -59,7 +61,8 @@ const text = (max: number) => z.string().trim().max(max);
 
 const Base = z.object({
   assumption_id: z.string().uuid("Kies de aanname die je toetst."),
-  type: z.enum(["landing", "interview", "pricing", "survey"]),
+  // Experimentencatalogus: "manual" = begeleid handmatig sjabloon (met catalog_method_id).
+  type: z.enum(["landing", "interview", "pricing", "survey", "manual"]),
   title: text(140),
   we_believe: text(600),
   target_group: text(300),
@@ -98,6 +101,14 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
   }
   const v = p.data;
   const fieldErrors: Record<string, string> = {};
+  // Experimentencatalogus: de gekozen methode. Bij een handmatig sjabloon verplicht; de configuratie (soort waarneming,
+  // draaiboek) komt uit de catalogus op de server, nooit uit het formulier.
+  const method = catalogMethod(typeof raw.catalog_method_id === "string" ? raw.catalog_method_id : null);
+  const manualConfig = v.type === "manual" && method ? manualConfigFor(method, String(raw.extra_steps ?? "").split("\n")) : null;
+  if (v.type === "manual" && !manualConfig) {
+    return { error: "Kies eerst een handmatige methode in de experimentencatalogus.", fieldErrors: { title: "Een handmatig sjabloon hoort bij een methode uit de catalogus." } };
+  }
+  const builtinMethod = method && method.runs.kind === "builtin" && method.runs.type === v.type ? method : null;
   let survey: z.infer<typeof SurveyConfigSchema> | null = null;
   if (v.type === "survey") {
     // The key question and its success options are the pre-registered metric: the Test Card follows them.
@@ -201,10 +212,14 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
     .slice(0, 600);
 
   let config: Json;
+  // Experimentencatalogus: een ingebouwde methode uit de catalogus wordt bij de test genoemd (rapport en bewijs).
+  const fromCatalog = builtinMethod ? { catalog_method_id: builtinMethod.id } : {};
   if (survey) {
     config = survey as unknown as Json;
+  } else if (manualConfig) {
+    config = manualConfig as unknown as Json;
   } else if (v.type === "interview") {
-    config = { guide: guideLines, screener: String(raw.screener ?? "").trim().slice(0, 600), target_n: minSample };
+    config = { guide: guideLines, screener: String(raw.screener ?? "").trim().slice(0, 600), target_n: minSample, ...fromCatalog };
   } else {
     const landing: LandingConfig = {
       headline: String(raw.headline ?? "").trim().slice(0, 140),
@@ -231,9 +246,9 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       landing.deposit = { enabled: true, amount_eur: amount };
     }
     if (v.type === "pricing") {
-      config = { ...landing, price_points: pricePoints } satisfies PricingConfig;
+      config = { ...landing, price_points: pricePoints, ...fromCatalog } satisfies PricingConfig;
     } else {
-      config = landing;
+      config = { ...landing, ...fromCatalog };
     }
   }
 
@@ -295,7 +310,14 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
     })
     .select("id")
     .single();
-  if (error || !exp) return { error: `De Test Card kon niet worden opgeslagen (experiment: ${error?.message ?? "onbekende fout"}). Probeer het opnieuw.` };
+  if (error || !exp) {
+    // Zonder de migratie van de catalogus kent de database het type "manual" niet: nette melding, geen half concept.
+    if (v.type === "manual" && error && (error.code === "23514" || schemaMissing(error))) {
+      await supabase.from("hypotheses").delete().eq("id", h.id).is("locked_at", null);
+      return { error: MANUAL_SCHEMA_MISSING };
+    }
+    return { error: `De Test Card kon niet worden opgeslagen (experiment: ${error?.message ?? "onbekende fout"}). Probeer het opnieuw.` };
+  }
   await supabase.from("assumptions").update({ status: "testing" }).eq("id", v.assumption_id).eq("idea_id", ideaId).eq("status", "untested");
   // Hoofdtest (golf A, punt 11): vooraf aanwijzen. Kan het niet (de huidige hoofdtest ligt al vast), dan blijft
   // deze test verkennend; de testpagina laat zien waarom.
@@ -728,7 +750,10 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
     // betaling of toezegging) en hoeveel personen er per stap zijn geteld. Een betaling telt alleen live en betaald.
     const metric = asSuccessMetric((h as { success_metric?: string | null }).success_metric);
     const collectEmail = !!(exp.config as LandingConfig).collect_email;
-    const { kind, evidenceType } = systemObservationKind(exp.type, metric, collectEmail);
+    // Experimentencatalogus: een handmatig sjabloon krijgt de soort waarneming van zijn catalogusmethode (vastgelegd in
+    // de vergrendelde configuratie, hooguit een kleine handeling) en geen automatisch bewijstype: het is handmatig ingevoerd.
+    const manual = exp.type === "manual" ? manualConfigOf(exp.config) : null;
+    const { kind, evidenceType } = manual ? { kind: manual.observation_kind, evidenceType: null } : exp.type === "manual" ? { kind: "opinion" as const, evidenceType: null } : systemObservationKind(exp.type, metric, collectEmail);
     const dims = KIND_DEFAULTS[kind];
     const interval = `${pct(v.interval.point)}, 95%-interval ${pct(v.interval.low)}–${pct(v.interval.high)}`;
     const { data: existing } = await supabase.from("observations").select("id").eq("experiment_id", expId).eq("origin", "system").maybeSingle();
@@ -738,7 +763,9 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
       kind,
       summary: (s
         ? `Enquête (zelfrapportage, geen waargenomen gedrag): ${m.successes} van ${m.n} respondenten: ${h.metric_numerator} (${interval}); uitgenodigd ${s.invitation.successes}/${s.invitation.n}, open link ${s.openLink.successes}/${s.openLink.n}.`
-        : perPerson.available
+        : exp.type === "manual"
+          ? manualSummary({ methodName: manual?.method_name ?? "handmatig sjabloon", unitMany: manual?.unit.many ?? "waarnemingen", n: m.n, successes: m.successes, metricLabel: h.metric_label, interval, entries: m.manual?.entries ?? 0 })
+          : perPerson.available
           ? systemObservationSummary({ type: exp.type, metric, counts: perPerson.counts, successes: m.successes, n: m.n, metricLabel: h.metric_label, interval })
           : `${m.successes} van ${m.n} unieke relevante bezoekers: ${h.metric_label.toLowerCase()} (${interval}).`
       ).slice(0, 400),
@@ -818,7 +845,11 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
       fail_threshold_pct: h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct),
       required_n: h.required_n ?? null,
       // Bewijsniveau van wat deze test meet (golf A, punt 14): "Geslaagd · niveau: mening".
-      evidence_level: testEvidenceLevel(exp.type, { decisionRule: h.decision_rule, successMetric: (h as { success_metric?: string | null }).success_metric }),
+      evidence_level: testEvidenceLevel(exp.type, { decisionRule: h.decision_rule, successMetric: (h as { success_metric?: string | null }).success_metric, config: exp.config }),
+      // Experimentencatalogus: handmatig ingevoerd, met de methode en het aantal regels op het moment van analyseren.
+      ...(exp.type === "manual"
+        ? { manual_entry: true, catalog_method_id: manualConfigOf(exp.config)?.catalog_method_id ?? null, manual_entries: m.manual?.entries ?? 0, manual_withdrawn: m.manual?.withdrawn ?? 0, manual_with_evidence: m.manual?.withEvidence ?? 0 }
+        : {}),
       byChannel: m.byChannel,
       byVariant: m.byVariant,
       warnings: m.warnings,
