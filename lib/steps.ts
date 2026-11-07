@@ -3,7 +3,8 @@ import type { IdeaProgress } from "@/lib/domain/coach";
 import { getDossierStatus, STEP_LABELS, type DossierInput, type DossierStatus, type StepKey, type StepState } from "@/lib/domain/dossier-status";
 
 // Eén definitie van de stappen voor het menu én de stappenbalk: dezelfde namen, iconen, adressen en status.
-// Tabbladen horen bij een stap: Bronnen & koppelingen onder Markt, Voorspelling & uitkomst onder Besluit.
+// Tabbladen horen bij een stap: Bronnen & koppelingen onder Markt, Businessmodel onder Aannames, Voorspelling & uitkomst
+// onder Besluit.
 export type StepTab = { path: string; label: string; consultantOnly?: boolean };
 export type StepDef = { key: StepKey; number: number; label: string; icon: IconName; path: string; tabs?: StepTab[]; also?: string[] };
 
@@ -21,7 +22,19 @@ export const STEPS: readonly StepDef[] = [
     // Fase 1 · punt 3: interviews en thema's over alle gesprekken heen (Markt › Klantonderzoek).
     also: ["/interviews"],
   },
-  { key: "assumptions", number: 2, label: STEP_LABELS.assumptions, icon: "layers", path: "/assumptions", also: ["/method"] },
+  {
+    key: "assumptions",
+    number: 2,
+    label: STEP_LABELS.assumptions,
+    icon: "layers",
+    path: "/assumptions",
+    // Propositie- en businessmodelcanvas: het model als verzameling aannames, met de bewijsstand per onderdeel.
+    tabs: [
+      { path: "/assumptions", label: "Aannamekaart" },
+      { path: "/model", label: "Businessmodel" },
+    ],
+    also: ["/method"],
+  },
   { key: "test", number: 3, label: STEP_LABELS.test, icon: "flask", path: "/experiments" },
   {
     key: "decide",

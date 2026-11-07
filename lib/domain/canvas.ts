@@ -55,6 +55,27 @@ export const blockOf = (key: string): CanvasBlock | undefined => CANVAS_BLOCKS.f
 export const isCanvasKind = (v: unknown): v is CanvasKind => v === "business" || v === "value";
 export const isBlockOf = (canvas: CanvasKind, block: unknown): boolean => blocksOf(canvas).some((b) => b.key === block);
 
+// De soort aanname bij een bouwsteen (voor "Maak er een aanname van"): klant en aanbod gaan over wenselijkheid,
+// activiteiten, middelen en partners over haalbaarheid, inkomsten en kosten over levensvatbaarheid.
+export type AssumptionCategoryKey = "desirability" | "feasibility" | "viability" | "context";
+const FEASIBILITY = new Set(["key_activities", "key_resources", "key_partners"]);
+const VIABILITY = new Set(["revenue_streams", "cost_structure"]);
+export function blockCategory(block: string): AssumptionCategoryKey {
+  if (FEASIBILITY.has(block)) return "feasibility";
+  if (VIABILITY.has(block)) return "viability";
+  return "desirability";
+}
+
+// Een aanname is één toetsbare bewering van 10 tot 400 tekens (zelfde grens als de aannamekaart).
+export const ASSUMPTION_MIN = 10;
+export const ASSUMPTION_MAX = 400;
+export function validateAssumptionStatement(v: unknown): { ok: true; value: string } | { ok: false; error: string } {
+  const t = typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "";
+  if (t.length < ASSUMPTION_MIN) return { ok: false, error: "Formuleer de aanname als één toetsbare bewering (minstens 10 tekens)." };
+  if (t.length > ASSUMPTION_MAX) return { ok: false, error: `Houd de aanname korter dan ${ASSUMPTION_MAX} tekens (nu ${t.length}).` };
+  return { ok: true, value: t };
+}
+
 // ---------------------------------------------------------------------------
 // Herkomst
 // ---------------------------------------------------------------------------

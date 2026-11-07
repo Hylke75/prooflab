@@ -825,6 +825,22 @@ export type Database = {
         Update: { id?: string; idea_id?: string; step?: string; storage_path?: string; file_name?: string; mime_type?: string; size_bytes?: number; description?: string | null; author_name?: string; created_by?: string | null; created_at?: string }
         Relationships: []
       }
+      // Propositie- en businessmodelcanvas (migratie 20261118110000). Maker, tijden en acceptatie zet de database.
+      canvas_items: {
+        Row: { id: string; idea_id: string; canvas: string; block: string; body: string; position: number; origin: string; source_ref: string | null; accepted_at: string | null; accepted_by: string | null; assumption_id: string | null; created_by: string | null; created_at: string; updated_at: string }
+        Insert: { id?: string; idea_id: string; canvas: string; block: string; body: string; position?: number; origin?: string; source_ref?: string | null; accepted_at?: string | null; accepted_by?: string | null; assumption_id?: string | null; created_by?: string | null; created_at?: string; updated_at?: string }
+        Update: { id?: string; idea_id?: string; canvas?: string; block?: string; body?: string; position?: number; origin?: string; source_ref?: string | null; accepted_at?: string | null; accepted_by?: string | null; assumption_id?: string | null; created_by?: string | null; created_at?: string; updated_at?: string }
+        Relationships: [
+          { foreignKeyName: "canvas_items_assumption_id_fkey"; columns: ["assumption_id"]; isOneToOne: false; referencedRelation: "assumptions"; referencedColumns: ["id"] },
+        ]
+      }
+      // Onveranderlijke canvasversies; alleen via save_canvas_version.
+      canvas_versions: {
+        Row: { id: string; idea_id: string; version_no: number; note: string; items: Json; author_name: string; created_by: string | null; created_at: string }
+        Insert: { id?: string; idea_id: string; version_no: number; note?: string; items: Json; author_name?: string; created_by?: string | null; created_at?: string }
+        Update: { id?: string; idea_id?: string; version_no?: number; note?: string; items?: Json; author_name?: string; created_by?: string | null; created_at?: string }
+        Relationships: []
+      }
       // Golf B (punt 1): "Was stoppen achteraf terecht?"
       stop_reviews: {
         Row: { idea_id: string; justified: string; evidence: string; reviewed_by: string; reviewed_at: string }
@@ -3579,6 +3595,7 @@ export type Database = {
       resolved_dossiers_for_idea: { Args: { p_idea: string }; Returns: number }
       evidence_recruitment_refs: { Args: { p_idea: string }; Returns: { item_type: string; item_id: string; recruitment_group: string | null }[] }
       change_assumption_prior: { Args: { p_assumption: string; p_prior: number; p_rationale: string; p_reason: string }; Returns: undefined }
+      save_canvas_version: { Args: { p_idea: string; p_note?: string }; Returns: { id: string; version_no: number }[] }
       evidence_source_refs: {
         Args: { p_idea: string }
         Returns: {

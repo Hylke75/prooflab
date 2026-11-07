@@ -4,6 +4,8 @@ import {
   VALUE_BLOCKS,
   asReportCanvas,
   asVersionItems,
+  blockCategory,
+  validateAssumptionStatement,
   diffLine,
   diffVersions,
   draftsFromSources,
@@ -21,6 +23,8 @@ import {
   type VersionItem,
 } from "@/lib/domain/canvas";
 import type { EvidenceLevel } from "@/lib/domain/evidence";
+import { STEPS, stepForPath } from "@/lib/steps";
+import { noteStepForSection } from "@/lib/domain/step-files";
 
 type Reg = AssumptionEvidence["register"][number];
 const obs = (level: EvidenceLevel, extra: Partial<Reg> = {}): Reg => ({ itemType: "observation", fate: "counted", direction: "supports", level, notes: [], ...extra });
@@ -43,6 +47,15 @@ describe("bouwstenen", () => {
 });
 
 describe("validatie", () => {
+  it("een nieuwe aanname uit een onderdeel: soort volgt de bouwsteen, tekst 10 tot 400 tekens", () => {
+    expect(blockCategory("customer_segments")).toBe("desirability");
+    expect(blockCategory("pains")).toBe("desirability");
+    expect(blockCategory("key_partners")).toBe("feasibility");
+    expect(blockCategory("cost_structure")).toBe("viability");
+    expect(validateAssumptionStatement("Te kort").ok).toBe(false);
+    expect(validateAssumptionStatement("  Clubs   betalen € 20 per maand ")).toEqual({ ok: true, value: "Clubs betalen € 20 per maand" });
+    expect(validateAssumptionStatement("x".repeat(401)).ok).toBe(false);
+  });
   it("accepteert een korte tekst en voegt witruimte samen", () => {
     expect(validateItem({ canvas: "business", block: "channels", body: "  Via   de   sportbonden \n" })).toEqual({ ok: true, value: { canvas: "business", block: "channels", body: "Via de sportbonden" } });
   });
@@ -240,5 +253,15 @@ describe("rapport", () => {
     expect(asReportCanvas(r)).toBe(r);
     expect(asReportCanvas({ version: 2 })).toBeNull();
     expect(reportCanvas([], null)).toBeNull();
+  });
+});
+
+describe("plaats in de app", () => {
+  it("/model is een tabblad onder stap 2 Aannames, met notities van die stap", () => {
+    expect(stepForPath("/model")).toBe("assumptions");
+    expect(STEPS.find((s) => s.key === "assumptions")?.tabs?.map((t) => t.path)).toEqual(["/assumptions", "/model"]);
+    // Ook opdrachtgevers zien het tabblad (alleen-lezen).
+    expect(STEPS.find((s) => s.key === "assumptions")?.tabs?.some((t) => t.consultantOnly)).toBe(false);
+    expect(noteStepForSection("/model")).toBe("assumptions");
   });
 });
