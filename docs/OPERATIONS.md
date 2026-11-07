@@ -396,3 +396,62 @@ in bij Fathom. Verwijderen kan met "Verwijder sleutel"; de koppeling staat dan o
 **Bekende grenzen**: de sleutel staat onversleuteld in de database (alleen via functies leesbaar); versleutelen met
 Supabase Vault is een mogelijke vervolgstap. Het auditspoor van een kort transcript kan
 (≤ 300 tekens) de oude tekst bevatten na "Een gemiste naam vervangen".
+
+## 14. Testen uitvoeren: Mollie, Calendly en Cal.com (fase 2 · punt 4)
+
+**Migratie**: `20261116090000_fase2_testen.sql` (idempotent). Zonder migratie werkt de app zoals voorheen: de Test Card
+kent alleen "aanmelding", de panelen voor aanbetalingen, toezeggingen en afspraken melden dat de database nog moet
+worden bijgewerkt, de testpagina toont de oude privacytekst en de telling valt terug op `experiment_event_counts`.
+
+**Omgevingsvariabelen** (Vercel → Project → Settings → Environment Variables, per omgeving; daarna redeploy):
+
+- `SECRETS_ENCRYPTION_KEY`: 32 willekeurige bytes als base64 (`openssl rand -base64 32`). ProofLab versleutelt
+  daarmee de Mollie-sleutel van een werkruimte (AES-256-GCM) vóór hij de database in gaat. Kwijt of gewijzigd: de
+  opgeslagen sleutels zijn niet meer te lezen; een eigenaar stelt ze dan opnieuw in op `/app/status`.
+- `MOLLIE_ENABLED=1`: zet de betaalstap aan. Zonder (of zonder geldige `SECRETS_ENCRYPTION_KEY`) toont de app
+  "Mollie niet ingesteld" en is de betaalstap in een Test Card niet te kiezen.
+- `INGEST_SECRET` en `TRACKING_SALT` (bestaand) zijn nodig voor betalingen, toezeggingslinks en afspraken.
+
+**Mollie instellen**:
+
+1. Mollie-dashboard → Developers → API-keys. Begin met de **testsleutel** (`test_…`): betalingen zijn dan nep en tellen
+   nooit als bewijs (de app toont "testmodus"). Voor een echte test de **livesleutel** (`live_…`).
+2. Een eigenaar plakt de sleutel op `/app/status` onder "Mollie (terugbetaalbare aanbetalingen)". Daarna is hij niet
+   meer te zien: alleen "eindigt op …" en test of live. De tabel `org_payment_settings` heeft geen policies; alleen
+   `set_mollie_key` (eigenaar), `payment_settings_status` (leden) en `mollie_key_for_idea` (wie het dossier mag
+   bewerken, voor terugbetalen) komen erbij, plus de ingest-functies voor de publieke betaalroute en de webhook.
+3. Webhook: ProofLab geeft bij elke betaling zelf `webhookUrl = <APP_URL>/api/webhooks/mollie/<slug>` mee (niet bij
+   localhost: Mollie bereikt dat niet; gebruik dan "Status bij Mollie verversen" op de testpagina). Mollie stuurt alleen
+   `id=tr_…`; de server zoekt de betaling op bij die test en haalt de status zelf op bij Mollie. Een vervalste webhook
+   verandert dus niets; een onbekend id telt niets.
+4. Terugbetalen: op de testpagina per betaling "Terugbetalen" of "Alles terugbetalen" (Mollie refunds API). Na een
+   besluit herinnert de coach zolang er betaalde aanbetalingen openstaan. De status wordt daarna opnieuw bij Mollie
+   opgehaald; volledig terugbetaald of teruggeboekt telt nooit meer.
+5. Per betaling bewaart ProofLab alleen Mollie-id, bedrag, valuta, status, modus, persoonssleutel (HMAC van het
+   e-mailadres) en tijden. Na 12 maanden vervangt de opschoning de persoonssleutel; id, bedrag en status blijven als
+   boekhoudspoor.
+
+**Calendly instellen** (per test; Calendly heeft geen scherm voor webhooks, alleen de API):
+
+1. Op de testpagina (vanaf goedkeuring) onder "Afspraken" → Calendly → "Maak webhookadres". Kopieer het adres en de
+   geheime sleutel: ProofLab toont ze één keer (bewaard wordt alleen de sha256 van de code; de sleutel wordt bij elke
+   melding opnieuw afgeleid uit code en `TRACKING_SALT`).
+2. Maak met een persoonlijke Calendly-token het abonnement aan: `POST https://api.calendly.com/webhook_subscriptions`
+   met `url` = het webhookadres, `events` = `invitee.created` en `invitee.canceled`, `organization` en `user` (je
+   eigen URI's), `scope` = `user` en `signing_key` = de geheime sleutel.
+3. ProofLab controleert `Calendly-Webhook-Signature` (`t=…,v1=…`, HMAC-SHA256 over `t.body`) en weigert meldingen ouder
+   dan 5 minuten. `invitee.created` = geboekte afspraak; `invitee.canceled` = telt niet meer.
+
+**Cal.com instellen**: testpagina → Afspraken → Cal.com → "Maak webhookadres". In Cal.com: Settings → Developer →
+Webhooks → New: Subscriber URL = het adres, Secret = de geheime sleutel, triggers *Booking created*, *Booking
+rescheduled* en *Booking cancelled*. ProofLab controleert `X-Cal-Signature-256` (HMAC-SHA256 over de body) en
+`createdAt` binnen 5 minuten.
+
+**Sleutels roteren**: "Maak nieuw adres en sleutel" vervangt de koppeling (de oude code werkt meteen niet meer); pas
+het abonnement in Calendly/Cal.com aan. Een gewijzigde `TRACKING_SALT` maakt alle afspraakwebhooks ongeldig: maak ze
+dan opnieuw.
+
+**Toezeggingen**: geüploade intentieverklaringen staan in de privé bucket `commitment-documents` (pdf, png, jpeg,
+webp; de app accepteert tot 4 MB), alleen leesbaar voor het onderzoeksteam. Persoonlijke links (`/c/<code>`) werken één
+keer en 14 dagen. Na 12 maanden wist de opschoning naam, organisatie, getypte naam en gehashte IP; het bestand
+verwijdert het team op de testpagina ("Verwijder verlopen documenten", via de Storage-API).

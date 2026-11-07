@@ -15,6 +15,7 @@ import { dossierStatus, IDEA_OVERVIEW, IDEA_REPORT, STEPS, stepOverview } from "
 import { forecastFirstLock } from "@/lib/domain/forecast";
 import { loadEvidenceStanding } from "@/lib/standing-data";
 import { EvidenceStanding } from "@/components/evidence/EvidenceStanding";
+import { loadDeadlineRisks } from "@/lib/recruitment-data";
 
 export const metadata: Metadata = { title: IDEA_OVERVIEW.label };
 
@@ -40,7 +41,12 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
   const steps = stepOverview(progress);
   // Fase 1, punt 2: Stand van het bewijs. Golf B, punt 15: zolang de eigen voorspelling open staat, geen kansen.
   const lock = forecastFirstLock(progress);
-  const [notes, standing] = await Promise.all([loadOpenNotes(id, "consultant"), lock ? Promise.resolve(null) : loadEvidenceStanding(id, "overview")]);
+  // Fase 2 · punt 5: lopende tests waarvan de steekproef de deadline niet haalt: één compacte regel, geen tweede volgende stap.
+  const [notes, standing, risks] = await Promise.all([
+    loadOpenNotes(id, "consultant"),
+    lock ? Promise.resolve(null) : loadEvidenceStanding(id, "overview"),
+    progress.experimentsLive > 0 ? loadDeadlineRisks(id, idea.decision_deadline) : Promise.resolve([]),
+  ]);
   const s = sprintStatus({
     start: idea.sprint_start,
     weeks: idea.sprint_weeks,
@@ -99,6 +105,14 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
           <p className="tiny mt-8">{idea.decision_stakes ? `Inzet: ${idea.decision_stakes}` : "Inzet niet vastgelegd"}</p>
         </div>
       </div>
+
+      {risks.length > 0 && (
+        <p className="note" role="status" id="werving-in-gevaar">
+          <strong>Werving:</strong> &ldquo;{risks[0].title}&rdquo;: {risks[0].text}{" "}
+          <Link className="text-link" href={`/app/ideas/${id}/experiments/${risks[0].id}#werving`} prefetch={false}>Naar de test →</Link>
+          {risks.length > 1 && <> (en {risks.length - 1} {risks.length === 2 ? "andere test" : "andere tests"})</>}
+        </p>
+      )}
 
       <div className="card mt-24">
         <div className="section-title">

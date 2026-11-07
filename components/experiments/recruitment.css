@@ -1,0 +1,14 @@
+/* Fase 2 · punt 5: wervingstrechter op de testpagina. Op smalle schermen scrolt alleen de tabel, niet de pagina. */
+.recruit-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.recruit-table{min-width:520px}
+.recruit-table th[scope=row]{font-weight:600;text-align:left}
+.recruit-table td strong{display:block}
+.recruit-table tfoot th,.recruit-table tfoot td{border-top:1px solid var(--color-border)}
+.recruit-origin{display:block;color:var(--color-text-muted);font-size:12px;line-height:1.4}
+.recruit-empty{color:var(--color-text-muted)}
+.recruit-actions{display:grid;gap:12px}
+.recruit-kind{border:0;padding:0;margin:0 0 8px}
+.recruit-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.recruit-list>li{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;font-size:14px}
+.recruit-list .pill{margin-left:6px}
+.recruit-risk{display:flex;gap:10px;align-items:flex-start}

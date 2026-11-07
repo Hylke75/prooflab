@@ -17,7 +17,14 @@ import { loadProgress } from "@/lib/progress";
 import { loadCalibration } from "@/lib/method-data";
 import { Probability } from "@/components/ui/Probability";
 import { asEvidenceLevel, explainStrength, outcomeWithLevel, strength, strengthLabel, testEvidenceLevel, type EvidenceLevel } from "@/lib/domain/evidence";
-import { ASSUMPTION_CATEGORIES, DECISIONS, OBSERVATION_KINDS, type DecisionAction, type ObservationKind } from "@/lib/domain/labels";
+import { ASSUMPTION_CATEGORIES, DECISIONS, EVIDENCE_TYPES, OBSERVATION_KINDS, type DecisionAction, type EvidenceType, type ObservationKind } from "@/lib/domain/labels";
+
+// Fase 2 · punt 4: soort bewijs van een systeemwaarneming (kolom bestaat pas na de migratie).
+const AUTO_EVIDENCE = ["observed_action", "verified_transaction", "verified_commitment"];
+function evidenceTypeOf(o: object): EvidenceType | null {
+  const t = (o as { evidence_type?: unknown; origin?: unknown }).evidence_type;
+  return (o as { origin?: unknown }).origin === "system" && typeof t === "string" && AUTO_EVIDENCE.includes(t) ? (t as EvidenceType) : null;
+}
 import type { Finding } from "@/lib/domain/reality-check";
 import { evidenceLadder } from "@/lib/domain/dossier-label";
 import { perPersonLabel } from "@/lib/domain/per-person";
@@ -45,7 +52,7 @@ export const metadata: Metadata = { title: "Bewijs & besluit" };
 // Het bewijsniveau op een Learning Card: zoals vastgelegd, of (oudere kaarten) afgeleid uit het testtype.
 function cardLevel(metrics: unknown, exp: { type: string; hypotheses: { decision_rule?: string | null } | null } | undefined): EvidenceLevel | null {
   const stored = asEvidenceLevel((metrics as { evidence_level?: unknown } | null)?.evidence_level);
-  return stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule }) : null);
+  return stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule, successMetric: (exp.hypotheses as { success_metric?: string | null } | null)?.success_metric }) : null);
 }
 
 const SEV = { blocker: ["Blokkerend", "coral"], warning: ["Let op", "orange"], info: ["Ter info", "gray"] } as const;
@@ -80,7 +87,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
     );
   }
   const supabase = await supabaseServer();
-  const [d, ruleCheck, calibration, { data: deskRows }, standing] = await Promise.all([
+  const [d, ruleCheck, calibration, { data: deskRows }, standing, { data: autoRows }] = await Promise.all([
     loadDossier(idea),
     loadRuleCheck(id),
     loadCalibration(id),
@@ -88,7 +95,12 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
     supabase.from("assumption_claims").select("assumption_id, claim_id, relation, claims(statement, status)").eq("idea_id", id),
     // Fase 1, punt 2: Stand van het bewijs bovenaan; de volgende stap komt hier eerst van het besluit (coach).
     loadEvidenceStanding(id, "evidence"),
+    // Fase 2 · punt 4: soort bewijs van de systeemwaarnemingen (alleen het team; zonder migratie: geen).
+    canWrite
+      ? supabase.from("observations").select("id, evidence_type").eq("idea_id", id).eq("origin", "system").then((r) => (r.error ? { data: [] } : r))
+      : Promise.resolve({ data: [] as { id: string; evidence_type?: string | null }[] }),
   ]);
+  const autoEvidence = new Map((autoRows ?? []).map((r) => [r.id, (r as { evidence_type?: string | null }).evidence_type ?? null]));
   const deskLinks: DeskLinkRow[] = (deskRows ?? []).flatMap((l) =>
     l.claims && l.claims.status in CLAIM_STATUS
       ? [{ assumptionId: l.assumption_id, claimId: l.claim_id, relation: l.relation === "contradicts" ? ("contradicts" as const) : ("supports" as const), statement: l.claims.statement, status: l.claims.status as ClaimStatus }]
@@ -182,6 +194,12 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                 <div className="icon-circle">{o.is_behaviour ? "✓" : "?"}</div>
                 <div>
                   <strong>{OBSERVATION_KINDS[o.kind as ObservationKind]}: {o.summary}</strong>
+                  {/* Fase 2 · punt 4: soort bewijs van een automatische waarneming (alleen systeemwaarnemingen). */}
+                  {evidenceTypeOf({ ...o, evidence_type: autoEvidence.get(o.id) }) && (
+                    <p className="tiny" style={{ margin: "4px 0 0" }}>
+                      <span className="pill blue">{EVIDENCE_TYPES[evidenceTypeOf({ ...o, evidence_type: autoEvidence.get(o.id) })!]}</span> automatisch geteld uit de test
+                    </p>
+                  )}
                   {o.quote && <blockquote className="quote">“{o.quote}”</blockquote>}
                   <p><span className={`pill ${s.pill}`}>{s.label}</span> {explainStrength(dims)}</p>
                 </div>

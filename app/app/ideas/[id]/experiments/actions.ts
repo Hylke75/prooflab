@@ -29,7 +29,9 @@ import type { DraftResult } from "@/lib/domain/survey-draft";
 import { openAnswers } from "@/lib/domain/survey-results";
 import { contentHash } from "@/lib/claims";
 import { dedupeFragments } from "@/lib/signals/import";
-import type { Json } from "@/lib/database.types";
+import type { Database, Json } from "@/lib/database.types";
+
+type ObservationInsert = Database["public"]["Tables"]["observations"]["Insert"];
 import type { AssumptionCategory, ObservationKind } from "@/lib/domain/labels";
 import { assumptionKind, metricFitsAssumption } from "@/lib/domain/assumption-kind";
 import { checkEnd, goRuleBlock, selfApproval, thresholdBlock } from "@/lib/domain/experiment-gates";
@@ -43,6 +45,11 @@ import { approvalChecks, decisive, isExploratory, studyFormatOf } from "@/lib/do
 import { defaultedTestCardFields } from "@/lib/defaulted-test-card";
 import { withDefaultedFallback, withFields } from "@/lib/defaulted-fields";
 import { cleanDefaultedFields } from "@/lib/view-mode";
+import { privacyBlock, type TestPrivacy } from "@/lib/domain/test-privacy";
+import { EMPTY_COUNTS, systemObservationKind, systemObservationSummary } from "@/lib/domain/action-counts";
+import { asSuccessMetric, type SuccessMetric } from "@/lib/domain/success-metric";
+import { loadActionCounts, schemaMissing } from "@/lib/action-counts-data";
+import { depositAvailability } from "@/lib/integrations/mollie-server";
 
 export type ActionState = { error: string | null; ok?: string | null; warning?: string | null; fieldErrors?: Record<string, string> };
 
@@ -113,6 +120,8 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
     v.success_threshold_pct = Math.min(100, Math.round((v.success_count / v.min_sample) * 1000) / 10);
     v.fail_threshold_pct = undefined;
   }
+  // Fase 2 · punt 4: wat telt als succes bij een landing- of prijstest (aanmelding, betaling, toezegging, afspraak).
+  const successMetric: SuccessMetric = v.type === "landing" || v.type === "pricing" ? asSuccessMetric(raw.success_metric) : "signup";
   const channels = form.getAll("channels").map(String).filter((c) => c in CHANNELS);
   const pricePoints: PricingConfig["price_points"] = [];
   for (let i = 0; i < 3; i++) {
@@ -164,6 +173,14 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       guide_questions: guideLines.length,
       required_n: requiredN,
       sample_below_reason: sampleReason,
+      ...(v.type === "landing" || v.type === "pricing"
+        ? {
+            privacy_controller: String(raw.privacy_controller ?? ""),
+            privacy_contact: String(raw.privacy_contact ?? ""),
+            success_metric: successMetric,
+            deposit_enabled: raw.deposit_enabled === "on",
+          }
+        : {}),
     }),
   );
   if (Object.keys(fieldErrors).length) return { error: errorSummary(fieldErrors), fieldErrors };
@@ -199,6 +216,20 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       product_name: String(raw.product_name ?? "").trim().slice(0, 80) || v.title,
       researcher: ws.org?.name ?? "de onderzoeker",
     };
+    // Fase 2 · punt 4: de verwerkingsverantwoordelijke voor de AVG-tekst; de database laat de test zonder niet live gaan.
+    const privacy: TestPrivacy = {
+      controller_name: String(raw.privacy_controller ?? "").trim().slice(0, 120),
+      controller_contact: String(raw.privacy_contact ?? "").trim().slice(0, 200),
+    };
+    landing.privacy = privacy;
+    // Fase 2 · punt 4: optionele betaalstap, alleen als Mollie voor deze werkruimte is ingesteld (de server controleert het zelf).
+    if (raw.deposit_enabled === "on") {
+      const amount = Math.round(Number(String(raw.deposit_amount ?? "").replace(",", ".")) * 100) / 100;
+      if (!(amount >= 1 && amount <= 500)) return { error: "De Test Card is nog niet opgeslagen: kies een aanbetaling tussen € 1 en € 500." };
+      const availability = await depositAvailability(ws.org?.id);
+      if (!availability.available) return { error: availability.reason ?? "Mollie niet ingesteld: de betaalstap is niet beschikbaar." };
+      landing.deposit = { enabled: true, amount_eur: amount };
+    }
     if (v.type === "pricing") {
       config = { ...landing, price_points: pricePoints } satisfies PricingConfig;
     } else {
@@ -242,8 +273,11 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       expected_pct: band ? band.expectedPct : null,
       available_per_week: rule ? (v.available_per_week ?? null) : null,
       required_n: band ? band.requiredN : null,
+      // Alleen meegestuurd als het geen aanmelding is: zo werkt opslaan zonder de migratie zoals voorheen.
+      ...(successMetric !== "signup" ? { success_metric: successMetric } : {}),
   };
   const { data: h, error: hErr } = await withDefaultedFallback((w) => supabase.from("hypotheses").insert(withFields(hypothesis, defaulted, w)).select("id").single());
+  if (hErr && successMetric !== "signup" && schemaMissing(hErr)) return { error: "Betaling, toezegging of afspraak als succesmaat vraagt een database-update (migratie 20261116090000_fase2_testen). Kies tot die tijd aanmelding." };
   if (hErr || !h) return { error: `De Test Card kon niet worden opgeslagen (hypothese: ${hErr?.message ?? "onbekende fout"}). Probeer het opnieuw.` };
   const { data: exp, error } = await supabase
     .from("experiments")
@@ -295,7 +329,7 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
     // B0 punt 3: een Test Card waarvan de maatstaf niet bij de aanname past, kan niet worden goedgekeurd.
     const h = exp.hypotheses;
     if (h?.assumptions) {
-      const fit = metricFitsAssumption(assumptionKind(h.assumptions), { type: exp.type, metric_label: h.metric_label, metric_numerator: h.metric_numerator, decision_rule: h.decision_rule });
+      const fit = metricFitsAssumption(assumptionKind(h.assumptions), { type: exp.type, metric_label: h.metric_label, metric_numerator: h.metric_numerator, decision_rule: h.decision_rule, success_metric: (h as { success_metric?: string | null }).success_metric });
       if (!fit.ok) return { error: fit.reason ?? "De maatstaf past niet bij de aanname." };
     }
     // B0 punt 6: meldt ProofLab "drempel niet haalbaar", dan kan de test niet worden goedgekeurd.
@@ -312,6 +346,9 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
     const rule = await loadDecisionRule(ideaId);
     const blocked = goRuleBlock({ isPrimary: a?.primary_experiment_id === expId, rule: rule === undefined ? "unknown" : rule ? "saved" : "missing" });
     if (blocked) return { error: blocked };
+    // Fase 2 · punt 4: een nieuwe testpagina gaat pas live met naam en contact van de verwerkingsverantwoordelijke.
+    const privacy = privacyBlock(exp.config, exp.type);
+    if (privacy) return { error: privacy };
   }
   // B0 punt 6: afronden onder de minimale steekproef vraagt een reden en een bevestiging. Het aantal deelnemers
   // wordt hier opnieuw bepaald uit de ruwe metingen, niet uit wat het formulier meestuurt.
@@ -342,7 +379,11 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
     .update(endReason ? { state: to, end_reason: endReason } : { state: to })
     .eq("id", expId)
     .eq("idea_id", ideaId);
-  if (error) return { error: error.message.includes("EXPERIMENT") ? error.message.replace(/^.*?: /, "") : "De status kon niet worden gewijzigd." };
+  if (error) {
+    const known = /EXPERIMENT|PRIVACY_CONTROLLER|DEPOSIT_NOT_CONFIGURED/.test(error.message);
+    const msg = error.message.replace(/^.*?: /, "");
+    return { error: known ? msg.charAt(0).toUpperCase() + msg.slice(1) : "De status kon niet worden gewijzigd." };
+  }
   // Gebruikerstest A10: alleen deze testpagina en het testbord opnieuw opbouwen; de stappenbalk staat op de pagina zelf.
   revalidatePath(`/app/ideas/${ideaId}/experiments/${expId}`);
   revalidatePath(`/app/ideas/${ideaId}/experiments`);
@@ -677,34 +718,43 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
   const draft = (cards ?? []).find((c) => c.status === "draft");
 
   const s = m.survey;
+  // Fase 2 · punt 4: de telling per persoon (bezoekers, klikkers, aanmelders, betalers, toezeggers, bookers).
+  const perPerson = exp.type === "landing" || exp.type === "pricing" ? await loadActionCounts(expId) : { counts: EMPTY_COUNTS, available: false };
   if (exp.type !== "interview") {
     // One system observation summarises the measured behaviour (or, for a survey, the self-reported answers);
     // raw events stay untouched. Generating the card again reuses it, so the evidence for the assumption is
     // never counted twice. A survey answer is never behaviour (KIND_DEFAULTS.survey_answer).
-    const kind: ObservationKind =
-      exp.type === "survey" ? "survey_answer" : exp.type === "pricing" ? "quote_request" : (exp.config as LandingConfig).collect_email ? "demo_request" : "waitlist_signup";
+    // Fase 2 · punt 4: de waarneming zegt expliciet welk soort bewijs het is (Waargenomen handeling, Geverifieerde
+    // betaling of toezegging) en hoeveel personen er per stap zijn geteld. Een betaling telt alleen live en betaald.
+    const metric = asSuccessMetric((h as { success_metric?: string | null }).success_metric);
+    const collectEmail = !!(exp.config as LandingConfig).collect_email;
+    const { kind, evidenceType } = systemObservationKind(exp.type, metric, collectEmail);
     const dims = KIND_DEFAULTS[kind];
+    const interval = `${pct(v.interval.point)}, 95%-interval ${pct(v.interval.low)}–${pct(v.interval.high)}`;
     const { data: existing } = await supabase.from("observations").select("id").eq("experiment_id", expId).eq("origin", "system").maybeSingle();
-    const { data: obs } = existing
-      ? { data: existing }
-      : await supabase
-      .from("observations")
-      .insert({
-        idea_id: ideaId,
-        experiment_id: expId,
-        kind,
-        summary: (s
-          ? `Enquête (zelfrapportage, geen waargenomen gedrag): ${m.successes} van ${m.n} respondenten: ${h.metric_numerator} (${pct(v.interval.point)}, 95%-interval ${pct(v.interval.low)}–${pct(v.interval.high)}); uitgenodigd ${s.invitation.successes}/${s.invitation.n}, open link ${s.openLink.successes}/${s.openLink.n}.`
-          : `${m.successes} van ${m.n} unieke relevante bezoekers: ${h.metric_label.toLowerCase()} (${pct(v.interval.point)}, 95%-interval ${pct(v.interval.low)}–${pct(v.interval.high)}).`
-        ).slice(0, 400),
-        is_fact: dims.isFact,
-        is_behaviour: dims.isBehaviour,
-        is_real_context: dims.isRealContext,
-        is_costly: dims.isCostly,
-        origin: "system",
-      })
-      .select("id")
-      .single();
+    const observation = {
+      idea_id: ideaId,
+      experiment_id: expId,
+      kind,
+      summary: (s
+        ? `Enquête (zelfrapportage, geen waargenomen gedrag): ${m.successes} van ${m.n} respondenten: ${h.metric_numerator} (${interval}); uitgenodigd ${s.invitation.successes}/${s.invitation.n}, open link ${s.openLink.successes}/${s.openLink.n}.`
+        : perPerson.available
+          ? systemObservationSummary({ type: exp.type, metric, counts: perPerson.counts, successes: m.successes, n: m.n, metricLabel: h.metric_label, interval })
+          : `${m.successes} van ${m.n} unieke relevante bezoekers: ${h.metric_label.toLowerCase()} (${interval}).`
+      ).slice(0, 400),
+      is_fact: dims.isFact,
+      is_behaviour: dims.isBehaviour,
+      is_real_context: dims.isRealContext,
+      is_costly: dims.isCostly,
+      origin: "system",
+    };
+    let obs: { id: string } | null = existing;
+    if (!existing) {
+      // Zonder de migratie bestaat evidence_type nog niet: dan zonder (zelfde waarneming, zonder het label).
+      const row: ObservationInsert = { ...observation, ...(evidenceType && perPerson.available ? { evidence_type: evidenceType } : {}) };
+      const first = await supabase.from("observations").insert(row).select("id").single();
+      obs = first.data ?? (schemaMissing(first.error) ? (await supabase.from("observations").insert(observation).select("id").single()).data : null);
+    }
     if (obs && !existing && verdictKind !== "inconclusive") {
       await supabase.from("assumption_observations").insert({ assumption_id: h.assumption_id, observation_id: obs.id, idea_id: ideaId, relation: verdictKind === "pass" ? "supports" : "contradicts" });
     }
@@ -768,10 +818,12 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
       fail_threshold_pct: h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct),
       required_n: h.required_n ?? null,
       // Bewijsniveau van wat deze test meet (golf A, punt 14): "Geslaagd · niveau: mening".
-      evidence_level: testEvidenceLevel(exp.type, { decisionRule: h.decision_rule }),
+      evidence_level: testEvidenceLevel(exp.type, { decisionRule: h.decision_rule, successMetric: (h as { success_metric?: string | null }).success_metric }),
       byChannel: m.byChannel,
       byVariant: m.byVariant,
       warnings: m.warnings,
+      // Fase 2 · punt 4: wat als succes telde en de telling per persoon op het moment van analyseren.
+      ...(perPerson.available ? { success_metric: asSuccessMetric((h as { success_metric?: string | null }).success_metric), per_person: perPerson.counts } : {}),
       ended_early: exp.ended_early,
       ended_below_sample: belowSample,
       end_reason: exp.end_reason ?? null,
