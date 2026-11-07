@@ -17,6 +17,7 @@ import { todayInNL } from "@/lib/domain/sprint";
 import { endSentence } from "@/lib/text";
 import { CERTAINTY_LABEL, standingFromSnapshot, type EvidenceStanding } from "@/lib/domain/evidence-standing";
 import { EVIDENCE_SCALE, scaleIndex } from "@/lib/domain/evidence-scale";
+import { asReportCanvas, type ReportCanvas } from "@/lib/domain/canvas";
 
 export type Tone = "blue" | "green" | "coral" | "lime" | "gray";
 export type Block =
@@ -155,6 +156,29 @@ export function standingPdf(st: EvidenceStanding): StandingPdf {
 }
 
 // De datum bij de volgende stap, in woorden.
+// Het canvas als compacte tabellen (bouwsteen, onderdeel, bewijsstand) onder hoofdstuk 06.
+export function canvasPdfBlocks(c: ReportCanvas): Block[] {
+  return [
+    { t: "h", text: "Businessmodel en propositie" },
+    { t: "p", text: c.summary },
+    ...c.canvases.flatMap((cv): Block[] => [
+      { t: "p", text: cv.label, small: true },
+      {
+        t: "table",
+        head: ["Bouwsteen", "Onderdeel", "Bewijsstand"],
+        widths: [24, 50, 26],
+        rows: cv.blocks.flatMap((b) => b.items.map((i, n) => [n === 0 ? b.label : "", i.origin === "Eigen invoer" ? i.body : `${i.body} (${i.origin.toLowerCase()})`, i.standing])),
+      },
+    ]),
+    {
+      t: "p",
+      small: true,
+      muted: true,
+      text: `De bewijsstand komt uit de gekoppelde aanname. Een leeg vak betekent onbekend; een AI-voorstel is nooit bewijs.${c.openProposals ? ` ${c.openProposals} AI-voorstel${c.openProposals === 1 ? "" : "len"} nog niet beoordeeld en niet opgenomen.` : ""}${c.latestVersion ? ` Laatst opgeslagen canvasversie: versie ${c.latestVersion.number}.` : ""}`,
+    },
+  ];
+}
+
 export function nextStepDate(sh: DecisionSheet): string {
   return sh.nextStep.date ? `${sheetDate(sh.nextStep.date)} (${sh.nextStep.dateLabel})` : sh.nextStep.dateLabel;
 }
@@ -302,6 +326,9 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
         ]
       : [{ t: "p", text: "Er zijn nog geen aannames vastgelegd.", muted: true }],
   });
+  // Propositie- en businessmodelcanvas met de bewijsstand per onderdeel (oudere rapporten hebben het niet).
+  const canvas = asReportCanvas((r as { canvas?: unknown }).canvas);
+  if (canvas) chapters[chapters.length - 1].blocks.push(...canvasPdfBlocks(canvas));
 
   // 07 Experiments
   const exps: Block[] = [

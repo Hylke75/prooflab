@@ -28,6 +28,8 @@ import { EvidenceStanding } from "@/components/evidence/EvidenceStanding";
 import { ReportAppendix } from "@/components/report/ReportAppendix";
 import { standingFromSnapshot } from "@/lib/domain/evidence-standing";
 import { Term } from "@/components/ui/Term";
+import { ReportCanvasSection } from "@/components/canvas/ReportCanvasSection";
+import { asReportCanvas } from "@/lib/domain/canvas";
 
 export const metadata: Metadata = { title: "Rapportage" };
 
@@ -356,6 +358,9 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               </p>
             )}
           </section>
+
+          {/* Propositie- en businessmodelcanvas (oudere rapporten en dossiers zonder canvas hebben het niet). */}
+          {asReportCanvas("canvas" in r ? r.canvas : null) && <ReportCanvasSection canvas={asReportCanvas(r.canvas)!} />}
 
           <section className="report-section">
             <span className="eyebrow">07 / Experimenten en resultaten</span>

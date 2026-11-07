@@ -127,6 +127,11 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
   ]);
   // Fase 2 · punt 4: betaalde, nog niet terugbetaalde aanbetalingen (zonder migratie: onbekend).
   const deposits = await db.from("test_payments").select("id", { count: "exact", head: true }).eq("idea_id", id).eq("status", "paid");
+  // Canvas: onderdelen en de nieuwste versie (zonder migratie: onbekend, dan blijft de regel stil).
+  const [canvasItems, canvasVersion] = await Promise.all([
+    db.from("canvas_items").select("id", { count: "exact", head: true }).eq("idea_id", id),
+    db.from("canvas_versions").select("created_at").eq("idea_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
   const idea = d.idea;
   // Fase 2 · punt 5: geplande gesprekken per interviewtest (handmatige afspraken en agenda), voor test_pace.
   const planned = await plannedByExperiment(id, d.experiments.map((e) => ({ id: e.id, type: e.type, held: e.metrics?.n ?? 0 })));
@@ -191,6 +196,7 @@ async function loadFacts(db: Db, d: Dossier, sprint: CoachFacts["sprint"], today
     decisionRule: rule.error ? undefined : { defined: !!rule.data, locked: !!rule.data?.locked_at },
     outreach: { replies: replies.count ?? 0, latestReplyAt: replies.data?.[0]?.received_at ?? null, latestImportAt: imports.data?.[0]?.created_at ?? null },
     depositsOutstanding: deposits.error ? undefined : (deposits.count ?? 0),
+    canvas: canvasItems.error || canvasVersion.error ? undefined : { items: canvasItems.count ?? 0, latestVersionAt: canvasVersion.data?.created_at ?? null },
   };
 }
 

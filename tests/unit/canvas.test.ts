@@ -25,6 +25,8 @@ import {
 import type { EvidenceLevel } from "@/lib/domain/evidence";
 import { STEPS, stepForPath } from "@/lib/steps";
 import { noteStepForSection } from "@/lib/domain/step-files";
+import { canvasPdfBlocks } from "@/lib/report-pdf-model";
+import { evaluateRules, NOT_DONE, RULE_LABELS, type CoachFacts } from "@/lib/coach/rules";
 
 type Reg = AssumptionEvidence["register"][number];
 const obs = (level: EvidenceLevel, extra: Partial<Reg> = {}): Reg => ({ itemType: "observation", fate: "counted", direction: "supports", level, notes: [], ...extra });
@@ -253,6 +255,38 @@ describe("rapport", () => {
     expect(asReportCanvas(r)).toBe(r);
     expect(asReportCanvas({ version: 2 })).toBeNull();
     expect(reportCanvas([], null)).toBeNull();
+    // PDF: dezelfde inhoud als tabel onder hoofdstuk 06.
+    const blocks = canvasPdfBlocks(r);
+    expect(blocks[0]).toEqual({ t: "h", text: "Businessmodel en propositie" });
+    const table = blocks.find((b) => b.t === "table");
+    expect(table && table.t === "table" ? table.rows : []).toEqual([
+      ["Kanalen", "A (uit de intake)", "Getoetst · ondersteund"],
+      ["", "B", "Nog geloof"],
+    ]);
+    expect(JSON.stringify(blocks)).toContain("1 AI-voorstel nog niet beoordeeld");
+  });
+});
+
+describe("coach: canvas bijwerken na een besluit", () => {
+  const f = (over: Partial<CoachFacts>): CoachFacts => ({
+    ideaId: "i", today: "2026-11-18", now: Date.parse("2026-11-18T12:00:00Z"), sprint: null, claims: [], competitorKinds: ["status_quo"], sourceTypes: [], assumptions: [], experiments: [], interviews: [],
+    observations: [], learningCards: [], realityCheck: null, decisions: [], decisionDeadline: null, clientDeciderInvited: false,
+    outcome: { defined: true, due: null, resolved: false, checkins: [] }, forecasts: [], outreach: { replies: 0, latestReplyAt: null, latestImportAt: null }, ...over,
+  });
+  const codes = (x: CoachFacts) => evaluateRules(x).map((n) => n.code);
+  const adjust = { decisions: [{ id: "d1", decidedAt: "2026-11-10T10:00:00Z", confirmed: true, action: "adjust" }] };
+  it("alleen na bijsturen, met een canvas, zolang er geen versie na het besluit is", () => {
+    expect(codes(f({ ...adjust, canvas: { items: 4, latestVersionAt: null } }))).toContain("canvas_after_decision:d1");
+    expect(codes(f({ ...adjust, canvas: { items: 4, latestVersionAt: "2026-11-01T10:00:00Z" } }))).toContain("canvas_after_decision:d1");
+    expect(codes(f({ ...adjust, canvas: { items: 4, latestVersionAt: "2026-11-11T10:00:00Z" } }))).not.toContain("canvas_after_decision:d1");
+    // Geen canvas, onbekend (geen migratie) of een ander besluit: stil.
+    expect(codes(f({ ...adjust, canvas: { items: 0, latestVersionAt: null } })).some((c) => c.startsWith("canvas_after_decision"))).toBe(false);
+    expect(codes(f({ ...adjust })).some((c) => c.startsWith("canvas_after_decision"))).toBe(false);
+    expect(codes(f({ decisions: [{ id: "d2", decidedAt: "2026-11-10", confirmed: true, action: "continue" }], canvas: { items: 4, latestVersionAt: null } })).some((c) => c.startsWith("canvas_after_decision"))).toBe(false);
+    const note = evaluateRules(f({ ...adjust, canvas: { items: 4, latestVersionAt: null } })).find((n) => n.code === "canvas_after_decision:d1")!;
+    expect(note).toMatchObject({ kind: "tip", href: "/app/ideas/i/model", audience: "consultant" });
+    expect(RULE_LABELS.canvas_after_decision).toBeTruthy();
+    expect(NOT_DONE.canvas_after_decision).toBeTruthy();
   });
 });
 

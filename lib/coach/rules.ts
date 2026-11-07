@@ -101,6 +101,9 @@ export type CoachFacts = {
   outreach: { replies: number; latestReplyAt: string | null; latestImportAt: string | null };
   // Fase 2 · punt 4: betaalde aanbetalingen die nog niet zijn terugbetaald (undefined = onbekend; dan blijft de regel stil).
   depositsOutstanding?: number;
+  // Propositie- en businessmodelcanvas: aantal onderdelen en de nieuwste opgeslagen versie (undefined = onbekend of
+  // geen migratie; dan blijft de regel stil).
+  canvas?: { items: number; latestVersionAt: string | null };
 };
 
 const DAY = 86_400_000;
@@ -392,6 +395,22 @@ export const RULES: Record<string, Rule> = {
     };
   },
 
+  // Na een besluit om bij te sturen (ander aanbod, andere doelgroep of belofte) hoort het businessmodel mee te veranderen.
+  // Een opgeslagen canvasversie na het besluit sluit de notitie.
+  canvas_after_decision: (f, base) => {
+    const last = f.decisions[f.decisions.length - 1];
+    if (!last || last.action !== "adjust" || !f.canvas || f.canvas.items === 0) return null;
+    if (f.canvas.latestVersionAt && new Date(f.canvas.latestVersionAt).getTime() >= new Date(last.decidedAt).getTime()) return null;
+    return {
+      code: `canvas_after_decision:${last.id}`,
+      kind: "tip",
+      title: "Werk het businessmodel bij na het besluit",
+      body: "Er is besloten bij te sturen. Pas het canvas aan op het nieuwe aanbod, de doelgroep of de belofte, koppel wat verandert aan aannames en sla een versie op met een notitie over het besluit.",
+      href: `${base}/model`,
+      audience: "consultant",
+    };
+  },
+
   decision_confirm: (f, base) => {
     const last = f.decisions[f.decisions.length - 1];
     if (!last || last.confirmed || !f.clientDeciderInvited) return null;
@@ -640,6 +659,7 @@ export const RULE_LABELS: Record<string, string> = {
   no_customer_voice: "Stem van de klant ontbreekt",
   outreach_unimported: "LinkedIn-antwoorden niet opgenomen",
   deposits_refund: "Aanbetalingen terugbetalen",
+  canvas_after_decision: "Businessmodel bijwerken na besluit",
   praise_first_behaviour: "Eerste klantgedrag (compliment)",
   praise_prereg: "Test vooraf vastgelegd (compliment)",
   ai: "AI-coach",
@@ -689,6 +709,7 @@ export const NOT_DONE: Record<string, string> = {
   no_customer_voice: "We zien nog geen bron met de stem van de klant (review, forum, interview of enquête).",
   outreach_unimported: "We zien nog geen opgenomen LinkedIn-antwoorden bij de bronnen.",
   deposits_refund: "We zien nog betaalde aanbetalingen die niet zijn terugbetaald.",
+  canvas_after_decision: "We zien nog geen opgeslagen canvasversie na het besluit om bij te sturen.",
   assumptions_early: "We zien nog geen aannames in het dossier.",
 };
 
