@@ -10,6 +10,8 @@ import { countsAsEvidence } from "@/lib/domain/practice";
 import { asSuccessMetric } from "@/lib/domain/success-metric";
 import { successesFor } from "@/lib/domain/action-counts";
 import { loadActionCounts } from "@/lib/action-counts-data";
+import { loadManualResults } from "@/lib/manual-results-data";
+import { MANUAL_SCHEMA_MISSING, tallyManual } from "@/lib/domain/manual-results";
 
 export type LandingConfig = {
   headline: string;
@@ -23,6 +25,8 @@ export type LandingConfig = {
   // Fase 2 · punt 4 (nieuwe tests): verwerkingsverantwoordelijke voor de AVG-tekst en de optionele betaalstap.
   privacy?: { controller_name: string; controller_contact: string };
   deposit?: { enabled: boolean; amount_eur: number };
+  // Experimentencatalogus: de methode uit de catalogus waarmee deze test is opgezet (optioneel).
+  catalog_method_id?: string;
 };
 
 export type PricingConfig = LandingConfig & {
@@ -33,6 +37,7 @@ export type InterviewConfig = {
   guide: string[];
   screener: string;
   target_n: number;
+  catalog_method_id?: string;
 };
 
 export type ChannelRow = { channel: string; visitors: number; actions: number };
@@ -62,6 +67,8 @@ export type ExperimentMetrics = {
   // Fase 2 · punt 4: false = per kanaal en prijspunt telt alleen het bezoek (betalingen, toezeggingen en afspraken worden
   // per persoon geteld, niet per kanaal); de tabellen tonen dan geen acties.
   perChannelActions?: boolean;
+  // Experimentencatalogus: handmatig sjabloon. Aantal meetellende regels, ingetrokken regels en regels met bewijsbestand.
+  manual?: { entries: number; withdrawn: number; withEvidence: number };
 };
 
 // The key metric per source × channel, counted in the database (survey_key_counts) from the quality flags the
@@ -223,6 +230,7 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
   let survey: SurveySplit | null = null;
   let byRecruitment: ExperimentMetrics["byRecruitment"];
   let perChannelActions: boolean | undefined;
+  let manual: ExperimentMetrics["manual"];
 
   if (exp.type === "survey") {
     // The verdict uses every believable response (all sources), as pre-registered; the split per source shows
@@ -240,6 +248,18 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
       byContent = survey.byContent.map((c) => ({ content: c.content, visitors: c.n, actions: c.successes }));
       warnings.push(...survey.warnings);
     }
+  } else if (exp.type === "manual") {
+    // Experimentencatalogus: handmatig ingevoerde resultaten. n = som van de eenheden, successen = som van de
+    // successen; ingetrokken regels tellen niet. Zonder de migratie telt er niets.
+    const { rows, available, error } = await loadManualResults(exp.id);
+    if (!available) warnings.push(MANUAL_SCHEMA_MISSING);
+    if (error) warnings.push("De ingevoerde resultaten konden niet worden opgehaald; de cijfers hieronder zijn onvolledig.");
+    const t = tallyManual(rows);
+    n = t.n;
+    successes = t.successes;
+    manual = { entries: t.entries, withdrawn: t.withdrawn, withEvidence: t.withEvidence };
+    if (t.withdrawn) warnings.push(`${t.withdrawn} ${t.withdrawn === 1 ? "ingevoerde regel is" : "ingevoerde regels zijn"} ingetrokken en ${t.withdrawn === 1 ? "telt" : "tellen"} niet mee.`);
+    warnings.push("Handmatig ingevoerd: ProofLab heeft deze resultaten niet zelf waargenomen. Ze tellen hooguit als kleine handeling.");
   } else if (exp.type === "interview") {
     const [{ data: interviews }, { data: obs }] = await Promise.all([
       supabase.from("interviews").select("id, consent_recorded, is_acquaintance, dmu_role, recruited_via, recruitment_group, is_practice").eq("experiment_id", exp.id),
@@ -346,5 +366,5 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
     endConditionReached,
   });
   const bayes = endConditionReached ? betaBinomial(await priorFor(exp), successes, n, Number(h.success_threshold_pct)) : null;
-  return { n, successes, label: h.metric_label, byChannel, byVariant, byContent, endConditionReached, verdict: v, bayes, warnings, survey, ...(byRecruitment ? { byRecruitment } : {}), ...(perChannelActions === false ? { perChannelActions } : {}) };
+  return { n, successes, label: h.metric_label, byChannel, byVariant, byContent, endConditionReached, verdict: v, bayes, warnings, survey, ...(byRecruitment ? { byRecruitment } : {}), ...(perChannelActions === false ? { perChannelActions } : {}), ...(manual ? { manual } : {}) };
 }

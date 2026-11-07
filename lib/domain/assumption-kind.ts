@@ -5,7 +5,7 @@
 //
 // Bewust zonder runtime-imports, zodat ook de e2e-tests deze module kunnen gebruiken.
 
-import type { ExperimentType } from "./labels";
+import type { BuiltinExperimentType, ExperimentType } from "./labels";
 
 export const ASSUMPTION_KINDS = {
   market: { label: "markt" },
@@ -62,7 +62,7 @@ export function assumptionKindLabel(kind: AssumptionKind): string {
 const MONEY_OR_COMMITMENT =
   /€|\bbetaal|\bbetaling|\bbetaald|\bbetaalt\b|\baanbetal|\bprijs|\beuro|offerte getekend|getekende offerte|\bintentieverklaring|\btoezegging|\btoegezegd|\bpre-?order|\bvoorbestel|abonnement afgesloten|\bsluit(en)? een abonnement|budget vrijgemaakt|\bvrijgemaakt budget/;
 
-const TYPE_LABEL: Record<ExperimentType, string> = {
+const TYPE_LABEL: Record<BuiltinExperimentType, string> = {
   landing: "een landingpage-test",
   interview: "een klantinterview",
   pricing: "een prijs-/aanbodtest",
@@ -101,7 +101,7 @@ export function metricFitsAssumption(
   // Gebruikerstest B3: of iets mag (AVG, vergunning) toets je met bureauonderzoek of een juridische check buiten ProofLab.
   // Vertrouwen kun je wel bij klanten uitvragen (interview of enquête), maar een klik of prijskeuze zegt daar niets over.
   if (kind === "regulation" && (test.type === "landing" || test.type === "pricing")) {
-    const what = TYPE_LABEL[test.type as ExperimentType];
+    const what = TYPE_LABEL[test.type as BuiltinExperimentType];
     return {
       ok: false,
       reason: `Deze aanname gaat over regelgeving of vertrouwen. ${what.charAt(0).toUpperCase()}${what.slice(1)} meet klikken of keuzes, niet of iets mag. Toets dit met bureauonderzoek of een juridische check buiten ProofLab en leg de uitkomst vast als bron; vertrouwen kun je uitvragen in interviews.`,
@@ -109,7 +109,7 @@ export function metricFitsAssumption(
     };
   }
   if (kind === "technical") {
-    const what = TYPE_LABEL[test.type as ExperimentType] ?? "een klanttest";
+    const what = TYPE_LABEL[test.type as BuiltinExperimentType] ?? "een klanttest";
     return {
       ok: false,
       reason: `Deze aanname gaat over technische haalbaarheid. ${what.charAt(0).toUpperCase()}${what.slice(1)} meet wat klanten zeggen of doen, niet of het te bouwen is. Toets dit met een technische proef of prototype buiten ProofLab en leg de uitkomst vast als bron.`,

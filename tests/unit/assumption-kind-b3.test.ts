@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { assumptionKind, ASSUMPTION_KINDS, metricFitsAssumption } from "@/lib/domain/assumption-kind";
 import { DESK_CHECK_TEST, OUTREACH_TEST, testsForKind, valueOfInformation } from "@/lib/domain/recommend";
-import { EXPERIMENT_TYPES } from "@/lib/domain/labels";
+import { BUILTIN_EXPERIMENT_TYPES, EXPERIMENT_TYPES } from "@/lib/domain/labels";
 
 // Gebruikerstest B3: twee nieuwe soorten aannames (kanaal, regelgeving/context), met de zinnen uit het dossier
 // "AI-communicatie voor sportclubs".
@@ -41,8 +41,9 @@ describe("passende test per soort", () => {
     expect(testsForKind("regulation", false)).toEqual([DESK_CHECK_TEST]);
     expect(DESK_CHECK_TEST.external).toBe(true);
   });
-  it("geen nieuwe testtypes in ProofLab zelf", () => {
-    expect(Object.keys(EXPERIMENT_TYPES).sort()).toEqual(["interview", "landing", "pricing", "survey"]);
+  it("geen nieuwe ingebouwde testtypes in ProofLab zelf (alleen het handmatige sjabloon van de catalogus)", () => {
+    expect([...BUILTIN_EXPERIMENT_TYPES].sort()).toEqual(["interview", "landing", "pricing", "survey"]);
+    expect(Object.keys(EXPERIMENT_TYPES).sort()).toEqual(["interview", "landing", "manual", "pricing", "survey"]);
   });
   it("de rangorde stelt bij een AVG-aanname de juridische check voor", () => {
     const v = valueOfInformation({ id: "a", statement: "De dienst is AVG-conform", importance: 5, probability: 0.4, category: "context", evidence: 0, hasDiscoveryEvidence: false });

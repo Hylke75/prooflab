@@ -59,6 +59,11 @@ import { loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
 import { RecruitmentFunnel } from "@/components/experiments/RecruitmentFunnel";
 import { loadRecruitment } from "@/lib/recruitment-data";
 import { deadlineRiskText } from "@/lib/domain/recruitment-funnel";
+import { catalogMethod, experimentTypeLabel, manualConfigOf } from "@/lib/domain/experiment-catalog";
+import { catalogMethodIdOf } from "@/lib/domain/manual-kind";
+import { loadManualResults } from "@/lib/manual-results-data";
+import { ManualResultsPanel } from "@/components/experiments/ManualResultsPanel";
+import { todayInNL } from "@/lib/domain/sprint";
 
 export const metadata: Metadata = { title: "Experiment" };
 
@@ -120,9 +125,13 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
     canWrite && state === "ready_for_review" ? getWorkspace().then((ws) => ws.user.id) : Promise.resolve(null),
   ]);
   const themeCounts = type === "interview" && canWrite ? await loadThemeCountsForConsultant(id, expId) : null;
+  // Experimentencatalogus: draaiboek en ruwe resultaten van een handmatig sjabloon.
+  const manualConfig = type === "manual" ? manualConfigOf(exp.config) : null;
+  const manualResults = type === "manual" ? await loadManualResults(expId) : null;
   // Fase 2 · punt 5: wervingstrechter (alleen het onderzoeksteam, vanaf een goedgekeurde test). "Gesprek gehouden" en
   // "deelgenomen" komen uit dezelfde meting als hierboven (per kanaal), nooit uit handmatige invoer.
-  const recruitingOpen = canWrite && !["draft", "ready_for_review"].includes(state);
+  // Experimentencatalogus: een handmatig sjabloon telt zijn deelnemers zelf (handmatige invoer), niet per kanaal.
+  const recruitingOpen = canWrite && type !== "manual" && !["draft", "ready_for_review"].includes(state);
   const [recruitment, { data: assumptionRows }] = recruitingOpen
     ? await Promise.all([
         loadRecruitment({
@@ -190,7 +199,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
     <PageFrame crumbs={["Werkruimte", idea.title, "Testen", exp.title]} coach="experiments" ideaId={id} section={`/experiments/${expId}`}>
       <div className="section-row">
         <div>
-          <div className="eyebrow">{EXPERIMENT_TYPES[type].label} · {EXPERIMENT_TYPES[type].phase}</div>
+          <div className="eyebrow">{experimentTypeLabel(type, exp.config)} · {EXPERIMENT_TYPES[type]?.phase ?? ""}</div>
           {/* B1: een lange titel stopt op een woordgrens met "…"; de volledige titel staat in de tooltip. */}
           <h1 title={shortTitle !== exp.title ? exp.title : undefined}>{shortTitle}</h1>
           <p className="sub">Toetst: {h.assumptions?.statement}</p>
@@ -214,7 +223,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
 
       <div className="grid-3">
         <div className="live-stat">
-          <small>{type === "interview" ? "Geïnterviewden (met toestemming)" : type === "survey" ? "Respondenten (geloofwaardig, kernvraag beantwoord)" : "Unieke relevante bezoekers"}</small>
+          <small>{type === "interview" ? "Geïnterviewden (met toestemming)" : type === "survey" ? "Respondenten (geloofwaardig, kernvraag beantwoord)" : type === "manual" ? `Aantal ${manualConfig?.unit.many ?? "waarnemingen"} (handmatig ingevoerd)` : "Unieke relevante bezoekers"}</small>
           <strong className="num">{m.n}</strong>
           <span className="tiny">minimaal {h.min_sample} afgesproken</span>
         </div>
@@ -291,6 +300,17 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
             </ActionForm>
           )}
           {kind && <div className="data-row"><span>Soort aanname</span><strong style={{ textAlign: "right" }}>{assumptionKindLabel(kind)}</strong></div>}
+          {catalogMethodIdOf(exp.config) && (
+            <div className="data-row">
+              <span>Methode uit de catalogus</span>
+              <strong style={{ textAlign: "right" }}>
+                <Link className="text-link" href={`/app/ideas/${id}/experiments/catalogus?open=${catalogMethodIdOf(exp.config)}`}>
+                  {catalogMethod(catalogMethodIdOf(exp.config))?.name ?? manualConfig?.method_name ?? catalogMethodIdOf(exp.config)}
+                </Link>
+                {type === "manual" && <> · <span className="pill orange">Handmatig ingevoerd</span></>}
+              </strong>
+            </div>
+          )}
           <div className="data-row"><span>Wij denken dat</span><strong style={{ textAlign: "right" }}>{h.we_believe}</strong></div>
           <div className="data-row"><span>Bij</span><strong style={{ textAlign: "right" }}>{h.target_group}</strong></div>
           <div className="data-row"><span>Dat toetsen we door</span><strong style={{ textAlign: "right" }}>{h.test_method}</strong></div>
@@ -401,6 +421,12 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                   <label className="check-row"><input type="checkbox" name="check_privacy" /> Er wordt niet om naam of e-mailadres gevraagd in de vragen; uitnodigingen gaan alleen naar mensen met een bestaande relatie en vervallen na 180 dagen.</label>
                   <label className="check-row"><input type="checkbox" name="check_pretest" /> De vragen zijn voorgelegd aan 3–5 echte mensen uit de doelgroep en waar nodig aangepast.</label>
                 </>
+              ) : type === "manual" ? (
+                <>
+                  <label className="check-row"><input type="checkbox" name="check_honest" /> Deelnemers horen eerlijk wat er getest wordt; er wordt niets beloofd wat niet waar is.</label>
+                  <label className="check-row"><input type="checkbox" name="check_privacy" /> Deelnemers geven toestemming; in notities en bewijsbestanden staan geen namen of contactgegevens, alleen codes.</label>
+                  <label className="check-row"><input type="checkbox" name="check_budget" /> Kosten (materiaal, vergoedingen, advertenties) zijn goedgekeurd en vastgelegd.</label>
+                </>
               ) : type === "interview" ? (
                 <>
                   <label className="check-row"><input type="checkbox" name="check_consent" /> Deelnemers krijgen vooraf uitleg over doel, opname en bewaartermijn, en geven toestemming.</label>
@@ -418,7 +444,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
           )}
           {canWrite && state === "approved" && (
             <div id="publiceren" className="coach-target">
-              {type !== "interview" && !trackingConfigured() && <div className="form-error">Meting is niet geconfigureerd (INGEST_SECRET en TRACKING_SALT ontbreken). De test kan nog niet live.</div>}
+              {type !== "interview" && type !== "manual" && !trackingConfigured() && <div className="form-error">Meting is niet geconfigureerd (INGEST_SECRET en TRACKING_SALT ontbreken). De test kan nog niet live.</div>}
               {publicUrl && type !== "survey" && <p className="sub">Bekijk eerst het <a className="text-link" href={`/t/${exp.public_slug}`} target="_blank">voorbeeld</a> (metingen staan nog uit).</p>}
               {goBlock && (
                 <div className="form-error" id="go-rule-block" role="status">
@@ -432,7 +458,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
               )}
               <ActionForm
                 action={transitionExperiment.bind(null, id, expId, "live")}
-                submitLabel={type === "interview" ? "Start de interviewronde" : "Publiceer en start de meting"}
+                submitLabel={type === "interview" ? "Start de interviewronde" : type === "manual" ? "Start de test (invoer opent)" : "Publiceer en start de meting"}
                 disabled={!!goBlock || !!privacyGate}
                 describedBy={goBlock ? "go-rule-block" : privacyGate ? "privacy-block" : undefined}
               >
@@ -528,7 +554,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
         </Detail>
       )}
 
-      {canWrite && type !== "interview" && <Detail><PerPostResults expId={expId} type={type} rows={m.byContent} metricLabel={h.metric_label} /></Detail>}
+      {canWrite && type !== "interview" && type !== "manual" && <Detail><PerPostResults expId={expId} type={type} rows={m.byContent} metricLabel={h.metric_label} /></Detail>}
 
       <Distribution ideaId={id} exp={exp} canWrite={canWrite} plan={h} />
 
@@ -700,7 +726,25 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
 
       {type === "survey" && <SurveyResults ideaId={id} exp={exp} h={h} m={m} canWrite={canWrite} />}
 
-      {type !== "interview" && type !== "survey" && (
+      {type === "manual" && manualResults && (
+        <ManualResultsPanel
+          ideaId={id}
+          expId={expId}
+          config={manualConfig}
+          rows={manualResults.rows}
+          available={manualResults.available}
+          loadError={manualResults.error}
+          running={running}
+          canWrite={canWrite}
+          state={state}
+          today={todayInNL()}
+          startedOn={exp.started_at ? todayInNL(new Date(exp.started_at)) : null}
+          numerator={h.metric_numerator}
+          denominator={h.metric_denominator}
+        />
+      )}
+
+      {(type === "landing" || type === "pricing") && (
         <div className="card mt-18">
           <h2 className="as-h3">Testpagina</h2>
           <p className="sub mt-8">

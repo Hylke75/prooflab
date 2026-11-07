@@ -412,6 +412,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               <div key={i} className="mt-12" style={{ breakInside: "avoid" }}>
                 <strong style={{ fontSize: 13 }}>{e.title} ({e.type})</strong>
                 {e.selfReported && <p className="tiny">Zelfrapportage, geen waargenomen gedrag: een enquête meet wat mensen over zichzelf zeggen.</p>}
+                {e.manualEntry && <p className="tiny">Handmatig ingevoerd: het onderzoeksteam voerde deze resultaten zelf in{e.manualEntries != null ? ` (${e.manualEntries} ${e.manualEntries === 1 ? "regel" : "regels"} met notitie)` : ""}; ProofLab heeft ze niet zelf waargenomen. Ze tellen hooguit als kleine handeling.</p>}
                 <p>
                   Hypothese: {e.hypothesis} Meting: {e.metric}. Vooraf vastgelegd ({e.lockedAt ? date(e.lockedAt) : "niet vergrendeld"}): {e.threshold}.
                 </p>

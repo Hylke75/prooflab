@@ -60,6 +60,8 @@ export function approvalChecks(type: string, exploratory: boolean, format: Study
   if (exploratory && type === "survey") return format === "interview" ? ["check_honest", "check_privacy", "check_neutral"] : ["check_honest", "check_privacy"];
   if (type === "interview") return ["check_consent", "check_neutral"];
   if (type === "survey") return ["check_honest", "check_privacy", "check_pretest"];
+  // Experimentencatalogus: een handmatig sjabloon heeft geen testpagina; wel eerlijkheid, privacy en budget.
+  if (type === "manual") return ["check_honest", "check_privacy", "check_budget"];
   return ["check_reveal", "check_privacy", "check_budget"];
 }
 
