@@ -167,7 +167,7 @@ Alles deterministisch (geen LLM), met unit-tests in `tests/unit/quantify.test.ts
 - ⬜ AI-gemodereerde chatinterviews (spraak later) — besloten: na de eerste sprints
 - ⬜ Weekritmes: leersessie en besluitsessie met de klant, Fathom-import
 - ⬜ Koppelingen met de Meta- en LinkedIn-advertentie-API's (nu: kanaallinks + handmatig live zetten)
-- ⬜ Experimentencatalogus (±40 methodes met metadata) en begeleide handmatige sjablonen
+- ✅ Experimentencatalogus (41 methodes met metadata) en begeleide handmatige sjablonen — zie "Experimentencatalogus en begeleide handmatige sjablonen (7 november)"
 - ⬜ Propositie- en businessmodelcanvas
 - ⬜ Automatische maandelijkse concurrentiecheck (handmatig starten kan al), verschillenrapport tussen onderzoeksversies
 - ⬜ Betalingen/aanbetalingen (na juridische check), Stripe
@@ -1107,4 +1107,70 @@ blijft: vergrendelde criteria, berekende statussen, auditspoor; een AI-bewering 
   kanaal). Afspraken komen niet via de testpagina binnen: n blijft de unieke bezoekers van de pagina, ook als iemand
   rechtstreeks via de Calendly-link boekt. De afspraakwebhooks hangen aan `TRACKING_SALT` (bij rotatie opnieuw maken).
   Migratie nog toepassen
+
+## Experimentencatalogus en begeleide handmatige sjablonen (7 november)
+
+Functioneel ontwerp §7 ("eigen beschreven catalogus"). Een catalogus van 41 testmethodes, volledig in eigen woorden
+(geen teksten, indelingen of beoordelingen uit andere methodeboeken), met begeleide handmatige sjablonen voor methodes
+zonder ingebouwde automatisering. Zes commits ("Experimentencatalogus 1/5 … 5/5" en de standaardwaarden) en één
+migratie `20261118100000_experiment_catalog.sql` (**nog niet toegepast**; idempotent, twee keer uitgevoerd in de test;
+geen bestaande functie gewijzigd). Strengheid blijft: vergrendelde drempels en draaiboek, geen oordeel vóór de
+eindconditie, auditspoor; handmatig ingevoerd is nooit sterker dan een kleine handeling.
+
+- ✅ **Catalogus als getypeerde data** (`lib/domain/experiment-catalog.ts`): per methode id, naam, omschrijving, categorie
+  (verkennen/valideren), wat het toetst (wenselijkheid, haalbaarheid, levensvatbaarheid), kosten- en tijdsindicatie,
+  typische steekproef, B2B/B2C, wat het wel en niet bewijst, valkuilen, draaiboek (vooraf, tijdens, afronden),
+  startwaarden voor de Test Card en hoe het in ProofLab draait: 14 als ingebouwd testtype (interviews, enquête,
+  landing- en prijstest, ook met afspraak, toezegging of aanbetaling), 20 als begeleid handmatig sjabloon
+  (bijv. veldobservatie, dagboekstudie, conciërgetest, achter-de-schermentest, pop-upstand, aanbodgesprek,
+  outreach-proef, partnerproef, kleine pilot) en 7 als bureauonderzoek (vastleggen als bron onder Marktverkenning)
+- ✅ **Bewijssterkte afgeleid, nooit opgegeven**: per methode alleen de soort waarneming; trede, zeg- of doe-gedrag en
+  factor volgen uit de bestaande bewijsladder (`evidence-scale.ts`, `KIND_LEVEL`, `KIND_DEFAULTS`, `OBSERVATION_LR`).
+  Een ingebouwde methode heeft precies het niveau van haar testtype (`testEvidenceLevel`); een handmatig sjabloon komt
+  hooguit tot een kleine handeling (`lib/domain/manual-kind.ts`, ook als databasecheck). Betaling en getekende
+  toezegging tellen alleen via de bestaande betaal- en toezeggingsstap
+- ✅ **Cataloguspagina** `/app/ideas/[id]/experiments/catalogus`: zoeken (zonder accenten, alle woorden), filters op
+  categorie, wat het toetst, bewijssterkte, uitvoering (ingebouwd/handmatig/bureauonderzoek), kosten, tijd en markt;
+  detailpaneel per methode (bestaande `Drawer`: focus erin, Escape sluit), "Gebruik voor deze aanname" → Test Card met
+  het sjabloon. Vanuit een aanname opent de catalogus met de passende lens. Lege, laad- en foutstatus; één kolom op
+  mobiel, knoppen ≥ 44 px
+- ✅ **Sjabloon → Test Card** (`ExperimentBuilder`, `createExperiment`): de methode staat als "Uit de catalogus" tussen de
+  voorstellen (één keuze per testtype, `optionsWithCatalog`) en vult naam, meting (teller/noemer), drempels,
+  steekproef, deadline, vertekeningen en zo nodig de succesmaat voor. Alles blijft aanpasbaar tot de goedkeuring; de
+  bestaande drempelvergrendeling, beslisregel en goedkeuring gelden ongewijzigd. Ongewijzigde startwaarden staan bij
+  "Standaardwaarden van ProofLab" en in het auditspoor. Een handmatig sjabloon toont het draaiboek in de preview, met
+  eigen aanvullingen; de server stelt de configuratie op uit de catalogus (`manualConfigFor`), nooit uit het formulier
+- ✅ **Handmatige resultaten** (testtype `manual`, `manual_results`, `ManualResultsPanel`, `manual-actions.ts`): per
+  waarneming of telling een datum, aantal, hoeveel meetellen, een notitie zonder namen of contactgegevens en optioneel
+  een bewijsbestand (pdf, png, jpg, webp, csv tot 4 MB; type gecontroleerd aan de inhoud; privé bucket
+  `manual-evidence`, alleen het team). Alleen invoeren terwijl de test loopt, met een datum tussen de start en vandaag;
+  intrekken met reden; na afronden ligt alles vast; niets wordt verwijderd. n en successen zijn de som van de
+  niet-ingetrokken regels; het oordeel volgt de bestaande beslisregel van de methodeversie pas na de eindconditie
+  (`experimentMetrics`, `manualOutcome`). De Learning Card krijgt de soort waarneming van de methode, de samenvatting
+  begint met "Handmatig ingevoerd (methode)" en `metrics.manual_entry` met het aantal regels
+- ✅ **Rapport en bewijs**: rapport (scherm en PDF-model), "Alle tests", tellingen en Bewijs & besluit noemen bij een
+  handmatige test de catalogusmethode en "handmatig ingevoerd"; de beperkingen in het rapport vermelden het. Ingebouwde
+  tests uit de catalogus noemen de methode ("Landingpage-test · Nepdeur-pagina")
+- ✅ **Aanbeveler gekoppeld** zonder gedragswijziging: bij "Wat test je eerst?" staat per voorgestelde test de
+  bijbehorende catalogusmethode (`catalogMethodForTest`; prijsaanname → uitgaveninterviews, kanaalproef →
+  outreach-proef, technische proef en juridische check → bureauonderzoek). Rangorde, factoren en bestaande tests
+  ongewijzigd; rekenfactoren per testtype gelden alleen voor ingebouwde types (`BuiltinExperimentType`)
+- **Migratie** `20261118100000_experiment_catalog.sql`: `experiments_type_check` met `manual`; check
+  `experiments_manual_catalog` (catalogusmethode en soort waarneming verplicht bij `manual`); tabel `manual_results` met
+  RLS (lezen: iedereen die het dossier leest; toevoegen/intrekken: het team; verwijderen: niemand), index op elke FK,
+  `guard_manual_result`, `check_idea_refs` en `audit_row`; bucket `manual-evidence` met policies. **Terugval zonder
+  migratie**: catalogus en ingebouwde methodes werken; een handmatig sjabloon toont een nette melding en wordt niet
+  opgeslagen (geen half concept)
+- ✅ **Tests**: unit `tests/unit/experiment-catalog.test.ts` (elke methode volledig, unieke ids en namen, bewijssterkte
+  binnen de ladder, eigen woorden, zoeken en filters, elk sjabloon is een geldige Test Card, standaardwaarden,
+  handmatige configuratie, aanbeveler) en `tests/unit/manual-results.test.ts` (invoer, bestandstype, telling,
+  samenvatting, oordeel pas na de eindconditie met de vergrendelde drempels); DB `tests/db/experiment-catalog.test.ts`
+  (idempotent, type- en configuratiecheck, vergrendelde configuratie, invoer alleen tijdens de test, datumgrenzen,
+  intrekken, niet verwijderen, RLS team/opdrachtgever/buitenstaander, bewijsbestand en bucket, audit). `npm run lint`,
+  `npm run typecheck`, `npm test` (1.499 tests), `npm run build` en alle 27 DB-testbestanden groen
+- 🟡 **Open punten**: visuele controle van cataloguspagina, Test Card met sjabloon en invoerpaneel op 1440/390 px en een
+  e2e-run niet gedaan (geen Supabase-toegang in deze omgeving). Bewijsbestanden en notities van handmatige resultaten
+  vallen nog niet onder `purge_expired_personal_data` en `dsr_search` (notities zijn zonder namen; bestanden alleen
+  voor het team); opnemen bij de volgende privacyronde. De coach kent de catalogus nog niet (geen eigen tips). Migratie
+  nog toepassen
 
