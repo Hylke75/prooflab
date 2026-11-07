@@ -22,7 +22,7 @@ import { countsAsEvidence, realInterviewIds, withPracticeFlag } from "@/lib/doma
 export async function loadDossier(idea: Idea) {
   const supabase = await supabaseServer();
   const id = idea.id;
-  const [questions, claims, competitors, segments, scenarios, ue, experiments, interviews, observations, cards, checks, decisions, members, client, runs, ai] =
+  const [questions, claims, competitors, segments, scenarios, ue, experiments, interviews, observations, cards, checks, decisions, members, client, runs, ai, aiInterviews] =
     await Promise.all([
       supabase.from("research_questions").select("*").eq("idea_id", id).order("position"),
       supabase
@@ -45,6 +45,8 @@ export async function loadDossier(idea: Idea) {
       idea.client_id ? supabase.from("clients").select("name").eq("id", idea.client_id).maybeSingle() : Promise.resolve({ data: null }),
       supabase.from("research_runs").select("mode, status, cost_usd, created_at").eq("idea_id", id),
       supabase.from("ai_runs").select("purpose, model, prompt_version, cost_usd, outcome, created_at").eq("idea_id", id),
+      // AI-gemodereerde interviews (apart gelabeld en geteld). Zonder de migratie bestaat de kolom niet: dan geen.
+      supabase.from("interviews").select("id").eq("idea_id", id).eq("ai_moderated", true).then((r) => (r.error ? [] : (r.data ?? []).map((x) => x.id))),
     ]);
 
   const assumptions = rankAssumptions(await loadAssumptions(id));
@@ -209,6 +211,7 @@ export async function loadDossier(idea: Idea) {
     assumptions,
     experiments: expList.map((e, i) => ({ ...e, metrics: metrics[i] })),
     interviews: interviews.data ?? [],
+    aiInterviewIds: aiInterviews,
     observations: observationList,
     learningCards: cards.data ?? [],
     realityCheck: checks.data?.[0] ?? null,

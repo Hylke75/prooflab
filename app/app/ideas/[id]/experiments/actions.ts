@@ -6,6 +6,8 @@ import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
 import { getWorkspace, requireWritableIdea } from "@/lib/data";
 import { checkQuote } from "@/lib/domain/verify";
+import { locateRespondentQuote } from "@/lib/domain/ai-interview";
+import { displaySegments } from "@/lib/domain/quote-marking";
 import { KIND_DEFAULTS, testEvidenceLevel } from "@/lib/domain/evidence";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { RECRUITMENT_KEYS } from "@/lib/domain/recruitment";
@@ -605,10 +607,19 @@ const ObservationSchema = z.object({
 
 async function storeObservation(ideaId: string, expId: string, interviewId: string, o: z.infer<typeof ObservationSchema>, origin: "manual" | "ai") {
   const supabase = await supabaseServer();
-  const { data: iv } = await supabase.from("interviews").select("transcript").eq("id", interviewId).eq("idea_id", ideaId).single();
+  // select("*"): ai_moderated en segments bestaan pas na de migraties; zonder kolom is het geen AI-interview.
+  const { data: iv } = await supabase.from("interviews").select("*").eq("id", interviewId).eq("idea_id", ideaId).single();
   if (!iv) return { ok: false, reason: "Interview niet gevonden." };
   const check = checkQuote(o.quote, iv.transcript);
   if (check !== "exact") return { ok: false, reason: "Het citaat staat niet letterlijk in het transcript." };
+  // AI-gemodereerd interview: alleen een letterlijke uitspraak van de respondent kan citaat of bewijs zijn (de database
+  // controleert dat ook, op de plek van het citaat).
+  let position: { quote_start: number; quote_end: number; segment_index: number } | null = null;
+  if ((iv as { ai_moderated?: boolean }).ai_moderated) {
+    const loc = locateRespondentQuote(iv.transcript, displaySegments(iv.transcript, (iv as { segments?: unknown }).segments), o.quote);
+    if ("error" in loc) return { ok: false, reason: loc.error };
+    position = { quote_start: loc.start, quote_end: loc.end, segment_index: loc.segmentIndex };
+  }
   const dims = KIND_DEFAULTS[o.kind as ObservationKind];
   const { data: obs, error } = await supabase
     .from("observations")
@@ -625,6 +636,7 @@ async function storeObservation(ideaId: string, expId: string, interviewId: stri
       is_real_context: dims.isRealContext,
       is_costly: dims.isCostly,
       origin,
+      ...(position ?? {}),
     })
     .select("id")
     .single();

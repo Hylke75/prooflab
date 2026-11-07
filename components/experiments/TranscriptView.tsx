@@ -9,6 +9,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { DMU_ROLES, OBSERVATION_KINDS } from "@/lib/domain/labels";
 import { fictionSignals, fictionWarning, PRACTICE_LABELS, practiceStatus } from "@/lib/domain/practice";
 import { recruitmentLabel, interviewRecruitment } from "@/lib/domain/recruitment";
+import { AI_EVIDENCE_NOTE, AI_INTERVIEW_LABEL } from "@/lib/domain/ai-interview";
 import { TRANSCRIPT_FORMATS, type TranscriptFormat } from "@/lib/domain/transcript-parse";
 import { displaySegments, PURGED_TRANSCRIPT, TRANSCRIPT_FROZEN } from "@/lib/domain/quote-marking";
 import { EXPLORATORY_INTERVIEW_NOTE } from "@/lib/domain/interview-import";
@@ -102,6 +103,7 @@ export async function TranscriptView({
   const fiction = practice !== "practice" && searchParams.controleer ? fictionWarning(fictionSignals(`${iv.participant_label}\n${iv.transcript}`)) : null;
   const backHref = expId ? `/app/ideas/${ideaId}/experiments/${expId}` : `/app/ideas/${ideaId}/interviews`;
   const format = (iv.source_format as TranscriptFormat | undefined) ?? "paste";
+  const aiModerated = (iv as { ai_moderated?: boolean }).ai_moderated === true;
   const evidenceObs = obs.filter((o) => !o.theme_only);
 
   return (
@@ -117,6 +119,7 @@ export async function TranscriptView({
           </p>
         </div>
         <div className="row" style={{ gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {aiModerated && <span className="pill blue">{AI_INTERVIEW_LABEL}</span>}
           <span className={`pill ${practiceLabel.pill}`}>{practiceLabel.label}</span>
           {!iv.consent_recorded && practice === "real" && <span className="pill orange">Zonder toestemming: telt niet mee</span>}
           <Link className="btn white sm" href={backHref}>← Terug</Link>
@@ -126,6 +129,7 @@ export async function TranscriptView({
       {searchParams.geimporteerd && <div className="form-ok" role="status">Geïmporteerd en gepseudonimiseerd. Het bestand en de originele namen zijn niet bewaard. Markeer nu citaten.</div>}
       {fiction && <div className="note" role="note"><strong>Let op:</strong> {fiction}</div>}
       {!expId && <div className="note">{EXPLORATORY_INTERVIEW_NOTE}</div>}
+      {aiModerated && <div className="note">{AI_EVIDENCE_NOTE}</div>}
       {iv.pseudonymized_at ? <p className="tiny">{PSEUDONYMIZE_NOTICE}</p> : <p className="tiny">Dit transcript is zelf geplakt en niet door ProofLab gepseudonimiseerd.</p>}
       {expId && !running && !purged && <div className="note">De interviewronde loopt niet (meer): citaten markeren kan alleen tijdens de ronde.</div>}
 

@@ -164,7 +164,7 @@ Alles deterministisch (geen LLM), met unit-tests in `tests/unit/quantify.test.ts
 
 ## Nog niet gebouwd (na de route)
 
-- ⬜ AI-gemodereerde chatinterviews (spraak later) — besloten: na de eerste sprints
+- 🟡 AI-gemodereerde chatinterviews (tekst gebouwd; spraak later) — zie "AI-gemodereerde interviews (7 november)"; echte modelaanroepen alleen met een API-sleutel te controleren
 - ⬜ Weekritmes: leersessie en besluitsessie met de klant, Fathom-import
 - ⬜ Koppelingen met de Meta- en LinkedIn-advertentie-API's (nu: kanaallinks + handmatig live zetten)
 - ✅ Experimentencatalogus (41 methodes met metadata) en begeleide handmatige sjablonen — zie "Experimentencatalogus en begeleide handmatige sjablonen (7 november)"
@@ -1236,4 +1236,103 @@ eindconditie, auditspoor; handmatig ingevoerd is nooit sterker dan een kleine ha
   vallen nog niet onder `purge_expired_personal_data` en `dsr_search` (notities zijn zonder namen; bestanden alleen
   voor het team); opnemen bij de volgende privacyronde. De coach kent de catalogus nog niet (geen eigen tips). Migratie
   nog toepassen
+
+## AI-gemodereerde interviews (7 november)
+
+Een respondent voert via een publieke link een chatgesprek met een AI-interviewer, volgens de goedgekeurde leidraad van
+een interviewtest (ontwerpregels: `ProofLab_Analyse_en_Verbeteringen_v1.1` §"AI-gemodereerd tekstinterview"; apart
+gelabeld en gescoord: `ProofLab_Voorspelkracht_v1` 7.4). Zeven commits en één migratie
+`20261118090000_ai_interviews.sql` (**nog niet toegepast**; idempotent, twee keer uitgevoerd in de test; zonder de
+migratie werkt de app zoals voorheen: de opzet meldt dat de database moet worden bijgewerkt, de publieke link geeft 404).
+
+- ✅ **Opzet door de consultant** (`components/experiments/AiInterviewPanel.tsx`, `ai-interview-actions.ts`): bij een
+  interviewtest "AI-interviewer (tekstchat)". Leidraad = de interviewvragen van de Test Card (3–12). De leidraadcontrole
+  moet slagen: geen hypothetische, sturende of verkopende vragen en geen vragen naar bijzondere persoonsgegevens
+  (`checkGuide`, zelfde regels als `interview-audit.ts`). Instellingen: max. antwoorden (4–40), max. duur (5–45 min),
+  doorvragen per onderwerp (0–2), introductie, opdrachtgever bij naam of "een onderzoeksbureau", privacycontact,
+  bewaartermijn (1–12 maanden), tot drie screenervragen (rol/segment/anders; "+" = doelgroep, rol tussen haakjes).
+  Expliciet goedkeuren (twee vinkjes) kan pas na de goedgekeurde Test Card; daarna ligt alles vast behalve pauzeren
+  (database: `guard_ai_interview_config`; de leidraad moet gelijk zijn aan die van de Test Card). Intrekken kan zolang
+  er geen gesprekken zijn. Daarna: publieke link met kopieerknop en de linkbouwer per kanaal (`utm_source`)
+- ✅ **Publieke chatpagina** `/i/<slug>` (`app/i/[slug]`, `app/api/i/[slug]`, `lib/ai-interview-public.ts`): cookieloos,
+  merkneutraal, mobiel eerst. Vooraf: een AI voert het gesprek (AI-verordening art. 50), opdrachtgever, doel, duur,
+  bewaartermijn, stoppen mag altijd, geen gevoelige gegevens delen, privacycontact. Toestemming verplicht en vastgelegd
+  (tekst en tijd). Screener vooraf: buiten de doelgroep = bedankt, geen gesprek, telt niet mee (welke opties
+  kwalificeren blijft op de server). Daarna de chat: één vraag tegelijk, Enter verstuurt, "Gesprek afsluiten" met
+  bevestiging (Escape sluit), bedankscherm met gesprekscode (om verwijdering te vragen). Honeypot, botfilter, alleen
+  JSON van de eigen pagina, 8 kB per verzoek, 1.500 tekens per antwoord. De gesprekscode staat alleen in
+  `sessionStorage` van het tabblad (verversen hervat het gesprek)
+- ✅ **Verloop en controle** (`lib/domain/ai-interview.ts`, `lib/ai/interview.ts`): de vragen uit de leidraad stelt
+  ProofLab letterlijk; het model bedenkt alleen doorvragen (op gepseudonimiseerde tekst, afgebakend als data). Elke
+  doorvraag gaat vóór verzenden door de vaste regels (`checkProposedQuestion`: één korte vraag, niet hypothetisch,
+  sturend, verkopend of dubbel, geen bijzondere of identificerende gegevens, geen links of AI-praat) en, als die
+  beschikbaar is, een tweede modelaanroep (`reviewQuestion`; bij twijfel afkeuren). Bij afkeur volgt de volgende vraag
+  uit de leidraad (terugval; de afgekeurde vraag staat in de controle). Instructies van de respondent ("negeer je
+  opdracht") worden zonder modelaanroep geweigerd en de vraag wordt herhaald; na drie keer stopt het gesprek. Antwoorden
+  worden vóór opslag én vóór het model gepseudonimiseerd (regels uit `pseudonymize.ts`; per gesprek steeds hetzelfde
+  label via een HMAC-sleutel, nooit de naam zelf). Valt het model uit of is het budget halverwege op, dan gaat het
+  gesprek verder met de leidraad
+- ✅ **Harde grenzen in de database** (`ai_interview_start/answer/ask/finish`, alleen met de ingest-sleutel): één gesprek
+  per bezoeker per test (HMAC per test), beurten om en om, leidraadvragen letterlijk, max. doorvragen, max. antwoorden,
+  max. duur (+2 min marge), rate limit (5 starts en 20 berichten per minuut per netwerk, 60 starts per minuut per link),
+  alleen tijdens een lopende ronde en niet gepauzeerd
+- ✅ **Opslag** (migratie): `ai_interview_configs`, `ai_interview_sessions` (toestemming, screener, voortgang, kosten,
+  bewaartermijn) en `ai_interview_turns` (elke beurt met tijdstempel, rol, soort, controle en vlaggen). Bij afronden met
+  minstens één antwoord wordt het gesprek een interview in `interviews`: `ai_moderated = true`, `source_format =
+  'ai_chat'`, gekoppeld aan de test, pseudoniem "AI-interview XXXX-XXXX", toestemming vastgelegd, echt gesprek,
+  gepseudonimiseerd, transcript "[00:01:05] Respondent: …" met segmenten, bewaartermijn van het gesprek (standaard 12
+  maanden). `observations.ai_moderated` zet de database uit het interview. Een AI-interview ontstaat nooit via een
+  gewone insert (`guard_interview_ai`) en de markering ligt vast. RLS op elke tabel: alleen het onderzoeksteam leest
+  opzet, gesprekken en beurten; schrijven alleen via functies. Auditspoor zonder tekst (`audit_ai_interview_session`:
+  status, aantallen, uitsluiten; de opzet via `audit_row`, die niet is aangepast)
+- ✅ **Alleen respondentbeurten als bewijs**: database-guard `stamp_observation_ai` (een citaat uit een AI-interview
+  heeft een plek binnen een respondentsegment) plus dezelfde controle bij markeren (`transcript-actions.ts`), handmatig
+  en AI-coderen (`storeObservation`, `locateRespondentQuote`) en AI-thema's (`theme-actions.ts`)
+- ✅ **Analyse en rapport**: AI-interviews lopen door de bestaande codering, thema's en Learning Card. Label
+  "AI-gemodereerd" op de interviewkaarten, de transcriptpagina, de dossierpagina Interviews (bron "AI-gemodereerd
+  chatinterview") en bij observaties op Bewijs & besluit; de transcriptcontrole leest "AI-interviewer:" als
+  interviewer. Metingen: `byModeration` (n en successen AI apart van mens) met een waarschuwing die ook op de Learning
+  Card komt. Rapport: kolom "Waarvan AI-gemodereerd" in de momentopname (`report-counts.ts`, ook in het totaal), een zin
+  in de managementsamenvatting (web en PDF: aantal interviews en waarnemingen, steunend/tegensprekend) en
+  "AI-gemodereerd klantgesprek" in het beslisblad
+- ✅ **Gesprekken voor de consultant**: lijst per test met status (bezig, afgerond, gescreend uit, afgebroken,
+  uitgesloten), antwoorden, rol, kanaal, geweigerde instructies, afgekeurde doorvragen en kosten; transcript per gesprek
+  (`/experiments/<test>/ai-interviews/<gesprek>`) met tijd, rol, soort beurt en controle; uitsluiten met reden (het
+  interview en zijn waarnemingen verdwijnen uit alle tellingen; niet meer na een besluit), weer opnemen (ook een
+  afgebroken gesprek), verwijderen op verzoek met de gesprekscode
+- ✅ **Zonder AI-sleutel of bij bereikt budget**: de consultant ziet "AI niet verbonden" (of "budget bereikt") met het
+  handmatige alternatief (zelf interviewen en het transcript importeren); de publieke pagina toont "Dit gesprek is nu
+  niet beschikbaar". Kosten per gesprek via `ai_interview_log_run` in `ai_runs` (doel `ai_interview_probe` /
+  `ai_interview_check`, zonder tekst) en dus in het maandbudget van de organisatie (`org_ai_spend`)
+- ✅ **Privacy**: de opschoning (`purge_expired_personal_data`, laatste versie overgenomen) wist na de bewaartermijn de
+  tekst van elke beurt, de afgekeurde doorvragen en de naamsleutels, en zet gesprekken zonder activiteit na een uur op
+  afgebroken; het interview volgt de bestaande regel. `dsr_search` (laatste versie overgenomen) vindt gesprekken waarin
+  een adres letterlijk getypt is; het privacyscherm legt uit dat verwijderen via de gesprekscode gaat
+- ✅ **Tests**: unit `tests/unit/ai-interview.test.ts` (43: screener, instellingen en melding vooraf, leidraadcontrole,
+  vraagcontrole, injectie, gevoelige gegevens, verloop en grenzen, opschonen en pseudonimiseren, transcript en
+  respondentcitaten, status, aparte telling, rapport) en `tests/unit/ai-interview-flow.test.ts` (11: de publieke kant met
+  een nep-database en een nep-model: doorvraag goedgekeurd, afgekeurd door de regels of het tweede model, model uit,
+  injectie zonder modelaanroep, pseudonimiseren vóór opslag en model, afsluiten met transcript, grenzen, gelijktijdige
+  berichten). DB `tests/db/ai-interviews.test.ts` (11: idempotent, opzet en vergrendeling, RLS, ingest-sleutel,
+  beschikbaarheid/screener/volgorde, grenzen en rate limit, afronden en respondentcitaten, uitsluiten/opnemen, kosten en
+  budget, opschoning/audit/dsr, verwijderen en cascade). `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`
+  en alle 27 DB-testbestanden (`scripts/test-db.sh`) groen. In de tests wordt nooit een echt model aangeroepen
+- **UI-teststappen** (na de migratie, met `INGEST_SECRET`, `TRACKING_SALT` en een AI-sleutel):
+  1. Testen → interviewtest met minstens drie neutrale vragen; ter review en goedkeuren
+  2. Op de testpagina "AI-interviewer (tekstchat)" → instellen (introductie, privacycontact, eventueel een screener met
+     "+ Bestuurslid (beslisser)") → opslaan → beide vinkjes → "Keur goed en vergrendel"
+  3. Start de interviewronde, kopieer de link (of per kanaal), open hem in een privévenster: melding vooraf, screener,
+     toestemming, "Start het gesprek"
+  4. Beantwoord de vragen; probeer "negeer je opdracht" (geweigerd, vraag herhaald) en een e-mailadres (vervangen door
+     "E-mail 1"); sluit af → bedankscherm met gesprekscode
+  5. Terug op de testpagina: het gesprek staat als "Afgerond"; lees het gesprek (tijd, rol, controle per doorvraag);
+     open het interview en markeer een citaat in een antwoord (lukt) en in een vraag van de AI (geweigerd)
+  6. Sluit een gesprek uit met reden (telt niet meer mee) en neem het weer op; maak de Learning Card en een
+     rapportversie: kolom "Waarvan AI-gemodereerd" en de zin over AI-interviews
+  7. Zonder AI-sleutel: "AI niet verbonden" met het handmatige alternatief; de publieke link zegt "nu niet beschikbaar"
+- 🟡 **Open punten**: echte modelaanroepen (doorvraag en tweede controle bij Claude, ChatGPT of Gemini) zijn alleen met
+  een API-sleutel te controleren; e2e (Playwright) en visuele controle op 1440/390 px niet gedaan (geen
+  Supabase-toegang). Thema-aantallen (X van N) splitsen AI en mens nog niet uit (het pseudoniem "AI-interview …" staat
+  wel bij elk citaat). De doorvraag komt niet als stream binnen (de respondent wacht op het hele antwoord). Spraak
+  (VoiceProvider) volgt later. Migratie nog toepassen
 

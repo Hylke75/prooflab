@@ -3,6 +3,7 @@
 // forecasts stay hidden until the outcome is known, survey results are labelled as self-report, every claim
 // carries its footnote numbers (or "geen bron"), and the appendix holds the raw counts.
 
+import { aiEvidenceLine } from "@/lib/domain/ai-interview";
 import type { ReportSnapshot } from "@/lib/report";
 import { pct } from "@/lib/domain/stats";
 import { CHANNELS } from "@/lib/domain/tracking";
@@ -199,7 +200,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
     blocks: [
       {
         t: "p",
-        text: `${r.decision?.rationale ?? r.realityCheck?.reason ?? "Het onderzoek loopt nog."} Bewijsniveau: ${r.label}.${r.labelMissing.length ? ` Voor een hoger niveau ontbreekt: ${endSentence(r.labelMissing.join("; "))}` : ""}${r.observationCounts ? ` ${ladderSummary(r.observationCounts)}` : ""}`,
+        text: `${r.decision?.rationale ?? r.realityCheck?.reason ?? "Het onderzoek loopt nog."} Bewijsniveau: ${r.label}.${r.labelMissing.length ? ` Voor een hoger niveau ontbreekt: ${endSentence(r.labelMissing.join("; "))}` : ""}${r.observationCounts ? ` ${ladderSummary(r.observationCounts)}` : ""}${r.aiInterviews && r.aiInterviews.interviews > 0 ? ` ${aiEvidenceLine(r.aiInterviews)}` : ""}`,
       },
       {
         t: "kpis",

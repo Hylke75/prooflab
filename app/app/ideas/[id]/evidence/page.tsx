@@ -1,3 +1,4 @@
+import { AI_INTERVIEW_LABEL } from "@/lib/domain/ai-interview";
 import type { Metadata } from "next";
 import { decisive } from "@/lib/domain/customer-research";
 import Link from "next/link";
@@ -120,6 +121,9 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
   const obs = d.observations.filter((o) => !o.is_synthetic).sort((a, b) => strength({ isFact: b.is_fact, isBehaviour: b.is_behaviour, isRealContext: b.is_real_context, isCostly: b.is_costly, isSynthetic: false }) - strength({ isFact: a.is_fact, isBehaviour: a.is_behaviour, isRealContext: a.is_real_context, isCostly: a.is_costly, isSynthetic: false }));
   // B0: waarnemingen uit oefengesprekken of nog niet aangegeven gesprekken (in loadDossier als synthetisch gemarkeerd).
   const practiceObs = d.observations.filter((o) => o.is_practice).length;
+  // AI-gemodereerde interviews: apart gelabeld en (in het rapport) apart geteld.
+  const aiInterviewIds = new Set(d.aiInterviewIds);
+  const aiObs = obs.filter((o) => o.interview_id && aiInterviewIds.has(o.interview_id)).length;
   // Fase B0, punt 1: per persoon tellen. Eén interview levert per bewijsniveau maximaal één waarneming.
   const ladder = evidenceLadder(d.observations.map(ladderObservation));
   const reached = ladder.rungs;
@@ -205,6 +209,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                 <div className="icon-circle">{o.is_behaviour ? "✓" : "?"}</div>
                 <div>
                   <strong>{OBSERVATION_KINDS[o.kind as ObservationKind]}: {o.summary}</strong>
+                  {o.interview_id && aiInterviewIds.has(o.interview_id) && <> <span className="pill blue">{AI_INTERVIEW_LABEL}</span></>}
                   {/* Fase 2 · punt 4: soort bewijs van een automatische waarneming (alleen systeemwaarnemingen). */}
                   {evidenceTypeOf({ ...o, evidence_type: autoEvidence.get(o.id) }) && (
                     <p className="tiny" style={{ margin: "4px 0 0" }}>
@@ -218,7 +223,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
               </div>
             );
           })}
-          <div className="note">Een goed bewijsdossier laat ook helder zien wat een test níét aantoont. Synthetische of AI-gegenereerde data telt nooit mee.{practiceObs > 0 && <> {practiceObs === 1 ? "1 observatie komt" : `${practiceObs} observaties komen`} uit een <Term k="oefengesprek">oefengesprek</Term> of een gesprek dat nog niet als echt is aangegeven en {practiceObs === 1 ? "telt" : "tellen"} daarom niet als bewijs.</>}</div>
+          <div className="note">Een goed bewijsdossier laat ook helder zien wat een test níét aantoont. Synthetische of AI-gegenereerde data telt nooit mee.{aiObs > 0 && <> {aiObs === 1 ? "1 observatie komt" : `${aiObs} observaties komen`} uit een AI-gemodereerd interview: dat zijn letterlijke uitspraken van respondenten (de vragen van de AI tellen nooit) en ze staan in het rapport apart geteld.</>}{practiceObs > 0 && <> {practiceObs === 1 ? "1 observatie komt" : `${practiceObs} observaties komen`} uit een <Term k="oefengesprek">oefengesprek</Term> of een gesprek dat nog niet als echt is aangegeven en {practiceObs === 1 ? "telt" : "tellen"} daarom niet als bewijs.</>}</div>
         </div>
 
         <div className="stack">

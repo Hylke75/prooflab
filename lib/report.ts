@@ -22,6 +22,7 @@ import { isExploratory } from "@/lib/domain/customer-research";
 import { sanitizeChallenges } from "@/lib/domain/ai-text";
 import type { EvidenceStanding } from "@/lib/domain/evidence-standing";
 import type { ReportCanvas } from "@/lib/domain/canvas";
+import { aiEvidenceSummary, type AiEvidenceSummary } from "@/lib/domain/ai-interview";
 
 // "AI · Gemini" for an AI forecast whose provider is known; null otherwise.
 function aiName(kind: string, model: string | null): string | null {
@@ -104,6 +105,11 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
     // Fase B0, punt 1: klantwaarnemingen per persoon geteld (één interview = per bewijsniveau maximaal één waarneming).
     // Oudere rapporten hebben dit veld niet.
     observationCounts: ladder as EvidenceLadder | undefined,
+    // AI-gemodereerde interviews: welk bewijs daaruit komt, apart geteld (Voorspelkracht 7.4). Alleen bij dossiers met
+    // AI-interviews; oudere rapporten hebben dit veld niet.
+    aiInterviews: (d.aiInterviewIds.length
+      ? aiEvidenceSummary(d.observations, new Set(d.aiInterviewIds), (kind) => observationDirection({ kind }) === "contradicts")
+      : undefined) as AiEvidenceSummary | undefined,
     // Fase B6: het beslisblad (pagina 1), vastgelegd bij het maken van de versie. Oudere rapporten hebben het niet.
     sheet: sheet as DecisionSheet | undefined,
     // Fase 1, punt 2: de Stand van het bewijs, vastgelegd bij het maken van de versie. Oudere rapporten hebben het niet;
@@ -271,6 +277,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
                   : null,
                 // Interviews: n en successen per wervingsgroep van het gesprek (golf A), alleen aantallen.
                 byRecruitment: e.metrics.byRecruitment,
+                // AI-gemodereerde interviews apart (alleen aantallen).
+                byModeration: e.metrics.byModeration,
               }
             : null,
           // De wervingsgroep van de test (golf A); geldt voor alle deelnemers van enquête-, landing- en prijstests.
@@ -362,6 +370,7 @@ function decisionSheetFor(d: Dossier, ctx: SheetContext, ladder: EvidenceLadder,
   const decisive = d.questions[0] ?? null;
   const expById = new Map(d.experiments.map((e) => [e.id, e]));
   const roleOf = new Map(d.interviews.map((i) => [i.id, i.dmu_role]));
+  const aiIds = new Set(d.aiInterviewIds);
   const sprintEnd = d.idea.sprint_start ? addDaysIso(d.idea.sprint_start, (d.idea.sprint_weeks ?? 0) * 7) : null;
   return buildDecisionSheet({
     status: ctx.status,
@@ -399,7 +408,8 @@ function decisionSheetFor(d: Dossier, ctx: SheetContext, ladder: EvidenceLadder,
         const e = o.experiment_id ? expById.get(o.experiment_id) : undefined;
         const type = e ? experimentTypeLabel(e.type, e.config) : null;
         const role = o.interview_id ? roleOf.get(o.interview_id) : null;
-        const what = o.interview_id ? `Klantgesprek${role ? ` (${DMU_ROLES[role as DmuRole] ?? role})` : ""}` : `Meting${type ? ` (${type.toLowerCase()})` : ""}`;
+        const ai = o.interview_id ? aiIds.has(o.interview_id) : false;
+        const what = o.interview_id ? `${ai ? "AI-gemodereerd klantgesprek" : "Klantgesprek"}${role ? ` (${DMU_ROLES[role as DmuRole] ?? role})` : ""}` : `Meting${type ? ` (${type.toLowerCase()})` : ""}`;
         return {
           text: o.summary,
           source: `${what}${e ? `, test "${e.title}"` : ""}, ${sheetDate(o.created_at)}`,
