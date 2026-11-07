@@ -29,6 +29,8 @@ export type CountsExperiment = {
     survey: { invitation: Split & { responses?: number }; openLink: Split & { responses?: number }; responses: number } | null;
     // Interviews: n en successen per wervingsgroep van het gesprek (lib/experiment-metrics.ts).
     byRecruitment?: { group: string; n: number; successes: number }[];
+    // Interviews: AI-gemodereerde gesprekken apart (lib/domain/ai-interview.ts).
+    byModeration?: { ai: Split; human: Split };
   } | null;
   // De wervingsgroep van de test (experiments.recruitment_group); null of onbekend = "unknown".
   recruitmentGroup?: string | null;
@@ -47,6 +49,9 @@ export type TestCounts = {
   byGroup: { group: string; label?: string; n: number; successes: number | null }[];
   // Enquêtes: de kernvraag per bron (uitnodiging of open link), met het aantal opgeslagen antwoorden.
   keyQuestion: { source: string; n: number; successes: number; responses: number }[] | null;
+  // AI-gemodereerde interviews: hoeveel van n en van de successen daaruit komen (apart geteld). Ontbreekt bij tests
+  // zonder AI-interviews en in rapporten van vóór deze functie.
+  aiModerated?: Split;
 };
 
 export type ReportCounts = {
@@ -54,7 +59,7 @@ export type ReportCounts = {
   // Wat deze momentopname wel en niet is, voor wie het rapport na jaren opent.
   note: string;
   tests: TestCounts[];
-  totals: { tests: number; n: number; successes: number };
+  totals: { tests: number; n: number; successes: number; aiModerated?: Split };
 };
 
 const SOURCE_LABEL = { invitation: "uitnodiging", openLink: "open link" } as const;
@@ -100,13 +105,21 @@ export function buildReportCounts(experiments: CountsExperiment[]): ReportCounts
       bySource,
       byGroup: byKey(byGroup, (g) => g.group),
       keyQuestion,
+      ...(m?.byModeration && m.byModeration.ai.n > 0 ? { aiModerated: { ...m.byModeration.ai } } : {}),
     };
   });
   return {
     version: REPORT_COUNTS_VERSION,
     note: "Geanonimiseerde aantallen op het moment van dit rapport. Ze vallen niet onder de bewaartermijn; na die termijn kan herleiding alleen op deze aantallen, niet op antwoorden, citaten of contactgegevens.",
     tests,
-    totals: { tests: tests.length, n: tests.reduce((s, t) => s + t.n, 0), successes: tests.reduce((s, t) => s + t.successes, 0) },
+    totals: {
+      tests: tests.length,
+      n: tests.reduce((s, t) => s + t.n, 0),
+      successes: tests.reduce((s, t) => s + t.successes, 0),
+      ...(tests.some((t) => t.aiModerated)
+        ? { aiModerated: { n: tests.reduce((s, t) => s + (t.aiModerated?.n ?? 0), 0), successes: tests.reduce((s, t) => s + (t.aiModerated?.successes ?? 0), 0) } }
+        : {}),
+    },
   };
 }
 

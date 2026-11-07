@@ -1,5 +1,6 @@
 "use server";
 
+import { respondentQuote } from "@/lib/domain/ai-interview";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
@@ -73,6 +74,11 @@ export async function addMarkedObservation(ideaId: string, interviewId: string, 
   }
   const check = checkMarkedQuote(iv.transcript, start, end, v.quote, displaySegments(iv.transcript, iv.segments));
   if (!check.ok) return { error: check.reason, fieldErrors: { quote: check.reason } };
+  // AI-gemodereerd interview: alleen een uitspraak van de respondent; een vraag van de AI telt nooit als bewijs.
+  if ((iv as { ai_moderated?: boolean }).ai_moderated) {
+    const r = respondentQuote(displaySegments(iv.transcript, iv.segments), start, end);
+    if (!r.ok) return { error: r.reason, fieldErrors: { quote: r.reason } };
+  }
 
   const dims = KIND_DEFAULTS[v.kind as ObservationKind];
   const base = {

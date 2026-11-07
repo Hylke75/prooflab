@@ -7,6 +7,7 @@ import { QUALITY_VALUES, SurveyConfigSchema, type Answers, type Quality, type Su
 import { surveySplitFromCounts, type ExportRow, type SurveySplit } from "@/lib/domain/survey-results";
 import { interviewRecruitment, type RecruitmentGroup } from "@/lib/domain/recruitment";
 import { countsAsEvidence } from "@/lib/domain/practice";
+import { moderationWarning, splitByModeration, type ModerationSplit } from "@/lib/domain/ai-interview";
 import { asSuccessMetric } from "@/lib/domain/success-metric";
 import { successesFor } from "@/lib/domain/action-counts";
 import { loadActionCounts } from "@/lib/action-counts-data";
@@ -59,6 +60,9 @@ export type ExperimentMetrics = {
   // Interviews only: n en successen per wervingsgroep van het gesprek (golf A; een bekende is eigen netwerk).
   // Alleen aantallen, voor de momentopname in het rapport (golf C, punt 19).
   byRecruitment?: { group: RecruitmentGroup; n: number; successes: number }[];
+  // Interviews: n en successen van AI-gemodereerde gesprekken apart van gesprekken met een mens (apart gelabeld en
+  // gescoord, Voorspelkracht 7.4). Alleen aantallen. Leeg zonder AI-interviews of zonder de migratie.
+  byModeration?: ModerationSplit;
   // Fase 2 · punt 4: false = per kanaal en prijspunt telt alleen het bezoek (betalingen, toezeggingen en afspraken worden
   // per persoon geteld, niet per kanaal); de tabellen tonen dan geen acties.
   perChannelActions?: boolean;
@@ -222,6 +226,7 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
   let byContent: ContentRow[] = [];
   let survey: SurveySplit | null = null;
   let byRecruitment: ExperimentMetrics["byRecruitment"];
+  let byModeration: ModerationSplit | undefined;
   let perChannelActions: boolean | undefined;
 
   if (exp.type === "survey") {
@@ -241,9 +246,11 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
       warnings.push(...survey.warnings);
     }
   } else if (exp.type === "interview") {
-    const [{ data: interviews }, { data: obs }] = await Promise.all([
+    const [{ data: interviews }, { data: obs }, aiIds] = await Promise.all([
       supabase.from("interviews").select("id, consent_recorded, is_acquaintance, dmu_role, recruited_via, recruitment_group, is_practice").eq("experiment_id", exp.id),
       supabase.from("observations").select("interview_id, kind, review_status").eq("experiment_id", exp.id).eq("is_synthetic", false),
+      // Apart query: zonder de migratie bestaat ai_moderated niet en is de set leeg.
+      supabase.from("interviews").select("id").eq("experiment_id", exp.id).eq("ai_moderated", true).then((r) => new Set(r.error ? [] : (r.data ?? []).map((x) => x.id))),
     ]);
     // B0: alleen echte gesprekken met vastgelegde toestemming tellen; oefeningen en niet-aangegeven gesprekken niet.
     const consented = (interviews ?? []).filter((i) => i.consent_recorded);
@@ -272,6 +279,11 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
       groups.set(g, row);
     }
     byRecruitment = [...groups.values()];
+    if (aiIds.size) {
+      byModeration = splitByModeration(valid, aiIds, (i) => (obs ?? []).some((o) => o.interview_id === i.id && counts(o)));
+      const note = moderationWarning(byModeration);
+      if (note) warnings.push(note);
+    }
     const excluded = (interviews ?? []).length - consented.length;
     if (excluded) warnings.push(`${excluded} interview(s) zonder vastgelegde toestemming tellen niet mee.`);
     const practice = consented.filter((i) => i.is_practice === true).length;
@@ -346,5 +358,5 @@ export async function experimentMetrics(exp: Exp, h: Hyp, method?: MethodVersion
     endConditionReached,
   });
   const bayes = endConditionReached ? betaBinomial(await priorFor(exp), successes, n, Number(h.success_threshold_pct)) : null;
-  return { n, successes, label: h.metric_label, byChannel, byVariant, byContent, endConditionReached, verdict: v, bayes, warnings, survey, ...(byRecruitment ? { byRecruitment } : {}), ...(perChannelActions === false ? { perChannelActions } : {}) };
+  return { n, successes, label: h.metric_label, byChannel, byVariant, byContent, endConditionReached, verdict: v, bayes, warnings, survey, ...(byRecruitment ? { byRecruitment } : {}), ...(byModeration ? { byModeration } : {}), ...(perChannelActions === false ? { perChannelActions } : {}) };
 }

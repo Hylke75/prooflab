@@ -125,6 +125,9 @@ export function DataRequest({ hashReady, saltVersions }: { hashReady: boolean; s
           {result.email_suppressions.length > 0 && (
             <p className="tiny mt-8">Op de afmeldlijst sinds {result.email_suppressions.map((s) => `${nlDate(s.created_at)} (${suppressionReason(s.reason)})`).join(", ")}.</p>
           )}
+          {(result.ai_interviews?.length ?? 0) > 0 && (
+            <p className="tiny mt-8">AI-gemodereerde gesprekken: {result.ai_interviews!.map((i) => `gesprekscode ${i.code} (${i.idea}, ${i.experiment}, ${nlDate(i.started_at)})`).join("; ")}.</p>
+          )}
           {result.interviews.length > 0 && (
             <p className="tiny mt-8">Interviews: {result.interviews.map((i) => `${i.participant_label} (${i.idea}, ${nlDate(i.held_on)})`).join("; ")}.</p>
           )}
