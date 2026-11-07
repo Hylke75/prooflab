@@ -118,8 +118,21 @@ export const EXPERIMENT_TYPES = {
     phase: "ontdekken",
     evidence: "Uitgesproken antwoord (zelfrapportage)",
   },
+  // Experimentencatalogus: een methode zonder ingebouwde automatisering, uitgevoerd met een begeleid sjabloon. De
+  // resultaten voert het team zelf in ("handmatig ingevoerd"); de methode staat in config.catalog_method_id.
+  manual: {
+    label: "Handmatig sjabloon",
+    short: "Een methode uit de catalogus die je zelf uitvoert; de resultaten voer je handmatig in.",
+    icon: "✎",
+    phase: "valideren",
+    evidence: "Handmatig ingevoerd",
+  },
 } as const;
 export type ExperimentType = keyof typeof EXPERIMENT_TYPES;
+// De testtypes met eigen automatisering (testpagina, enquête, interviews). Rekenfactoren en vaste teksten per type
+// gelden alleen voor deze; een handmatig sjabloon krijgt zijn bewijssoort van de catalogusmethode.
+export type BuiltinExperimentType = Exclude<ExperimentType, "manual">;
+export const BUILTIN_EXPERIMENT_TYPES = ["landing", "interview", "pricing", "survey"] as const satisfies readonly BuiltinExperimentType[];
 
 export const EXPERIMENT_STATES = {
   draft: { label: "Concept", pill: "gray" },

@@ -14,7 +14,7 @@
 
 import { OBSERVATION_LR, type LrEntry } from "./evidence";
 import { TEST_LR } from "./recommend";
-import type { ExperimentType, ObservationKind } from "./labels";
+import type { BuiltinExperimentType, ObservationKind } from "./labels";
 
 export type Achieved = "yes" | "partial" | "no";
 
@@ -91,7 +91,7 @@ export function smoothedLr(defaultLr: number, present: Groups, total: Groups, fa
 
 const clampLr = (x: number) => Math.min(LEARNED_LR_MAX, Math.max(LEARNED_LR_MIN, x));
 
-const TEST_LABELS: Record<ExperimentType, string> = {
+const TEST_LABELS: Record<BuiltinExperimentType, string> = {
   interview: "Klantinterviews (oordeel van de test)",
   landing: "Landingpage-test (oordeel van de test)",
   pricing: "Prijs-/aanbodtest (oordeel van de test)",
@@ -143,7 +143,7 @@ export function learnWeights(rows: EvidenceCountRow[]): LearnedWeight[] {
   };
 
   const observations = (Object.keys(OBSERVATION_LR) as ObservationKind[]).map((k) => one("observation", k, OBSERVATION_LR[k].label, OBSERVATION_LR[k]));
-  const tests = (Object.keys(TEST_LR) as ExperimentType[]).map((t) => one("test", t, TEST_LABELS[t], { lr: TEST_LR[t] }));
+  const tests = (Object.keys(TEST_LR) as BuiltinExperimentType[]).map((t) => one("test", t, TEST_LABELS[t], { lr: TEST_LR[t] }));
   return [...observations, ...tests];
 }
 

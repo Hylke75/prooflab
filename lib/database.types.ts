@@ -299,6 +299,61 @@ export type Database = {
         }
         Relationships: []
       }
+      // Experimentencatalogus (migratie 20261118100000_experiment_catalog): ruwe resultaten van een handmatig sjabloon.
+      manual_results: {
+        Row: {
+          id: string
+          experiment_id: string
+          idea_id: string
+          observed_on: string
+          units: number
+          successes: number
+          note: string
+          evidence_path: string | null
+          evidence_mime: string | null
+          evidence_size: number | null
+          created_by: string | null
+          created_at: string
+          withdrawn_at: string | null
+          withdrawn_by: string | null
+          withdraw_reason: string | null
+        }
+        Insert: {
+          id?: string
+          experiment_id: string
+          idea_id: string
+          observed_on: string
+          units: number
+          successes: number
+          note: string
+          evidence_path?: string | null
+          evidence_mime?: string | null
+          evidence_size?: number | null
+          created_by?: string | null
+          created_at?: string
+          withdrawn_at?: string | null
+          withdrawn_by?: string | null
+          withdraw_reason?: string | null
+        }
+        Update: {
+          id?: string
+          experiment_id?: string
+          idea_id?: string
+          observed_on?: string
+          units?: number
+          successes?: number
+          note?: string
+          evidence_path?: string | null
+          evidence_mime?: string | null
+          evidence_size?: number | null
+          created_by?: string | null
+          created_at?: string
+          withdrawn_at?: string | null
+          withdrawn_by?: string | null
+          withdraw_reason?: string | null
+        }
+        Relationships: []
+      }
       email_suppressions: {
         Row: {
           org_id: string

@@ -24,7 +24,8 @@ export const RECRUITMENT_KEYS = Object.keys(RECRUITMENT_GROUPS) as [RecruitmentG
 
 // Testtypes waarbij de wervingsgroep op de Test Card verplicht is. Bij interviews legt de consultant per gesprek
 // vast of het een bekende is (eigen netwerk) en anders de groep.
-export const RECRUITMENT_REQUIRED_TYPES = ["survey", "landing", "pricing"] as const;
+// Experimentencatalogus: ook bij een handmatig sjabloon, want herhaling binnen één groep telt afnemend mee.
+export const RECRUITMENT_REQUIRED_TYPES = ["survey", "landing", "pricing", "manual"] as const;
 
 // Ontbreekt een verplichte wervingsgroep op de Test Card?
 export function recruitmentMissing(type: string, group: unknown): boolean {
