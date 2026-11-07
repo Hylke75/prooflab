@@ -36,8 +36,10 @@ export function defaultedTestCardFields(input: {
   recruitmentGroup: string | null | undefined;
   // Het aantal deelnemers dat ProofLab uitrekende: een steekproef gelijk daaraan is ook een standaardwaarde.
   requiredN?: number | null;
+  // Experimentencatalogus: de startwaarden van de gekozen methode gelden als de standaardwaarden.
+  template?: Omit<ReturnType<typeof testCardDefaults>, "we_believe" | "target_group"> | null;
 }): string[] {
-  const d = testCardDefaults(input.type, "", "");
+  const d = input.template ?? testCardDefaults(input.type, "", "");
   const v = input.values;
   const out: string[] = [];
   if (same(v.test_method, d.test_method)) out.push("test_method");

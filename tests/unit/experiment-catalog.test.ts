@@ -27,6 +27,7 @@ import { validateTestCard } from "@/lib/domain/test-card";
 import { recommend, type VoiTestType } from "@/lib/domain/recommend";
 import { ASSUMPTION_KINDS, type AssumptionKind } from "@/lib/domain/assumption-kind";
 import { EVIDENCE_SCALE } from "@/lib/domain/evidence-scale";
+import { defaultedTestCardFields } from "@/lib/defaulted-test-card";
 
 // Experimentencatalogus: elke methode volledig, unieke ids, bewijssterkte binnen de bestaande ladder, filters en het
 // sjabloon naar de Test Card.
@@ -199,6 +200,13 @@ describe("sjabloon → Test Card", () => {
     const card = templateToTestCard(m, statement, "Clubbesturen")!;
     const e = validateTestCard({ ...card, type: "manual", title: m.name, rule: "probability", success_count: null, thresholds_locked: true, recruitment_group: "", channels: ["network"], headline: "", price_points: 0, guide_questions: 0 });
     expect(e.recruitment_group).toBeTruthy();
+  });
+  it("ongewijzigde startwaarden van de methode tellen als standaardwaarden (zichtbaar vóór opslaan en in het auditspoor)", () => {
+    const m = catalogMethod("veldobservatie")!;
+    const card = templateToTestCard(m, statement, "Clubbesturen")!;
+    const out = defaultedTestCardFields({ type: "manual", rule: "probability", values: card, channels: ["outreach"], recruitmentGroup: "cold", template: m.card });
+    expect(out).toEqual(expect.arrayContaining(["test_method", "metric_label", "metric_numerator", "success_threshold_pct", "min_sample", "max_duration_days", "expected_biases"]));
+    expect(defaultedTestCardFields({ type: "manual", rule: "probability", values: { ...card, min_sample: 25 }, channels: ["outreach"], recruitmentGroup: "cold", template: m.card })).not.toContain("min_sample");
   });
   it("bureauonderzoek heeft geen Test Card", () => {
     expect(templateToTestCard(catalogMethod("juridische-check")!, statement, "x")).toBeNull();

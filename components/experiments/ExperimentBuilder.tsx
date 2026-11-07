@@ -429,6 +429,7 @@ export function ExperimentBuilder({
       channels,
       recruitmentGroup: recruitment || null,
       requiredN: v2 && activeRule !== "absolute" ? (band?.requiredN ?? null) : null,
+      template: cat?.card ?? null,
     }),
   );
   const set = (k: keyof typeof card, v: string) => setCard((c) => ({ ...c, [k]: v }));

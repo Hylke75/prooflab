@@ -263,6 +263,7 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       channels,
       recruitmentGroup: v.recruitment_group ?? null,
       requiredN,
+      template: (manualConfig || builtinMethod ? method?.card : null) ?? null,
     }),
   );
   const supabase = await supabaseServer();
