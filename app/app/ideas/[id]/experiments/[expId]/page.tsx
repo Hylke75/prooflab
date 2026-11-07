@@ -59,6 +59,9 @@ import { loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
 import { RecruitmentFunnel } from "@/components/experiments/RecruitmentFunnel";
 import { loadRecruitment } from "@/lib/recruitment-data";
 import { deadlineRiskText } from "@/lib/domain/recruitment-funnel";
+import { AiInterviewPanel } from "@/components/experiments/AiInterviewPanel";
+import { loadAiInterviewSetup } from "@/lib/ai-interview-data";
+import { AI_INTERVIEW_LABEL, INTERVIEWER_SPEAKER } from "@/lib/domain/ai-interview";
 
 export const metadata: Metadata = { title: "Experiment" };
 
@@ -120,6 +123,8 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
     canWrite && state === "ready_for_review" ? getWorkspace().then((ws) => ws.user.id) : Promise.resolve(null),
   ]);
   const themeCounts = type === "interview" && canWrite ? await loadThemeCountsForConsultant(id, expId) : null;
+  // AI-gemodereerde interviews: opzet, goedkeuring, link en gesprekken (alleen het onderzoeksteam).
+  const aiSetup = type === "interview" && canWrite ? await loadAiInterviewSetup(id, expId) : null;
   // Fase 2 · punt 5: wervingstrechter (alleen het onderzoeksteam, vanaf een goedgekeurde test). "Gesprek gehouden" en
   // "deelgenomen" komen uit dezelfde meting als hierboven (per kanaal), nooit uit handmatige invoer.
   const recruitingOpen = canWrite && !["draft", "ready_for_review"].includes(state);
@@ -550,6 +555,19 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
               <p className="tiny mt-8">Leidraadcontrole: geen hypothetische, sturende of verkopende vragen gevonden.</p>
             )}
           </div>
+          {aiSetup && (
+            <AiInterviewPanel
+              ideaId={id}
+              expId={expId}
+              expState={state}
+              guide={guideLines}
+              productNames={productNames}
+              setup={aiSetup}
+              aiConnected={aiConfigured()}
+              publicBase={env.appUrl}
+              channels={channels.map((c) => ({ key: c.channel, label: CHANNELS[c.channel as keyof typeof CHANNELS] ?? c.channel }))}
+            />
+          )}
           {quality && (
             <div className="mt-18">
               <Detail><AiQualityCard measures={[{ title: "AI-codering van interviews: geaccepteerd", measure: quality.coding }, { title: "AI-thema's: geaccepteerd", measure: quality.themes }]} /></Detail>
@@ -564,6 +582,8 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
             const practiceLabel = PRACTICE_LABELS[practice];
             // Ook de naam van de deelnemer telt mee ("TEST Makelaar A (fictief)"), en ook bij nog niet aangegeven gesprekken.
             const fiction = practice !== "practice" ? fictionWarning(fictionSignals(`${iv.participant_label ?? ""}\n${iv.transcript ?? ""}`)) : null;
+            // AI-gemodereerd: apart gelabeld; uitsluiten gaat via de AI-interviewer (met reden), niet via verwijderen.
+            const aiModerated = (iv as { ai_moderated?: boolean }).ai_moderated === true;
             return (
               <div className="card mt-18" key={iv.id}>
                 <div className="section-title">
@@ -572,6 +592,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                     <p className="tiny">{DMU_ROLES[iv.dmu_role as keyof typeof DMU_ROLES]} · {iv.segment ?? "segment onbekend"} · via {CHANNELS[iv.recruited_via as keyof typeof CHANNELS] ?? iv.recruited_via} · {new Date(iv.held_on).toLocaleDateString("nl-NL")}{iv.is_acquaintance ? " · bekende" : ""} · wervingsgroep {recruitmentLabel(interviewRecruitment(iv.is_acquaintance, iv.recruitment_group, exp.recruitment_group)).toLowerCase()}</p>
                   </div>
                   <div className="row" style={{ gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {aiModerated && <span className="pill blue">{AI_INTERVIEW_LABEL}</span>}
                     <span className={`pill ${practiceLabel.pill}`}>{practiceLabel.label}</span>
                     <span className="pill gray">{iv.record_type === "transcript" ? "Transcript" : "Notities (minder herleidbaar)"}</span>
                   </div>
@@ -595,7 +616,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                   <summary className="text-link">Transcript tonen</summary>
                   <div className="quote" style={{ whiteSpace: "pre-wrap", maxHeight: 280, overflow: "auto" }}>{iv.transcript}</div>
                 </details>
-                {!quick && <TranscriptAuditList turns={auditTranscript(iv.transcript, { productNames, interviewerNames })} />}
+                {!quick && <TranscriptAuditList turns={auditTranscript(iv.transcript, { productNames, interviewerNames: aiModerated ? [INTERVIEWER_SPEAKER] : interviewerNames })} />}
                 <p className="mt-8">
                   <Link className="btn soft sm" href={`/app/ideas/${id}/experiments/${expId}/interviews/${iv.id}`}>Open transcript en markeer citaten →</Link>
                 </p>
@@ -654,7 +675,11 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
                           AI-markering kan alleen bij een gepseudonimiseerd transcript. Gebruik &ldquo;Transcript importeren&rdquo; om namen eerst te vervangen.
                         </p>
                       ))}
-                      <form action={deleteInterview.bind(null, id, iv.id)}><button className="text-link" style={{ color: "var(--color-risk-text)", marginTop: 12 }}>Interview verwijderen</button><FormPendingOverlay /></form>
+                      {aiModerated ? (
+                        <a className="text-link" href="#ai-interviewer" style={{ marginTop: 12 }}>Uitsluiten via de AI-interviewer</a>
+                      ) : (
+                        <form action={deleteInterview.bind(null, id, iv.id)}><button className="text-link" style={{ color: "var(--color-risk-text)", marginTop: 12 }}>Interview verwijderen</button><FormPendingOverlay /></form>
+                      )}
                     </div>
                   </div>
                 )}
