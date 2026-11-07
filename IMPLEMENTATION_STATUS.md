@@ -168,7 +168,7 @@ Alles deterministisch (geen LLM), met unit-tests in `tests/unit/quantify.test.ts
 - ⬜ Weekritmes: leersessie en besluitsessie met de klant, Fathom-import
 - ⬜ Koppelingen met de Meta- en LinkedIn-advertentie-API's (nu: kanaallinks + handmatig live zetten)
 - ⬜ Experimentencatalogus (±40 methodes met metadata) en begeleide handmatige sjablonen
-- ⬜ Propositie- en businessmodelcanvas
+- ✅ Propositie- en businessmodelcanvas — zie sectie "Propositie- en businessmodelcanvas (18 november)" onderaan
 - ⬜ Automatische maandelijkse concurrentiecheck (handmatig starten kan al), verschillenrapport tussen onderzoeksversies
 - ⬜ Betalingen/aanbetalingen (na juridische check), Stripe
 - ⬜ Server-side PDF-rendering (nu printstylesheet)
@@ -1108,3 +1108,65 @@ blijft: vergrendelde criteria, berekende statussen, auditspoor; een AI-bewering 
   rechtstreeks via de Calendly-link boekt. De afspraakwebhooks hangen aan `TRACKING_SALT` (bij rotatie opnieuw maken).
   Migratie nog toepassen
 
+## Propositie- en businessmodelcanvas (18 november)
+
+Het businessmodel als verzameling aannames, niet als invulformulier (ontwerp §6.1, §11 `/model`, §13.4
+`business_models`, §14 "niet sturen op vulling van canvas"). Tabblad **Businessmodel** onder stap 2 Aannames
+(`/app/ideas/[id]/model`). Elk onderdeel toont de bewijsstand van de gekoppelde aanname, zodat zichtbaar is welke delen
+van het model getoetst, onderbouwd met bronnen of nog geloof zijn. Zeven commits en één migratie
+`20261118110000_canvas.sql` (**nog niet toegepast**; idempotent, twee keer uitgevoerd in de test).
+
+- ✅ **Twee canvassen per idee** (`lib/domain/canvas.ts`, `components/canvas/CanvasBoard.tsx`, `canvas.css`):
+  businessmodel (negen bouwstenen: klantsegmenten, waardepropositie, kanalen, klantrelaties, inkomstenstromen,
+  kernactiviteiten, kernmiddelen, kernpartners, kostenstructuur) en waardepropositie (klantprofiel: klanttaken, pijnen,
+  winsten; waardekaart: producten & diensten, pijnverzachters, winstmakers). Eigen vormgeving op de ProofLab-tokens,
+  geen merk of vormen van derden. Toggle **Canvas | Simpele weergave** (lijst per bouwsteen met de vraag in gewone taal:
+  Voor wie? Waar verdienen we aan? Wat kost het?). Opbouw via container queries: tien kolommen in de hoofdkolom,
+  twee bij middelbreed, één kolom op mobiel. Een lege bouwsteen staat er als "Nog leeg: onbekend"
+- ✅ **Onderdelen**: toevoegen per bouwsteen (Escape sluit het formulier), en per onderdeel een detailpaneel (Drawer:
+  focus erin, Escape sluit, focus terug) met tekst bewerken, volgorde omhoog/omlaag (knoppen, toetsenbord), koppelen aan
+  een bestaande aanname of ontkoppelen, **Maak aanname** (één klik, komt op de aannamekaart met soort volgens de
+  bouwsteen: wenselijkheid, haalbaarheid of levensvatbaarheid), en verwijderen in twee stappen. Herkomst per onderdeel:
+  eigen invoer, uit de intake, uit het onderzoek of AI-voorstel
+- ✅ **Bewijsstand per onderdeel** (`itemStanding`): open AI-voorstel → niet gekoppeld (nog geloof) → uitslag van de
+  hoofdtest (getoetst · ondersteund/weerlegd/onbeslist) → klantbewijs op de bewijsschaal (getoetst · klantbewijs) →
+  meetellende bevindingen uit bureauonderzoek (onderbouwd met bronnen) → nog geloof. Zelfde register als de
+  aannamekaart (`loadAssumptions`); AI-codering voor half gewicht telt niet voor de trede. Tegenbewijs staat in de
+  toelichting. Kleur én tekst; de samenvatting telt per groep, bewust zonder vullingspercentage. Bronnen en claims zijn
+  via de aanname te zien (link naar de aannamekaart met de aanname geselecteerd)
+- ✅ **Overnemen uit intake en onderzoek** (`draftsFromSources`, zonder AI): doelgroep, beschrijving en prijs uit de
+  intake; segmenten met taak en pijn; klantsignalen (taak, pijn, winst; bezwaren niet). Elk onderdeel draagt zijn bron
+  (`source_ref`, uniek per idee), dus opnieuw overnemen voegt niets dubbel toe
+- ✅ **AI-voorstel** "Laat de coach een eerste opzet maken" (`lib/ai/canvas.ts`, via `runAi` met maandbudget en
+  grootboek, purpose `canvas_draft`): onderdelen komen als AI-voorstel binnen, gelabeld en gestippeld tot een consultant
+  ze accepteert. Een open voorstel telt nergens mee, kan niet aan een aanname hangen (database-check) en is voor de
+  opdrachtgever onzichtbaar (RLS). Zonder sleutel: knop uit met "AI niet verbonden · alles werkt handmatig"
+- ✅ **Versies**: "Versie opslaan" met notitie; de database stelt de momentopname zelf samen (`save_canvas_version`:
+  onderdelen met gekoppelde aanname en haar status, doorlopend nummer, auteur en tijd) en houdt hem onveranderlijk
+  (trigger; alleen het wissen van een verwijderd account en het verwijderen van het hele idee mogen). Vergelijken van
+  twee versies of een versie met de huidige stand (`diffVersions`): toegevoegd, verwijderd en gewijzigd per bouwsteen
+  (tekst, verplaatst, koppeling, status van de aanname, acceptatie); alleen een andere volgorde telt niet
+- ✅ **Coach**: eigen schermtekst en suggesties voor `/model`; coachregel `canvas_after_decision` na een besluit om bij te
+  sturen zolang er geen canvasversie na het besluit is opgeslagen (sluit vanzelf daarna)
+- ✅ **Rapport**: rapportversies leggen het canvas vast (`snapshot.canvas`, zonder open AI-voorstellen, alleen hun
+  aantal) met de bewijsstand per onderdeel: sectie "06b / Businessmodel en propositie" op de rapportpagina en een
+  compacte tabel onder hoofdstuk 06 in de PDF. Oudere rapporten hebben het veld niet en tonen niets
+- ✅ **Opdrachtgevers** zien het tabblad alleen-lezen (geen bewerkknoppen, geen open AI-voorstellen, wel versies en
+  vergelijken)
+- **Migratie** `20261118110000_canvas.sql`: `canvas_items` (canvas, bouwsteen, tekst 1–500, positie, herkomst,
+  `source_ref`, acceptatie, aanname; trigger `guard_canvas_item` zet maker/tijden, houdt herkomst en canvas vast,
+  accepteert één keer en alleen AI, controleert dat de aanname bij hetzelfde idee hoort), `canvas_versions`
+  (onveranderlijk via `guard_canvas_version`, geen insert-/update-/delete-rechten; alleen `save_canvas_version`). RLS met
+  `can_read_idea`/`can_write_idea`, index op elke FK, `audit_row` op beide tabellen. Geen bestaande functies gewijzigd.
+  **Terugval zonder migratie**: de pagina zegt dat het canvas nog niet beschikbaar is; rapport en coach slaan het over
+- ✅ **Tests**: unit `tests/unit/canvas.test.ts` (bouwstenen, validatie, volgorde, bewijsstand, samenvatting, overnemen,
+  versievergelijking, rapport en PDF, coachregel, plaats in het menu) en `tests/unit/canvas-ui.test.ts` (weergave
+  businessmodel, waardepropositie, simpele weergave, alleen-lezen, rapportsectie); DB `tests/db/canvas.test.ts`
+  (10 tests: idempotent, maker door de database, opdrachtgever leest maar schrijft niet, cross-tenant lezen/schrijven,
+  aanname van een ander idee, unieke bron, AI-voorstel en acceptatie, open voorstel onzichtbaar voor opdrachtgever,
+  versies nummeren en vastleggen, onveranderlijk ook voor de databasebeheerder, verwijderd account en idee, audit).
+  `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` en alle 27 DB-testbestanden groen
+- 🟡 **Open punten**: geen e2e (Playwright) en geen visuele controle in de draaiende app (geen Supabase-toegang); de
+  opmaak is alleen als statische weergave op 880 en 390 px bekeken. Eén canvas per idee: varianten per propositie of
+  doelgroep (ontwerp §6.1) nog niet. Volgorde verschuift met knoppen, niet met slepen. De echte AI-aanroep is niet
+  getest (alleen de route zonder sleutel). Migratie nog toepassen
