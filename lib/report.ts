@@ -1,5 +1,6 @@
 import "server-only";
-import { CLAIM_STATUS, COMPETITOR_KINDS, DECISIONS, DMU_ROLES, EVIDENCE_TYPES, EXPERIMENT_TYPES, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type DecisionAction, type DmuRole, type EvidenceType, type ExperimentType, type SourceType } from "@/lib/domain/labels";
+import { CLAIM_STATUS, COMPETITOR_KINDS, DECISIONS, DMU_ROLES, EVIDENCE_TYPES, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type DecisionAction, type DmuRole, type EvidenceType, type SourceType } from "@/lib/domain/labels";
+import { experimentTypeLabel } from "@/lib/domain/experiment-catalog";
 import type { Finding } from "@/lib/domain/reality-check";
 import { asEvidenceLevel, strength, testEvidenceLevel } from "@/lib/domain/evidence";
 import { buildAllTests } from "@/lib/domain/all-tests";
@@ -214,7 +215,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       .filter((e) => !["draft", "ready_for_review"].includes(e.state))
       .map((e) => ({
         title: e.title,
-        type: EXPERIMENT_TYPES[e.type as ExperimentType].label,
+        // Experimentencatalogus: bij een handmatig sjabloon de catalogusmethode met "(handmatig ingevoerd)".
+        type: experimentTypeLabel(e.type, e.config),
         state: e.state,
         hypothesis: e.hypotheses?.we_believe ?? "",
         metric: e.hypotheses ? `${e.hypotheses.metric_numerator} / ${e.hypotheses.metric_denominator}` : "",
@@ -231,13 +233,16 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         successCount: e.metrics?.verdict.successCount ?? null,
         requiredN: e.hypotheses?.required_n ?? null,
         // Bewijsniveau van wat deze test meet (golf A, punt 14).
-        level: testEvidenceLevel(e.type, { decisionRule: e.hypotheses?.decision_rule, successMetric: (e.hypotheses as { success_metric?: string | null } | null)?.success_metric }),
+        level: testEvidenceLevel(e.type, { decisionRule: e.hypotheses?.decision_rule, successMetric: (e.hypotheses as { success_metric?: string | null } | null)?.success_metric, config: e.config }),
         byChannel: e.metrics?.byChannel ?? [],
         byVariant: e.metrics?.byVariant ?? [],
         warnings: e.metrics?.warnings ?? [],
         endedEarly: e.ended_early,
         // Surveys are self-reported: what people say about themselves, never observed behaviour.
         selfReported: e.type === "survey",
+        // Experimentencatalogus: door het team ingevoerd, niet door ProofLab waargenomen.
+        manualEntry: e.type === "manual",
+        manualEntries: e.metrics?.manual?.entries ?? null,
         bySource: e.metrics?.survey
           ? { invitation: { n: e.metrics.survey.invitation.n, successes: e.metrics.survey.invitation.successes }, openLink: { n: e.metrics.survey.openLink.n, successes: e.metrics.survey.openLink.successes } }
           : null,
@@ -249,7 +254,7 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         .filter((e) => !["draft", "ready_for_review"].includes(e.state) || (e.metrics?.n ?? 0) > 0)
         .map((e) => ({
           title: e.title,
-          type: EXPERIMENT_TYPES[e.type as ExperimentType].label,
+          type: experimentTypeLabel(e.type, e.config),
           state: e.state,
           metrics: e.metrics
             ? {
@@ -272,7 +277,7 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
     allTests: buildAllTests(
       d.experiments.map((e) => ({
         title: e.title,
-        type: EXPERIMENT_TYPES[e.type as ExperimentType]?.label ?? e.type,
+        type: experimentTypeLabel(e.type, e.config),
         state: e.state,
         assumptionId: e.hypotheses?.assumption_id ?? null,
         assumption: e.hypotheses?.assumptions?.statement ?? null,
@@ -280,7 +285,7 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         locked: !!e.hypotheses?.locked_at,
         endedEarly: !!e.ended_early,
         label: e.metrics?.verdict.label ?? null,
-        level: testEvidenceLevel(e.type, { decisionRule: e.hypotheses?.decision_rule, successMetric: (e.hypotheses as { success_metric?: string | null } | null)?.success_metric }),
+        level: testEvidenceLevel(e.type, { decisionRule: e.hypotheses?.decision_rule, successMetric: (e.hypotheses as { success_metric?: string | null } | null)?.success_metric, config: e.config }),
         n: e.metrics?.n ?? 0,
         successes: e.metrics?.successes ?? 0,
         // Gebruikerstest B4: zonder de migratie bestaat de kolom niet en is niets als zelf goedgekeurd bekend.
@@ -300,7 +305,7 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
           verdict: c.verdict,
           reliability: c.data_reliability,
           // "Geslaagd · niveau: mening" (golf A, punt 14).
-          level: stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule, successMetric: (exp.hypotheses as { success_metric?: string | null } | null)?.success_metric }) : null),
+          level: stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule, successMetric: (exp.hypotheses as { success_metric?: string | null } | null)?.success_metric, config: exp.config }) : null),
           title: exp?.title ?? null,
         };
       }),
@@ -387,7 +392,7 @@ function decisionSheetFor(d: Dossier, ctx: SheetContext, ladder: EvidenceLadder,
       .filter((o) => !o.is_synthetic && (o.origin !== "ai" || o.review_status === "accepted"))
       .map((o) => {
         const e = o.experiment_id ? expById.get(o.experiment_id) : undefined;
-        const type = e ? (EXPERIMENT_TYPES[e.type as ExperimentType]?.label ?? e.type) : null;
+        const type = e ? experimentTypeLabel(e.type, e.config) : null;
         const role = o.interview_id ? roleOf.get(o.interview_id) : null;
         const what = o.interview_id ? `Klantgesprek${role ? ` (${DMU_ROLES[role as DmuRole] ?? role})` : ""}` : `Meting${type ? ` (${type.toLowerCase()})` : ""}`;
         return {

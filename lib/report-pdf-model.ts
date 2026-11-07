@@ -330,6 +330,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
   for (const e of r.experiments) {
     exps.push({ t: "h", text: `${e.title} (${e.type})` });
     if (e.selfReported) exps.push({ t: "p", small: true, text: "Zelfrapportage, geen waargenomen gedrag: een enquête meet wat mensen over zichzelf zeggen." });
+    if (e.manualEntry) exps.push({ t: "p", small: true, text: "Handmatig ingevoerd: het onderzoeksteam voerde deze resultaten zelf in; ProofLab heeft ze niet zelf waargenomen. Ze tellen hooguit als kleine handeling." });
     exps.push({ t: "p", text: `Hypothese: ${e.hypothesis} Meting: ${e.metric}. Vooraf vastgelegd (${e.lockedAt ? nlDate(e.lockedAt) : "niet vergrendeld"}): ${e.threshold}.` });
     exps.push({
       t: "p",
@@ -363,6 +364,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
     ...r.claims.filter((c) => c.limitations).map((c) => `${c.statement}: ${c.limitations}`),
     ...r.experiments.filter((e) => e.endedEarly).map((e) => `${e.title} is vroegtijdig beëindigd.`),
     ...r.experiments.filter((e) => e.selfReported).map((e) => `${e.title} is een enquête: zelfrapportage, geen gedrag. Antwoorden via een open link zijn niet te controleren.`),
+    ...r.experiments.filter((e) => e.manualEntry).map((e) => `${e.title}: resultaten handmatig ingevoerd door het onderzoeksteam, niet door ProofLab waargenomen.`),
   ];
   const reality: Block[] = [{ t: "p", small: true, muted: true, text: "De Reality Check zoekt vóór elk besluit bewust naar tegenbewijs, zwakke data en conclusies die het bewijs niet draagt." }];
   if (r.realityCheck) {
