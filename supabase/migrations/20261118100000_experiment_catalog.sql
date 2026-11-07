@@ -28,12 +28,13 @@ alter table public.experiments add constraint experiments_type_check
   check (type in ('landing', 'interview', 'pricing', 'survey', 'manual'));
 
 alter table public.experiments drop constraint if exists experiments_manual_catalog;
+-- coalesce: een ontbrekende sleutel geeft null, en een check met null zou stil slagen.
 alter table public.experiments add constraint experiments_manual_catalog check (
-  type <> 'manual' or (
+  type <> 'manual' or coalesce(
     jsonb_typeof(config -> 'catalog_method_id') = 'string'
     and (config ->> 'catalog_method_id') ~ '^[a-z0-9-]{2,60}$'
-    and (config ->> 'observation_kind') in ('opinion', 'problem_confirmed', 'current_behaviour', 'current_spend', 'waitlist_signup', 'demo_request')
-  ));
+    and (config ->> 'observation_kind') in ('opinion', 'problem_confirmed', 'current_behaviour', 'current_spend', 'waitlist_signup', 'demo_request'),
+    false));
 comment on constraint experiments_manual_catalog on public.experiments is
   'Experimentencatalogus: een handmatige test noemt zijn catalogusmethode en een soort waarneming van hooguit een kleine handeling.';
 

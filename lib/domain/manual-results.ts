@@ -6,6 +6,9 @@
 // van de methodeversie, pas na de eindconditie (lib/experiment-metrics.ts).
 
 import { detectPii } from "./pseudonymize";
+import { methodOf, type MethodVersion } from "./method";
+import type { HypothesisRule } from "./method/types";
+import type { RuledVerdict } from "./stats";
 
 export const NOTE_MIN = 3;
 export const NOTE_MAX = 1000;
@@ -98,7 +101,7 @@ export function validateWithdrawReason(reason: string): string | null {
 
 // Bestandsnaam voor de bucket: alleen veilige tekens, met de extensie van het type.
 export function evidenceFileName(name: string, mime: EvidenceMime): string {
-  const base = name.replace(/\.[^.]*$/, "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "bewijs";
+  const base = name.replace(/\.[A-Za-z0-9]{1,5}$/, "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "bewijs";
   return `${base}.${EVIDENCE_TYPES[mime]}`;
 }
 
@@ -115,6 +118,25 @@ export function sniffEvidence(bytes: Uint8Array, claimed: string): EvidenceMime 
     if (head.length > 0 && !head.includes(0)) return "text/csv";
   }
   return null;
+}
+
+// Het oordeel over handmatige resultaten: precies de beslisregel van de methodeversie, met de vergrendelde drempels
+// van de Test Card en pas na de eindconditie (zelfde aanroep als experimentMetrics). Voor tests en uitleg.
+export function manualOutcome(
+  h: HypothesisRule & { success_threshold_pct: number; fail_threshold_pct: number | null; min_sample: number },
+  rows: Pick<ManualResultRow, "units" | "successes" | "withdrawn_at" | "evidence_path">[],
+  opts: { endConditionReached: boolean; method: MethodVersion },
+): { n: number; successes: number; verdict: RuledVerdict } {
+  const t = tallyManual(rows);
+  const verdict = methodOf(opts.method).verdict(h, {
+    successes: t.successes,
+    n: t.n,
+    successThresholdPct: Number(h.success_threshold_pct),
+    failThresholdPct: h.fail_threshold_pct == null ? null : Number(h.fail_threshold_pct),
+    minSample: h.min_sample,
+    endConditionReached: opts.endConditionReached,
+  });
+  return { n: t.n, successes: t.successes, verdict };
 }
 
 // De samenvatting van de systeemwaarneming bij de Learning Card: altijd met "handmatig ingevoerd" en de methode.
