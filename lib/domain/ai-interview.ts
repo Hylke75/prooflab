@@ -540,6 +540,22 @@ export function respondentQuote(segments: StoredSegment[], start: number, end: n
   return { ok: true, segmentIndex: i };
 }
 
+// Het citaat opzoeken in de antwoorden van de respondent (voor plakken, toetsenbord en AI-codering). De eerste plek
+// die helemaal binnen een respondentbeurt valt; staat het alleen in een vraag van de AI, dan telt het niet.
+export function locateRespondentQuote(transcript: string, segments: StoredSegment[], quote: string): { start: number; end: number; segmentIndex: number } | { error: string } {
+  const q = quote.trim().replace(/\s+/g, " ");
+  if (q.length < 8) return { error: "Een citaat is minstens 8 tekens." };
+  for (let i = 0; i < segments.length; i++) {
+    const s = segments[i];
+    if (s.s !== RESPONDENT_SPEAKER) continue;
+    const seg = transcript.slice(s.a, s.b);
+    let at = seg.indexOf(q);
+    if (at < 0) at = seg.toLowerCase().indexOf(q.toLowerCase());
+    if (at >= 0) return { start: s.a + at, end: s.a + at + q.length, segmentIndex: i };
+  }
+  return { error: "Dit citaat staat niet letterlijk in een antwoord van de respondent. In een AI-gemodereerd interview tellen vragen van de AI nooit als bewijs." };
+}
+
 // ---------------------------------------------------------------------------
 // Overzicht voor de consultant
 // ---------------------------------------------------------------------------
@@ -553,10 +569,12 @@ export const ABANDON_AFTER_MINUTES = 60;
 export function sessionDisplay(s: { status: string; excluded_at: string | null; interview_id: string | null; last_activity_at: string }, now: number): SessionDisplay {
   if (s.excluded_at) return { key: "excluded", label: "Uitgesloten", pill: "coral", counts: false };
   if (s.status === "screened_out") return { key: "screened_out", label: "Gescreend uit (buiten de doelgroep)", pill: "gray", counts: false };
+  // Een interview van de test: telt mee (ook een afgebroken gesprek dat het team toch heeft opgenomen).
+  if (s.interview_id) return { key: "completed", label: s.status === "abandoned" ? "Afgebroken, wel opgenomen" : "Afgerond", pill: "green", counts: true };
   if (s.status === "abandoned" || (s.status === "active" && now - Date.parse(s.last_activity_at) > ABANDON_AFTER_MINUTES * 60_000)) {
     return { key: "abandoned", label: "Afgebroken", pill: "orange", counts: false };
   }
-  if (s.status === "completed") return s.interview_id ? { key: "completed", label: "Afgerond", pill: "green", counts: true } : { key: "abandoned", label: "Afgerond zonder antwoorden", pill: "orange", counts: false };
+  if (s.status === "completed") return { key: "abandoned", label: "Afgerond zonder interview (geen antwoorden of ronde gestopt)", pill: "orange", counts: false };
   return { key: "active", label: "Bezig", pill: "blue", counts: false };
 }
 
@@ -621,4 +639,10 @@ export function aiEvidenceSummary(
 
 export function roleLabel(role: string | null | undefined): string {
   return (role && DMU_ROLES[role as DmuRole]) || DMU_ROLES.user;
+}
+
+// Eén zin voor het rapport: welk bewijs uit AI-gemodereerde interviews komt.
+export function aiEvidenceLine(a: AiEvidenceSummary): string {
+  const obs = a.observations === 1 ? "1 waarneming" : `${a.observations} waarnemingen`;
+  return `Uit ${a.interviews} AI-gemodereerde ${a.interviews === 1 ? "interview" : "interviews"} ${a.observations === 1 ? "komt" : "komen"} ${obs} (${a.supporting} steunend, ${a.contradicting} tegensprekend), apart geteld en gelabeld. Alleen letterlijke uitspraken van respondenten tellen; vragen van de AI nooit.`;
 }
