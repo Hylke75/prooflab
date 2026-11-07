@@ -937,6 +937,281 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_interview_configs: {
+        Row: {
+          id: string
+          experiment_id: string
+          idea_id: string
+          slug: string
+          guide: Json
+          max_turns: number
+          max_minutes: number
+          max_probes: number
+          intro: string
+          sponsor_mode: string
+          sponsor_name: string | null
+          privacy_contact: string
+          retention_months: number
+          screener: Json
+          status: string
+          paused: boolean
+          approved_by: string | null
+          approved_at: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          experiment_id: string
+          idea_id: string
+          slug?: string
+          guide: Json
+          max_turns?: number
+          max_minutes?: number
+          max_probes?: number
+          intro: string
+          sponsor_mode?: string
+          sponsor_name?: string | null
+          privacy_contact: string
+          retention_months?: number
+          screener?: Json
+          status?: string
+          paused?: boolean
+          approved_by?: string | null
+          approved_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          experiment_id?: string
+          idea_id?: string
+          slug?: string
+          guide?: Json
+          max_turns?: number
+          max_minutes?: number
+          max_probes?: number
+          intro?: string
+          sponsor_mode?: string
+          sponsor_name?: string | null
+          privacy_contact?: string
+          retention_months?: number
+          screener?: Json
+          status?: string
+          paused?: boolean
+          approved_by?: string | null
+          approved_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_interview_configs_experiment_id_fkey"
+            columns: ["experiment_id"]
+            isOneToOne: false
+            referencedRelation: "experiments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_interview_configs_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "ideas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_interview_sessions: {
+        Row: {
+          id: string
+          config_id: string
+          experiment_id: string
+          idea_id: string
+          token_hash: string
+          visitor_hash: string
+          channel: string
+          status: string
+          consent_text: string
+          consented_at: string
+          screener_answers: Json
+          dmu_role: string
+          segment: string | null
+          topic_index: number
+          probes_used: number
+          answers: number
+          injections: number
+          fallbacks: number
+          sensitive_notices: number
+          pseudonym_map: Json
+          started_at: string
+          last_activity_at: string
+          ended_at: string | null
+          end_reason: string | null
+          interview_id: string | null
+          excluded_at: string | null
+          excluded_by: string | null
+          exclusion_reason: string | null
+          cost_usd: number
+          retention_until: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          config_id: string
+          experiment_id: string
+          idea_id: string
+          token_hash: string
+          visitor_hash: string
+          channel?: string
+          status?: string
+          consent_text: string
+          consented_at?: string
+          screener_answers?: Json
+          dmu_role?: string
+          segment?: string | null
+          topic_index?: number
+          probes_used?: number
+          answers?: number
+          injections?: number
+          fallbacks?: number
+          sensitive_notices?: number
+          pseudonym_map?: Json
+          started_at?: string
+          last_activity_at?: string
+          ended_at?: string | null
+          end_reason?: string | null
+          interview_id?: string | null
+          excluded_at?: string | null
+          excluded_by?: string | null
+          exclusion_reason?: string | null
+          cost_usd?: number
+          retention_until: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          config_id?: string
+          experiment_id?: string
+          idea_id?: string
+          token_hash?: string
+          visitor_hash?: string
+          channel?: string
+          status?: string
+          consent_text?: string
+          consented_at?: string
+          screener_answers?: Json
+          dmu_role?: string
+          segment?: string | null
+          topic_index?: number
+          probes_used?: number
+          answers?: number
+          injections?: number
+          fallbacks?: number
+          sensitive_notices?: number
+          pseudonym_map?: Json
+          started_at?: string
+          last_activity_at?: string
+          ended_at?: string | null
+          end_reason?: string | null
+          interview_id?: string | null
+          excluded_at?: string | null
+          excluded_by?: string | null
+          exclusion_reason?: string | null
+          cost_usd?: number
+          retention_until?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_interview_sessions_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "ai_interview_configs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_interview_sessions_experiment_id_fkey"
+            columns: ["experiment_id"]
+            isOneToOne: false
+            referencedRelation: "experiments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_interview_sessions_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "ideas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_interview_sessions_interview_id_fkey"
+            columns: ["interview_id"]
+            isOneToOne: false
+            referencedRelation: "interviews"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_interview_turns: {
+        Row: {
+          id: string
+          session_id: string
+          idea_id: string
+          seq: number
+          role: string
+          kind: string
+          topic_index: number
+          text: string
+          checks: Json | null
+          flags: string[]
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          session_id: string
+          idea_id: string
+          seq: number
+          role: string
+          kind: string
+          topic_index?: number
+          text: string
+          checks?: Json | null
+          flags?: string[]
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          session_id?: string
+          idea_id?: string
+          seq?: number
+          role?: string
+          kind?: string
+          topic_index?: number
+          text?: string
+          checks?: Json | null
+          flags?: string[]
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_interview_turns_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "ai_interview_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_interview_turns_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "ideas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_runs: {
         Row: {
           cost_usd: number
@@ -1999,6 +2274,7 @@ export type Database = {
           pseudonymized_at: string | null
           pseudonymized_by: string | null
           pseudonym_labels: Json | null
+          ai_moderated: boolean
         }
         Insert: {
           defaulted_fields?: string[]
@@ -2024,6 +2300,7 @@ export type Database = {
           pseudonymized_at?: string | null
           pseudonymized_by?: string | null
           pseudonym_labels?: Json | null
+          ai_moderated?: boolean
         }
         Update: {
           defaulted_fields?: string[]
@@ -2049,6 +2326,7 @@ export type Database = {
           pseudonymized_at?: string | null
           pseudonymized_by?: string | null
           pseudonym_labels?: Json | null
+          ai_moderated?: boolean
         }
         Relationships: [
           {
@@ -2362,6 +2640,7 @@ export type Database = {
           quote_end: number | null
           segment_index: number | null
           theme_only: boolean
+          ai_moderated: boolean
           evidence_type: string | null
         }
         Insert: {
@@ -2388,6 +2667,7 @@ export type Database = {
           quote_end?: number | null
           segment_index?: number | null
           theme_only?: boolean
+          ai_moderated?: boolean
           evidence_type?: string | null
         }
         Update: {
@@ -2414,6 +2694,7 @@ export type Database = {
           quote_end?: number | null
           segment_index?: number | null
           theme_only?: boolean
+          ai_moderated?: boolean
           evidence_type?: string | null
         }
         Relationships: [
@@ -3707,6 +3988,55 @@ export type Database = {
           created_at: string
         }[]
       }
+      ai_interview_public: { Args: { p_key: string; p_slug: string }; Returns: Json }
+      ai_interview_start: {
+        Args: {
+          p_key: string
+          p_slug: string
+          p_visitor: string
+          p_token_hash: string
+          p_channel: string
+          p_consent_text: string
+          p_answers: Json
+          p_qualified: boolean
+          p_role: string
+          p_segment: string | null
+          p_rate_bucket: string
+        }
+        Returns: Json
+      }
+      ai_interview_state: { Args: { p_key: string; p_token_hash: string }; Returns: Json }
+      ai_interview_answer: {
+        Args: { p_key: string; p_token_hash: string; p_text: string; p_flags: string[]; p_pseudonym_map: Json; p_rate_bucket: string }
+        Returns: Json
+      }
+      ai_interview_ask: {
+        Args: { p_key: string; p_token_hash: string; p_kind: string; p_text: string; p_topic_index: number; p_probes_used: number; p_checks: Json }
+        Returns: Json
+      }
+      ai_interview_finish: {
+        Args: { p_key: string; p_token_hash: string; p_reason: string; p_transcript: string; p_segments: Json; p_labels: Json }
+        Returns: Json
+      }
+      ai_interview_log_run: {
+        Args: {
+          p_key: string
+          p_token_hash: string
+          p_purpose: string
+          p_provider: string
+          p_model: string
+          p_prompt_version: string
+          p_input_tokens: number
+          p_output_tokens: number
+          p_cost: number
+          p_outcome: string
+          p_detail: string | null
+        }
+        Returns: boolean
+      }
+      ai_interview_exclude: { Args: { p_session: string; p_reason: string }; Returns: boolean }
+      ai_interview_include: { Args: { p_session: string; p_transcript: string; p_segments: Json; p_labels: Json }; Returns: string }
+      ai_interview_delete: { Args: { p_session: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
