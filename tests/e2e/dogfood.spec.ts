@@ -144,7 +144,7 @@ test("dogfood: ProofLab op ProofLab", async ({ page }) => {
   for (const f of FINDINGS) {
     await page.goto(`${ideaUrl}/research?tab=sources`);
     await page.getByLabel("Titel van de bron", { exact: true }).fill(f.source.title);
-    await page.getByLabel("Type bron", { exact: true }).selectOption(f.source.type);
+    await page.locator("#src-type").selectOption(f.source.type);
     await page.getByLabel("URL of dataset-ID", { exact: true }).fill(f.source.url);
     await page.getByLabel("Uitgever / instelling", { exact: true }).fill(f.source.publisher);
     await page.getByLabel("Publicatie- of peildatum", { exact: true }).fill(today);
