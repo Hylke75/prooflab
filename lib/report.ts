@@ -23,6 +23,7 @@ import { sanitizeChallenges } from "@/lib/domain/ai-text";
 import type { EvidenceStanding } from "@/lib/domain/evidence-standing";
 import type { ReportCanvas } from "@/lib/domain/canvas";
 import { aiEvidenceSummary, type AiEvidenceSummary } from "@/lib/domain/ai-interview";
+import { pickDecisiveQuestion } from "@/lib/domain/decisive-question";
 
 // "AI · Gemini" for an AI forecast whose provider is known; null otherwise.
 function aiName(kind: string, model: string | null): string | null {
@@ -70,6 +71,7 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
     .map((f) => ({ title: f.title, detail: f.detail, severity: f.severity, source: f.source ?? "regels" }))
     .flatMap((f) => (f.source === "ai" ? sanitizeChallenges([f]) : [f]));
   const lastDecision = d.decisions[d.decisions.length - 1] ?? null;
+  const decisiveId = pickDecisiveQuestion(d.questions)?.id ?? null;
   const aiCost = d.research.ai.reduce((s, r) => s + Number(r.cost_usd), 0);
   const ladder = evidenceLadder(d.observations.map(ladderObservation));
   const sheet = meta.sheet ? decisionSheetFor(d, meta.sheet, ladder, footnote) : undefined;
@@ -92,7 +94,7 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       keyUncertainty: d.idea.key_uncertainty,
       isDemo: d.idea.is_demo,
     },
-    questions: d.questions.map((q) => ({ position: q.position, question: q.question, status: q.status, doneCriterion: q.done_criterion })),
+    questions: d.questions.map((q) => ({ position: q.position, question: q.question, status: q.status, doneCriterion: q.done_criterion, decisive: q.id === decisiveId })),
     claims,
     counts: {
       claims: claims.length,
@@ -367,7 +369,8 @@ type Footnote = (s: { id: string; title: string; url: string | null; publisher: 
 // oefengesprekken (loadDossier markeert die als synthetisch) en geen AI-codering die niet is geaccepteerd.
 function decisionSheetFor(d: Dossier, ctx: SheetContext, ladder: EvidenceLadder, footnote: Footnote): DecisionSheet {
   const last = d.decisions[d.decisions.length - 1] ?? null;
-  const decisive = d.questions[0] ?? null;
+  // Eén bron voor de beslissende vraag (gelijk aan Markt): is_decisive, anders de eerste onderzoeksvraag.
+  const decisive = pickDecisiveQuestion(d.questions);
   const expById = new Map(d.experiments.map((e) => [e.id, e]));
   const roleOf = new Map(d.interviews.map((i) => [i.id, i.dmu_role]));
   const aiIds = new Set(d.aiInterviewIds);

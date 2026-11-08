@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { asMethodVersion } from "@/lib/domain/method";
 import Link from "next/link";
+import { Term } from "@/components/ui/Term";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { ExperimentBuilder } from "@/components/experiments/ExperimentBuilder";
 import { getIdea, getViewMode, getWorkspace } from "@/lib/data";
@@ -120,6 +121,25 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           </Link>
         </div>
       </div>
+      {/* Bevinding 18: de pagina is lang (op mobiel staat de testtypekeuze ver naar beneden); ankers naar de drie delen. */}
+      {(() => {
+        const anchors = [
+          ...((experiments ?? []).length > 0 ? [{ href: "#bord", label: "Bord" }] : []),
+          ...(assumptions.length > 0 ? [{ href: "#wat-eerst", label: "Wat test je eerst" }] : []),
+          ...(selected && canWrite && rec ? [{ href: "#nieuwe-test", label: "Nieuwe test" }] : []),
+        ];
+        return anchors.length > 1 ? (
+          <nav aria-label="Op deze pagina" className="row" style={{ gap: 4, flexWrap: "wrap", alignItems: "center", margin: "-8px 0 18px" }}>
+            <span className="tiny">Ga naar:</span>
+            {anchors.map((a, i) => (
+              <span key={a.href} className="row" style={{ gap: 4, alignItems: "center" }}>
+                {i > 0 && <span className="tiny" aria-hidden="true">·</span>}
+                <a className="text-link" href={a.href} style={{ display: "inline-flex", alignItems: "center", minHeight: 44, padding: "0 6px" }}>{a.label}</a>
+              </span>
+            ))}
+          </nav>
+        ) : null;
+      })()}
       {catalogPick && catalogPick.runs.kind === "manual" && manualAvailable === false && (
         <div className="form-error" role="status">{MANUAL_SCHEMA_MISSING}</div>
       )}
@@ -137,7 +157,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
         </p>
       )}
       {(experiments ?? []).length > 0 && (
-        <div className="kpi-row" id="bord" style={{ marginBottom: 20 }}>
+        <div className="kpi-row" id="bord" style={{ marginBottom: 20, scrollMarginTop: 100 }}>
           {COLUMNS.map((col) => (
             <div key={col.label} className="card tight">
               <div className="tiny" style={{ fontWeight: 600 }}>{col.label}</div>
@@ -168,10 +188,10 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
       )}
 
       {assumptions.length > 0 && (
-        <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card" id="wat-eerst" style={{ marginBottom: 20, scrollMarginTop: 100 }}>
           <div className="section-title">
             <h2 className="as-h3">Wat test je eerst?</h2>
-            <span className="pill gray">Op informatiewaarde</span>
+            <span className="pill gray">Op <Term k="informatiewaarde">informatiewaarde</Term></span>
           </div>
           <p className="tiny" style={{ marginTop: -8 }}>
             Belang × onzekerheid × hoeveel de goedkoopste geschikte test het besluit kan veranderen, gedeeld door kosten en duur. Score 100 = de hoogste in dit dossier; de kansen zijn schattingen.
@@ -215,32 +235,34 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           <Link className="btn primary" href={`/app/ideas/${id}/assumptions`}>Naar aannames →</Link>
         </div>
       ) : canWrite && rec ? (
-        <ExperimentBuilder
-          assumptions={assumptions.map((a) => {
-            const state = stateOf(a.primaryExperimentId);
-            return { id: a.id, statement: a.statement, kind: assumptionKind(a), primary: a.primaryExperimentId ? { locked: !!state && !["draft", "ready_for_review"].includes(state) } : null };
-          })}
-          initialAssumption={selected.id}
-          options={builderOptions}
-          catalog={catalogPick}
-          catalogHref={`/app/ideas/${id}/experiments/catalogus?aanname=${selected.id}`}
-          warning={rec.warning}
-          audience={[idea.target_audience, idea.audience_detail, idea.region].filter(Boolean).join(", ")}
-          action={createExperiment.bind(null, id)}
-          ideaTitle={idea.title}
-          method={asMethodVersion(idea.method_version)}
-          aiConnected={aiConfigured()}
-          variantsAction={proposeCopyVariants.bind(null, id)}
-          initialType={catalogPick ? (catalogExperimentType(catalogPick) ?? wantedType) : wantedType}
-          researcher={ws.org?.name ?? ""}
-          privacyContact={ws.user.email ?? ""}
-          surveyDraftAction={draftSurveyWithCoach.bind(null, id)}
-          priors={priors}
-          intake={intake}
-          goRuleMissing={rule === null}
-          deposit={deposit}
-          key={`${selected.id}|${wantedType ?? ""}|${catalogPick?.id ?? ""}`}
-        />
+        <div id="nieuwe-test" style={{ scrollMarginTop: 100 }}>
+          <ExperimentBuilder
+            assumptions={assumptions.map((a) => {
+              const state = stateOf(a.primaryExperimentId);
+              return { id: a.id, statement: a.statement, kind: assumptionKind(a), primary: a.primaryExperimentId ? { locked: !!state && !["draft", "ready_for_review"].includes(state) } : null };
+            })}
+            initialAssumption={selected.id}
+            options={builderOptions}
+            catalog={catalogPick}
+            catalogHref={`/app/ideas/${id}/experiments/catalogus?aanname=${selected.id}`}
+            warning={rec.warning}
+            audience={[idea.target_audience, idea.audience_detail, idea.region].filter(Boolean).join(", ")}
+            action={createExperiment.bind(null, id)}
+            ideaTitle={idea.title}
+            method={asMethodVersion(idea.method_version)}
+            aiConnected={aiConfigured()}
+            variantsAction={proposeCopyVariants.bind(null, id)}
+            initialType={catalogPick ? (catalogExperimentType(catalogPick) ?? wantedType) : wantedType}
+            researcher={ws.org?.name ?? ""}
+            privacyContact={ws.user.email ?? ""}
+            surveyDraftAction={draftSurveyWithCoach.bind(null, id)}
+            priors={priors}
+            intake={intake}
+            goRuleMissing={rule === null}
+            deposit={deposit}
+            key={`${selected.id}|${wantedType ?? ""}|${catalogPick?.id ?? ""}`}
+          />
+        </div>
       ) : (
         <p className="sub">Je kijkt mee als opdrachtgever. Experimenten worden opgezet door het onderzoeksteam.</p>
       )}

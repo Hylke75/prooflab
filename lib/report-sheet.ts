@@ -230,7 +230,7 @@ export type LegacySnapshot = {
   label: string;
   labelMissing: string[];
   observationCounts?: EvidenceLadder;
-  questions: { position: number; question: string; status: string }[];
+  questions: { position: number; question: string; status: string; decisive?: boolean }[];
   claims: { statement: string; statusKey: string; notes: number[]; contradicted: boolean; type?: string }[];
   counts: { claims: number; verified: number };
   assumptions: { statement: string; importance: number; status: string; evidence: number }[];
@@ -257,7 +257,8 @@ const asLevel = (v: unknown): EvidenceLevel => (typeof v === "string" && LEVELS.
 export function sheetFromSnapshot(r: LegacySnapshot, ladderLine: string | null): DecisionSheet {
   if (r.sheet) return r.sheet;
   const action = r.decision ? (LEGACY_ACTIONS[r.decision.action] ?? "unknown") : null;
-  const q = [...r.questions].sort((a, b) => a.position - b.position)[0] ?? null;
+  // Dezelfde beslissende vraag als Markt: de gemarkeerde, anders (oudere momentopnamen) de eerste.
+  const q = r.questions.find((x) => x.decisive === true) ?? [...r.questions].sort((a, b) => a.position - b.position)[0] ?? null;
   const verdictCards = r.learningCards.filter((c) => c.verdict === "pass" || c.verdict === "fail").length;
   const measured = r.experiments.filter((e) => e.n > 0 && !["draft", "ready_for_review"].includes(e.state));
   const status = getDossierStatus({

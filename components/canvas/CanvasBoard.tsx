@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { Drawer } from "@/components/ui/Drawer";
 import { ActionForm, Field, type FormState } from "@/components/ui/ActionForm";
-import { blockOf, blocksOf, isOpenProposal, originLabel, sortByPosition, STANDING_GROUPS, type CanvasBlock, type CanvasKind, type ItemStanding } from "@/lib/domain/canvas";
+import { assumptionDraft, blockOf, blocksOf, isOpenProposal, originLabel, sortByPosition, STANDING_GROUPS, type CanvasBlock, type CanvasKind, type ItemStanding } from "@/lib/domain/canvas";
 
 type Action = (state: FormState, form: FormData) => Promise<FormState>;
 
@@ -317,8 +317,8 @@ function ItemPanel({
                   <p className="tiny">Komt op de aannamekaart, met de startkans van 50% tot er bewijs is.</p>
                   <ActionForm action={actions.createAssumption} submitLabel="Maak aanname" submitClass="btn primary sm" noValidate>
                     <input type="hidden" name="item_id" value={item.id} />
-                    <Field name="statement" id={`${ids}-st`} label="Wat moet waar zijn?" required hint="Eén toetsbare bewering, 10 tot 400 tekens.">
-                      <textarea className="field" rows={3} maxLength={400} defaultValue={item.body} />
+                    <Field name="statement" id={`${ids}-st`} label="Wat moet waar zijn?" required hint="Eén toetsbare bewering, 10 tot 400 tekens. Voorgesteld uit dit onderdeel; pas hem aan zodat hij echt te toetsen is.">
+                      <textarea className="field" rows={3} maxLength={400} defaultValue={assumptionDraft(item.block, item.body)} />
                     </Field>
                     <Field name="importance" id={`${ids}-imp`} label="Belangrijkheid (5 = idee valt om)">
                       <select className="field" defaultValue="3">
