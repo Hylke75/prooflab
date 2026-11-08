@@ -5,7 +5,7 @@ import { Icon } from "@/components/Icon";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { Drawer } from "@/components/ui/Drawer";
 import { COMPETITOR_KINDS, type CompetitorKind } from "@/lib/domain/labels";
-import { RECHECK_DAYS, recheckDue } from "@/lib/domain/recheck";
+import { competitorRecheckDue, RECHECK_DAYS, recheckApplies } from "@/lib/domain/recheck";
 import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 import { isProposal, PROPOSAL_LABEL } from "@/lib/domain/competitor-proposals";
 
@@ -24,12 +24,19 @@ export type CompetitorView = {
   differentiation_opportunity: string | null;
   origin: string;
   last_checked_at: string | null;
+  // Aanmaakdatum: terugval voor de maandelijkse controle zolang er nog nooit gecontroleerd is.
+  created_at?: string | null;
   claim: { statement: string; status: string } | null;
   // Results of the last live recheck of the pages behind the linked finding.
   checks?: { url: string; note: string; missing: boolean }[];
 };
 
 type Action = (s: FormState, f: FormData) => Promise<FormState>;
+
+// Iets om op te halen: een website of een gekoppelde bevinding (met bron-URL's). "Niets doen" nooit.
+const checkable = (c: CompetitorView) => recheckApplies({ kind: c.kind, website: c.website, hasLinkedSource: !!c.claim });
+const due = (c: CompetitorView) =>
+  competitorRecheckDue({ kind: c.kind, website: c.website, hasLinkedSource: !!c.claim, last_checked_at: c.last_checked_at, created_at: c.created_at ?? null });
 
 export function CompetitorPanel({
   competitors,
@@ -72,7 +79,7 @@ export function CompetitorPanel({
         <div className="note" style={{ marginTop: 0, marginBottom: 14 }}>
           <strong>Maandelijkse controle.</strong> ProofLab haalt de bronpagina&apos;s en websites opnieuw op en controleert of de citaten en prijzen er
           nog letterlijk staan. Geen AI-oordeel; verdwenen citaten maken een bevinding &quot;verouderd&quot;, er wordt niets verwijderd.
-          {competitors.some((c) => recheckDue(c.last_checked_at)) && ` ${competitors.filter((c) => recheckDue(c.last_checked_at)).length} aanbieder(s) langer dan ${RECHECK_DAYS} dagen niet gecontroleerd.`}
+          {competitors.some(due) && ` ${competitors.filter(due).length} aanbieder(s) langer dan ${RECHECK_DAYS} dagen niet gecontroleerd.`}
           <ActionForm action={recheckAll} submitLabel="Alles opnieuw controleren" submitClass="btn ai sm" pendingLabel="Pagina's ophalen…">
             <span />
           </ActionForm>
@@ -97,8 +104,12 @@ export function CompetitorPanel({
               <strong>{c.name}</strong>
               <small>{COMPETITOR_KINDS[c.kind].label}{c.origin === "ai" ? " · gevonden in bron" : ""}</small>
               <small>
-                {c.last_checked_at ? `laatst gecontroleerd ${new Date(c.last_checked_at).toLocaleDateString("nl-NL")}` : "nog niet gecontroleerd"}
-                {recheckDue(c.last_checked_at) && <span className="pill orange" style={{ marginLeft: 6 }}>controle aanbevolen</span>}
+                {c.last_checked_at
+                  ? `laatst gecontroleerd ${new Date(c.last_checked_at).toLocaleDateString("nl-NL")}`
+                  : checkable(c)
+                    ? "nog niet gecontroleerd"
+                    : "geen pagina om te controleren"}
+                {due(c) && <span className="pill orange" style={{ marginLeft: 6 }}>controle aanbevolen</span>}
                 {c.checks?.some((x) => x.missing) && <span className="pill coral" style={{ marginLeft: 6 }}>citaat verdwenen</span>}
               </small>
             </div>
@@ -160,15 +171,19 @@ export function CompetitorPanel({
                 <span className={`pill ${COMPETITOR_KINDS[current.kind].pill}`}>{COMPETITOR_KINDS[current.kind].label}</span>
                 {current.website && <a className="text-link" href={current.website} target="_blank" rel="noreferrer noopener">{current.website}</a>}
                 <div className="tiny">
-                  {current.last_checked_at ? `Laatst gecontroleerd ${new Date(current.last_checked_at).toLocaleString("nl-NL")}` : "Nog niet gecontroleerd"}
-                  {recheckDue(current.last_checked_at) ? ` · controle aanbevolen (ouder dan ${RECHECK_DAYS} dagen)` : ""}
+                  {current.last_checked_at
+                    ? `Laatst gecontroleerd ${new Date(current.last_checked_at).toLocaleString("nl-NL")}`
+                    : checkable(current)
+                      ? "Nog niet gecontroleerd"
+                      : "Geen maandelijkse controle: er is geen website of bron om op te halen"}
+                  {due(current) ? ` · controle aanbevolen (ouder dan ${RECHECK_DAYS} dagen)` : ""}
                 </div>
                 {(current.checks ?? []).map((x) => (
                   <div key={x.url} className={x.missing ? "form-error" : "note"} style={{ marginTop: 0 }}>
                     {x.url}: {x.note}
                   </div>
                 ))}
-                {canWrite && recheckActions?.[current.id] && (
+                {canWrite && recheckActions?.[current.id] && checkable(current) && (
                   <ActionForm action={recheckActions[current.id]} submitLabel="Opnieuw controleren" submitClass="btn ai sm" pendingLabel="Pagina's ophalen…">
                     <span />
                   </ActionForm>
