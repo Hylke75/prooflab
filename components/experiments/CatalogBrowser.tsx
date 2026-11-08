@@ -58,6 +58,9 @@ export function CatalogBrowser({
   const shown = useMemo(() => filterCatalog(methods, f), [methods, f]);
   const open = methods.find((m) => m.id === openId) ?? null;
   const active = Object.entries(f).filter(([, v]) => v !== "").length;
+  // UX-review 17: op mobiel staan de zeven filters ingeklapt achter "Filters (n actief)"; zoeken blijft zichtbaar.
+  const activeFilters = Object.entries(f).filter(([k, v]) => k !== "query" && v !== "").length;
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const set = <K extends keyof CatalogFilter>(k: K, v: string) => setF((x) => ({ ...x, [k]: v }));
 
   const select = (key: keyof CatalogFilter, label: string, options: [string, string][]) => (
@@ -86,12 +89,21 @@ export function CatalogBrowser({
               autoComplete="off"
             />
           </div>
+          <button
+            type="button"
+            className="btn white sm catalog-filter-toggle"
+            aria-expanded={filtersOpen}
+            aria-controls={`${uid}-filters`}
+            onClick={() => setFiltersOpen((o) => !o)}
+          >
+            {activeFilters ? `Filters (${activeFilters} actief)` : "Filters"} <Icon name="chevron" size="sm" />
+          </button>
           <button type="button" className="btn white sm" onClick={() => setF(EMPTY)} disabled={active === 0} aria-describedby={active === 0 ? `${uid}-nofilter` : undefined}>
             Wis filters{active ? ` (${active})` : ""}
           </button>
         </div>
         {active === 0 && <span id={`${uid}-nofilter`} className="sr-only">Er staan geen filters aan.</span>}
-        <div className="catalog-filters">
+        <div className={`catalog-filters${filtersOpen ? " open" : ""}`} id={`${uid}-filters`}>
           {select("category", "Categorie", Object.entries(CATEGORIES).map(([k, v]) => [k, v.label]))}
           {select("lens", "Wat het toetst", Object.entries(LENSES).map(([k, v]) => [k, v.label]))}
           {select("step", "Bewijssterkte", EVIDENCE_SCALE.map((s) => [s.step, s.label]))}

@@ -32,3 +32,15 @@
 @media(prefers-reduced-motion:reduce){.catalog-card,.catalog-card:hover{transition:none;transform:none}}
 @media(max-width:1160px){.catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.catalog-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.catalog-grid,.catalog-filters,.catalog-facts,.catalog-search{grid-template-columns:minmax(0,1fr)}}
+/* UX-review 17: op mobiel de filters ingeklapt achter "Filters (n actief)", zodat de methodes direct zichtbaar zijn. */
+.catalog-filter-toggle{display:none}
+@media(max-width:850px){
+  .catalog-search{display:flex;flex-wrap:wrap;align-items:center}
+  .catalog-search>:first-child{flex:1 1 100%}
+  .catalog-filter-toggle{display:inline-flex;min-height:44px}
+  .catalog-filter-toggle svg{transition:transform var(--dur) ease-out}
+  .catalog-filter-toggle[aria-expanded="true"] svg{transform:rotate(180deg)}
+  .catalog-filters:not(.open){display:none}
+}
+@media(max-width:560px){.catalog-grid{gap:10px}.catalog-card{padding:14px 16px;gap:6px}}
+@media(max-width:850px) and (prefers-reduced-motion:reduce){.catalog-filter-toggle svg{transition:none}}
