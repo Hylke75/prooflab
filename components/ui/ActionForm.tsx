@@ -1,6 +1,6 @@
 "use client";
 
-import { cloneElement, createContext, startTransition, useActionState, useContext, useEffect, useRef } from "react";
+import { cloneElement, createContext, isValidElement, startTransition, useActionState, useContext, useEffect, useRef } from "react";
 import { FormPendingOverlay, SavingOverlay } from "@/components/ui/SavingOverlay";
 import { CopyButton } from "@/components/survey/CopyButton";
 
@@ -145,14 +145,15 @@ export function Field({
   const errId = `${id}-err`;
   const hintId = `${id}-hint`;
   const describedBy = [error ? errId : null, hint ? hintId : null].filter(Boolean).join(" ") || undefined;
-  const control = cloneElement(children, {
+  const child = resolveLazyElement(children);
+  const control = isValidElement<FieldControlProps>(child) ? cloneElement(child, {
     id,
     name,
     required: required || undefined,
     "aria-required": required || undefined,
     "aria-invalid": error ? true : undefined,
     "aria-describedby": describedBy,
-  });
+  }) : (child as React.ReactNode);
   return (
     <div className={className || undefined}>
       <label htmlFor={id} className={labelClassName}>
@@ -164,6 +165,21 @@ export function Field({
       {hint && <p className="field-hint" id={hintId}>{hint}</p>}
     </div>
   );
+}
+
+// Een invoerveld dat een servercomponent als children aan Field geeft, kan in productie als "lazy" verwijzing
+// aankomen (React Flight zet grotere of herhaalde elementen apart). cloneElement op zo'n verwijzing geeft een
+// element zonder type ("Element type is invalid", React #130) en liet de pagina crashen. Pak de verwijzing eerst
+// uit; lukt dat niet, toon het veld dan zonder extra eigenschappen in plaats van te crashen.
+const REACT_LAZY = Symbol.for("react.lazy");
+type LazyNode = { $$typeof: symbol; _payload: unknown; _init: (payload: unknown) => unknown };
+export function resolveLazyElement(node: unknown): unknown {
+  let current = node;
+  for (let i = 0; i < 5 && current && typeof current === "object" && (current as LazyNode).$$typeof === REACT_LAZY; i++) {
+    const lazy = current as LazyNode;
+    current = lazy._init(lazy._payload);
+  }
+  return current;
 }
 
 // Zichtbare markering van een verplicht veld, in de tekst van het label (dus ook voorgelezen).
