@@ -85,6 +85,7 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   // 2. Source + verified claim
   await page.getByRole("tab", { name: "Bronnen" }).click();
   await page.getByLabel("Titel van de bron", { exact: true }).fill("Vestigingen van bedrijven; bedrijfstak, regio");
+  await page.getByLabel("Type bron", { exact: true }).selectOption("official_statistic");
   await page.getByLabel("Uitgever / instelling", { exact: true }).fill("CBS");
   await page.getByLabel("Publicatie- of peildatum", { exact: true }).fill("2026-05-01");
   await page.getByLabel("Relevant fragment (letterlijk overgenomen)", { exact: true }).fill("In 2026 telde Nederland 41.230 vestigingen in de branche congres- en beursorganisatie.");
