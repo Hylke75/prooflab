@@ -61,6 +61,8 @@ test("Snel ↔ Grondig: nieuw dossier op Snel, details pas in Grondig, de stand 
 
   // Aannames in Snel: een link naar de rekenwijze in plaats van de hele uitleg; zelf toevoegen blijft.
   await page.goto(`${ideaUrl}/assumptions`);
+  // Wacht tot de pagina interactief is: een klik vóór de hydratatie verstuurt het formulier niet.
+  await page.waitForLoadState("networkidle");
   const seed = page.getByRole("button", { name: /Stel aannames voor|Begin met de standaardset/ });
   if (await seed.isVisible()) await seed.click();
   await expect(page.getByRole("heading", { name: "Risicokaart" })).toBeVisible({ timeout: 60_000 });

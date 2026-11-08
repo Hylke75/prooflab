@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { setDetailLevel } from "./intake";
+import { createIdeaViaIntake, dutchDate, isoDate } from "./intake";
 
 // Fase B6: pagina 1 van het rapport is het beslisblad. Een vers dossier zonder besluit en zonder bewijs toont
 // "Nog niet beslisbaar" met de juiste ontbrekende punten; het volledige dossier volgt als bijlage. Daarnaast: één
@@ -28,29 +28,14 @@ async function login(page: Page) {
 
 // Een vers dossier via de intake (zoals in journey.spec.ts; fase B3 kan de intake korter maken).
 async function createIdea(page: Page): Promise<string> {
-  await page.goto("/app/ideas/new");
-  await page.getByRole("button", { name: "Lanceren we dit aanbod in het eerste kwartaal met twee consultants, of stoppen we?" }).click();
-  await page.getByLabel("Hoeveel (euro)", { exact: true }).fill("25000");
-  await page.getByLabel("Uiterlijke beslisdatum", { exact: true }).fill(new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10));
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByLabel("Geslaagd als…", { exact: true }).fill("Zes maanden na het besluit hebben minstens 10 eventbureaus een betaald abonnement.");
-  await page.getByLabel("Wat meet je?", { exact: true }).fill("betalende eventbureaus");
-  await page.getByLabel("Doelwaarde", { exact: true }).fill("10");
-  await page.getByLabel("Omzetdoel (€)", { exact: true }).fill("15000");
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByLabel("Korte naam", { exact: true }).fill(`TEST B6 beslisblad ${Date.now()}`);
-  await page.getByLabel("Mijn idee", { exact: true }).fill("Een AI-assistent die zakelijke eventmanagers helpt binnen minuten een passende locatie te vinden.");
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: "Zakelijke klanten (B2B)" }).click();
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: /Nederland/ }).click();
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: "Nieuw product" }).click();
-  await page.getByLabel("Opdrachtgever", { exact: true }).selectOption("none");
-  await page.getByRole("button", { name: "Start de marktverkenning" }).click();
-  await page.waitForURL(/\/research/);
-  await setDetailLevel(page, "Grondig");
-  return page.url().replace(/\/research.*$/, "");
+  // Fase B3: de intake in drie vragen en één bevestiging (gedeelde helper, zoals journey.spec.ts).
+  return createIdeaViaIntake(page, {
+    idea: "Een AI-assistent die zakelijke eventmanagers helpt binnen minuten een passende locatie te vinden.",
+    decision: `Lanceren we dit aanbod met twee consultants en € 25,000, of stoppen we, vóór ${dutchDate(60)}?`.replace(/,(?=\d{3})/g, "."),
+    uncertainty: "Of de doelgroep hier echt voor wil betalen in plaats van het zelf te blijven doen.",
+    fill: { "Korte naam": `TEST B6 beslisblad ${Date.now()}`, "Doelgroep": "zakelijke eventmanagers", "Inzet (euro)": "25000", "Uiterlijke beslisdatum": isoDate(60), "Wat meet je?": "betalende eventbureaus", "Doelwaarde": "10", "Minimumbedrag per klant": "1500" },
+    select: { "Soort klant": "Zakelijke klanten (B2B)", "Regio": "Nederland", "Type project": "new_product", "Opdrachtgever": "none" },
+  });
 }
 
 test("B6: beslisblad op pagina 1 met 'Nog niet beslisbaar' en de ontbrekende punten", async ({ page }) => {
