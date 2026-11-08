@@ -316,9 +316,9 @@ export function SizingPanel({
           )}
           <div className="divider" />
           <div className="kpi-row" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>
-            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="tam">TAM</Term> (aantal)</p><strong className="num">{int(result.tamCount)}</strong></div>
-            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="sam">SAM</Term> (aantal)</p><strong className="num">{int(result.samCount)}</strong></div>
-            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="som">SOM</Term> (klanten)</p><strong className="num">{int(result.somCount)}</strong></div>
+            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="tam">TAM</Term> (aantal)</p><strong className="num">{result.countsKnown.tam ? int(result.tamCount) : "onbekend"}</strong></div>
+            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="sam">SAM</Term> (aantal)</p><strong className="num">{result.countsKnown.sam ? int(result.samCount) : "onbekend"}</strong></div>
+            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="som">SOM</Term> (klanten)</p><strong className="num">{result.countsKnown.som ? int(result.somCount) : "onbekend"}</strong></div>
           </div>
           <p style={{ color: "var(--color-on-dark-muted)", fontSize: 14, marginTop: 16 }}>Formule</p>
           <div className="calc-formula">{result.formula} = {notEstablished ? "niet vastgesteld" : eur(result.somRevenue)}</div>

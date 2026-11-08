@@ -79,7 +79,7 @@ export function CompetitorPanel({
         <div className="note" style={{ marginTop: 0, marginBottom: 14 }}>
           <strong>Maandelijkse controle.</strong> ProofLab haalt de bronpagina&apos;s en websites opnieuw op en controleert of de citaten en prijzen er
           nog letterlijk staan. Geen AI-oordeel; verdwenen citaten maken een bevinding &quot;verouderd&quot;, er wordt niets verwijderd.
-          {competitors.some(due) && ` ${competitors.filter(due).length} aanbieder(s) langer dan ${RECHECK_DAYS} dagen niet gecontroleerd.`}
+          {competitors.some(due) && ` ${competitors.filter(due).length} ${competitors.filter(due).length === 1 ? "aanbieder" : "aanbieders"} langer dan ${RECHECK_DAYS} dagen niet gecontroleerd.`}
           <ActionForm action={recheckAll} submitLabel="Alles opnieuw controleren" submitClass="btn ai sm" pendingLabel="Pagina's ophalen…">
             <span />
           </ActionForm>

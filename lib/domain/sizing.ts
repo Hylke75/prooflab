@@ -67,6 +67,8 @@ export type SizingResult = {
   established: boolean; // base count backed by a verified or estimated claim
   // Gebruikerstest D5: factoren die op 0 staan of ontbreken (labels). Dan is de uitkomst niet vastgesteld.
   missing: string[];
+  // Of het aantal klanten per laag te berekenen is; anders toont de app "onbekend" in plaats van 0.
+  countsKnown: { tam: boolean; sam: boolean; som: boolean };
   label: string;
 };
 
@@ -110,6 +112,11 @@ export function computeSizing(model: SizingModel, factors: Factor[]): SizingResu
     provenance: { sourced, assumed: defs.length - sourced, total: defs.length },
     established,
     missing,
+    countsKnown: {
+      tam: known(base),
+      sam: known(base) && known(get("fit_pct")) && known(get("reach_pct")),
+      som: known(base) && known(get("fit_pct")) && known(get("reach_pct")) && known(get("winnable_pct")),
+    },
     label: !established
       ? "Verkennend scenario; marktomvang niet vastgesteld"
       : missing.length
