@@ -64,7 +64,8 @@ test("notities en documenten per stap: toevoegen, bewerken, uploaden en download
   // HTML in een notitie is gewone tekst.
   await expect(block.getByText("<script>alert(1)</script>")).toBeVisible();
 
-  // Bewerken.
+  // Bewerken. "bewerkt" verschijnt pas als de wijziging meer dan een seconde na het aanmaken komt.
+  await page.waitForTimeout(1200);
   await block.getByRole("button", { name: /Bewerk notitie/ }).click();
   await block.getByLabel("Tekst van de notitie (verplicht)", { exact: true }).fill("Leden vragen vooral om tijdwinst bij woningteksten.");
   await block.getByRole("button", { name: "Wijziging opslaan" }).click();

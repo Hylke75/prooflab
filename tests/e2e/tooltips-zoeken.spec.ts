@@ -10,6 +10,7 @@ test.skip(!email || !password, "E2E_EMAIL en E2E_PASSWORD zijn niet gezet");
 
 async function login(page: Page) {
   await page.goto("/login");
+  await page.waitForLoadState("networkidle");
   await page.getByLabel("E-mailadres", { exact: true }).fill(email);
   await page.getByLabel("Wachtwoord", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Inloggen", exact: true }).click();
@@ -42,6 +43,7 @@ test("Tooltips bij vaktermen: hover, toetsenbord, Escape; labels blijven gelijk"
   await login(page);
   const ideaUrl = await createIdea(page);
   await page.goto(`${ideaUrl}/assumptions`);
+  await page.waitForLoadState("networkidle");
   await page.getByRole("button", { name: /Begin met de standaardset|Stel aannames voor/ }).click();
   await expect(page.getByRole("heading", { name: "Risicokaart" })).toBeVisible();
 
@@ -56,6 +58,7 @@ test("Tooltips bij vaktermen: hover, toetsenbord, Escape; labels blijven gelijk"
 
   // Test Card: toetsenbord (focus) opent, Escape sluit; het label van het veld verandert niet.
   await page.goto(`${ideaUrl}/experiments`);
+  await page.waitForLoadState("networkidle");
   await page.getByRole("radio", { name: /Prijs-\/aanbodtest/ }).click();
   const card = page.getByRole("form", { name: "Test Card" });
   await expect(card.getByLabel("Het klopt als ≥ (%) (verplicht)", { exact: true })).toBeVisible();
@@ -78,6 +81,7 @@ test("Zoeken binnen een dossier: sneltoets, markering, pijltjes en Enter, lege s
   await login(page);
   const ideaUrl = await createIdea(page);
   await page.goto(`${ideaUrl}/assumptions`);
+  await page.waitForLoadState("networkidle");
   await page.getByRole("button", { name: /Begin met de standaardset|Stel aannames voor/ }).click();
   await expect(page.getByRole("heading", { name: "Risicokaart" })).toBeVisible();
   // Een eigen aanname met een unieke zoekterm.
@@ -87,6 +91,7 @@ test("Zoeken binnen een dossier: sneltoets, markering, pijltjes en Enter, lege s
 
   // Sneltoets "/" opent het venster vanaf een andere pagina; de focus staat in het zoekveld.
   await page.goto(ideaUrl);
+  await page.waitForLoadState("networkidle");
   await page.locator("body").press("/");
   const dialog = page.getByRole("dialog", { name: "Zoeken in dit dossier" });
   await expect(dialog).toBeVisible();
@@ -126,6 +131,7 @@ test("@mobile tooltips werken met tikken en zoeken past op een smal scherm", asy
   await login(page);
   const ideaUrl = await createIdea(page);
   await page.goto(`${ideaUrl}/assumptions`);
+  await page.waitForLoadState("networkidle");
   await page.getByRole("button", { name: /Begin met de standaardset|Stel aannames voor/ }).click();
   const critical = page.getByRole("button", { name: "kritieke aanname", exact: true });
   await critical.tap();
