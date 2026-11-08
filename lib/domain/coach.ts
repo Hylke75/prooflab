@@ -371,8 +371,9 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
 export function coachFor(
   page: CoachPage,
   p: IdeaProgress | null,
-  opts: { audience?: "consultant" | "client"; isClientDecider?: boolean; currentIdea?: { id: string; title: string } | null } = {},
+  opts: { audience?: "consultant" | "client"; isClientDecider?: boolean; currentIdea?: { id: string; title: string } | null; noWorkspace?: boolean } = {},
 ): CoachData {
+  if (opts.noWorkspace) return SETUP_COACH;
   const audience = opts.audience ?? "consultant";
   if (audience === "client") return clientCoach(page, p, !!opts.isClientDecider);
   const [title, copy] = PAGE_COPY[page];
@@ -424,6 +425,17 @@ export function coachFor(
     audience,
   };
 }
+
+// UX-review 22: nog geen werkruimte en geen gedeeld dossier. Wie hier staat, begint meestal zelf (consultant); een
+// opdrachtgever ziet een uitgenodigd dossier vanzelf. Daarom geen "uw dossier" of "u kijkt mee", maar de eerste stap.
+const SETUP_COACH: CoachData = {
+  title: "Welkom bij ProofLab.",
+  copy: "Maak eerst je werkruimte aan: de plek voor je klanten, ideeën en onderzoeksdossiers. Daarna begin je met één idee en de beslissing die het moet onderbouwen.",
+  insightTitle: "Uitgenodigd als opdrachtgever?",
+  insight: "Dan heb je geen eigen werkruimte nodig. Log in met het e-mailadres waarop je de uitnodiging kreeg; het dossier verschijnt dan vanzelf.",
+  suggestions: [{ label: "Wat betekenen de begrippen?", href: "/app/help#begrippen", icon: "info" }],
+  audience: "consultant",
+};
 
 function clientCoach(page: CoachPage, p: IdeaProgress | null, isClientDecider: boolean): CoachData {
   const [title, copy, insight] = CLIENT_COPY[page];

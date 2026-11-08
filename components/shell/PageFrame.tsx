@@ -56,6 +56,8 @@ export async function PageFrame({
   // The trajectory coach's open notes for this dossier; consultants also trigger a (throttled) review.
   const notes = ideaId && access ? await loadOpenNotes(ideaId, audience) : undefined;
   // Op werkruimtepagina's verwijst de coach naar het lopende idee (het laatst bijgewerkte van de werkruimte).
+  // UX-review 22: zonder werkruimte en zonder gedeeld dossier is dit iemand die begint, geen opdrachtgever.
+  const noWorkspace = !ws.org && !ideaId && ((await supabase.from("ideas").select("id", { count: "exact", head: true })).count ?? 0) === 0;
   const currentIdea =
     !ideaId && ws.org ? ((await supabase.from("ideas").select("id, title").eq("org_id", ws.org.id).order("updated_at", { ascending: false }).limit(1).maybeSingle()).data ?? null) : null;
   // Tabbladen onder een stap (Markt: Marktverkenning | Bronnen & koppelingen; Besluit: Bewijs & besluit |
@@ -105,7 +107,7 @@ export async function PageFrame({
           </section>
         </div>
       </main>
-      <Coach data={coachFor(coach, progress, { audience, isClientDecider: access?.isClientDecider, currentIdea })} aiConnected={aiConfigured()} notes={notes} collapsed={coachCollapsed} step={noteStep} />
+      <Coach data={coachFor(coach, progress, { audience, isClientDecider: access?.isClientDecider, currentIdea, noWorkspace })} aiConnected={aiConfigured()} notes={notes} collapsed={coachCollapsed} step={noteStep} />
       {ideaId && access?.canWrite && <CoachWatch ideaId={ideaId} />}
       {ideaId && progress && <SyncIdeaSteps ideaId={ideaId} states={stepStates(progress)} />}
     </ViewModeProvider>
