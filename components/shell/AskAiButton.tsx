@@ -9,7 +9,7 @@ export function AskAiButton() {
   return (
     <button
       type="button"
-      className="btn white sm"
+      className="btn white sm ask-ai-btn"
       onClick={() => {
         openCoach();
         window.setTimeout(() => {
@@ -19,7 +19,7 @@ export function AskAiButton() {
         }, 250);
       }}
     >
-      <Icon name="spark" size="sm" /> Vraag de AI
+      <Icon name="spark" size="sm" /> <span>Vraag de AI</span>
     </button>
   );
 }
