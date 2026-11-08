@@ -6,7 +6,7 @@ import { ActionForm, Field, type FormState } from "@/components/ui/ActionForm";
 import { DECISIONS, type DecisionAction } from "@/lib/domain/labels";
 import { DEVIATION_MIN_CHARS, deviates, deviationLabel } from "@/lib/domain/decision-rule";
 import { EXTEND_WEEK_OPTIONS } from "@/lib/domain/extension";
-import type { DecisionBlocker, DecisionStepKey } from "@/lib/domain/forecast";
+import type { DecisionBlocker, DecisionStepKey, DecisionStepStatus } from "@/lib/domain/forecast";
 
 const STEP_LINKS: Record<DecisionStepKey, string> = {
   definitie: "Leg vast wanneer dit idee geslaagd is →",
@@ -35,7 +35,7 @@ export function DecisionSelector({
   // Golf B, punt 20: per keuze waarom die nu niet kan (verlengde testfase loopt, of al gehad).
   blocked?: Partial<Record<DecisionAction, string>>;
   // Gebruikerstest D12: stap 1 vóór het besluit (uitkomst, basispercentage, eigen voorspelling) en de compacte invoer.
-  forecastStep?: { done: boolean; missing: DecisionBlocker[] } | null;
+  forecastStep?: { done: boolean; status: DecisionStepStatus; missing: DecisionBlocker[] } | null;
   forecast?: React.ReactNode;
 }) {
   // B6: "Verder testen" en de verlengde testfase zijn één keuze met een duur; de server kiest hoe die wordt opgeslagen.
@@ -46,8 +46,13 @@ export function DecisionSelector({
     <>
       {forecastStep && (
         <ol className="decision-steps" aria-label="Stappen naar het besluit">
-          <li className={forecastStep.done ? "done" : "open"}>
-            <strong>1. Voorspelling</strong> <span className={`pill ${forecastStep.done ? "green" : "orange"}`}>{forecastStep.done ? "✓ klaar" : "open"}</span>
+          <li className={forecastStep.status === "done" ? "done" : forecastStep.status === "open" ? "open" : "later"}>
+            <strong>1. Voorspelling</strong>{" "}
+            {/* Alleen een vinkje als er echt voorspeld is; is het besluitmoment nog niet open, dan hoeft er nu niets. */}
+            <span className={`pill ${forecastStep.status === "done" ? "green" : forecastStep.status === "open" ? "orange" : "gray"}`}>
+              {forecastStep.status === "done" ? "✓ klaar" : forecastStep.status === "open" ? "open" : "volgt bij het besluit"}
+            </span>
+            {forecastStep.status === "later" && <span className="tiny">Je voorspelt zodra het besluitmoment open is (na de Reality Check); nu hoeft er niets.</span>}
             {forecastStep.missing.length > 0 && (
               <ul>
                 {forecastStep.missing.map((m) => (

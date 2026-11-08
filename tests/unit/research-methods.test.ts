@@ -3,7 +3,7 @@ import { auditGuide, auditQuestion, auditTranscript, guideSummary } from "@/lib/
 import { codingAcceptance, codingIsProposalOnly, supportAgreement } from "@/lib/domain/ai-quality";
 import { claimStatusWithSupport, keepAfterSupportCheck, type EvidenceWithSupport } from "@/lib/domain/support";
 import { isSignalSource, painAsAssumption, topPains, verifySignalGroups, type SignalExcerpt } from "@/lib/domain/customer-signals";
-import { priceOnPage, recheckChanges, recheckDue, recheckQuotes } from "@/lib/domain/recheck";
+import { competitorRecheckDue, priceOnPage, recheckApplies, recheckChanges, recheckDue, recheckQuotes } from "@/lib/domain/recheck";
 import { honestyWarnings, prepareVariants } from "@/lib/domain/copy-honesty";
 import { NEUTRAL_INTERVIEW_GUIDE } from "@/lib/domain/labels";
 
@@ -189,6 +189,22 @@ describe("competitor recheck", () => {
     expect(recheckDue(null, now)).toBe(true);
     expect(recheckDue("2026-10-20T10:00:00Z", now)).toBe(false);
     expect(recheckDue("2026-09-20T10:00:00Z", now)).toBe(true);
+  });
+
+  it("counts a never-checked competitor from its creation date, and skips what cannot be fetched", () => {
+    const base = { kind: "direct", website: "https://voorbeeld.nl", hasLinkedSource: false, last_checked_at: null };
+    // Net toegevoegd: nog niet "langer dan 30 dagen niet gecontroleerd".
+    expect(competitorRecheckDue({ ...base, created_at: "2026-10-30T10:00:00Z" }, now)).toBe(false);
+    expect(competitorRecheckDue({ ...base, created_at: "2026-09-01T10:00:00Z" }, now)).toBe(true);
+    // Een eerdere controle gaat voor de aanmaakdatum.
+    expect(competitorRecheckDue({ ...base, created_at: "2026-01-01T10:00:00Z", last_checked_at: "2026-10-20T10:00:00Z" }, now)).toBe(false);
+    // Zonder datum: onbekend, dus controle aanbevolen.
+    expect(competitorRecheckDue({ ...base, created_at: null }, now)).toBe(true);
+    // Niets doen en alternatieven zonder website of bron: geen controle.
+    expect(recheckApplies({ kind: "status_quo", website: "https://x.nl", hasLinkedSource: true })).toBe(false);
+    expect(recheckApplies({ kind: "alternative", website: null, hasLinkedSource: false })).toBe(false);
+    expect(recheckApplies({ kind: "alternative", website: " ", hasLinkedSource: true })).toBe(true);
+    expect(competitorRecheckDue({ ...base, kind: "alternative", website: null, created_at: "2026-01-01T10:00:00Z" }, now)).toBe(false);
   });
 
   it("finds quotes on the fresh page and lists what changed", () => {

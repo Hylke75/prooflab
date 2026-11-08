@@ -12,6 +12,27 @@ export function recheckDue(lastCheckedAt: string | null | undefined, now: Date =
   return !Number.isFinite(t) || now.getTime() - t > days * 86_400_000;
 }
 
+// Wat een aanbieder of alternatief nodig heeft om de maandelijkse controle zinvol te maken.
+export type RecheckSubject = {
+  kind: string;
+  website: string | null;
+  // Een gekoppelde bevinding (met bron-URL's) kan ook opnieuw worden opgehaald.
+  hasLinkedSource: boolean;
+  last_checked_at: string | null;
+  created_at?: string | null;
+};
+
+// "Niets doen / huidige werkwijze" en alternatieven zonder website of bron hebben geen pagina om op te halen: geen controle.
+export function recheckApplies(c: Pick<RecheckSubject, "kind" | "website" | "hasLinkedSource">): boolean {
+  return c.kind !== "status_quo" && (!!c.website?.trim() || c.hasLinkedSource);
+}
+
+// Controle aanbevolen: alleen als er iets op te halen is, en langer dan RECHECK_DAYS geleden gecontroleerd. Nooit
+// gecontroleerd telt vanaf de aanmaakdatum, zodat een net toegevoegde aanbieder niet meteen "te oud" heet.
+export function competitorRecheckDue(c: RecheckSubject, now: Date = new Date(), days = RECHECK_DAYS): boolean {
+  return recheckApplies(c) && recheckDue(c.last_checked_at ?? c.created_at ?? null, now, days);
+}
+
 export type QuoteRecheck = { id: string; quote: string; found: boolean };
 
 export function recheckQuotes(quotes: { id: string; quote: string }[], pageText: string): QuoteRecheck[] {

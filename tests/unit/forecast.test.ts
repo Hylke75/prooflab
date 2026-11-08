@@ -221,8 +221,16 @@ describe("decision gate", () => {
     expect(decisionBlocker(progress({ baseRateChosen: false }))).toMatchObject({ step: "basispercentage", href: "/app/ideas/i1/outcome#basispercentage" });
     expect(decisionSteps(progress({ baseRateChosen: false }))?.missing.map((m) => m.step)).toEqual(["basispercentage", "voorspelling"]);
     expect(decisionBlocker(progress({}))).toMatchObject({ step: "voorspelling", href: "#voorspelling" });
-    expect(decisionSteps(progress({ ownMoments: ["decision"] }))).toEqual({ done: true, missing: [] });
+    expect(decisionSteps(progress({ ownMoments: ["decision"] }))).toEqual({ done: true, status: "done", missing: [] });
+    expect(decisionSteps(progress({}))?.status).toBe("open");
     expect(decisionSteps(progress(undefined))).toBeNull();
+  });
+
+  it("geeft geen vinkje als er nooit voorspeld is omdat het besluitmoment nog niet open is", () => {
+    // Geen Reality Check: het besluitmoment is niet open, er hoeft nu niets, maar er is ook niets gedaan.
+    expect(decisionSteps(progress({}, { latestRealityCheckAt: null }))).toEqual({ done: true, status: "later", missing: [] });
+    // Besluitmoment al gesloten zonder eigen voorspelling: evenmin "klaar".
+    expect(decisionSteps(progress({ outcomeDue: "2027-02-01", today: "2026-12-01" }))?.status).toBe("later");
   });
 
   it("does not block without the prediction schema, after resolution, or once the decision moment has closed", () => {

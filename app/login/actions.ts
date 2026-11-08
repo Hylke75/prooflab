@@ -5,7 +5,8 @@ import { z } from "zod";
 import { supabaseAnon, supabaseServer } from "@/lib/supabase/server";
 import { env } from "@/lib/env";
 
-export type LoginState = { error: string | null; info: string | null };
+// email: het ingevulde adres, zodat het na een fout blijft staan (het wachtwoord niet).
+export type LoginState = { error: string | null; info: string | null; email?: string };
 
 const Creds = z.object({
   email: z.string().trim().toLowerCase().email("Vul een geldig e-mailadres in."),
@@ -19,17 +20,18 @@ function safeNext(next: string | undefined): string {
 
 export async function signIn(_: LoginState, form: FormData): Promise<LoginState> {
   const parsed = Creds.safeParse(Object.fromEntries(form));
-  if (!parsed.success) return { error: parsed.error.issues[0].message, info: null };
+  const typed = String(form.get("email") ?? "").trim().slice(0, 320);
+  if (!parsed.success) return { error: parsed.error.issues[0].message, info: null, email: typed };
   const supabase = await supabaseServer();
   const { error } = await supabase.auth.signInWithPassword({ email: parsed.data.email, password: parsed.data.password });
-  if (error) return { error: "Inloggen mislukt. Controleer je e-mailadres en wachtwoord.", info: null };
+  if (error) return { error: "Inloggen mislukt. Controleer je e-mailadres en wachtwoord.", info: null, email: typed };
   await supabase.rpc("claim_invitations");
   redirect(safeNext(parsed.data.next));
 }
 
 export async function sendMagicLink(_: LoginState, form: FormData): Promise<LoginState> {
   const email = z.string().trim().toLowerCase().email().safeParse(form.get("email"));
-  if (!email.success) return { error: "Vul een geldig e-mailadres in.", info: null };
+  if (!email.success) return { error: "Vul een geldig e-mailadres in.", info: null, email: String(form.get("email") ?? "").trim().slice(0, 320) };
   const next = safeNext(String(form.get("next") ?? ""));
   const supabase = await supabaseServer();
   // ProofLab works by invitation: a new account is only created for invited or allowlisted addresses.
@@ -39,5 +41,5 @@ export async function sendMagicLink(_: LoginState, form: FormData): Promise<Logi
     email: email.data,
     options: { emailRedirectTo: `${env.appUrl}/auth/callback?next=${encodeURIComponent(next)}`, shouldCreateUser: mayCreate === true },
   });
-  return { error: null, info: `Als ${email.data} toegang heeft tot ProofLab, staat er binnen een minuut een inloglink in je mailbox.` };
+  return { error: null, info: `Als ${email.data} toegang heeft tot ProofLab, staat er binnen een minuut een inloglink in je mailbox.`, email: email.data };
 }

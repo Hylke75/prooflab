@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState } from "react";
-import { layoutRiskPoints } from "@/lib/domain/risk-layout";
+import { DEFAULT_MAP, layoutRiskPoints, type MapSize } from "@/lib/domain/risk-layout";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { ASSUMPTION_CATEGORIES, ASSUMPTION_STATUS, CLAIM_STATUS, type AssumptionCategory, type AssumptionStatus, type ClaimStatus } from "@/lib/domain/labels";
 import { applyCap, bandFromShift, capReason, deskVerdict, DESK_SKIP_REASON, explainContribution, explainMerged, probabilityFromShift, type AssumptionProbability, type RegisterItem } from "@/lib/domain/evidence";
@@ -104,6 +104,23 @@ export function RiskBoard({
   const storedPrior = (id: string | null) => assumptions.find((a) => a.id === id)?.probability.prior ?? 0.5;
   const [prior, setPrior] = useState(storedPrior(firstId));
   const popRef = useRef<HTMLDivElement>(null);
+  // De indeling rekent in pixels van de gemeten kaart, zodat stippen nooit over elkaar vallen (ook niet tegen de rand).
+  const gridRef = useRef<HTMLDivElement>(null);
+  const hasPoints = assumptions.length > 0;
+  const [mapSize, setMapSize] = useState<MapSize>(DEFAULT_MAP);
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const measure = () => {
+      const next = { width: el.clientWidth, height: el.clientHeight };
+      if (next.width > 0 && next.height > 0) setMapSize((cur) => (cur.width === next.width && cur.height === next.height ? cur : next));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hasPoints]);
   const clusterBtn = useRef<HTMLButtonElement | null>(null);
   // Gebruikerstest A7: kiezen of op later zetten is direct zichtbaar (teller, lijsten, knop); bij een fout valt de keuze
   // vanzelf terug naar wat de server bewaarde.
@@ -118,7 +135,10 @@ export function RiskBoard({
     setPrior(storedPrior(id));
   };
   // The horizontal axis is the estimated probability: more likely true = further left.
-  const placed = layoutRiskPoints(assumptions.map((a) => ({ id: a.id, importance: a.importance, evidence: a.probability.probability })));
+  const placed = layoutRiskPoints(
+    assumptions.map((a) => ({ id: a.id, importance: a.importance, evidence: a.probability.probability })),
+    mapSize,
+  );
   const openCluster = placed.find((p) => p.kind === "cluster" && p.key === cluster);
 
   useEffect(() => {
@@ -157,20 +177,14 @@ export function RiskBoard({
       </small>
     </button>
   );
-  // Centre stays at least 46px (horizontal) / 50px (vertical) from the frame, plus the ring radius of a spread group
-  // (gebruikerstest C7: tot acht punten in een ring), so a spread dot never leaves it.
-  const cx = (x: number, spread = 0) => `clamp(${46 + spread}px, ${x.toFixed(2)}%, calc(100% - ${46 + spread}px))`;
-  const cy = (y: number, spread = 0) => `clamp(${50 + spread}px, ${y.toFixed(2)}%, calc(100% - ${50 + spread}px))`;
-  const pos = (x: number, y: number, dx = 0, dy = 0, spread = 0) => ({
-    left: `calc(${cx(x, spread)} + ${dx}px)`,
-    top: `calc(${cy(y, spread)} + ${dy}px)`,
-  });
+  // Middens in pixels uit de indeling (randmarge en spreiding zitten daar al in).
+  const pos = (left: number, top: number) => ({ left: `${left.toFixed(1)}px`, top: `${top.toFixed(1)}px` });
   // De clusterpopup hangt bij het punt: eronder in de bovenste helft, erboven in de onderste helft, en schuift binnen de kaart.
-  const popPos = (x: number, y: number): React.CSSProperties => ({
-    left: `clamp(8px, calc(${cx(x)} - 130px), calc(100% - min(260px, 100% - 16px) - 8px))`,
-    ...(y <= 50
-      ? { top: `calc(${cy(y)} + 26px)`, maxHeight: `calc(100% - ${cy(y)} - 34px)` }
-      : { bottom: `calc(100% - ${cy(y)} + 26px)`, maxHeight: `calc(${cy(y)} - 34px)` }),
+  const popPos = (left: number, top: number): React.CSSProperties => ({
+    left: `clamp(8px, ${(left - 130).toFixed(1)}px, calc(100% - min(260px, 100% - 16px) - 8px))`,
+    ...(top <= mapSize.height / 2
+      ? { top: `${(top + 26).toFixed(1)}px`, maxHeight: `calc(100% - ${(top + 34).toFixed(1)}px)` }
+      : { bottom: `calc(100% - ${(top - 26).toFixed(1)}px)`, maxHeight: `${(top - 34).toFixed(1)}px` }),
   });
   return (
     <div className="grid-2">
@@ -180,7 +194,7 @@ export function RiskBoard({
           <span className="pill gray">{assumptions.length} aannames</span>
         </div>
         <p className="sub">Hoe hoger en verder naar rechts, hoe eerder je een aanname wilt onderzoeken.</p>
-        <div className="risk-grid" role="group" aria-label="Risicokaart: belangrijkheid tegen de geschatte kans dat de aanname klopt">
+        <div className="risk-grid" ref={gridRef} role="group" aria-label="Risicokaart: belangrijkheid tegen de geschatte kans dat de aanname klopt">
           <span className="axis-label top" aria-hidden="true">Belangrijk ↑</span>
           <span className="axis-label left" aria-hidden="true">Minder belangrijk</span>
           {placed.map((p) => {
@@ -195,7 +209,7 @@ export function RiskBoard({
                   key={p.key}
                   type="button"
                   className={`risk-dot cluster${hot ? " hot" : ""}`}
-                  style={{ ...pos(p.x, p.y), outline: containsCurrent ? "3px solid var(--color-heading)" : undefined }}
+                  style={{ ...pos(p.left, p.top), outline: containsCurrent ? "3px solid var(--color-heading)" : undefined }}
                   onClick={(e) => {
                     clusterBtn.current = e.currentTarget;
                     setCluster(cluster === p.key ? null : p.key);
@@ -215,7 +229,7 @@ export function RiskBoard({
                 key={a.id}
                 type="button"
                 className={`risk-dot${hot ? " hot" : ""}`}
-                style={{ ...pos(p.x, p.y, p.dx, p.dy, p.spread), outline: a.id === current.id ? "3px solid var(--color-heading)" : undefined }}
+                style={{ ...pos(p.left, p.top), outline: a.id === current.id ? "3px solid var(--color-heading)" : undefined }}
                 onClick={() => select(a.id)}
                 aria-label={`Aanname ${p.index + 1}: ${a.statement}. Geschatte kans dat dit klopt: ${formatProbability(a.probability.probability, calibrated).text}${calibrated ? "" : " (niet gekalibreerd)"}.`}
                 aria-pressed={a.id === current.id}
@@ -225,7 +239,7 @@ export function RiskBoard({
             );
           })}
           {openCluster && openCluster.kind === "cluster" && (
-            <div className="risk-pop" ref={popRef} role="group" aria-labelledby="risk-pop-title" style={popPos(openCluster.x, openCluster.y)}>
+            <div className="risk-pop" ref={popRef} role="group" aria-labelledby="risk-pop-title" style={popPos(openCluster.left, openCluster.top)}>
               <p className="risk-pop-title" id="risk-pop-title">{openCluster.ids.length} aannames op deze plek — kies er één</p>
               {openCluster.ids.map((id, i) => {
                 const a = assumptions.find((x) => x.id === id)!;
