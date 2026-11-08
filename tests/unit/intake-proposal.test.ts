@@ -143,8 +143,15 @@ describe("regelvoorstel voor het testdossier (zonder AI)", () => {
     expect(thin.proposal.decision_deadline).toBeNull();
     expect(thin.proposal.outcome_target).toBeNull();
     expect(thin.proposal.outcome_statement).toBeNull();
-    expect(thin.proposal.region).toBeNull();
+    // UX-review 14: zonder regio in de tekst staat Nederland klaar, gemarkeerd als standaard.
+    expect(thin.proposal.region).toBe("Nederland");
+    expect(thin.origin.region).toBe("default");
     expect(thin.proposal.sprint_weeks).toBe(5);
+  });
+
+  it("een naam zonder herkenbaar kernwoord krijgt de doelgroep erbij", () => {
+    const r = ruleProposal({ idea: "Een abonnementsdienst voor hondenbezitters in de stad, met verse voeding aan huis.", decision: "Gaan we hiermee door?", uncertainty: "Of ze willen betalen." }, TODAY);
+    expect(r.proposal.title).toBe("Abonnementsdienst voor hondenbezitters");
   });
 
   it("een korte deadline geeft een korte sprint", () => {

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { answerIntake, cardField, dutchDate, isoDate } from "./intake";
+import { answerIntake, cardField, dutchDate, isoDate, openMoreSettings } from "./intake";
 
 // Fase B3: de intake van het testdossier in drie schermen en één bevestiging, zonder gegevens dubbel in te vullen.
 // Het voorstel komt van de AI of (zonder sleutel) uit de regels; wat letterlijk in de tekst staat (inzet, datum,
@@ -50,6 +50,8 @@ test("B3: testdossier makelaars in 3 vragen en 1 bevestiging", async ({ page }) 
   await expect(cardField(page, "Prijs van het aanbod")).toHaveValue("€ 249 per maand");
   await expect(cardField(page, "Doelgroep")).toHaveValue(/NVM/);
   await expect(cardField(page, "Regio")).toHaveValue("Nederland");
+  // UX-review 14: de velden met een standaard staan ingeklapt onder "Meer instellen".
+  await expect(card.locator("details.intake-more")).not.toHaveAttribute("open");
   // De drie antwoorden staan erbij, aan te passen, maar niet als tweede invulveld.
   await expect(card.getByText(MAKELAARS.uncertainty)).toBeVisible();
   // Opdrachtgever: standaard geen (eigen idee).
@@ -68,14 +70,15 @@ test("B3: testdossier makelaars in 3 vragen en 1 bevestiging", async ({ page }) 
   await expect(card.locator("#s-title-err")).toContainText("Geef het idee een korte naam.");
   await expect(page).toHaveURL(/\/ideas\/new/);
 
-  // Een nieuwe opdrachtgever alleen na een expliciete keuze, en dan met naam.
+  // Een nieuwe opdrachtgever alleen na een expliciete keuze, en dan met naam (onder "Meer instellen").
+  await openMoreSettings(page);
   await cardField(page, "Opdrachtgever").selectOption("new");
   await expect(cardField(page, "Naam nieuwe opdrachtgever")).toBeVisible();
   await cardField(page, "Opdrachtgever").selectOption("none");
 
   // Velden die de AI of de regels niet konden invullen, vult de test (net als de consultant) in.
   await cardField(page, "Korte naam").fill(`TEST - AI-assistent makelaars ${Date.now()}`);
-  for (const [label, value] of [["Wat meet je?", "betalende NVM-kantoren"], ["Doelwaarde", "14"], ["Minimumbedrag per klant (€)", "249"]] as const) {
+  for (const [label, value] of [["Wat meet je?", "betalende NVM-kantoren"], ["Doelwaarde", "14"], ["Minimumbedrag per klant", "249"]] as const) {
     if (!(await cardField(page, label).inputValue())) await cardField(page, label).fill(value);
   }
   for (const [label, value] of [["Soort klant", "Zakelijke klanten (B2B)"], ["Type project", "new_product"]] as const) {

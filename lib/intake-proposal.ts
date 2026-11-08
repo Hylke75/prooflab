@@ -416,14 +416,17 @@ export function ruleProposal(a: IntakeAnswers, today: string): ProposalResult {
   const noun = audienceNoun(detail);
   const category = audienceCategory(`${detail ?? ""} ${idea}`);
   set("target_audience", category);
+  // UX-review 14: zonder regio in de tekst is Nederland de standaard (zichtbaar als "Standaard", aan te passen).
   const region = regionFromText(all);
-  set("region", region.region);
+  set("region", region.region ?? "Nederland", region.region ? "text" : "default");
   set("region_detail", region.detail);
   // Gebruikerstest D7: geen MKB-branche bij een publieke doelgroep of consumenten.
   const sector = sectorFromText(`${detail ?? ""} ${idea}`);
   set("sector_template", sector === "smb" && category && category !== "Zakelijke klanten (B2B)" ? null : sector);
   set("project_type", projectTypeFromText(`${idea} ${decision}`));
-  set("title", titleFromText(idea, noun));
+  // UX-review 14: zonder herkenbaar kernwoord ("NVM-kantoren") de korte doelgroep, zodat de naam niet alleen
+  // "Abonnementsdienst" wordt maar "Abonnementsdienst voor hondenbezitters".
+  set("title", titleFromText(idea, noun ?? shortAudience(detail)));
 
   const stake = stakeFromText(decision);
   if (stake) {

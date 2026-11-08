@@ -33,8 +33,8 @@ async function createIdea(page: Page): Promise<string> {
       idea: "Een AI-assistent die besturen van amateursportclubs helpt met nieuwsbrieven, ledenberichten en sociale media, voor € 79 per maand.",
       decision: `Investeren we € 25.000 in de assistent, ja of nee, vóór ${dutchDate(60)}?`,
       uncertainty: "Betalen clubs € 79 per maand?",
-      fill: { "Korte naam": `TEST AI-communicatie voor sportclubs ${Date.now()}`, "Inzet (euro)": "25000", "Uiterlijke beslisdatum": isoDate(60), "Wat meet je?": "betalende sportclubs", "Doelwaarde": "30", "Minimumbedrag per klant (€)": "79" },
-      select: { "Type project": "new_product", "Opdrachtgever": "none" },
+      fill: { "Korte naam": `TEST AI-communicatie voor sportclubs ${Date.now()}`, "Doelgroep": "besturen van amateursportclubs", "Inzet (euro)": "25000", "Uiterlijke beslisdatum": isoDate(60), "Wat meet je?": "betalende sportclubs", "Doelwaarde": "30", "Minimumbedrag per klant": "79" },
+      select: { "Soort klant": "Publieke organisaties of verenigingen", "Type project": "new_product", "Opdrachtgever": "none" },
     },
     { level: "Snel" },
   );

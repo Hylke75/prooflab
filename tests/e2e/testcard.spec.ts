@@ -33,7 +33,7 @@ async function createIdea(page: Page): Promise<string> {
     idea: "Een AI-assistent voor zelfstandige NVM-kantoren met 2–15 medewerkers die woningteksten en klantmails schrijft, voor € 249 per maand.",
     decision: `Lanceren we de assistent met € 40.000, ja of nee, vóór ${dutchDate(60)}?`,
     uncertainty: "Willen ze € 249 per maand betalen?",
-    fill: { "Korte naam": `TEST B1 makelaars ${Date.now()}`, "Inzet (euro)": "40000", "Uiterlijke beslisdatum": isoDate(60), "Wat meet je?": "betalende makelaarskantoren", "Doelwaarde": "20", "Minimumbedrag per klant (€)": "249" },
+    fill: { "Korte naam": `TEST B1 makelaars ${Date.now()}`, "Inzet (euro)": "40000", "Uiterlijke beslisdatum": isoDate(60), "Wat meet je?": "betalende makelaarskantoren", "Doelwaarde": "20", "Minimumbedrag per klant": "249" },
     select: { "Type project": "new_product", "Opdrachtgever": "none" },
   });
 }
