@@ -349,6 +349,23 @@ export function headlineFromIdea(description: string | null | undefined, title: 
   return text.length > 140 ? `${text.slice(0, 137).replace(/\s+\S*$/, "")}…` : text;
 }
 
+// Bevinding 20: een kort kopvoorstel voor de testpagina (hooguit ~8 woorden), deterministisch uit de intake. De
+// volledige intakezin is een beschrijving, geen kop: neem het eerste zinsdeel (tot een komma, dubbele punt,
+// gedachtestreepje of bijzin met "die/dat/met/zodat/waarmee/om"); is dat nog te lang, dan de eerste woorden tot
+// hooguit het maximum, zonder losse voegwoorden of voorzetsels aan het eind. Nooit een beletselteken.
+const HEADLINE_CUT = /\s*(?:[,:;–—]|\s-\s|\s(?:die|dat|met|zodat|waarmee|waardoor|om|zonder)\s)/i;
+const DANGLING = new Set(["een", "de", "het", "en", "of", "voor", "van", "met", "in", "op", "aan", "bij", "naar", "om", "die", "dat", "te", "tot", "door"]);
+export function shortHeadline(description: string | null | undefined, title: string, maxWords = 8): string {
+  const full = headlineFromIdea(description, title).replace(/…$/, "");
+  const words = (t: string) => t.split(/\s+/).filter(Boolean);
+  if (words(full).length <= maxWords) return full;
+  const firstPart = full.split(HEADLINE_CUT)[0]?.trim() ?? "";
+  if (words(firstPart).length >= 3 && words(firstPart).length <= maxWords) return firstPart;
+  const cut = words(firstPart.length >= 5 ? firstPart : full).slice(0, maxWords);
+  while (cut.length > 3 && DANGLING.has(cut[cut.length - 1].toLowerCase())) cut.pop();
+  return cut.join(" ").replace(/[.,;:]+$/, "");
+}
+
 // Wervingsgroep als standaard, afgeleid uit de kanalen (definities in recruitment.ts): organische kanalen en
 // persoonlijke uitnodigingen bereiken vooral het eigen netwerk (ook volgers van het eigen account); advertenties en
 // koude outreach zijn koud. Gemengd met het eigen netwerk telt als eigen netwerk: dat is het voorzichtigst, omdat

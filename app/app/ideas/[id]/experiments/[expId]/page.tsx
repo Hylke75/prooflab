@@ -338,7 +338,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
           <div className="data-row"><span>Steekproef · looptijd</span><strong className="num">≥ {h.min_sample} · max. {h.max_duration_days} dagen</strong></div>
           {role === "primary" && rule !== undefined && (
             <div className="data-row" id="go-rule-row">
-              <span>Go-regel van het dossier</span>
+              <span><Term k="go-regel">Go-regel</Term> van het dossier</span>
               <strong style={{ textAlign: "right" }}>
                 {rule
                   ? `${describeRule(rule, rule.primaryExperimentId === expId ? exp.title : null)}${rule.recordedLate ? " (achteraf vastgelegd)" : rule.lockedAt ? " (vergrendeld)" : ""}`
@@ -485,7 +485,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
               <div className="form-line">
                 <label htmlFor="end-reason">Waarom rond je nu af?</label>
                 <textarea className="field" id="end-reason" name="end_reason" rows={3} required minLength={END_REASON_MIN} maxLength={END_REASON_MAX} aria-describedby="end-reason-hint" />
-                <p className="field-hint" id="end-reason-hint">Minstens {END_REASON_MIN} tekens. De reden wordt bewaard bij het experiment en komt op de Learning Card.</p>
+                <p className="field-hint" id="end-reason-hint">Minstens {END_REASON_MIN} tekens. De reden wordt bewaard bij het experiment en komt op de <Term k="learning-card">Learning Card</Term>.</p>
               </div>
               <label className="check-row"><input type="checkbox" name="confirm_below_sample" required /> {END_BELOW_SAMPLE_CONFIRM}</label>
             </ActionForm>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { asMethodVersion } from "@/lib/domain/method";
 import Link from "next/link";
+import { Term } from "@/components/ui/Term";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { ExperimentBuilder } from "@/components/experiments/ExperimentBuilder";
 import { getIdea, getViewMode, getWorkspace } from "@/lib/data";
@@ -190,7 +191,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
         <div className="card" id="wat-eerst" style={{ marginBottom: 20, scrollMarginTop: 100 }}>
           <div className="section-title">
             <h2 className="as-h3">Wat test je eerst?</h2>
-            <span className="pill gray">Op informatiewaarde</span>
+            <span className="pill gray">Op <Term k="informatiewaarde">informatiewaarde</Term></span>
           </div>
           <p className="tiny" style={{ marginTop: -8 }}>
             Belang × onzekerheid × hoeveel de goedkoopste geschikte test het besluit kan veranderen, gedeeld door kosten en duur. Score 100 = de hoogste in dit dossier; de kansen zijn schattingen.

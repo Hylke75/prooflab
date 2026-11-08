@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { supabaseAnon } from "@/lib/supabase/server";
 import { consentText, variantFor, visitorFromRequest } from "@/lib/public-test";
-import { HONEST_REVEAL } from "@/lib/domain/labels";
+import { HONEST_REVEAL, revealMessageFor } from "@/lib/domain/labels";
 import type { PricingConfig } from "@/lib/experiment-metrics";
 import { PublicTest } from "./PublicTest";
 import { privacyNotice, privacyOf } from "@/lib/domain/test-privacy";
@@ -61,7 +61,7 @@ export default async function TestPage({ params, searchParams }: PageProps<"/t/[
             offer={c.offer}
             ctaLabel={c.cta_label}
             collectEmail={c.collect_email}
-            revealMessage={c.reveal_message}
+            revealMessage={revealMessageFor(c.reveal_message, !!c.collect_email)}
             honestReveal={HONEST_REVEAL}
             consentText={consentText(c.researcher)}
             price={price}
@@ -70,8 +70,10 @@ export default async function TestPage({ params, searchParams }: PageProps<"/t/[
         )}
       </main>
       <footer className="tp-foot">
-        Dit is een marktonderzoek van {c.researcher}. Er worden geen cookies geplaatst en er wordt niets verkocht. Je bezoek wordt
-        anoniem en zonder tracking meegeteld.
+        {/* Bevinding 10: met de AVG-tekst eronder staat de uitleg over cookies en meetellen daar één keer. */}
+        {privacy
+          ? `Dit is een marktonderzoek van ${c.researcher}. Er wordt niets verkocht.`
+          : `Dit is een marktonderzoek van ${c.researcher}. Er worden geen cookies geplaatst en er wordt niets verkocht. Je bezoek wordt anoniem en zonder tracking meegeteld.`}
         {/* Fase 2 · punt 4: AVG-tekst met de verwerkingsverantwoordelijke (nieuwe tests; oudere tests houden de tekst hierboven). */}
         {privacy && (
           <section aria-label="Privacy" style={{ marginTop: 10 }}>
