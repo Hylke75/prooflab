@@ -1,11 +1,13 @@
 import { describeDraftEdit, draftEdit, questionDraftText } from "@/lib/domain/ai-draft";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { plural } from "@/lib/text";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { InsightCard, type ClaimView } from "@/components/ui/InsightCard";
 import { Term } from "@/components/ui/Term";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { Tabs } from "@/components/research/Tabs";
+import { TabJumpLink } from "@/components/research/TabJumpLink";
 import { ResearchRunPanel, SearchLogList, type QuestionLog, type SearchLogUrl } from "@/components/research/ResearchRunPanel";
 import { EXPECTED_SOURCES, isExpectedSource } from "@/lib/domain/research-plan";
 import { AddClaimForm, AddSourceForm } from "@/components/research/SourceForms";
@@ -23,7 +25,7 @@ import { loadAiQuality } from "@/lib/ai-quality";
 import { isSignalSource, parseSignalQuotes, type SignalKind } from "@/lib/domain/customer-signals";
 import { SUPPORT_LABEL, isSupportCheck, type SupportCheck } from "@/lib/domain/support";
 import { UnitEconomicsPanel } from "@/components/research/UnitEconomicsPanel";
-import { getIdea, getViewMode } from "@/lib/data";
+import { getIdea, getViewMode, getWorkspace } from "@/lib/data";
 import { Detail } from "@/components/shell/ViewMode";
 import { supabaseServer } from "@/lib/supabase/server";
 import { aiConfigured, configuredProviders, env } from "@/lib/env";
@@ -76,6 +78,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   // Fase 1 · punt 1: in Snel geen kengetallen, zoeklogboek, tegenargumenten, AI-kwaliteit, steuncontrole per citaat
   // (de statuspil blijft), financiële haalbaarheid en simulatie. Bevindingen, statussen en tabs zijn gelijk.
   const quick = (await getViewMode(id)) === "quick";
+  const isOwner = (await getWorkspace()).org?.role === "owner";
   const supabase = await supabaseServer();
   const [qs, claimsRes, sourcesRes, compRes, segRes, scenRes, ueRes, runRes, signalsRes] = await Promise.all([
     supabase.from("research_questions").select("*").eq("idea_id", id).order("position"),
@@ -298,9 +301,21 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
           <h1>Begrijp je markt.</h1>
           <p className="sub">Een marktbeeld met zicht op concurrenten, doelgroepen, kansen en onzekerheden. Elke conclusie verwijst naar een controleerbare bron.</p>
         </div>
-        <Link className="btn primary" href={`/app/ideas/${id}/assumptions`}>
-          Naar aannames →
-        </Link>
+        {/* De primaire knop volgt de stand: zonder bron eerst een bron toevoegen; "Naar aannames" pas als er iets ligt. */}
+        {canWrite && sources.length === 0 && claims.length === 0 ? (
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <TabJumpLink className="btn primary" tab="sources" anchor="bron-toevoegen" href={`/app/ideas/${id}/research?tab=sources#bron-toevoegen`}>
+              Voeg je eerste bron toe
+            </TabJumpLink>
+            <Link className="btn white" href={`/app/ideas/${id}/assumptions`}>
+              Naar aannames →
+            </Link>
+          </div>
+        ) : (
+          <Link className="btn primary" href={`/app/ideas/${id}/assumptions`}>
+            Naar aannames →
+          </Link>
+        )}
       </div>
 
       <div className="insight-banner">
@@ -481,6 +496,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               run={run ? { id: run.id, status: run.status, mode: run.mode, cost: Number(run.cost_usd), budget: Number(run.budget_usd), tasks: (tasks ?? []).map((t) => runTaskView(t)) } : null}
               searchLog={quick ? [] : groupSearchLog((logRows ?? []).filter((r) => r.kind !== "counter"), questions)}
               cbsAction={fetchCbsFigures.bind(null, id)}
+              isOwner={isOwner}
             />
             {/* Golf C, punt 10: tegenbewijs apart, met het eigen zoeklogboek. */}
             {(counterClaims.length > 0 || counterLog.length > 0 || counterTasks.length > 0) && (
@@ -598,17 +614,17 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
             <div className="grid-3">
               <div style={{ padding: 15, background: "var(--color-surface-soft)", borderRadius: "var(--radius-inner)" }}>
                 <span className="pill blue">Direct</span>
-                <h3 style={{ fontSize: 16, margin: "12px 0 7px" }}>{competitors.filter((c) => c.kind === "direct").length} aanbieders</h3>
+                <h3 style={{ fontSize: 16, margin: "12px 0 7px" }}>{plural(competitors.filter((c) => c.kind === "direct").length, "aanbieder", "aanbieders")}</h3>
                 <p className="tiny">{competitors.filter((c) => c.kind === "direct").map((c) => c.name).slice(0, 3).join(", ") || "Nog niet onderzocht"}</p>
               </div>
               <div style={{ padding: 15, background: "var(--color-warning-soft)", borderRadius: "var(--radius-inner)" }}>
                 <span className="pill coral">Indirect</span>
-                <h3 style={{ fontSize: 16, margin: "12px 0 7px" }}>{competitors.filter((c) => c.kind === "indirect").length} aanbieders</h3>
+                <h3 style={{ fontSize: 16, margin: "12px 0 7px" }}>{plural(competitors.filter((c) => c.kind === "indirect").length, "aanbieder", "aanbieders")}</h3>
                 <p className="tiny">{competitors.filter((c) => c.kind === "indirect").map((c) => c.name).slice(0, 3).join(", ") || "Nog niet onderzocht"}</p>
               </div>
               <div style={{ padding: 15, background: "var(--color-success-soft)", borderRadius: "var(--radius-inner)" }}>
                 <span className="pill green">Alternatief</span>
-                <h3 style={{ fontSize: 16, margin: "12px 0 7px" }}>{competitors.filter((c) => c.kind === "alternative" || c.kind === "status_quo").length} alternatieven</h3>
+                <h3 style={{ fontSize: 16, margin: "12px 0 7px" }}>{plural(competitors.filter((c) => c.kind === "alternative" || c.kind === "status_quo").length, "alternatief", "alternatieven")}</h3>
                 <p className="tiny">{competitors.filter((c) => c.kind === "alternative" || c.kind === "status_quo").map((c) => c.name).slice(0, 3).join(", ")}</p>
               </div>
             </div>
@@ -776,7 +792,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                     <p>
                       {SOURCE_TYPES[s.source_type as SourceType]}
                       {s.publisher ? ` · ${s.publisher}` : ""} · {s.published_on ? new Date(s.published_on).toLocaleDateString("nl-NL") : "datum onbekend"} · opgehaald{" "}
-                      {new Date(s.retrieved_at).toLocaleDateString("nl-NL")} · {s.excerptCount} fragment(en) · {used} bevinding(en)
+                      {new Date(s.retrieved_at).toLocaleDateString("nl-NL")} · {plural(s.excerptCount, "fragment", "fragmenten")} · {plural(used, "bevinding", "bevindingen")}
                     </p>
                     {s.access_note && <p style={{ whiteSpace: "pre-line" }}>{s.access_note}</p>}
                     {(s.found_by ?? []).length > 0 && (
@@ -830,7 +846,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
           )}
           {canWrite && (
             <div className="grid-2 mt-18">
-              <div className="card">
+              <div className="card" id="bron-toevoegen" style={{ scrollMarginTop: 100 }}>
                 <h3>1. Bron toevoegen</h3>
                 <p className="sub" style={{ margin: "6px 0 12px" }}>URL, CSV-regel of rapportpassage: alleen het relevante fragment wordt bewaard.</p>
                 <AddSourceForm action={addSource.bind(null, id)} />
