@@ -236,8 +236,11 @@ export type DecisionStepKey = "definitie" | "basispercentage" | "voorspelling";
 export type DecisionBlocker = { text: string; href: string; step: DecisionStepKey };
 
 // De onderdelen van stap 1 (Voorspelling) vóór het besluit: uitkomstdefinitie, basispercentage en de eigen voorspelling
-// bij het besluitmoment. done = niets meer open. Null zonder voorspellingsschema of als de uitkomst al bekend is.
-export function decisionSteps(p: IdeaProgress): { done: boolean; missing: DecisionBlocker[] } | null {
+// bij het besluitmoment. done = niets meer open (het besluit is niet geblokkeerd). status zegt wat de gebruiker ziet:
+// "done" = de eigen voorspelling bij het besluit is gegeven, "open" = er moet nog iets, "later" = er hoeft nu niets
+// (het besluitmoment is niet open), dus ook geen vinkje. Null zonder voorspellingsschema of als de uitkomst al bekend is.
+export type DecisionStepStatus = "done" | "open" | "later";
+export function decisionSteps(p: IdeaProgress): { done: boolean; status: DecisionStepStatus; missing: DecisionBlocker[] } | null {
   const f = p.forecast;
   if (!f || f.resolved) return null;
   const outcome = `/app/ideas/${p.ideaId}/outcome`;
@@ -249,7 +252,8 @@ export function decisionSteps(p: IdeaProgress): { done: boolean; missing: Decisi
     missing.push({ step: "basispercentage", href: `${outcome}#basispercentage`, text: "Kies eerst het basispercentage; daarna geef je je eigen voorspelling bij het besluit." });
   if (forecastOpen)
     missing.push({ step: "voorspelling", href: "#voorspelling", text: "Geef eerst je eigen voorspelling bij het besluit: hoe groot is de kans dat het doel over zes maanden is gehaald?" });
-  return { done: missing.length === 0, missing };
+  const status: DecisionStepStatus = missing.length > 0 ? "open" : f.ownMoments.includes("decision") ? "done" : "later";
+  return { done: missing.length === 0, status, missing };
 }
 
 // Why a decision cannot be saved yet: the outcome must be defined, and while the decision moment is open the
