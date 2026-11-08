@@ -5,7 +5,7 @@ import { env } from "@/lib/env";
 import { NOTE_STEP_LABELS, type NoteStep } from "@/lib/domain/step-files";
 import { deleteStepDocument, deleteStepNote, saveStepNote } from "@/app/app/ideas/[id]/step-notes-actions";
 import { ActionForm, Field } from "@/components/ui/ActionForm";
-import { NoteItem, DocumentItem, UploadDocumentForm, type DocView, type NoteView } from "./StepNotesClient";
+import { NoteItem, DocumentItem, StepListFeedback, UploadDocumentForm, type DocView, type NoteView } from "./StepNotesClient";
 
 // Blok "Notities en documenten" onderaan elke stappagina en het overzicht van een idee. Zelfstandig: het laadt zijn
 // eigen gegevens en raakt de logica van de stap zelf niet. Ingeklapt als er nog niets is, met een teller in de kop.
@@ -72,11 +72,13 @@ export async function StepNotes({ ideaId, step }: { ideaId: string; step: NoteSt
             <div>
               <h3 className="step-notes-sub">Notities <span className="step-notes-count">({notes.length})</span></h3>
               {notes.length === 0 && <p className="tiny">Nog geen notities{canWrite ? "." : " van het team."}</p>}
-              <ul className="step-notes-list">
-                {notes.map((n) => (
-                  <NoteItem key={n.id} note={n} />
-                ))}
-              </ul>
+              <StepListFeedback>
+                <ul className="step-notes-list">
+                  {notes.map((n) => (
+                    <NoteItem key={n.id} note={n} />
+                  ))}
+                </ul>
+              </StepListFeedback>
               {canWrite && (
                 <details className="step-notes-add">
                   <summary className="btn white sm">Notitie toevoegen</summary>
@@ -94,11 +96,13 @@ export async function StepNotes({ ideaId, step }: { ideaId: string; step: NoteSt
             <div>
               <h3 className="step-notes-sub">Documenten <span className="step-notes-count">({docs.length})</span></h3>
               {docs.length === 0 && <p className="tiny">Nog geen documenten{canWrite ? "." : " van het team."}</p>}
-              <ul className="step-notes-list">
-                {docs.map((d) => (
-                  <DocumentItem key={d.id} doc={d} ideaId={ideaId} useAsSource={canWrite && step === "market"} />
-                ))}
-              </ul>
+              <StepListFeedback>
+                <ul className="step-notes-list">
+                  {docs.map((d) => (
+                    <DocumentItem key={d.id} doc={d} ideaId={ideaId} useAsSource={canWrite && step === "market"} />
+                  ))}
+                </ul>
+              </StepListFeedback>
               {canWrite && <UploadDocumentForm ideaId={ideaId} step={step} supabaseUrl={env.supabaseUrl} supabaseKey={env.supabaseKey} />}
             </div>
           </div>

@@ -135,6 +135,13 @@ export function DossierSearch({ ideaId }: { ideaId: string }) {
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Escape sluit het venster in één keer. Zonder dit wist Chromium bij een gevuld zoekveld (type="search") eerst
+    // alleen de tekst en blijft het venster open; Firefox sluit wel meteen.
+    if (e.key === "Escape") {
+      e.preventDefault();
+      close();
+      return;
+    }
     if (hits.length === 0) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();

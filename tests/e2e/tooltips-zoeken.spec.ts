@@ -62,7 +62,10 @@ test("Tooltips bij vaktermen: hover, toetsenbord, Escape; labels blijven gelijk"
   await page.getByRole("radio", { name: /Prijs-\/aanbodtest/ }).click();
   const card = page.getByRole("form", { name: "Test Card" });
   await expect(card.getByLabel("Het klopt als ≥ (%) (verplicht)", { exact: true })).toBeVisible();
+  // Sinds fase B5 staat de wervingsgroep vooringevuld onder het ingeklapte deel Details van de Test Card.
+  await card.locator("summary#tc-details").click();
   const recruit = card.getByRole("button", { name: "Wervingsgroep", exact: true });
+  await expect(recruit).toBeVisible();
   await recruit.focus();
   await expect(page.getByRole("tooltip")).toContainText("eigen netwerk, warm contact, koud");
   await expect(recruit).toHaveAttribute("aria-describedby", /.+/);
