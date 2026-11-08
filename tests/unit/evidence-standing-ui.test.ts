@@ -27,7 +27,7 @@ describe("EvidenceStanding (weergave)", () => {
 
   it("één samenvattende regel, de schaal en de details per kritieke aanname", () => {
     expect(html).toContain("Stand van het bewijs");
-    expect(html).toContain("Zekerheid: laag · 0 van 1 kritieke aanname getest · sterkste bewijs: uitgesproken intentie (1 persoon) · volgende stap: 7 interviews (aanname 1)");
+    expect(html).toContain("Zekerheid: laag · 0 van 1 gekozen aanname getest · sterkste bewijs: uitgesproken intentie (1 persoon) · volgende stap: 7 interviews (aanname 1)");
     expect(html).toContain('data-testid="bewijsschaal"');
     expect(html).toContain("Aanname 1: Clubs willen AI-hulp");
     expect(html).toContain("1 voor · 1 tegen (0 tellen mee)");

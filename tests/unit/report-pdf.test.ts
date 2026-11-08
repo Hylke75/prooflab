@@ -214,7 +214,7 @@ describe("Stand van het bewijs in het rapport", () => {
     const r = fixture({ standing: JSON.parse(JSON.stringify(standing)) });
     expect(standingFromSnapshot(r)).toEqual(standing);
     const m = buildReportPdfModel(r, { shared: true, version: 4 });
-    expect(m.standing.summary).toBe("Zekerheid: midden · 0 van 1 kritieke aanname getest · sterkste bewijs: kleine handeling (1 persoon) · volgende stap: ontwerp de volgende test");
+    expect(m.standing.summary).toBe("Zekerheid: midden · 0 van 1 gekozen aanname getest · sterkste bewijs: kleine handeling (1 persoon) · volgende stap: ontwerp de volgende test");
     expect(m.standing.scale).toBe("Bewijsschaal (sterkste bewijs): Verkenning · Mening · [Gedrag] · Betaling · Herhaling");
     expect(m.standing.lines).toEqual(["Aanname 1: Bureaus betalen 49 euro per maand. Kans 55–65% · 1 voor · 0 tegen · Hoofdtest: nog niet aangewezen."]);
     expect(m.standing.notes).toEqual(["Volgende stap: Ontwerp de volgende test. Het bewijs is nog te zwak.", "Kansen: niet gekalibreerd, in banden van 10 procentpunt."]);

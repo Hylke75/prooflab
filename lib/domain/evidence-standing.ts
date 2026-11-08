@@ -4,7 +4,9 @@
 // geen nieuwe gecombineerde kans.
 //
 // Begrippen
-// - Kritieke aanname: belangrijkheid 4 of 5 én gekozen om nu te testen (selectedForTest, fase B4).
+// - Kritieke aanname: belangrijkheid 4 of 5 én gekozen om nu te testen (selectedForTest, fase B4). In de UI heet
+//   dit "gekozen om te testen": "kritiek" alleen betekent in de rest van de app belangrijkheid 4 of 5 (Aannames,
+//   risicokaart, beslisblad), ook zonder de keuze om nu te testen.
 // - Getest: de hoofdtest van de aanname heeft een goedgekeurde Learning Card met uitslag geslaagd of niet geslaagd
 //   (onbeslist telt niet als getest, net als in de beslisregel).
 // - Bewijsniveau van een aanname: de hoogste trede op de bewijsschaal onder het ondersteunende klantbewijs dat volledig
@@ -113,6 +115,12 @@ const LEVEL_RANK: Record<EvidenceLevel, number> = { opinion: 0, problem: 1, smal
 
 export const isCritical = (a: Pick<StandingAssumptionInput, "importance" | "selectedForTest">) => a.importance >= CRITICAL_IMPORTANCE && a.selectedForTest === true;
 
+// De telling in de samenvatting. Zonder gekozen aannames geen "0 van 0", maar wat er ontbreekt.
+export function testedLine(tested: number, total: number): string {
+  if (total === 0) return "nog geen aanname gekozen om te testen";
+  return `${tested} van ${total} gekozen ${total === 1 ? "aanname" : "aannames"} getest`;
+}
+
 // Telt een item als volwaardig klantbewijs (voor het niveau op de schaal)?
 const fullCustomerSupport = (i: RegisterItem) => i.itemType === "observation" && i.fate === "counted" && i.direction === "supports" && !i.notes.includes("ai_half");
 
@@ -213,18 +221,18 @@ export function evidenceStanding(input: StandingInput): EvidenceStanding {
   let certainty: Certainty = "low";
   let certaintyReason: string;
   if (!lowestRow || !weakestStep) {
-    certaintyReason = "nog geen kritieke aanname gekozen om te testen (belangrijkheid 4 of 5)";
+    certaintyReason = "nog geen aanname gekozen om nu te testen (belangrijkheid 4 of 5)";
   } else {
     const enoughStep = scaleIndex(weakestStep) >= scaleIndex(CERTAINTY_MIN_STEP);
     if (enoughStep && lowestRow.probability >= CERTAINTY_HIGH) certainty = "high";
     else if (enoughStep && lowestRow.probability >= CERTAINTY_MEDIUM) certainty = "medium";
-    certaintyReason = `laagste kans onder de kritieke aannames ${pct(lowestRow.probability, input.calibrated)} (aanname ${lowestRow.number}); zwakste bewijs: ${scaleLabel(weakestStep).toLowerCase()}`;
+    certaintyReason = `laagste kans onder de gekozen aannames ${pct(lowestRow.probability, input.calibrated)} (aanname ${lowestRow.number}); zwakste bewijs: ${scaleLabel(weakestStep).toLowerCase()}`;
   }
   const tested = rows.filter((r) => r.tested).length;
   const persons = strongest.persons != null && top ? ` (${strongest.persons} ${strongest.persons === 1 ? "persoon" : "personen"})` : "";
   const summary = [
     `Zekerheid: ${CERTAINTY_LABEL[certainty]}`,
-    `${tested} van ${rows.length} kritieke ${rows.length === 1 ? "aanname" : "aannames"} getest`,
+    testedLine(tested, rows.length),
     `sterkste bewijs: ${strongest.label}${persons}`,
     ...(input.next ? [`volgende stap: ${lowerFirst(input.next.title)}`] : []),
   ].join(" · ");
