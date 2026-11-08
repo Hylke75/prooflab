@@ -22,6 +22,12 @@ export function useFieldError(name: string): string | undefined {
   return useContext(FieldErrorsContext)?.[name];
 }
 
+// Of één van deze velden bij de laatste poging een fout had (bijv. om een ingeklapt blok met die velden te openen).
+export function useHasFieldError(names: readonly string[]): boolean {
+  const errors = useContext(FieldErrorsContext);
+  return !!errors && names.some((n) => !!errors[n]);
+}
+
 // Dunne laag om een server action. Tijdens het opslaan: knop uit met de laadtekst en (na een moment) de
 // opslaan-overlay. Daarna het resultaat bij de knop, waar de gebruiker net klikte: de bevestiging, of de fout met
 // een samenvatting van de velden die nog niet kloppen (elk met een knop naar dat veld). De melding per veld staat

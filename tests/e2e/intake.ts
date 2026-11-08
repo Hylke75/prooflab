@@ -22,9 +22,16 @@ export type IntakeInput = {
   select?: Record<string, string>;
 };
 
-// Een veld op de kaart op zijn label; verplichte velden hebben "(verplicht)" achter het label.
+// Een veld op de kaart op zijn label; verplichte velden hebben "(verplicht)" achter het label. Een eenheid tussen
+// haakjes mag volgen ("Minimumbedrag per klant" vindt ook "Minimumbedrag per klant (€ per maand)").
 export function cardField(page: Page, label: string) {
-  return page.locator("form.intake-summary").getByLabel(new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( \\(verplicht\\))?$`));
+  return page.locator("form.intake-summary").getByLabel(new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( \\([^)]*\\))?( \\(verplicht\\))?$`));
+}
+
+// UX-review 14: regio, branche, type project, sprintduur en opdrachtgever staan onder "Meer instellen".
+export async function openMoreSettings(page: Page) {
+  const more = page.locator("form.intake-summary details.intake-more");
+  if (!(await more.evaluate((d) => (d as HTMLDetailsElement).open))) await more.locator("summary").click();
 }
 
 // De drie vragen; eindigt op de samenvattingskaart.
@@ -46,6 +53,7 @@ export async function createIdeaViaIntake(page: Page, input: IntakeInput, opts: 
   await answerIntake(page, input);
   // Eerst de keuzes: het label van de inzet hangt af van de soort ("Inzet (euro)").
   const select = { ...(input.fill && "Inzet (euro)" in input.fill ? { "Wat staat er op het spel?": "amount" } : {}), ...input.select };
+  await openMoreSettings(page);
   for (const [label, value] of Object.entries(select)) await cardField(page, label).selectOption(value);
   for (const [label, value] of Object.entries(input.fill ?? {})) await cardField(page, label).fill(value);
   await page.getByRole("button", { name: "Klopt, start de marktverkenning" }).click();

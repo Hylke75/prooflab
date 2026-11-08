@@ -134,7 +134,7 @@ test("dogfood: ProofLab op ProofLab", async ({ page }) => {
       "Uiterlijke beslisdatum": isoDate(60),
       "Wat meet je?": "verkochte validatiesprints met ProofLab",
       "Doelwaarde": OUTCOME_TARGET,
-      "Minimumbedrag per klant (€)": "3000",
+      "Minimumbedrag per klant": "3000",
       "Geslaagd als…": `Link & Lead verkoopt binnen zes maanden na het besluit minstens ${OUTCOME_TARGET} validatiesprints met ProofLab.`,
     },
     select: { "Soort klant": "Zakelijke klanten (B2B)", "Regio": "Nederland", "Branche": "smb", "Type project": "new_product", "Opdrachtgever": "none" },

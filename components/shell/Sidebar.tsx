@@ -13,11 +13,14 @@ type IdeaLink = { id: string; title: string };
 export function Sidebar({
   workspaceName,
   isConsultant,
+  noWorkspace = false,
   ideas,
   aiConnected,
 }: {
   workspaceName: string;
   isConsultant: boolean;
+  // UX-review 22: nog geen werkruimte en geen gedeeld dossier (iemand die begint, geen opdrachtgever).
+  noWorkspace?: boolean;
   ideas: IdeaLink[];
   aiConnected: boolean;
 }) {
@@ -92,11 +95,13 @@ export function Sidebar({
       <div className="sidebar-bottom">
         <div className="workspace-label">Mijn werkruimte</div>
         <div className="work-chip">
-          <span className="avatar-mini">{workspaceName.slice(0, 1).toUpperCase()}</span>
+          <span className="avatar-mini">{noWorkspace ? "+" : workspaceName.slice(0, 1).toUpperCase()}</span>
           <div>
-            {workspaceName}
+            {noWorkspace ? "Nog geen werkruimte" : workspaceName}
             <br />
-            <span style={{ fontSize: 12, color: "var(--color-text-muted)", fontWeight: 400 }}>{isConsultant ? "Consultancy-werkruimte" : "Meekijken als opdrachtgever"}</span>
+            <span style={{ fontSize: 12, color: "var(--color-text-muted)", fontWeight: 400 }}>
+              {noWorkspace ? "Maak hem aan om te beginnen" : isConsultant ? "Consultancy-werkruimte" : "Meekijken als opdrachtgever"}
+            </span>
           </div>
         </div>
         <div className="site-status">

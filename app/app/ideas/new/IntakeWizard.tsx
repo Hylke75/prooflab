@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Icon } from "@/components/Icon";
-import { ActionForm, Field, useFieldError } from "@/components/ui/ActionForm";
+import { ActionForm, Field, useFieldError, useHasFieldError } from "@/components/ui/ActionForm";
 import { SavingOverlay } from "@/components/ui/SavingOverlay";
 import { PROJECT_TYPES, SECTOR_TEMPLATES } from "@/lib/domain/labels";
 import { SPRINT_LENGTHS } from "@/lib/domain/sprint";
@@ -13,6 +13,7 @@ import {
   REGION_OPTIONS,
   composeStatement,
   deadlineFromText,
+  pricePeriod,
   stakeFromText,
   type FieldOrigin,
   type IntakeAnswers,
@@ -66,6 +67,25 @@ const parsedNum = (s: string) => {
 function AnswerError({ name }: { name: string }) {
   const error = useFieldError(name);
   return error ? <p className="field-error" role="alert">{error}</p> : null;
+}
+
+// Velden onder "Meer instellen": allemaal met een standaardwaarde of optioneel.
+const MORE_FIELDS = ["audience_short", "region", "region_detail", "sector_template", "project_type", "sprint_weeks", "client_id", "new_client_name"] as const;
+
+// UX-review 14: de velden met een verstandige standaard ingeklapt, zodat de kaart niet 16 velden tegelijk toont.
+// Opent vanzelf zolang één van die velden een fout heeft (de foutsamenvatting verwijst ernaar).
+function MoreSettings({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const hasError = useHasFieldError(MORE_FIELDS);
+  return (
+    <details className="intake-more" open={open || hasError} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary>
+        <span className="intake-more-title">Meer instellen</span>
+        <span className="tiny">Regio, branche, type project, sprintduur en opdrachtgever. Staat goed voor de meeste ideeën.</span>
+      </summary>
+      <div className="intake-more-body">{children}</div>
+    </details>
+  );
 }
 
 export function IntakeWizard({ clients, today }: { clients: Client[]; today: string }) {
@@ -251,6 +271,9 @@ export function SummaryCard({
   // Zolang de consultant de zin niet zelf aanpast, volgt hij maatstaf, doelwaarde, bedrag en prijs.
   const composed = composeStatement({ outcome_metric: metric, outcome_target: parsedNum(target), outcome_min_value_per_customer: parsedNum(minValue), offer_price: price.trim() || null });
   const shownStatement = statementEdited ? statement : (composed ?? statement);
+  const period = pricePeriod(price.trim() || null);
+  // Het type project staat onder "Meer instellen", tenzij het voorstel het niet kon bepalen.
+  const typeMissing = !p.project_type;
   const tag = (field: ProposalField, required = true, extra?: string | null) => (
     <Origin
       origin={o[field]}
@@ -258,6 +281,17 @@ export function SummaryCard({
       required={required}
       extra={extra}
     />
+  );
+
+  const projectTypeField = (
+    <Field className="" labelClassName="field-label" name="project_type" id="s-type" label="Type project" required hint={tag("project_type")}>
+      <select className="field" defaultValue={p.project_type ?? ""}>
+        <option value="" disabled>Kies…</option>
+        {Object.entries(PROJECT_TYPES).map(([k, t]) => (
+          <option key={k} value={k}>{t.label}</option>
+        ))}
+      </select>
+    </Field>
   );
 
   return (
@@ -310,17 +344,6 @@ export function SummaryCard({
       <Field className="" labelClassName="field-label" name="audience_detail" id="s-audience" label="Doelgroep" required hint={tag("audience_detail")}>
         <input className="field" defaultValue={p.audience_detail ?? ""} maxLength={200} placeholder="Bijv. zelfstandige NVM-kantoren met 2–15 medewerkers" />
       </Field>
-      {/* Gebruikerstest D8: de korte doelgroep voor in onderzoeksvragen en kopjes. */}
-      <Field
-        className=""
-        labelClassName="field-label"
-        name="audience_short"
-        id="s-audience-short"
-        label="Korte doelgroep (voor in zinnen)"
-        hint={tag("audience_short", false, "Hooguit zes woorden, bijv. 'NVM-kantoren'. Leeg: ProofLab kort de doelgroep zelf in.")}
-      >
-        <input className="field" defaultValue={p.audience_short ?? ""} maxLength={60} placeholder="Bijv. amateursportclubs" />
-      </Field>
       <div className="double-field">
         <Field className="" labelClassName="field-label" name="target_audience" id="s-category" label="Soort klant" required hint={tag("target_audience")}>
           <select className="field" defaultValue={p.target_audience ?? ""}>
@@ -334,36 +357,8 @@ export function SummaryCard({
           <input className="field" value={price} onChange={(e) => setPrice(e.target.value)} maxLength={120} placeholder="Bijv. € 249 per maand" />
         </Field>
       </div>
-      <div className="double-field">
-        <Field className="" labelClassName="field-label" name="region" id="s-region" label="Regio" required hint={tag("region")}>
-          <select className="field" defaultValue={p.region ?? ""}>
-            <option value="" disabled>Kies…</option>
-            {REGION_OPTIONS.map((r) => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </select>
-        </Field>
-        <Field className="" labelClassName="field-label" name="region_detail" id="s-region-detail" label="Gebied binnen de regio" hint={tag("region_detail", false, "Optioneel.")}>
-          <input className="field" defaultValue={p.region_detail ?? ""} maxLength={120} placeholder="Bijv. Randstad" />
-        </Field>
-      </div>
-      <div className="double-field">
-        <Field className="" labelClassName="field-label" name="sector_template" id="s-sector" label="Branche" required hint={tag("sector_template", false)}>
-          <select className="field" defaultValue={p.sector_template ?? "generic"}>
-            {Object.entries(SECTOR_TEMPLATES).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
-          </select>
-        </Field>
-        <Field className="" labelClassName="field-label" name="project_type" id="s-type" label="Type project" required hint={tag("project_type")}>
-          <select className="field" defaultValue={p.project_type ?? ""}>
-            <option value="" disabled>Kies…</option>
-            {Object.entries(PROJECT_TYPES).map(([k, t]) => (
-              <option key={k} value={k}>{t.label}</option>
-            ))}
-          </select>
-        </Field>
-      </div>
+      {/* Kon het voorstel het type niet bepalen, dan hier invullen; anders staat het onder "Meer instellen". */}
+      {typeMissing && projectTypeField}
 
       <h3 className="intake-section">De beslissing</h3>
       <div className="double-field">
@@ -378,18 +373,9 @@ export function SummaryCard({
           <input className="field" inputMode="decimal" defaultValue={numText(p.stake_value)} placeholder={STAKE_LABELS[stakeKind].placeholder} />
         </Field>
       </div>
-      <div className="double-field">
-        <Field className="" labelClassName="field-label" name="decision_deadline" id="s-deadline" label="Uiterlijke beslisdatum" required hint={tag("decision_deadline")}>
-          <input className="field" type="date" min={today} defaultValue={p.decision_deadline ?? ""} />
-        </Field>
-        <Field className="" labelClassName="field-label" name="sprint_weeks" id="s-sprint" label="Duur van de sprint" required hint={tag("sprint_weeks")}>
-          <select className="field" defaultValue={String(p.sprint_weeks ?? 5)}>
-            {SPRINT_LENGTHS.map((w) => (
-              <option key={w} value={w}>{w} weken</option>
-            ))}
-          </select>
-        </Field>
-      </div>
+      <Field className="" labelClassName="field-label" name="decision_deadline" id="s-deadline" label="Uiterlijke beslisdatum" required hint={tag("decision_deadline")}>
+        <input className="field" type="date" min={today} defaultValue={p.decision_deadline ?? ""} />
+      </Field>
 
       <h3 className="intake-section">Wanneer is het geslaagd?</h3>
       <p className="tiny" style={{ marginTop: 4 }}>Gemeten zes maanden na het besluit. Zodra er voorspellingen zijn, ligt deze definitie vast.</p>
@@ -400,7 +386,16 @@ export function SummaryCard({
         <Field className="" labelClassName="field-label" name="outcome_target" id="s-target" label="Doelwaarde" required hint={tag("outcome_target", true, p.target_basis)}>
           <input className="field" inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="Bijv. 15" />
         </Field>
-        <Field className="" labelClassName="field-label" name="outcome_min_value_per_customer" id="s-min" label="Minimumbedrag per klant (€)" required hint={tag("outcome_min_value_per_customer")}>
+        {/* UX-review 14: het bedrag hoort bij dezelfde periode als de prijs ("€ 249 per maand" → per maand). */}
+        <Field
+          className=""
+          labelClassName="field-label"
+          name="outcome_min_value_per_customer"
+          id="s-min"
+          label={`Minimumbedrag per klant (${period ? `€ per ${period}` : "€, per aankoop"})`}
+          required
+          hint={tag("outcome_min_value_per_customer", true, period ? "Per klant, in dezelfde periode als de prijs." : "Zonder periode in de prijs: het bedrag per aankoop of contract.")}
+        >
           <input className="field" inputMode="decimal" value={minValue} onChange={(e) => setMinValue(e.target.value)} placeholder="Bijv. 249" />
         </Field>
       </div>
@@ -417,21 +412,62 @@ export function SummaryCard({
         />
       </Field>
 
-      <h3 className="intake-section">Opdrachtgever</h3>
-      <Field className="" labelClassName="field-label" name="client_id" id="s-client" label="Opdrachtgever" hint="Standaard een eigen idee. Een opdrachtgever kun je ook later koppelen.">
-        <select className="field" value={clientChoice} onChange={(e) => setClientChoice(e.target.value)}>
-          <option value="none">Geen (eigen idee)</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-          <option value="new">+ Nieuwe opdrachtgever…</option>
-        </select>
-      </Field>
-      {clientChoice === "new" && (
-        <Field className="" labelClassName="field-label" name="new_client_name" id="s-new-client" label="Naam nieuwe opdrachtgever" required>
-          <input className="field" maxLength={160} />
+      {/* UX-review 14: wat een verstandige standaard heeft, staat ingeklapt. Het blok opent vanzelf bij een fout. */}
+      <MoreSettings>
+        <Field
+          className=""
+          labelClassName="field-label"
+          name="audience_short"
+          id="s-audience-short"
+          label="Korte doelgroep (voor in zinnen)"
+          hint={tag("audience_short", false, "Hooguit zes woorden, bijv. 'NVM-kantoren'. Leeg: ProofLab kort de doelgroep zelf in.")}
+        >
+          <input className="field" defaultValue={p.audience_short ?? ""} maxLength={60} placeholder="Bijv. amateursportclubs" />
         </Field>
-      )}
+        <div className="double-field">
+          <Field className="" labelClassName="field-label" name="region" id="s-region" label="Regio" required hint={tag("region")}>
+            <select className="field" defaultValue={p.region ?? "Nederland"}>
+              {REGION_OPTIONS.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </Field>
+          <Field className="" labelClassName="field-label" name="region_detail" id="s-region-detail" label="Gebied binnen de regio" hint={tag("region_detail", false, "Optioneel.")}>
+            <input className="field" defaultValue={p.region_detail ?? ""} maxLength={120} placeholder="Bijv. Randstad" />
+          </Field>
+        </div>
+        <div className="double-field">
+          <Field className="" labelClassName="field-label" name="sector_template" id="s-sector" label="Branche" required hint={tag("sector_template", false)}>
+            <select className="field" defaultValue={p.sector_template ?? "generic"}>
+              {Object.entries(SECTOR_TEMPLATES).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </Field>
+          {!typeMissing && projectTypeField}
+        </div>
+        <Field className="" labelClassName="field-label" name="sprint_weeks" id="s-sprint" label="Duur van de sprint" required hint={tag("sprint_weeks")}>
+          <select className="field" defaultValue={String(p.sprint_weeks ?? 5)}>
+            {SPRINT_LENGTHS.map((w) => (
+              <option key={w} value={w}>{w} weken</option>
+            ))}
+          </select>
+        </Field>
+        <Field className="" labelClassName="field-label" name="client_id" id="s-client" label="Opdrachtgever" hint="Standaard een eigen idee. Een opdrachtgever kun je ook later koppelen.">
+          <select className="field" value={clientChoice} onChange={(e) => setClientChoice(e.target.value)}>
+            <option value="none">Geen (eigen idee)</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+            <option value="new">+ Nieuwe opdrachtgever…</option>
+          </select>
+        </Field>
+        {clientChoice === "new" && (
+          <Field className="" labelClassName="field-label" name="new_client_name" id="s-new-client" label="Naam nieuwe opdrachtgever" required>
+            <input className="field" maxLength={160} />
+          </Field>
+        )}
+      </MoreSettings>
     </ActionForm>
   );
 }
