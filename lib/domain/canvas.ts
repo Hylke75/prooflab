@@ -76,6 +76,34 @@ export function validateAssumptionStatement(v: unknown): { ok: true; value: stri
   return { ok: true, value: t };
 }
 
+// Bevinding 20: bij "Maak aanname" staat een toetsbare formulering klaar ("We geloven dat …") in plaats van de kale
+// tekst van het onderdeel. Deterministisch per bouwsteen; de gebruiker past hem aan vóór het opslaan.
+const DRAFT_FRAME: Record<string, string> = {
+  customer_segments: "We geloven dat deze klanten het probleem echt ervaren en willen betalen voor een oplossing",
+  value_propositions: "We geloven dat klanten dit verkiezen boven hun huidige oplossing",
+  products_services: "We geloven dat klanten dit verkiezen boven hun huidige oplossing",
+  pain_relievers: "We geloven dat dit de pijn van klanten merkbaar kleiner maakt",
+  gain_creators: "We geloven dat dit klanten merkbaar dichter bij hun gewenste uitkomst brengt",
+  channels: "We geloven dat we klanten via dit kanaal tegen acceptabele kosten bereiken",
+  customer_relationships: "We geloven dat klanten deze vorm van contact willen",
+  revenue_streams: "We geloven dat klanten hiervoor willen betalen",
+  cost_structure: "We geloven dat deze kosten binnen het budget blijven",
+  key_activities: "We geloven dat we dit kunnen organiseren en volhouden",
+  key_resources: "We geloven dat we hierover kunnen beschikken",
+  key_partners: "We geloven dat deze partner met ons wil samenwerken",
+  customer_jobs: "We geloven dat klanten dit echt gedaan willen krijgen",
+  pains: "We geloven dat klanten hier echt last van hebben",
+  gains: "We geloven dat klanten dit echt willen bereiken",
+};
+export function assumptionDraft(block: string, body: string): string {
+  const b = body.replace(/\s+/g, " ").trim().replace(/[.!?;:,]+$/, "");
+  if (!b) return "";
+  if (/^(we|wij) (geloven|denken)\b/i.test(b)) return `${b}.`.slice(0, ASSUMPTION_MAX);
+  const frame = DRAFT_FRAME[block] ?? "We geloven dat dit klopt";
+  const text = `${frame}: ${b}.`;
+  return text.length <= ASSUMPTION_MAX ? text : `${text.slice(0, ASSUMPTION_MAX - 1).replace(/\s+\S*$/, "")}.`;
+}
+
 // ---------------------------------------------------------------------------
 // Herkomst
 // ---------------------------------------------------------------------------

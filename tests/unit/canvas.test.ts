@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
+import { assumptionDraft,
   BUSINESS_BLOCKS,
   VALUE_BLOCKS,
   asReportCanvas,
@@ -297,5 +297,20 @@ describe("plaats in de app", () => {
     // Ook opdrachtgevers zien het tabblad (alleen-lezen).
     expect(STEPS.find((s) => s.key === "assumptions")?.tabs?.some((t) => t.consultantOnly)).toBe(false);
     expect(noteStepForSection("/model")).toBe("assumptions");
+  });
+});
+
+describe("canvas: aanname voorstellen bij 'Maak aanname' (bevinding 20)", () => {
+  it("zet de tekst van het onderdeel in een toetsbare formulering per bouwsteen", () => {
+    expect(assumptionDraft("revenue_streams", "Abonnement van € 49 per maand.")).toBe("We geloven dat klanten hiervoor willen betalen: Abonnement van € 49 per maand.");
+    expect(assumptionDraft("pains", "Planning kost elke week uren")).toBe("We geloven dat klanten hier echt last van hebben: Planning kost elke week uren.");
+    expect(assumptionDraft("onbekend", "Iets")).toBe("We geloven dat dit klopt: Iets.");
+  });
+  it("laat een al toetsbare formulering staan en blijft binnen de grens", () => {
+    expect(assumptionDraft("gains", "We geloven dat clubs tijd willen besparen")).toBe("We geloven dat clubs tijd willen besparen.");
+    expect(assumptionDraft("gains", "")).toBe("");
+    const long = assumptionDraft("gains", "woord ".repeat(120));
+    expect(long.length).toBeLessThanOrEqual(400);
+    expect(validateAssumptionStatement(long).ok).toBe(true);
   });
 });
