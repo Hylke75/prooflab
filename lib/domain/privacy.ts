@@ -19,6 +19,8 @@ export type DsrResult = {
   test_submissions: { id: string; idea: string; experiment: string; email: string | null; answers: unknown; created_at: string; retention_until: string }[];
   email_suppressions: { created_at: string; reason: string }[];
   interviews: { id: string; idea: string; experiment: string; participant_label: string; held_on: string; label_is_email: boolean; transcript_mentions_email: boolean; pseudonymized?: boolean }[];
+  // AI-gemodereerde gesprekken waarin de respondent dit adres letterlijk typte (sinds migratie 20261118090000).
+  ai_interviews?: { id: string; idea: string; experiment: string; status: string; started_at: string; code: string; has_interview: boolean; retention_until: string }[];
   team_account: { full_name: string | null; role: string; member_since: string }[];
   client_access: { idea: string; role: string; invited_at: string; account_linked: boolean }[];
 };
@@ -67,6 +69,13 @@ export function dsrLines(r: DsrResult): DsrLine[] {
       count: r.interviews.length,
       erasable: false,
       explain: "Interviews staan onder een pseudoniem (bijv. 'Deelnemer A'), niet onder een e-mailadres. Gevonden worden alleen interviews waarvan het pseudoniem dit adres is of waarin het adres letterlijk in het transcript staat, ook verkennende interviews zonder test. Geïmporteerde transcripten zijn bij het importeren gepseudonimiseerd: e-mailadressen, telefoonnummers en herkende namen zijn vervangen door labels (Spreker A, Persoon 1) en de originele namen en bestanden zijn nooit bewaard, dus daarin vindt een zoekopdracht op adres of naam meestal niets. Zoek ook op naam in de interviews van het dossier; verwijder of pas ze aan op de experiment- of transcriptpagina. Na de bewaartermijn (12 maanden na het gesprek) verdwijnen transcript, segmenten en citaten; thema's en aantallen blijven, zonder citaten.",
+    },
+    {
+      key: "ai_interviews",
+      label: "AI-gemodereerde gesprekken",
+      count: r.ai_interviews?.length ?? 0,
+      erasable: false,
+      explain: "Gesprekken met de AI-interviewer zijn anoniem: zonder naam, e-mailadres of IP-adres, met een bezoekerscode per test. Gevonden worden alleen gesprekken waarin de respondent dit adres letterlijk typte; meestal is het bij opslag al vervangen door een label. Een respondent kan verwijdering vragen met de gesprekscode die hij na afloop kreeg: verwijder het gesprek dan op de testpagina (AI-interviewer → Gesprekken → Verwijderen). Na de bewaartermijn verdwijnen de beurten vanzelf.",
     },
     {
       key: "team_account",

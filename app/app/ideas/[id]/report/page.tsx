@@ -17,6 +17,7 @@ import { explainRecruitment } from "@/lib/domain/recruitment";
 import { asEvidenceLevel, mergedShort, outcomeWithLevel } from "@/lib/domain/evidence";
 import { allTestsSummary } from "@/lib/domain/all-tests";
 import { formatGroups } from "@/lib/domain/report-counts";
+import { aiEvidenceLine } from "@/lib/domain/ai-interview";
 import { ladderSummary } from "@/lib/domain/dossier-label";
 import { PROBABILITY_EXPLAIN, assumptionProbabilityText, calibrationNote, claimCountsNote, claimStatusText, probabilityColumnHead, sheetOf, somRevenueCell } from "@/lib/report-pdf-model";
 import { decisionParagraph, reachableRevenue } from "@/lib/report-sheet";
@@ -28,6 +29,8 @@ import { EvidenceStanding } from "@/components/evidence/EvidenceStanding";
 import { ReportAppendix } from "@/components/report/ReportAppendix";
 import { standingFromSnapshot } from "@/lib/domain/evidence-standing";
 import { Term } from "@/components/ui/Term";
+import { ReportCanvasSection } from "@/components/canvas/ReportCanvasSection";
+import { asReportCanvas } from "@/lib/domain/canvas";
 
 export const metadata: Metadata = { title: "Rapportage" };
 
@@ -217,6 +220,8 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               {r.labelMissing.length ? ` Voor een hoger niveau ontbreekt: ${endSentence(r.labelMissing.join("; "))}` : ""}
               {r.observationCounts ? ` ${ladderSummary(r.observationCounts)}` : ""}
             </p>
+            {/* AI-gemodereerde interviews: apart gelabeld en geteld (rapporten van vóór deze functie hebben dit veld niet). */}
+            {r.aiInterviews && r.aiInterviews.interviews > 0 && <p className="tiny">{aiEvidenceLine(r.aiInterviews)}</p>}
             <div className="grid-3" style={{ margin: "20px 0" }}>
               <div style={{ background: "var(--color-surface-soft)", padding: 16, borderRadius: "var(--radius-inner)" }}>
                 <div className="tiny">Bevindingen met bron</div>
@@ -357,6 +362,9 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             )}
           </section>
 
+          {/* Propositie- en businessmodelcanvas (oudere rapporten en dossiers zonder canvas hebben het niet). */}
+          {asReportCanvas("canvas" in r ? r.canvas : null) && <ReportCanvasSection canvas={asReportCanvas(r.canvas)!} />}
+
           <section className="report-section">
             <span className="eyebrow">07 / Experimenten en resultaten</span>
             <h3>Van mening naar meetbaar gedrag</h3>
@@ -407,6 +415,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               <div key={i} className="mt-12" style={{ breakInside: "avoid" }}>
                 <strong style={{ fontSize: 13 }}>{e.title} ({e.type})</strong>
                 {e.selfReported && <p className="tiny">Zelfrapportage, geen waargenomen gedrag: een enquête meet wat mensen over zichzelf zeggen.</p>}
+                {e.manualEntry && <p className="tiny">Handmatig ingevoerd: het onderzoeksteam voerde deze resultaten zelf in{e.manualEntries != null ? ` (${e.manualEntries} ${e.manualEntries === 1 ? "regel" : "regels"} met notitie)` : ""}; ProofLab heeft ze niet zelf waargenomen. Ze tellen hooguit als kleine handeling.</p>}
                 <p>
                   Hypothese: {e.hypothesis} Meting: {e.metric}. Vooraf vastgelegd ({e.lockedAt ? date(e.lockedAt) : "niet vergrendeld"}): {e.threshold}.
                 </p>
@@ -450,7 +459,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                   <table className="table mt-8">
                     <caption className="sr-only">Aantallen per test, bron, kanaal en wervingsgroep</caption>
                     <thead>
-                      <tr><th scope="col">Test</th><th scope="col">n</th><th scope="col">Successen</th><th scope="col">Per bron</th><th scope="col">Per kanaal</th><th scope="col">Per wervingsgroep</th></tr>
+                      <tr><th scope="col">Test</th><th scope="col">n</th><th scope="col">Successen</th><th scope="col">Per bron</th><th scope="col">Per kanaal</th><th scope="col">Per wervingsgroep</th>{r.tallies.totals.aiModerated && <th scope="col">Waarvan AI-gemodereerd</th>}</tr>
                     </thead>
                     <tbody>
                       {r.tallies.tests.map((t, i) => (
@@ -461,6 +470,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                           <td className="tiny">{t.bySource.map((x) => `${x.source} ${x.successes}/${x.n}`).join(" · ") || "—"}</td>
                           <td className="tiny">{t.byChannel.map((x) => `${CHANNELS[x.channel as keyof typeof CHANNELS] ?? x.channel} ${x.successes}/${x.n}`).join(" · ") || "—"}</td>
                           <td className="tiny">{formatGroups(t.byGroup) || "—"}</td>
+                          {r.tallies?.totals.aiModerated && <td className="tiny">{t.aiModerated ? `${t.aiModerated.successes}/${t.aiModerated.n}` : "—"}</td>}
                         </tr>
                       ))}
                     </tbody>

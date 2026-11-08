@@ -1,5 +1,6 @@
 import "server-only";
-import { CLAIM_STATUS, COMPETITOR_KINDS, DECISIONS, DMU_ROLES, EVIDENCE_TYPES, EXPERIMENT_TYPES, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type DecisionAction, type DmuRole, type EvidenceType, type ExperimentType, type SourceType } from "@/lib/domain/labels";
+import { CLAIM_STATUS, COMPETITOR_KINDS, DECISIONS, DMU_ROLES, EVIDENCE_TYPES, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type DecisionAction, type DmuRole, type EvidenceType, type SourceType } from "@/lib/domain/labels";
+import { experimentTypeLabel } from "@/lib/domain/experiment-catalog";
 import type { Finding } from "@/lib/domain/reality-check";
 import { asEvidenceLevel, strength, testEvidenceLevel } from "@/lib/domain/evidence";
 import { buildAllTests } from "@/lib/domain/all-tests";
@@ -20,6 +21,8 @@ import { todayInNL } from "@/lib/domain/sprint";
 import { isExploratory } from "@/lib/domain/customer-research";
 import { sanitizeChallenges } from "@/lib/domain/ai-text";
 import type { EvidenceStanding } from "@/lib/domain/evidence-standing";
+import type { ReportCanvas } from "@/lib/domain/canvas";
+import { aiEvidenceSummary, type AiEvidenceSummary } from "@/lib/domain/ai-interview";
 
 // "AI · Gemini" for an AI forecast whose provider is known; null otherwise.
 function aiName(kind: string, model: string | null): string | null {
@@ -36,7 +39,8 @@ export type ReportSnapshot = ReturnType<typeof buildSnapshot>;
 export type SheetContext = { status: Pick<DossierStatus, "steps" | "stepsWithEvidence">; nextAction: string | null };
 
 // standing (fase 1, punt 2): de Stand van het bewijs op het moment van de versie (loadEvidenceStanding).
-export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: string; sheet?: SheetContext; standing?: EvidenceStanding }) {
+// canvas: het propositie- en businessmodelcanvas met de bewijsstand per onderdeel (loadReportCanvas), of null.
+export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: string; sheet?: SheetContext; standing?: EvidenceStanding; canvas?: ReportCanvas | null }) {
   const sources = new Map<string, { n: number; title: string; url: string | null; publisher: string | null; published_on: string | null; retrieved_at: string; type: string; primary: boolean }>();
   const footnote = (s: { id: string; title: string; url: string | null; publisher: string | null; published_on: string | null; retrieved_at: string; source_type: string; is_primary: boolean } | null) => {
     if (!s) return null;
@@ -101,11 +105,19 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
     // Fase B0, punt 1: klantwaarnemingen per persoon geteld (één interview = per bewijsniveau maximaal één waarneming).
     // Oudere rapporten hebben dit veld niet.
     observationCounts: ladder as EvidenceLadder | undefined,
+    // AI-gemodereerde interviews: welk bewijs daaruit komt, apart geteld (Voorspelkracht 7.4). Alleen bij dossiers met
+    // AI-interviews; oudere rapporten hebben dit veld niet.
+    aiInterviews: (d.aiInterviewIds.length
+      ? aiEvidenceSummary(d.observations, new Set(d.aiInterviewIds), (kind) => observationDirection({ kind }) === "contradicts")
+      : undefined) as AiEvidenceSummary | undefined,
     // Fase B6: het beslisblad (pagina 1), vastgelegd bij het maken van de versie. Oudere rapporten hebben het niet.
     sheet: sheet as DecisionSheet | undefined,
     // Fase 1, punt 2: de Stand van het bewijs, vastgelegd bij het maken van de versie. Oudere rapporten hebben het niet;
     // die krijgen een afgeleid blok (standingFromSnapshot).
     standing: meta.standing as EvidenceStanding | undefined,
+    // Propositie- en businessmodelcanvas op het moment van de versie (zonder open AI-voorstellen). Oudere rapporten en
+    // dossiers zonder canvas hebben het niet.
+    canvas: (meta.canvas ?? undefined) as ReportCanvas | undefined,
     competitors: d.competitors.map((c) => ({ name: c.name, kind: COMPETITOR_KINDS[c.kind as CompetitorKind].label, positioning: c.positioning, price: c.visible_price ? `${c.visible_price} (peildatum ${c.price_checked_on ?? "onbekend"})` : "Niet publiek", differentiation: c.differentiation_opportunity })),
     sizing: d.sizing.map((s) => ({
       label: s.label,
@@ -214,7 +226,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       .filter((e) => !["draft", "ready_for_review"].includes(e.state))
       .map((e) => ({
         title: e.title,
-        type: EXPERIMENT_TYPES[e.type as ExperimentType].label,
+        // Experimentencatalogus: bij een handmatig sjabloon de catalogusmethode met "(handmatig ingevoerd)".
+        type: experimentTypeLabel(e.type, e.config),
         state: e.state,
         hypothesis: e.hypotheses?.we_believe ?? "",
         metric: e.hypotheses ? `${e.hypotheses.metric_numerator} / ${e.hypotheses.metric_denominator}` : "",
@@ -231,13 +244,16 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         successCount: e.metrics?.verdict.successCount ?? null,
         requiredN: e.hypotheses?.required_n ?? null,
         // Bewijsniveau van wat deze test meet (golf A, punt 14).
-        level: testEvidenceLevel(e.type, { decisionRule: e.hypotheses?.decision_rule, successMetric: (e.hypotheses as { success_metric?: string | null } | null)?.success_metric }),
+        level: testEvidenceLevel(e.type, { decisionRule: e.hypotheses?.decision_rule, successMetric: (e.hypotheses as { success_metric?: string | null } | null)?.success_metric, config: e.config }),
         byChannel: e.metrics?.byChannel ?? [],
         byVariant: e.metrics?.byVariant ?? [],
         warnings: e.metrics?.warnings ?? [],
         endedEarly: e.ended_early,
         // Surveys are self-reported: what people say about themselves, never observed behaviour.
         selfReported: e.type === "survey",
+        // Experimentencatalogus: door het team ingevoerd, niet door ProofLab waargenomen.
+        manualEntry: e.type === "manual",
+        manualEntries: e.metrics?.manual?.entries ?? null,
         bySource: e.metrics?.survey
           ? { invitation: { n: e.metrics.survey.invitation.n, successes: e.metrics.survey.invitation.successes }, openLink: { n: e.metrics.survey.openLink.n, successes: e.metrics.survey.openLink.successes } }
           : null,
@@ -249,7 +265,7 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         .filter((e) => !["draft", "ready_for_review"].includes(e.state) || (e.metrics?.n ?? 0) > 0)
         .map((e) => ({
           title: e.title,
-          type: EXPERIMENT_TYPES[e.type as ExperimentType].label,
+          type: experimentTypeLabel(e.type, e.config),
           state: e.state,
           metrics: e.metrics
             ? {
@@ -261,6 +277,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
                   : null,
                 // Interviews: n en successen per wervingsgroep van het gesprek (golf A), alleen aantallen.
                 byRecruitment: e.metrics.byRecruitment,
+                // AI-gemodereerde interviews apart (alleen aantallen).
+                byModeration: e.metrics.byModeration,
               }
             : null,
           // De wervingsgroep van de test (golf A); geldt voor alle deelnemers van enquête-, landing- en prijstests.
@@ -272,7 +290,7 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
     allTests: buildAllTests(
       d.experiments.map((e) => ({
         title: e.title,
-        type: EXPERIMENT_TYPES[e.type as ExperimentType]?.label ?? e.type,
+        type: experimentTypeLabel(e.type, e.config),
         state: e.state,
         assumptionId: e.hypotheses?.assumption_id ?? null,
         assumption: e.hypotheses?.assumptions?.statement ?? null,
@@ -280,7 +298,7 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
         locked: !!e.hypotheses?.locked_at,
         endedEarly: !!e.ended_early,
         label: e.metrics?.verdict.label ?? null,
-        level: testEvidenceLevel(e.type, { decisionRule: e.hypotheses?.decision_rule, successMetric: (e.hypotheses as { success_metric?: string | null } | null)?.success_metric }),
+        level: testEvidenceLevel(e.type, { decisionRule: e.hypotheses?.decision_rule, successMetric: (e.hypotheses as { success_metric?: string | null } | null)?.success_metric, config: e.config }),
         n: e.metrics?.n ?? 0,
         successes: e.metrics?.successes ?? 0,
         // Gebruikerstest B4: zonder de migratie bestaat de kolom niet en is niets als zelf goedgekeurd bekend.
@@ -300,7 +318,7 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
           verdict: c.verdict,
           reliability: c.data_reliability,
           // "Geslaagd · niveau: mening" (golf A, punt 14).
-          level: stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule, successMetric: (exp.hypotheses as { success_metric?: string | null } | null)?.success_metric }) : null),
+          level: stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule, successMetric: (exp.hypotheses as { success_metric?: string | null } | null)?.success_metric, config: exp.config }) : null),
           title: exp?.title ?? null,
         };
       }),
@@ -352,6 +370,7 @@ function decisionSheetFor(d: Dossier, ctx: SheetContext, ladder: EvidenceLadder,
   const decisive = d.questions[0] ?? null;
   const expById = new Map(d.experiments.map((e) => [e.id, e]));
   const roleOf = new Map(d.interviews.map((i) => [i.id, i.dmu_role]));
+  const aiIds = new Set(d.aiInterviewIds);
   const sprintEnd = d.idea.sprint_start ? addDaysIso(d.idea.sprint_start, (d.idea.sprint_weeks ?? 0) * 7) : null;
   return buildDecisionSheet({
     status: ctx.status,
@@ -387,9 +406,10 @@ function decisionSheetFor(d: Dossier, ctx: SheetContext, ladder: EvidenceLadder,
       .filter((o) => !o.is_synthetic && (o.origin !== "ai" || o.review_status === "accepted"))
       .map((o) => {
         const e = o.experiment_id ? expById.get(o.experiment_id) : undefined;
-        const type = e ? (EXPERIMENT_TYPES[e.type as ExperimentType]?.label ?? e.type) : null;
+        const type = e ? experimentTypeLabel(e.type, e.config) : null;
         const role = o.interview_id ? roleOf.get(o.interview_id) : null;
-        const what = o.interview_id ? `Klantgesprek${role ? ` (${DMU_ROLES[role as DmuRole] ?? role})` : ""}` : `Meting${type ? ` (${type.toLowerCase()})` : ""}`;
+        const ai = o.interview_id ? aiIds.has(o.interview_id) : false;
+        const what = o.interview_id ? `${ai ? "AI-gemodereerd klantgesprek" : "Klantgesprek"}${role ? ` (${DMU_ROLES[role as DmuRole] ?? role})` : ""}` : `Meting${type ? ` (${type.toLowerCase()})` : ""}`;
         return {
           text: o.summary,
           source: `${what}${e ? `, test "${e.title}"` : ""}, ${sheetDate(o.created_at)}`,

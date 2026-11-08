@@ -20,6 +20,9 @@ import { proposeGoRule } from "@/lib/domain/decision-rule-proposal";
 import { describeRule } from "@/lib/domain/decision-rule";
 import { GoRuleProposalCard } from "@/components/experiments/GoRuleProposal";
 import { depositAvailability } from "@/lib/integrations/mollie-server";
+import { CATALOG, catalogExperimentType, catalogMethod, catalogMethodForTest, optionsWithCatalog, runsText } from "@/lib/domain/experiment-catalog";
+import { MANUAL_SCHEMA_MISSING } from "@/lib/domain/manual-results";
+import { manualSchemaAvailable } from "@/lib/manual-results-data";
 
 export const metadata: Metadata = { title: "Experimenten" };
 
@@ -89,6 +92,13 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
       : null;
   // B5: wat de intake al weet, om de Test Card vooraf in te vullen (prijs, beschrijving). Een expliciet prijsveld
   // (price_eur/price_period) telt als het dossier dat heeft; anders zoekt ProofLab de prijs in de intaketeksten.
+  // Experimentencatalogus: "Gebruik voor deze aanname" komt hier binnen met ?methode=<id>. Bureauonderzoek is geen test.
+  const catalogPick = (() => {
+    const m = catalogMethod(typeof sp.methode === "string" ? sp.methode : null);
+    return m && catalogExperimentType(m) ? m : null;
+  })();
+  const manualAvailable = catalogPick?.runs.kind === "manual" && canWrite ? await manualSchemaAvailable() : null;
+  const builderOptions = rec ? optionsWithCatalog(rec.options, catalogPick) : [];
   const ideaRow = idea as unknown as Record<string, unknown>;
   const intake = {
     description: idea.description ?? "",
@@ -104,8 +114,15 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           <div className="eyebrow">Stap 3 van 4 · Testen</div>
           <h1>Niet raden. Testen.</h1>
           <p className="sub">Kies een kleine proef waarmee je snel echt gedrag kunt observeren.</p>
+          {/* Experimentencatalogus: alle methodes met wat ze wel en niet bewijzen. */}
+          <Link className="btn white sm mt-12" href={`/app/ideas/${id}/experiments/catalogus${selected ? `?aanname=${selected.id}` : ""}`}>
+            Bekijk de experimentencatalogus ({CATALOG.length} methodes)
+          </Link>
         </div>
       </div>
+      {catalogPick && catalogPick.runs.kind === "manual" && manualAvailable === false && (
+        <div className="form-error" role="status">{MANUAL_SCHEMA_MISSING}</div>
+      )}
 
       {saved && (
         <div className="form-ok" role="status" style={{ marginBottom: 16 }}>
@@ -175,6 +192,19 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
               <small>score {a.voi.index}</small>
             </Link>
           ))}
+          {/* Experimentencatalogus: de voorgestelde test van elke aanname als methode in de catalogus (draaiboek, wat het wel en niet bewijst). */}
+          <ul className="tiny mt-12" aria-label="Voorgestelde tests in de catalogus" style={{ margin: "12px 0 0 18px", padding: 0 }}>
+            {assumptions.slice(0, 3).map((a, i) => {
+              const m = catalogMethodForTest(a.voi.test.type, a.voi.kind);
+              return m ? (
+                <li key={a.id}>
+                  {i + 1}. In de catalogus:{" "}
+                  <Link className="text-link" href={`/app/ideas/${id}/experiments/catalogus?aanname=${a.id}&open=${m.id}`}>{m.name}</Link>
+                  {" "}· {runsText(m).toLowerCase()}
+                </li>
+              ) : null;
+            })}
+          </ul>
         </div>
       )}
 
@@ -191,7 +221,9 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
             return { id: a.id, statement: a.statement, kind: assumptionKind(a), primary: a.primaryExperimentId ? { locked: !!state && !["draft", "ready_for_review"].includes(state) } : null };
           })}
           initialAssumption={selected.id}
-          options={rec.options}
+          options={builderOptions}
+          catalog={catalogPick}
+          catalogHref={`/app/ideas/${id}/experiments/catalogus?aanname=${selected.id}`}
           warning={rec.warning}
           audience={[idea.target_audience, idea.audience_detail, idea.region].filter(Boolean).join(", ")}
           action={createExperiment.bind(null, id)}
@@ -199,7 +231,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           method={asMethodVersion(idea.method_version)}
           aiConnected={aiConfigured()}
           variantsAction={proposeCopyVariants.bind(null, id)}
-          initialType={wantedType}
+          initialType={catalogPick ? (catalogExperimentType(catalogPick) ?? wantedType) : wantedType}
           researcher={ws.org?.name ?? ""}
           privacyContact={ws.user.email ?? ""}
           surveyDraftAction={draftSurveyWithCoach.bind(null, id)}
@@ -207,7 +239,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           intake={intake}
           goRuleMissing={rule === null}
           deposit={deposit}
-          key={`${selected.id}|${wantedType ?? ""}`}
+          key={`${selected.id}|${wantedType ?? ""}|${catalogPick?.id ?? ""}`}
         />
       ) : (
         <p className="sub">Je kijkt mee als opdrachtgever. Experimenten worden opgezet door het onderzoeksteam.</p>

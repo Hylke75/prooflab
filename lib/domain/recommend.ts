@@ -1,11 +1,12 @@
 // Experiment recommender: compares the executable experiments on five criteria and explains
 // why. Discovery (understand) comes before validation (prove), as in the method.
 
-import type { AssumptionCategory, ExperimentType } from "./labels";
+import type { AssumptionCategory, BuiltinExperimentType, ExperimentType } from "./labels";
 import { assumptionKind, type AssumptionKind } from "./assumption-kind";
 
 export type Option = {
-  tier: "Snel" | "Sterker bewijs" | "Meest overtuigend" | "Breder beeld";
+  // "Uit de catalogus": een methode die de consultant zelf koos in de experimentencatalogus.
+  tier: "Snel" | "Sterker bewijs" | "Meest overtuigend" | "Breder beeld" | "Uit de catalogus";
   type: ExperimentType;
   why: string;
   learn: string;
@@ -154,7 +155,7 @@ export const DECISION_BOUNDARY = 0.5;
 // LR of one clear result per test type, consistent with OBSERVATION_LR: a landing page yields a
 // demo request (3), a pricing test a choice at a price (3), an interview series several problem
 // confirmations in recent behaviour (≈ 2,5 after diminishing returns).
-export const TEST_LR: Record<ExperimentType, number> = { interview: 2.5, landing: 3, pricing: 3, survey: 1.3 };
+export const TEST_LR: Record<BuiltinExperimentType, number> = { interview: 2.5, landing: 3, pricing: 3, survey: 1.3 };
 export const EUR_PER_COST_UNIT = 500;
 
 export function costIndex(o: Pick<Option, "days" | "costEur">): number {
@@ -179,7 +180,7 @@ export type VoiTest = {
   short?: string; // korte naam voor de prioriteitenlijst (proeven buiten ProofLab)
 };
 
-const fromOption = (o: Pick<Option, "type" | "duration" | "cost" | "days" | "costEur">, label: string, lr = TEST_LR[o.type]): VoiTest => ({
+const fromOption = (o: Pick<Option, "type" | "duration" | "cost" | "days" | "costEur">, label: string, lr = TEST_LR[o.type as BuiltinExperimentType]): VoiTest => ({
   type: o.type,
   label,
   duration: o.duration,

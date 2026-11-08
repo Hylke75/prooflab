@@ -129,6 +129,7 @@ export const NOTE_PAGES: Record<string, NoteStep> = {
   "/research": "market",
   "/integrations": "market",
   "/assumptions": "assumptions",
+  "/model": "assumptions",
   "/experiments": "test",
   "/evidence": "decide",
   "/outcome": "decide",

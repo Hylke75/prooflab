@@ -1,3 +1,4 @@
+import { AI_INTERVIEW_LABEL } from "@/lib/domain/ai-interview";
 import type { Metadata } from "next";
 import { decisive } from "@/lib/domain/customer-research";
 import Link from "next/link";
@@ -38,6 +39,7 @@ import { ConfirmDecision } from "@/components/evidence/ConfirmDecision";
 import { againstFor } from "@/lib/against-data";
 import { extendedPhase, extensionBlocker } from "@/lib/domain/extension";
 import { todayInNL } from "@/lib/domain/sprint";
+import { experimentTypeLabel } from "@/lib/domain/experiment-catalog";
 import { isConclusiveDecision } from "@/lib/domain/dossier-status";
 import { audienceExample } from "@/lib/research-questions";
 import { Term } from "@/components/ui/Term";
@@ -50,9 +52,19 @@ import { CLAIM_STATUS, type ClaimStatus } from "@/lib/domain/labels";
 export const metadata: Metadata = { title: "Bewijs & besluit" };
 
 // Het bewijsniveau op een Learning Card: zoals vastgelegd, of (oudere kaarten) afgeleid uit het testtype.
-function cardLevel(metrics: unknown, exp: { type: string; hypotheses: { decision_rule?: string | null } | null } | undefined): EvidenceLevel | null {
+function cardLevel(metrics: unknown, exp: { type: string; config?: unknown; hypotheses: { decision_rule?: string | null } | null } | undefined): EvidenceLevel | null {
   const stored = asEvidenceLevel((metrics as { evidence_level?: unknown } | null)?.evidence_level);
-  return stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule, successMetric: (exp.hypotheses as { success_metric?: string | null } | null)?.success_metric }) : null);
+  return stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule, successMetric: (exp.hypotheses as { success_metric?: string | null } | null)?.success_metric, config: exp.config }) : null);
+}
+
+// Experimentencatalogus: een handmatig sjabloon staat overal als "handmatig ingevoerd", met de catalogusmethode.
+function ManualEntryNote({ exp }: { exp: { type: string; config?: unknown } | undefined }) {
+  if (exp?.type !== "manual") return null;
+  return (
+    <p className="tiny" style={{ margin: "4px 0 0" }}>
+      <span className="pill orange">Handmatig ingevoerd</span> {experimentTypeLabel(exp.type, exp.config).replace(/ \(handmatig ingevoerd\)$/, "")}: door het team ingevoerd, niet door ProofLab waargenomen
+    </p>
+  );
 }
 
 const SEV = { blocker: ["Blokkerend", "coral"], warning: ["Let op", "orange"], info: ["Ter info", "gray"] } as const;
@@ -109,6 +121,9 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
   const obs = d.observations.filter((o) => !o.is_synthetic).sort((a, b) => strength({ isFact: b.is_fact, isBehaviour: b.is_behaviour, isRealContext: b.is_real_context, isCostly: b.is_costly, isSynthetic: false }) - strength({ isFact: a.is_fact, isBehaviour: a.is_behaviour, isRealContext: a.is_real_context, isCostly: a.is_costly, isSynthetic: false }));
   // B0: waarnemingen uit oefengesprekken of nog niet aangegeven gesprekken (in loadDossier als synthetisch gemarkeerd).
   const practiceObs = d.observations.filter((o) => o.is_practice).length;
+  // AI-gemodereerde interviews: apart gelabeld en (in het rapport) apart geteld.
+  const aiInterviewIds = new Set(d.aiInterviewIds);
+  const aiObs = obs.filter((o) => o.interview_id && aiInterviewIds.has(o.interview_id)).length;
   // Fase B0, punt 1: per persoon tellen. Eén interview levert per bewijsniveau maximaal één waarneming.
   const ladder = evidenceLadder(d.observations.map(ladderObservation));
   const reached = ladder.rungs;
@@ -194,19 +209,21 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
                 <div className="icon-circle">{o.is_behaviour ? "✓" : "?"}</div>
                 <div>
                   <strong>{OBSERVATION_KINDS[o.kind as ObservationKind]}: {o.summary}</strong>
+                  {o.interview_id && aiInterviewIds.has(o.interview_id) && <> <span className="pill blue">{AI_INTERVIEW_LABEL}</span></>}
                   {/* Fase 2 · punt 4: soort bewijs van een automatische waarneming (alleen systeemwaarnemingen). */}
                   {evidenceTypeOf({ ...o, evidence_type: autoEvidence.get(o.id) }) && (
                     <p className="tiny" style={{ margin: "4px 0 0" }}>
                       <span className="pill blue">{EVIDENCE_TYPES[evidenceTypeOf({ ...o, evidence_type: autoEvidence.get(o.id) })!]}</span> automatisch geteld uit de test
                     </p>
                   )}
+                  <ManualEntryNote exp={o.experiment_id ? d.experiments.find((e) => e.id === o.experiment_id) : undefined} />
                   {o.quote && <blockquote className="quote">“{o.quote}”</blockquote>}
                   <p><span className={`pill ${s.pill}`}>{s.label}</span> {explainStrength(dims)}</p>
                 </div>
               </div>
             );
           })}
-          <div className="note">Een goed bewijsdossier laat ook helder zien wat een test níét aantoont. Synthetische of AI-gegenereerde data telt nooit mee.{practiceObs > 0 && <> {practiceObs === 1 ? "1 observatie komt" : `${practiceObs} observaties komen`} uit een <Term k="oefengesprek">oefengesprek</Term> of een gesprek dat nog niet als echt is aangegeven en {practiceObs === 1 ? "telt" : "tellen"} daarom niet als bewijs.</>}</div>
+          <div className="note">Een goed bewijsdossier laat ook helder zien wat een test níét aantoont. Synthetische of AI-gegenereerde data telt nooit mee.{aiObs > 0 && <> {aiObs === 1 ? "1 observatie komt" : `${aiObs} observaties komen`} uit een AI-gemodereerd interview: dat zijn letterlijke uitspraken van respondenten (de vragen van de AI tellen nooit) en ze staan in het rapport apart geteld.</>}{practiceObs > 0 && <> {practiceObs === 1 ? "1 observatie komt" : `${practiceObs} observaties komen`} uit een <Term k="oefengesprek">oefengesprek</Term> of een gesprek dat nog niet als echt is aangegeven en {practiceObs === 1 ? "telt" : "tellen"} daarom niet als bewijs.</>}</div>
         </div>
 
         <div className="stack">
@@ -323,6 +340,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
           return (
             <div className="card" key={c.id}>
               <div className="section-title"><h3>{exp?.title ?? "Experiment"}</h3><span className="pill orange">Concept · {outcomeWithLevel(c.verdict === "pass" ? "geslaagd" : c.verdict === "fail" ? "niet geslaagd" : "onbeslist", cardLevel(c.metrics, exp)).toLowerCase()}</span></div>
+              <ManualEntryNote exp={exp} />
               <div className="data-row"><span>We dachten</span><strong style={{ textAlign: "right" }}>{c.we_believed}</strong></div>
               <div className="data-row"><span>We zagen</span><strong style={{ textAlign: "right" }}>{c.we_observed}</strong></div>
               <RuleSummary o={outcomeFromCard(c.metrics, c.verdict, decisive(exp?.hypotheses))} />
@@ -355,6 +373,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
           return (
             <div className="card" key={c.id}>
               <div className="section-title"><h3>{exp?.title ?? "Experiment"}</h3><span className={`pill ${c.verdict === "pass" ? "green" : c.verdict === "fail" ? "coral" : "orange"}`}>{outcomeWithLevel(c.verdict === "pass" ? "geslaagd" : c.verdict === "fail" ? "niet geslaagd" : "onbeslist", cardLevel(c.metrics, exp))}</span></div>
+              <ManualEntryNote exp={exp} />
               {(() => {
                 const full = (
                   <>

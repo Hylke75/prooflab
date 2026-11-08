@@ -4,6 +4,7 @@
 import type { ClaimStatus, ObservationKind } from "./labels";
 import type { LrOverrides } from "./calibration";
 import { relevanceWeight } from "./claim-scope";
+import { manualKindOf } from "./manual-kind";
 
 export type ObservationDims = {
   isFact: boolean;
@@ -599,7 +600,13 @@ export const LEVEL_SHORT: Record<EvidenceLevel, string> = {
 // Het bewijsniveau van een testuitkomst: het niveau van wat de test meet (dezelfde indeling als de plafonds).
 // Enquête = zelfrapportage (mening); landingpagina = kleine handeling; prijstest = keuze bij een prijs;
 // interviews meten het probleem in eigen gedrag, of met de aantalregel een aanbetaling.
-export function testEvidenceLevel(type: string, opts: { decisionRule?: string | null; successMetric?: string | null } = {}): EvidenceLevel {
+// Experimentencatalogus: een handmatig sjabloon meet wat de catalogusmethode vastlegt (config.observation_kind, hooguit
+// een kleine handeling); zonder geldige soort de mening.
+export function testEvidenceLevel(type: string, opts: { decisionRule?: string | null; successMetric?: string | null; config?: unknown } = {}): EvidenceLevel {
+  if (type === "manual") {
+    const kind = manualKindOf(opts.config);
+    return kind ? KIND_LEVEL[kind] : "opinion";
+  }
   if (type === "survey") return KIND_LEVEL.survey_answer;
   // Fase 2 · punt 4: de succesmaat van een testpagina bepaalt het niveau (zelfde soort als de systeemwaarneming).
   if (type === "landing" || type === "pricing") {

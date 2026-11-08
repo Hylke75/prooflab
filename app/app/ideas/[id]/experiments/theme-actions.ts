@@ -8,6 +8,7 @@ import { aiConfigured } from "@/lib/env";
 import { aiErrorMessage, runAi } from "@/lib/ai/guard";
 import { suggestInterviewThemes } from "@/lib/ai/research";
 import { cleanThemeLabel, filterThemeProposals, findCode, MAX_THEME_WINDOWS, mergeThemeFilters, THEMES_NEVER_COUNT, type ThemeFilter } from "@/lib/domain/themes";
+import { RESPONDENT_SPEAKER } from "@/lib/domain/ai-interview";
 import { displaySegments, PURGED_TRANSCRIPT } from "@/lib/domain/quote-marking";
 import { transcriptWindows } from "@/lib/domain/transcript-parse";
 import { missingImportSchema } from "@/lib/domain/interview-import";
@@ -52,6 +53,11 @@ export async function suggestThemes(ideaId: string, interviewId: string, _: Form
     if (!parts.length) return { error: aiErrorMessage(e, "Er konden geen thema's worden voorgesteld. Maak ze zelf.") };
   }
   const result = mergeThemeFilters(parts);
+  // AI-gemodereerd interview: alleen citaten uit antwoorden van de respondent (vragen van de AI tellen nooit).
+  if ((iv as { ai_moderated?: boolean }).ai_moderated) {
+    for (const t of result.themes) t.quotes = t.quotes.filter((q) => segments[q.segmentIndex]?.s === RESPONDENT_SPEAKER);
+    result.themes = result.themes.filter((t) => t.quotes.length > 0);
+  }
 
   const { data: existingObs } = await supabase.from("observations").select("id, quote_start, quote_end").eq("interview_id", interviewId);
   let newThemes = 0;

@@ -1,0 +1,23 @@
+/* AI-gemodereerd interview: de publieke chatpagina. Mobiel eerst, bestaande tokens, geen eigen kleuren. */
+
+.ai-chat{max-width:680px;width:100%;margin:0 auto;text-align:left}
+.ai-chat h1{font-size:clamp(28px,4.5vw,40px);margin:12px 0 14px}
+.ai-chat .tp-lines{margin:0 0 16px;padding-left:20px;display:grid;gap:8px;font-size:15px;line-height:1.6;color:var(--color-text)}
+.ai-chat fieldset{border:0;padding:0;margin:18px 0 0}
+.ai-chat legend{font-weight:700;font-size:15px;color:var(--color-heading);margin-bottom:6px;padding:0}
+.ai-choice{display:flex;gap:10px;align-items:center;min-height:44px;font-size:15px;cursor:pointer}
+.ai-choice input{width:18px;height:18px;accent-color:var(--color-primary);flex:none}
+.ai-log{display:flex;flex-direction:column;gap:12px;margin:8px 0 16px;padding:0;list-style:none}
+.ai-msg{max-width:88%;padding:12px 16px;border-radius:18px;font-size:16px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.ai-msg.interviewer{align-self:flex-start;background:var(--color-surface);color:var(--color-text);box-shadow:var(--shadow-sm);border-bottom-left-radius:6px}
+.ai-msg.respondent{align-self:flex-end;background:var(--color-primary);color:var(--color-on-dark);border-bottom-right-radius:6px}
+.ai-who{display:block;font-size:12px;font-weight:700;margin-bottom:2px;opacity:.8}
+.ai-compose{position:sticky;bottom:0;background:var(--color-surface-muted);padding:12px 0 16px;display:grid;gap:10px}
+.ai-compose textarea.field{min-height:96px}
+.ai-compose-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;align-items:center}
+.ai-typing{font-size:14px;color:var(--color-text-muted);min-height:20px}
+.ai-code{font:700 20px var(--font-heading);letter-spacing:.06em;color:var(--color-heading)}
+.ai-confirm{background:var(--color-surface);box-shadow:var(--shadow-sm);border-radius:var(--radius-inner);padding:16px;display:grid;gap:10px}
+.ai-honeypot{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}
+@media (max-width:560px){.ai-msg{max-width:94%}.ai-compose-row .btn{flex:1 1 auto}}
+@media (prefers-reduced-motion:reduce){.ai-chat *{transition:none!important;animation:none!important}}

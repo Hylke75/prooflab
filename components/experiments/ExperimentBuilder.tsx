@@ -41,6 +41,8 @@ import { experimentTitle } from "@/lib/domain/truncate";
 import { MoreInThorough, useViewMode } from "@/components/shell/ViewMode";
 import { defaultedTestCardFields } from "@/lib/defaulted-test-card";
 import { defaultedLabels } from "@/lib/view-mode";
+import { catalogExperimentType, checklistFor, runsText, templateToTestCard, type CatalogMethod } from "@/lib/domain/experiment-catalog";
+import { ManualPlaybook } from "@/components/experiments/ManualPlaybook";
 
 type VariantsResult = { error: string | null; variants: PreparedVariant[]; draftNotes: string[]; draftWarnings: string[] };
 type VariantsAction = (input: { assumption_id: string; type: "landing" | "pricing"; headline: string; subline: string; offer: string }) => Promise<VariantsResult>;
@@ -53,7 +55,7 @@ type Action = (s: SaveState, f: FormData) => Promise<SaveState>;
 
 // B1: verplichte velden van de Test Card (zie validateTestCard); ze tonen "(verplicht)" en dragen aria-required.
 const REQUIRED_FIELDS = new Set(["title", "we_believe", "target_group", "test_method", "metric_label", "metric_numerator", "success_threshold_pct", "fail_threshold_pct", "success_count", "min_sample", "max_duration_days", "channels", "headline", "price_points"]);
-const CTA_DEFAULT: Record<ExperimentType, string> = { interview: "Plan een gesprek", pricing: "Kies dit aanbod", landing: "Vraag een demo aan", survey: "Vraag een demo aan" };
+const CTA_DEFAULT: Record<ExperimentType, string> = { interview: "Plan een gesprek", pricing: "Kies dit aanbod", landing: "Vraag een demo aan", survey: "Vraag een demo aan", manual: "Vraag een demo aan" };
 
 // Veld → element dat focus krijgt bij een fout (B1a).
 const FIELD_FOCUS: Record<string, string> = {
@@ -108,7 +110,13 @@ export function ExperimentBuilder({
   intake = { description: "", texts: [] },
   goRuleMissing = false,
   deposit = { available: false, reason: null, mode: null },
+  catalog = null,
+  catalogHref,
 }: {
+  // Experimentencatalogus: de gekozen methode ("Gebruik voor deze aanname"). Bij het bijbehorende testtype vult haar
+  // sjabloon de Test Card voor; bij een handmatig sjabloon staat het draaiboek in de preview.
+  catalog?: CatalogMethod | null;
+  catalogHref?: string;
   // Fase 2 · punt 4: kan deze werkruimte een betaalstap aanbieden (Mollie ingesteld)? Zo niet: niet te kiezen, met reden.
   deposit?: { available: boolean; reason: string | null; mode: "test" | "live" | null };
   // B5: wat de intake al weet (prijs, beschrijving), om de Test Card vooraf in te vullen.
@@ -145,7 +153,19 @@ export function ExperimentBuilder({
     templateSurvey({ assumption: assumption.statement, audience: audience || "de doelgroep", researcher: researcher || "de onderzoeker", product: ideaTitle, screen: true }),
   );
   const surveyIssues = useMemo(() => (type === "survey" ? surveyErrors(survey) : []), [type, survey]);
-  const defaults = useMemo(() => testCardDefaults(type, assumption.statement, audience), [type, assumption.statement, audience]);
+  // Experimentencatalogus: het sjabloon geldt alleen zolang het testtype van de gekozen methode is geselecteerd.
+  const cat = catalog && catalogExperimentType(catalog) === type ? catalog : null;
+  const defaults = useMemo(
+    () => (cat ? templateToTestCard(cat, assumption.statement, audience) : null) ?? testCardDefaults(type, assumption.statement, audience),
+    [cat, type, assumption.statement, audience],
+  );
+  // Een ingebouwde methode uit de catalogus kan een succesmaat meebrengen (bijv. afspraak); betaling alleen met Mollie.
+  const catMetric = (): SuccessMetric => {
+    const m = cat && cat.runs.kind === "builtin" ? cat.runs.successMetric : undefined;
+    return m && (m !== "payment" || deposit.available) ? m : "signup";
+  };
+  const manualChecklist = cat && cat.runs.kind === "manual" ? checklistFor(cat) : null;
+  const [extraSteps, setExtraSteps] = useState("");
   const withSurveyMetric = (d: typeof defaults, s: SurveyConfig) => (type === "survey" ? { ...d, ...metricFromKey(s) } : d);
   const [card, setCard] = useState(() => withSurveyMetric(defaults, survey));
   const [rule, setRule] = useState<DecisionRule>("probability");
@@ -155,22 +175,22 @@ export function ExperimentBuilder({
     headline: headlineFromIdea(intake.description, ideaTitle),
     subline: "",
     offer: intake.description.trim().slice(0, 600),
-    cta_label: CTA_DEFAULT[type],
+    cta_label: (type === "landing" || type === "pricing") && catMetric() !== "signup" ? ctaFor(type, catMetric()) : CTA_DEFAULT[type],
     product_name: "",
   }));
   // Fase 2 · punt 4: verwerkingsverantwoordelijke voor de AVG-tekst op de testpagina (vooringevuld met de werkruimte).
   const [privacy, setPrivacy] = useState({ controller: researcher, contact: privacyContact });
   // Fase 2 · punt 4: optionele betaalstap (standaard uit).
-  const [depositOn, setDepositOn] = useState(false);
+  const [depositOn, setDepositOn] = useState(() => catMetric() === "payment");
   const [depositAmount, setDepositAmount] = useState("10");
   // Fase 2 · punt 4: wat telt als succes (landing en prijs). Standaard aanmelding, zoals voorheen.
-  const [successMetric, setSuccessMetric] = useState<SuccessMetric>("signup");
+  const [successMetric, setSuccessMetric] = useState<SuccessMetric>(catMetric);
   // B5: vandaag (lokale datum) voor de deadline; de looptijd in dagen gaat naar de database.
   const [today] = useState(() => isoDay(new Date()));
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [isPrimary, setIsPrimary] = useState(() => !assumption.primary);
   // Gebruikerstest C4: de voorgestelde naam stopt op een woordgrens; heeft de gebruiker hem zelf aangepast, dan blijft hij staan.
-  const titleFor = () => experimentTitle(EXPERIMENT_TYPES[type].label, assumption.statement);
+  const titleFor = () => experimentTitle(cat ? cat.name : EXPERIMENT_TYPES[type].label, assumption.statement);
   const [title, setTitle] = useState(titleFor);
   const [titleTouched, setTitleTouched] = useState(false);
   // Gebruikerstest C3: de minimale steekproef die ProofLab bij het vastleggen ophoogde (de oude waarde, voor de hint).
@@ -186,12 +206,17 @@ export function ExperimentBuilder({
     setLastKey(`${type}|${assumption.id}`);
     setCard(withSurveyMetric(defaults, survey));
     setRule("probability");
-    setSuccessMetric("signup");
+    setSuccessMetric(catMetric());
+    if (catMetric() === "payment") setDepositOn(true);
     if (!titleTouched) setTitle(titleFor());
     setAutoSample(null);
     setSampleReason("");
     // De knoptekst volgt het testtype, tenzij de gebruiker hem zelf heeft aangepast.
-    setPage((pg) => (Object.values(CTA_DEFAULT).includes(pg.cta_label) ? { ...pg, cta_label: CTA_DEFAULT[type] } : pg));
+    setPage((pg) => {
+      const auto = [...Object.values(CTA_DEFAULT), ...SUCCESS_METRIC_KEYS.flatMap((k) => [ctaFor("landing", k), ctaFor("pricing", k)])];
+      const next = (type === "landing" || type === "pricing") && catMetric() !== "signup" ? ctaFor(type, catMetric()) : CTA_DEFAULT[type];
+      return auto.includes(pg.cta_label) ? { ...pg, cta_label: next } : pg;
+    });
     setLocked(false);
     setLockedAt(null);
     setChanging(false);
@@ -257,7 +282,7 @@ export function ExperimentBuilder({
   const [variantsPending, startVariants] = useTransition();
   const draftWarnings = honestyWarnings(page.headline, page.subline, page.offer);
   const askVariants = () => {
-    if (!variantsAction || type === "interview" || type === "survey") return;
+    if (!variantsAction || (type !== "landing" && type !== "pricing")) return;
     startVariants(async () => {
       setVariants(await variantsAction({ assumption_id: assumption.id, type, headline: page.headline, subline: page.subline, offer: page.offer }));
     });
@@ -404,6 +429,7 @@ export function ExperimentBuilder({
       channels,
       recruitmentGroup: recruitment || null,
       requiredN: v2 && activeRule !== "absolute" ? (band?.requiredN ?? null) : null,
+      template: cat?.card ?? null,
     }),
   );
   const set = (k: keyof typeof card, v: string) => setCard((c) => ({ ...c, [k]: v }));
@@ -424,6 +450,12 @@ export function ExperimentBuilder({
         </select>
         <p className="field-hint" style={{ marginTop: 6 }}>Soort aanname: {assumptionKindLabel(kind)}</p>
         {warning && <div className="note">{warning}</div>}
+        {catalog && (
+          <p className="field-hint" id="tc-catalog">
+            Methode uit de {catalogHref ? <a className="text-link" href={catalogHref}>experimentencatalogus</a> : "experimentencatalogus"}: <strong>{catalog.name}</strong> · {runsText(catalog)}.{" "}
+            {cat ? "Het sjabloon vult de Test Card voor; alles blijft aanpasbaar tot de goedkeuring." : "Kies de optie “Uit de catalogus” om het sjabloon te gebruiken."}
+          </p>
+        )}
         <div className={`exp-options${options.length === 4 ? " four" : ""}`} role="radiogroup" aria-label="Experimenttype">
           {options.map((o, i) => (
             <button key={o.tier} type="button" role="radio" aria-checked={tier === i} className={`exp-option${tier === i ? " selected" : ""}`} onClick={() => setTier(i)}>
@@ -458,6 +490,7 @@ export function ExperimentBuilder({
       <form ref={formRef} className="grid-2" noValidate onSubmit={submit} aria-label="Test Card">
         <input type="hidden" name="assumption_id" value={assumption.id} />
         <input type="hidden" name="type" value={type} />
+        {cat && <input type="hidden" name="catalog_method_id" value={cat.id} />}
         {locked && <input type="hidden" name="thresholds_locked" value="1" />}
         {thresholdsChanged && <input type="hidden" name="threshold_change_reason" value={changeReason.trim()} />}
         <div className="card" style={{ marginTop: 18 }}>
@@ -710,7 +743,7 @@ export function ExperimentBuilder({
           {/* B5: alles hieronder staat vooringevuld. Een verplicht veld met een fout opent dit deel vanzelf. */}
           <details className="tc-details" open={detailsOpen} onToggle={(e) => setDetailsOpen(e.currentTarget.open)}>
           <summary id="tc-details">
-            <strong>Details</strong> <small>meting, vertekeningen, werving{type === "landing" || type === "pricing" ? ", aanbodtekst" : ""}{type === "pricing" ? " en prijspunten" : ""}{type === "interview" ? " en gespreksleidraad" : ""} (vooringevuld)</small>
+            <strong>Details</strong> <small>meting, vertekeningen, werving{type === "landing" || type === "pricing" ? ", aanbodtekst" : ""}{type === "pricing" ? " en prijspunten" : ""}{type === "interview" ? " en gespreksleidraad" : ""}{type === "manual" ? " en draaiboek" : ""} (vooringevuld)</small>
             {tried && detailFieldErrors(liveErrors).length > 0 && <span className="pill coral">{detailFieldErrors(liveErrors).length} aan te vullen</span>}
           </summary>
           <div className="form-line mt-12"><label htmlFor="tc-method">Dat toetsen we door…<RequiredMark /></label><input className="field" id="tc-method" name="test_method" value={card.test_method} onChange={(e) => set("test_method", e.target.value)} {...aria("test_method")} />{fieldError("test_method")}</div>
@@ -791,6 +824,13 @@ export function ExperimentBuilder({
                 <textarea className="field" id="tc-screen" name="screener" rows={3} placeholder="Bijv. organiseert minstens 4 zakelijke events per jaar; geen vrienden of collega's" />
               </div>
             </>
+          )}
+          {type === "manual" && manualChecklist && (
+            <div className="form-line">
+              <label htmlFor="tc-extra">Eigen aanvullingen op het draaiboek (optioneel, één stap per regel)</label>
+              <textarea className="field" id="tc-extra" name="extra_steps" rows={3} maxLength={3000} value={extraSteps} onChange={(e) => setExtraSteps(e.target.value)} aria-describedby="tc-extra-hint" />
+              <p className="field-hint" id="tc-extra-hint">Het draaiboek uit de catalogus staat hiernaast. Je aanvullingen komen erbij en liggen na goedkeuring vast, net als de Test Card.</p>
+            </div>
           )}
           {(type === "landing" || type === "pricing") && (
             <>
@@ -908,6 +948,20 @@ export function ExperimentBuilder({
                 onDraftId={setSurveyDraftId}
               />
             </>
+          ) : type === "manual" ? (
+            cat && manualChecklist ? (
+              <ManualPlaybook
+                name={cat.name}
+                summary={cat.summary}
+                steps={manualChecklist}
+                extra={extraSteps.split("\n").map((s) => s.trim()).filter(Boolean)}
+                numerator={card.metric_numerator}
+                denominator={card.metric_denominator}
+                kind={cat.evidenceKind}
+              />
+            ) : (
+              <p className="sub">Kies eerst een handmatige methode in de experimentencatalogus.</p>
+            )
           ) : type === "interview" ? (
             <>
               {/* B5: de leidraad bewerk je onder Details; hier staat wat de deelnemer hoort. */}

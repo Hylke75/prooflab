@@ -8,6 +8,7 @@ import { DMU_ROLES } from "@/lib/domain/labels";
 import { PRACTICE_LABELS, practiceStatus } from "@/lib/domain/practice";
 import { TRANSCRIPT_FORMATS, type TranscriptFormat } from "@/lib/domain/transcript-parse";
 import { EXPLORATORY_INTERVIEW_NOTE, IMPORT_SCHEMA_MISSING, missingImportSchema } from "@/lib/domain/interview-import";
+import { AI_INTERVIEW_LABEL } from "@/lib/domain/ai-interview";
 import { ThemeCrossTable } from "@/components/experiments/ThemeCrossTable";
 import { FathomField } from "@/components/experiments/FathomField";
 import { loadThemeCountsForClient, loadThemeCountsForConsultant } from "@/lib/theme-counts-data";
@@ -76,6 +77,7 @@ export default async function InterviewsPage({ params }: PageProps<"/app/ideas/[
                       <strong>{iv.participant_label}</strong>
                       <span className="study-meta">
                         <span className={`pill ${iv.experiment_id ? "blue" : "gray"}`}>{iv.experiment_id ? `Test: ${title.get(iv.experiment_id) ?? "interviewronde"}` : "Verkennend"}</span>
+                        {iv.source_format === "ai_chat" && <span className="pill blue">{AI_INTERVIEW_LABEL}</span>}
                         <span className={`pill ${practice.pill}`}>{practice.label}</span>
                         <span>{DMU_ROLES[iv.dmu_role as keyof typeof DMU_ROLES] ?? iv.dmu_role}</span>
                         <span>{new Date(iv.held_on).toLocaleDateString("nl-NL")}</span>

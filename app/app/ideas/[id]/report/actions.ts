@@ -10,6 +10,7 @@ import { loadProgress } from "@/lib/progress";
 import { dossierStatus } from "@/lib/steps";
 import { nextAction, openDecisionAction } from "@/lib/domain/coach";
 import { loadEvidenceStanding } from "@/lib/standing-data";
+import { loadReportCanvas } from "@/lib/canvas-data";
 
 export type ActionState = { error: string | null; ok?: string | null };
 
@@ -17,7 +18,7 @@ export async function createReportVersion(ideaId: string, _: ActionState): Promi
   const { idea } = await requireWritableIdea(ideaId);
   const ws = await getWorkspace();
   const supabase = await supabaseServer();
-  const [d, progress, standing] = await Promise.all([loadDossier(idea), loadProgress(ideaId), loadEvidenceStanding(ideaId, "report")]);
+  const [d, progress, standing, canvas] = await Promise.all([loadDossier(idea), loadProgress(ideaId), loadEvidenceStanding(ideaId, "report"), loadReportCanvas(ideaId)]);
   // B6: het beslisblad leest de dossierstatus (getDossierStatus) en, als het besluit geen volgende stap noemt, de
   // volgende actie van de coach. Een actie over het rapport zelf ("Maak het eerste rapport") is geen volgende stap.
   const open = openDecisionAction(progress);
@@ -25,7 +26,7 @@ export async function createReportVersion(ideaId: string, _: ActionState): Promi
   const next = open?.title ?? (coachNext && !coachNext.href.endsWith("/report") ? coachNext.title : null);
   const { count } = await supabase.from("reports").select("id", { count: "exact", head: true }).eq("idea_id", ideaId);
   const version = (count ?? 0) + 1;
-  const snapshot = { ...buildSnapshot(d, { orgName: ws.org?.name ?? "", createdBy: ws.user.email, sheet: { status: dossierStatus(progress), nextAction: next }, standing }), version };
+  const snapshot = { ...buildSnapshot(d, { orgName: ws.org?.name ?? "", createdBy: ws.user.email, sheet: { status: dossierStatus(progress), nextAction: next }, standing, canvas }), version };
   const { error } = await supabase.from("reports").insert({ idea_id: ideaId, version, snapshot: snapshot as unknown as Json });
   if (error) return { error: "De rapportversie kon niet worden gemaakt." };
   revalidatePath(`/app/ideas/${ideaId}/report`);

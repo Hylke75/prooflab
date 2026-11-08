@@ -21,6 +21,8 @@ export const TRANSCRIPT_FORMATS = {
   vtt: "Ondertiteling (VTT, Teams of Zoom)",
   srt: "Ondertiteling (SRT)",
   fathom: "Fathom",
+  // AI-gemodereerd chatinterview (lib/domain/ai-interview.ts): geen bestand, het transcript komt uit de beurten.
+  ai_chat: "AI-gemodereerd chatinterview",
 } as const;
 export type TranscriptFormat = keyof typeof TRANSCRIPT_FORMATS;
 
