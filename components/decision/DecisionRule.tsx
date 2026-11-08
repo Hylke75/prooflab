@@ -102,7 +102,7 @@ export function DecisionRuleCard({
                 />
               ))}
               {assumptions.some(critical) && (
-                <p className="field-hint">Kritiek = gekozen om nu te testen en belang 5. Laat je een kritieke aanname weg, dan vraagt ProofLab waarom.</p>
+                <p className="field-hint">Hier telt: belang 5 én gekozen om nu te testen. Laat je zo’n aanname weg, dan vraagt ProofLab waarom.</p>
               )}
             </fieldset>
             <RulePrimarySelect
