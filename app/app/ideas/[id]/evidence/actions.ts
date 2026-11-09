@@ -1,5 +1,7 @@
 "use server";
 
+import { createReportVersion } from "../report/actions";
+
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase/server";
@@ -254,23 +256,27 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
     const question = outcomeQuestionFor(p.data.action);
     await supabase.from("ideas").update({ outcome_due: outcomeDueForQuestion(question, decidedOn, idea.outcome_measure_date), outcome_clock_start: decidedOn }).eq("id", ideaId).is("outcome_due", null);
   }
+  // Voorstel "ProofLab eenvoudiger": het rapport werkt zichzelf bij. Na elk besluit maakt ProofLab een nieuwe
+  // (onveranderlijke) rapportversie met het besluit erin; delen blijft een eigen, bewuste stap.
+  const report = await createReportVersion(ideaId, { error: null });
+  const reportNote = report.error ? " Het rapport kon niet automatisch worden bijgewerkt; maak de versie bij Rapport." : ` Het rapport is bijgewerkt (${report.ok?.replace(/ gemaakt\.$/, "").toLowerCase()}).`;
   refresh(ideaId);
   if (action === "extend")
-    return { error: null, ok: `Besluit vastgelegd: verder testen, ${extendWeeks} weken (tot ${nlDay(addDays(todayInNL(), extendWeeks! * 7))}). Het definitieve besluit en de uitkomstklok volgen daarna.` };
+    return { error: null, ok: `Besluit vastgelegd: verder testen, ${extendWeeks} weken (tot ${nlDay(addDays(todayInNL(), extendWeeks! * 7))}). Het definitieve besluit en de uitkomstklok volgen daarna.${reportNote}` };
   if (plan)
-    return { error: null, ok: `Besluit vastgelegd: verder testen, ${p.data.extend_weeks} weken (streefdatum ${nlDay(plan.until)}). ${plan.note ?? ""}`.trim() };
+    return { error: null, ok: `Besluit vastgelegd: verder testen, ${p.data.extend_weeks} weken (streefdatum ${nlDay(plan.until)}). ${plan.note ?? ""}`.trim() + reportNote };
   // B1: na verder testen, bijsturen of pauzeren is het dossier niet besloten; de bevestiging zegt wat nu volgt.
   if (!isConclusiveDecision(p.data.action))
     return {
       error: null,
       ok:
         p.data.action === "pause"
-          ? "Besluit vastgelegd: pauzeren. Het definitieve besluit (doorgaan of stoppen) volgt als het dossier terugkomt."
-          : `Besluit vastgelegd: ${DECISIONS[p.data.action].label.toLowerCase()}. Ontwerp de volgende test; het definitieve besluit volgt daarna.`,
+          ? `Besluit vastgelegd: pauzeren. Het definitieve besluit (doorgaan of stoppen) volgt als het dossier terugkomt.${reportNote}`
+          : `Besluit vastgelegd: ${DECISIONS[p.data.action].label.toLowerCase()}. Ontwerp de volgende test; het definitieve besluit volgt daarna.${reportNote}`,
     };
   // B1: zonder opdrachtgever is het besluit direct definitief; er wacht geen bevestiging.
-  if (!idea.client_id) return { error: null, ok: "Besluit vastgelegd. Dit dossier heeft geen opdrachtgever: het besluit is direct definitief. Werk nu het rapport bij." };
-  return { error: null, ok: "Besluit vastgelegd. De opdrachtgever kan het nu bevestigen; werk daarna het rapport bij." };
+  if (!idea.client_id) return { error: null, ok: `Besluit vastgelegd. Dit dossier heeft geen opdrachtgever: het besluit is direct definitief.${reportNote}` };
+  return { error: null, ok: `Besluit vastgelegd. De opdrachtgever kan het nu bevestigen.${reportNote}` };
 }
 
 // Golf B, punt 18: bevestigen kan alleen na de samenvatting "Wat ging tegen". De server stelt die opnieuw samen uit het

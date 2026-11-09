@@ -894,7 +894,7 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
   const { error } = await supabase.from("learning_cards").insert({ ...card, experiment_id: expId, idea_id: ideaId, version: 1 });
   if (error) return { error: "De Learning Card kon niet worden gemaakt." };
   refresh(ideaId);
-  redirect(`/app/ideas/${ideaId}/evidence`);
+  redirect(`/app/ideas/${ideaId}/evidence?stap=geleerd`);
 }
 
 // ---------------------------------------------------------------------------

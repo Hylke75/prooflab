@@ -294,9 +294,8 @@ export function ResearchRunPanel({
           <br />
           {isOwner ? (
             <span className="tiny">
-              Voor de eigenaar: zet minstens één API-sleutel ({providers.map((p) => p.keyEnv).join(", ")}) bij de omgevingsvariabelen van het
-              Vercel-project (Settings → Environment Variables) en rol opnieuw uit. Eén sleutel is genoeg; met meer zoeken de aanbieders los van elkaar.
-              Zie ook <Link className="text-link" href="/app/status" prefetch={false}>Systeemstatus</Link>.
+              Voor de eigenaar: AI koppelen doe je eenmalig voor de hele werkruimte.
+              Hoe dat gaat, staat bij <Link className="text-link" href="/app/status" prefetch={false}>Systeemstatus</Link>.
             </span>
           ) : (
             <span className="tiny">AI niet verbonden — vraag de eigenaar van de werkruimte om AI te koppelen.</span>

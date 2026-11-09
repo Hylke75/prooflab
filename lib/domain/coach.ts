@@ -236,7 +236,7 @@ export function predictionTip(p: IdeaProgress): NextAction | null {
   return {
     title: "Geef je voorspelling",
     detail: `${MOMENT_LABELS[due].label}: hoe groot is de kans dat het doel wordt gehaald? Begin bij het basispercentage.`,
-    href: due === "decision" ? `${base}/evidence#voorspelling` : `${base}/outcome#voorspelling`,
+    href: due === "decision" ? `${base}/evidence?stap=besluit#voorspelling` : `${base}/outcome#voorspelling`,
     icon: "trend",
   };
 }
@@ -329,7 +329,7 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
       if (realityCheckDue(p) || (!p.latestRealityCheckAt && p.experimentsEnded > 0)) add("Doe de Reality Check", `${base}/evidence`, "shield");
       else if (decisionDue(p)) {
         if (forecastDue(p) === "decision") {
-          if (p.forecast?.baseRateChosen) add("Geef je voorspelling", `${base}/evidence#voorspelling`, "trend");
+          if (p.forecast?.baseRateChosen) add("Geef je voorspelling", `${base}/evidence?stap=besluit#voorspelling`, "trend");
           else add("Kies een basispercentage", `${base}/outcome#basispercentage`, "compass");
         }
         add("Neem het besluit", `${base}/evidence`, "check");

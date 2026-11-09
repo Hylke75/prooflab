@@ -254,7 +254,7 @@ export function Invitations(p: Props) {
 
       {!p.emailReady && (
         <div className="note">
-          <strong>E-mail niet gekoppeld.</strong> ProofLab kan nu zelf niet mailen (RESEND_API_KEY en EMAIL_FROM ontbreken). Maak de
+          <strong>E-mail niet gekoppeld.</strong> ProofLab kan nu zelf niet mailen; de eigenaar koppelt e-mail via Systeemstatus. Maak de
           uitnodigingen wel aan: je downloadt dan een CSV met per adres een persoonlijke link en een afmeldlink, die je vanuit je eigen
           e-mailprogramma verstuurt. De links werken gewoon; ProofLab weet dan alleen niet of de mail is aangekomen, dus herinneringen
           verstuur je ook zelf.

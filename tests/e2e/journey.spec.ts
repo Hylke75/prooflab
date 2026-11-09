@@ -23,23 +23,18 @@ async function login(page: Page) {
   }
 }
 
-// Fase 3: het menu heeft hooguit 9 zichtbare items zonder dubbele namen, en de stappen in het menu hebben dezelfde
-// namen en status als de stappenbalk (de menustatus volgt na het laden van de pagina, vandaar de wachtende checks).
+// Fase 3: het menu heeft hooguit 9 zichtbare items zonder dubbele namen. Voorstel "ProofLab eenvoudiger": er is geen
+// stappenbalk meer; de vier stappen in het menu dragen hun status (die volgt na het laden van de pagina).
 async function expectMenuMatchesStepper(page: Page) {
   const sidebar = page.locator("#sidebar");
   expect(await sidebar.locator(".idea-switch-btn, .side-nav a.nav-link").count()).toBeLessThanOrEqual(9);
   const names = await sidebar.locator(".side-nav a.nav-link .nav-label").allTextContents();
   expect(new Set(names).size).toBe(names.length);
   const menuSteps = sidebar.locator("a.nav-link[data-step]");
-  const stepper = page.locator(".stepper [data-step]");
   await expect(menuSteps).toHaveCount(4);
-  await expect(stepper).toHaveCount(4);
-  for (let i = 0; i < 4; i++) {
-    const s = stepper.nth(i);
-    await expect(menuSteps.nth(i)).toHaveAttribute("data-step", (await s.getAttribute("data-step")) ?? "");
-    await expect(menuSteps.nth(i)).toHaveAttribute("data-step-state", (await s.getAttribute("data-step-state")) ?? "");
-    await expect(menuSteps.nth(i).locator(".nav-label")).toContainText((await s.locator(".step-name").textContent()) ?? "");
-  }
+  await expect(page.locator(".stepper")).toHaveCount(0);
+  await expect(page.locator(".sprint-strip")).toHaveCount(0);
+  for (let i = 0; i < 4; i++) await expect(menuSteps.nth(i)).toHaveAttribute("data-step-state", /^(done|running|empty)$/);
 }
 
 async function visit(browser: Browser, url: string, ua: string, act: "view" | "click" | "submit") {
@@ -76,10 +71,11 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await expect(page.getByRole("heading", { name: "Begrijp je markt." })).toBeVisible();
   await expectMenuMatchesStepper(page);
   const ideaUrl = page.url().replace(/\/research.*$/, "");
-  // Het dossieroverzicht toont de volgende stap (week 1: onderzoek, niet de voorspelling).
+  // Wat nu? toont één volgende taak (eerst onderzoek, niet de voorspelling) en de takenlijst per fase.
   await page.goto(ideaUrl);
-  await expect(page.getByRole("heading", { name: "Volgende stap" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Verzamel de eerste bronnen", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^Volgende taak: Beantwoord je onderzoeksvraag/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Ga naar de volgende taak" })).toHaveAttribute("href", /\/research/);
+  await expect(page.locator(".phase-item")).toHaveCount(5);
   await page.goto(`${ideaUrl}/research`);
 
   // 2. Source + verified claim
@@ -112,8 +108,8 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.getByRole("button", { name: /Begin met de standaardset|Stel aannames voor/ }).click();
   await expect(page.getByRole("heading", { name: "Risicokaart" })).toBeVisible();
 
-  // 4. Landing page experiment
-  await page.goto(`${ideaUrl}/experiments`);
+  // 4. Landing page experiment: het testplan is een eigen taakscherm in stappen.
+  await page.goto(`${ideaUrl}/experiments?nieuw=1`);
   // B0 punt 3: een landingpage met demo-aanvragen past niet bij een prijs- of technische aanname (dan is goedkeuren
   // geblokkeerd). Kies daarom expliciet een markt- of gedragsaanname.
   const statements = await page.locator("#as-select option").allTextContents();
@@ -121,11 +117,12 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   expect(fitting, "een markt- of gedragsaanname").toBeTruthy();
   await page.getByLabel("Aanname die je toetst", { exact: true }).selectOption({ label: fitting! });
   await page.getByRole("radio", { name: /Landingpage-test/ }).click();
-  // Kop en ondertitel staan op de tab Testpagina; de werving onder Details van de tab Test Card.
-  await page.getByRole("tab", { name: "Testpagina" }).click();
+  const steps = page.getByRole("tablist", { name: "Stappen van het testplan" });
+  // Kop en ondertitel staan bij stap Testpagina; drempels en werving bij Wanneer geslaagd.
+  await steps.getByRole("tab", { name: /Testpagina/ }).click();
   await page.getByLabel("Kop (verplicht)", { exact: true }).fill("Vind de perfecte eventlocatie in minuten.");
   await page.getByLabel("Ondertitel", { exact: true }).fill("Een persoonlijke selectie, zonder eindeloos zoeken.");
-  await page.getByRole("tab", { name: "Test Card" }).click();
+  await steps.getByRole("tab", { name: /Wanneer geslaagd/ }).click();
   // Fase B1b: eerst de drempels vastleggen; daarna rekent ProofLab het aantal deelnemers uit.
   await page.getByRole("button", { name: "Leg drempels vast" }).click();
   await expect(page.getByText(/Je hebt ongeveer \d+ deelnemers nodig/)).toBeVisible();
@@ -135,6 +132,7 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   if (await belowReason.isVisible()) await belowReason.fill("Testomgeving: vijf bezoekers volstaan om de journey te doorlopen.");
   await page.locator("#tc-details").click();
   await page.getByRole("radio", { name: "Koud", exact: true }).check();
+  await steps.getByRole("tab", { name: /Voorbeeld/ }).click();
   await page.getByRole("button", { name: /Test Card opslaan als concept/ }).click();
   // Fase B1a: na opslaan terug op het bord met een bevestiging; daarvandaan naar het concept.
   await page.waitForURL(/\/experiments\?opgeslagen=/);
@@ -176,6 +174,9 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await expect(page.getByText(/een voorstel/).first()).toBeVisible();
   await expect(page.locator("textarea[name=we_learned]").first()).not.toHaveValue("");
   await page.getByRole("button", { name: "Keur goed: werk de aanname bij" }).click();
+  // Besluit is drie taken op eigen schermen: na de Learning Card volgt "Klopt het echt?".
+  await page.getByRole("link", { name: /Verder: Klopt het echt/ }).click();
+  await page.waitForURL(/stap=check/);
   await page.getByRole("button", { name: "Voer de Reality Check uit" }).click();
   await expect(page.getByText(/Advies:/)).toBeVisible();
   // The decision needs a base rate and the consultant's own forecast at the decision moment.
@@ -183,9 +184,9 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.getByRole("button", { name: "Leg het basispercentage vast" }).click();
   // Once saved, the picker folds away (its own confirmation with it) and the chosen base rate is shown.
   await expect(page.locator("summary", { hasText: "Andere referentie kiezen" })).toBeVisible();
-  await page.goto(`${ideaUrl}/evidence`);
+  await page.goto(`${ideaUrl}/evidence?stap=besluit`);
   // Eerst voorspellen (golf B, punt 15): de bewijspagina blijft vergrendeld tot de eigen voorspelling er is.
-  await expect(page.getByRole("link", { name: /Vul je voorspelling in bij het formulier hiernaast/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Vul je voorspelling in bij het formulier hieronder/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Bewaar mijn keuze" })).toHaveCount(0);
   // B0 punt 5: het veld is leeg; na invullen staat er wat er wordt vastgelegd.
   const forecast = page.getByLabel("Kans dat het doel wordt gehaald (%)", { exact: true });
@@ -206,8 +207,8 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await expect(page.locator("#sidebar a.nav-link[data-step=decide]")).not.toHaveAttribute("data-step-state", "done");
 
   // 7. Report snapshot with source footnote and decision
+  // Voorstel "ProofLab eenvoudiger": het besluit maakt zelf een rapportversie; je hoeft niets aan te klikken.
   await page.goto(`${ideaUrl}/report`);
-  await page.getByRole("button", { name: "Maak het eerste rapport" }).click();
   await expect(page.locator(".report-paper")).toContainText("Verder testen");
   // B6: pagina 1 is het beslisblad; na "Verder testen" is het besluit nog niet beslisbaar.
   await expect(page.locator(".decision-sheet")).toContainText("Nog niet beslisbaar");
@@ -240,6 +241,6 @@ test("mobiel: navigatie als drawer en coach als slide-over @mobile", async ({ pa
   await expect(page.locator(".sidebar.open")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator(".sidebar.open")).toHaveCount(0);
-  await page.getByRole("button", { name: "Open onderzoekscoach" }).click();
+  await page.getByRole("button", { name: "Open tips en vragen" }).click();
   await expect(page.locator(".coach.open")).toBeVisible();
 });

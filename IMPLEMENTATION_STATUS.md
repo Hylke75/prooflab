@@ -1383,3 +1383,39 @@ bevindingen; alle 24 opgelost.
   herkomst niet zien zonder RPC-wijziging).
 - In `next dev` (niet in productie) gaf het server-renderen van dossierpagina's soms dezelfde #130-fout rond
   `StepNotes`; met de `Field`-reparatie niet meer gezien in de productiebuild.
+
+## ProofLab eenvoudiger: basis, Testen en Besluit (9 november)
+
+Op basis van het onderzochte voorstel "ProofLab eenvoudiger" (audit van 84 schermen op 1440 en 390 px, plus GOV.UK,
+NN/g, Baymard, Microsoft HAX en Google PAIR). De eigenaar ging akkoord met de richting en koos: eerst de basis plus
+Testen en Besluit. Markt, Aannames en Rapport volgen in een volgende ronde. Ontwerpafwijkingen: DESIGN_DIFF_LOG #72–#77.
+
+**Basis**
+- ✅ Eén takenmodel per idee (`lib/domain/tasks.ts`, unit-test `tasks.test.ts`): vijf fasen met taken, status
+  Klaar/Bezig/Te doen/Kan nog niet met de reden, de huidige fase, de volgende taak, en per taak "wat jij doet" en "wat AI
+  kan" (`ai: null` als AI daar niets doet; een berekening heet nooit AI). Een open voorspelmoment gaat als eerste taak vóór
+  alles. Na "verder testen" of "bijsturen" staat het testplan weer open tot er een nieuwe test is.
+- ✅ "Wat nu?" (was: Overzicht van dit idee): één volgende taak met één knop, daaronder de takenlijst per fase.
+- ✅ Taakkop (`components/tasks/TaskHeader.tsx`): "Fase · taak x van y", één zin waarom, de taken van de fase als stappen
+  en het vaste blok Wat jij doet / Wat AI kan; onderaan terug naar Wat nu? en door naar de volgende taak.
+- ✅ Sprintbalk en stappenbalk weg uit de kop van elke ideepagina; het coachpaneel is geen vaste kolom meer maar opent
+  via "Tips en vragen".
+- ✅ Herkomstlabels: AI-voorstel, Berekend voorstel, Door jou bevestigd, Gemeten bewijs. Geen namen van
+  omgevingsvariabelen meer in schermen voor gebruikers.
+
+**Testen**
+- ✅ Pagina Testen: bord, "Wat test je eerst" en één knop "Zet een nieuwe test op".
+- ✅ Testplan als eigen taakscherm in vijf genummerde stappen met Vorige/Volgende en opslaan op de laatste stap; een fout
+  springt naar de stap met het veld. (Bugfix tijdens het bouwen: de knop Volgende werd op de laatste stap als
+  opslagknop hergebruikt en verstuurde het formulier; nu eigen keys.)
+
+**Besluit**
+- ✅ Drie taken op eigen schermen: Wat heb je geleerd? → Klopt het echt? → Neem je besluit, plus "Alle bewijs op een rij"
+  als naslag. Eerst voorspellen staat in dezelfde kolom met het formulier eronder.
+- ✅ Na elk besluit maakt ProofLab zelf een nieuwe rapportversie (delen blijft een bewuste stap).
+
+**Getest**: typecheck, lint, 1.618 unit-tests, alle Playwright-specs (desktop en mobiel) tegen een lokale Supabase en de
+productiebuild, inclusief de hele journey idee → onderzoek → risico → test → bewijs → besluit → rapport.
+
+**Nog te doen (volgende ronde)**: Markt, Aannames en Rapport ombouwen naar taakschermen; klantonderzoek op één plek;
+methode en catalogus naar "Hulp en methode"; vaktermen in gewone taal; daarna testen met drie gebruikers.

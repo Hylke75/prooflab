@@ -48,6 +48,15 @@ import { EvidenceStanding } from "@/components/evidence/EvidenceStanding";
 import { loadEvidenceStanding } from "@/lib/standing-data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { CLAIM_STATUS, type ClaimStatus } from "@/lib/domain/labels";
+import { ideaTasks, taskAfter } from "@/lib/domain/tasks";
+import { TaskFooter, TaskHeader } from "@/components/tasks/TaskHeader";
+import { aiConfigured } from "@/lib/env";
+
+// Voorstel "ProofLab eenvoudiger": Besluit is drie taken, elk op een eigen scherm, in deze volgorde: Wat heb je geleerd
+// (Learning Cards) → Klopt het echt? (Reality Check en pre-mortem) → Neem je besluit. "Alle bewijs" is naslag zonder invoer.
+const STAPPEN = ["geleerd", "check", "besluit", "bewijs"] as const;
+type Stap = (typeof STAPPEN)[number];
+const STAP_LABELS: Record<Stap, string> = { geleerd: "Wat heb je geleerd?", check: "Klopt het echt?", besluit: "Besluit", bewijs: "Alle bewijs" };
 
 export const metadata: Metadata = { title: "Bewijs & besluit" };
 
@@ -69,8 +78,9 @@ function ManualEntryNote({ exp }: { exp: { type: string; config?: unknown } | un
 
 const SEV = { blocker: ["Blokkerend", "coral"], warning: ["Let op", "orange"], info: ["Ter info", "gray"] } as const;
 
-export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id]/evidence">) {
+export default async function EvidencePage({ params, searchParams }: PageProps<"/app/ideas/[id]/evidence">) {
   const { id } = await params;
+  const sp = await searchParams;
   const { idea, canWrite, isClientDecider } = await getIdea(id);
   // Fase 1 · punt 1: in Snel geen ladderpillen, geen pre-mortem-invoer en goedgekeurde Learning Cards ingeklapt. Stand
   // van het bewijs, Reality Check, beslisregel, besluit en bevestiging blijven; de berekening is gelijk.
@@ -81,19 +91,34 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
   // Golf B, punt 15: zolang het open voorspelmoment niet door deze gebruiker is voorspeld, blijven de berekende kansen,
   // de sterkte van het bewijs en andermans voorspellingen vergrendeld.
   const lock = forecastFirstLock(progress);
+  const list = ideaTasks(progress);
+  const aiOn = aiConfigured();
+  // Welke stap: die uit het adres, anders de eerste taak van Besluit die nog iets vraagt. Opdrachtgevers zien het besluit
+  // (om te bevestigen) of anders het bewijs.
+  const asked = typeof sp.stap === "string" && (STAPPEN as readonly string[]).includes(sp.stap) ? (sp.stap as Stap) : null;
+  const decideTasks = list.phases.find((ph) => ph.key === "decide")!.tasks;
+  const open = decideTasks.find((t) => t.status === "busy" || t.status === "todo")?.key;
+  const fallback: Stap = !canWrite
+    ? progress.decisions > 0 ? "besluit" : "bewijs"
+    : open === "decide-learned" ? "geleerd" : open === "decide-check" ? "check" : open === "decide-decision" || progress.decisions > 0 ? "besluit" : "bewijs";
+  const stap: Stap = asked ?? fallback;
+  const bewijsLink =
+    stap === "bewijs" ? undefined : (
+      <Link className="btn white sm" href={`/app/ideas/${id}/evidence?stap=bewijs`} prefetch={false}>
+        Alle bewijs op een rij
+      </Link>
+    );
   if (lock) {
+    // Eerst voorspellen: op elke stap van Besluit, als eerste taak, met het formulier direct eronder (één kolom).
+    const key = stap === "geleerd" ? "decide-learned" : stap === "check" ? "decide-check" : "decide-decision";
     return (
-      <PageFrame crumbs={["Werkruimte", idea.title, "Bewijs & besluit"]} coach="evidence" ideaId={id} section="/evidence">
-        <div className="section-row">
-          <div>
-            <div className="eyebrow">Stap 4 van 4 · Besluit</div>
-            <h1>Wat weten we nu echt?</h1>
-            <p className="sub">Eerst je eigen voorspelling; daarna alle signalen op één plek, inclusief tegenbewijs.</p>
+      <PageFrame crumbs={["Werkruimte", idea.title, "Eerst je voorspelling"]} coach="evidence" ideaId={id} section="/evidence">
+        <div className="task-page">
+          <TaskHeader ideaId={id} list={list} taskKey={key} title="Eerst je eigen voorspelling" why="Geef eerst je eigen kans dat het doel wordt gehaald. Daarna zie je het bewijs, de berekende kansen en de Reality Check." aiConnected={aiOn} />
+          <div className="stack">
+            <ForecastFirstLock ideaId={id} moment={lock} what="de bewijspagina met de sterkte van het bewijs, de kansen per aanname en de Reality Check" client={!canWrite} formHere={lock === "decision"} />
+            {lock === "decision" && <DecisionForecast ideaId={id} />}
           </div>
-        </div>
-        <div className="grid-2">
-          <ForecastFirstLock ideaId={id} moment={lock} what="de bewijspagina met de sterkte van het bewijs, de kansen per aanname en de Reality Check" client={!canWrite} formHere={lock === "decision"} />
-          {lock === "decision" && <DecisionForecast ideaId={id} />}
         </div>
       </PageFrame>
     );
@@ -149,27 +174,23 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
     }),
   ) as Partial<Record<DecisionAction, string>>;
 
+  const header = (key: "decide-learned" | "decide-check" | "decide-decision", title: string, why: string) => (
+    <TaskHeader ideaId={id} list={list} taskKey={key} title={title} why={why} aiConnected={aiOn} aside={bewijsLink} />
+  );
+  const after = (key: "decide-learned" | "decide-check" | "decide-decision") => taskAfter(list, key);
+
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Bewijs & besluit"]} coach="evidence" ideaId={id} section="/evidence">
-      <div className="section-row">
-        <div>
-          <div className="eyebrow">Stap 4 van 4 · Besluit</div>
-          <h1>Wat weten we nu echt?</h1>
-          <p className="sub">Alle signalen op één plek. Inclusief tegenbewijs en de beperkingen van je tests.</p>
-        </div>
-        <Link className="btn white" href={`/app/ideas/${id}/report`}>Bekijk rapport →</Link>
-      </div>
-
-      {phase && (
-        <div className="note" role="status">
-          {/* B6: verder testen en de verlengde testfase zijn één keuze met een duur. */}
-          <strong>Verder testen{phase.active ? "" : ": periode afgelopen"}:</strong> {phase.weeks} weken, van {phase.start} tot {phase.end}.{" "}
-          {phase.active
-            ? "Verzamel nu het extra gedragsbewijs. Het definitieve besluit en de uitkomstklok volgen na deze periode."
-            : "Neem nu het definitieve besluit: doorgaan, stoppen of pauzeren. Daarmee start de uitkomstklok."}
-        </div>
-      )}
-
+    <PageFrame crumbs={["Werkruimte", idea.title, STAP_LABELS[stap]]} coach="evidence" ideaId={id} section="/evidence">
+      <div className="task-page">
+          {stap === "bewijs" && (
+          <>
+            <div className="section-row">
+              <div>
+                <div className="eyebrow">Besluit · naslag</div>
+                <h1>Wat weten we nu echt?</h1>
+                <p className="sub">Alle signalen op één plek, inclusief tegenbewijs en de beperkingen van je tests. Hier vul je niets in.</p>
+              </div>
+            </div>
       <EvidenceStanding standing={standing} ideaId={id} />
 
       <div className="insight-banner" style={{ background: "var(--color-success-soft)" }}>
@@ -185,8 +206,7 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
         </div>
       </div>
 
-      <div className="grid-2">
-        <div className="card">
+            <div className="card">
           <div className="section-title"><h3>Bewijs op een rij</h3><span className="pill gray">{perPersonLabel(ladder)}</span></div>
           {quick ? (
             <MoreInThorough />
@@ -226,115 +246,24 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
           <div className="note">Een goed bewijsdossier laat ook helder zien wat een test níét aantoont. Synthetische of AI-gegenereerde data telt nooit mee.{aiObs > 0 && <> {aiObs === 1 ? "1 observatie komt" : `${aiObs} observaties komen`} uit een AI-gemodereerd interview: dat zijn letterlijke uitspraken van respondenten (de vragen van de AI tellen nooit) en ze staan in het rapport apart geteld.</>}{practiceObs > 0 && <> {practiceObs === 1 ? "1 observatie komt" : `${practiceObs} observaties komen`} uit een <Term k="oefengesprek">oefengesprek</Term> of een gesprek dat nog niet als echt is aangegeven en {practiceObs === 1 ? "telt" : "tellen"} daarom niet als bewijs.</>}</div>
         </div>
 
-        <div className="stack">
-          <div className="card">
-            <div className="section-title"><h3><Term k="reality-check">Reality Check</Term></h3><span className="pill coral">Verplicht vóór elk besluit</span></div>
-            {!check ? (
-              <p className="sub">Nog niet uitgevoerd. De check zoekt naar valkuilen, zwakke data en conclusies die het bewijs niet draagt.</p>
-            ) : (
-              <>
-                <p className="tiny">Uitgevoerd {new Date(check.created_at).toLocaleString("nl-NL")}{check.ai_used ? " · met kritische vragen van AI" : " · op basis van vaste regels"}</p>
-                {stale && <div className="form-error mt-8">Er is nieuw bewijs sinds deze check. Voer hem opnieuw uit.</div>}
-                <div className="verdict inconclusive mt-12">
-                  <strong>Advies: {DECISIONS[check.advice as DecisionAction].label}</strong>
-                  <p className="sub" style={{ marginTop: 4 }}>{check.advice_reason}</p>
-                </div>
-                {checkFindings.map((f, i) => (
-                  <div className="evidence-event" key={i}>
-                    <div className="icon-circle">{f.severity === "blocker" ? "!" : f.source === "ai" ? "✳" : "•"}</div>
-                    <div><strong>{f.title}</strong> <span className={`pill ${SEV[f.severity][1]}`}>{SEV[f.severity][0]}</span>{f.source === "ai" && <span className="pill blue" style={{ marginLeft: 4 }}>AI-vraag</span>}<p>{f.detail}</p></div>
-                  </div>
-                ))}
-                {investorQuestions.length > 0 && (
-                  <details className="mt-12">
-                    <summary className="text-link">Wat zou een kritische investeerder vragen?</summary>
-                    <ul style={{ margin: "8px 0 0 18px", fontSize: 14, lineHeight: 1.8 }}>{investorQuestions.map((q) => <li key={q}>{q}</li>)}</ul>
-                  </details>
-                )}
-              </>
-            )}
-            <div className="divider" />
-            <h4 id="premortem" style={{ fontSize: 13 }}>Pre-mortem</h4>
-            <p className="sub" style={{ fontSize: 13 }}>
-              Het is zes maanden na het besluit en dit is mislukt. Wat is de meest waarschijnlijke reden?
-            </p>
-            {premortem.length > 0 ? (
-              <ul style={{ margin: "8px 0 0 18px", fontSize: 14, lineHeight: 1.7 }}>
-                {premortem.map((a) => (
-                  <li key={a.id}>
-                    {a.statement}{" "}
-                    <span className="tiny">
-                      · belang {a.importance}/5 · geschatte kans dat dit klopt <Probability p={a.probability.probability} calibrated={calibration.calibrated} />{a.probability.counted === 0 ? " (nog geen bewijs)" : ""}{a.probability.cap?.active ? ` (${a.probability.cap.reason})` : ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="tiny mt-8">Nog niet gedaan. De Reality Check waarschuwt tot er minstens één reden is vastgelegd.</p>
-            )}
-            {canWrite && quick && <MoreInThorough />}
-            {canWrite && !quick && (
-              <details className="mt-8" open={premortem.length === 0}>
-                <summary className="text-link">{premortem.length ? "Nog een reden toevoegen" : "Doe de pre-mortem (1 tot 3 redenen)"}</summary>
-                <ActionForm action={addPremortem.bind(null, id)} submitLabel="Zet op de risicokaart" submitClass="btn white sm" resetOnSuccess>
-                  <p className="explain">
-                    Schrijf elke reden op als wat waar moet zijn om die mislukking te voorkomen. Reden &quot;overstappen was te veel gedoe&quot; wordt bijvoorbeeld: &quot;{who ? `${who} stappen zonder veel moeite over van hun huidige werkwijze.` : "De doelgroep stapt zonder veel moeite over van de huidige werkwijze."}&quot;
-                  </p>
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="mt-12">
-                      <label className="field-label" htmlFor={`pm-r-${i}`} style={{ marginTop: 0 }}>Reden {i}{i > 1 ? " (optioneel)" : ""}</label>
-                      <input className="field" id={`pm-r-${i}`} name={`reason_${i}`} maxLength={400} placeholder={i === 1 ? (who ? `Bijv. ${who} blijven bij hun huidige werkwijze, omdat …` : "Bijv. De doelgroep blijft bij de huidige werkwijze, omdat …") : ""} />
-                      <div className="double-field mt-8">
-                        <select className="field" name={`category_${i}`} defaultValue="desirability" aria-label={`Soort risico bij reden ${i}`}>
-                          {Object.entries(ASSUMPTION_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                        </select>
-                        <select className="field" name={`importance_${i}`} defaultValue="4" aria-label={`Belangrijkheid van reden ${i} (5 = idee valt om)`}>
-                          {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>Belang {n}{n === 5 ? " (kritiek)" : ""}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                  ))}
-                  <p className="explain">Elke reden wordt een aanname op de risicokaart. Kritieke redenen zonder bewijs tellen mee als ongeteste kritieke aannames.</p>
-                </ActionForm>
-              </details>
-            )}
-            {canWrite && (
-              <ActionForm action={runCheck.bind(null, id)} submitLabel={check ? "Voer de check opnieuw uit" : "Voer de Reality Check uit"} submitClass="btn white sm" pendingLabel="Controleren…"><span /></ActionForm>
-            )}
-          </div>
-
-          {!canWrite && <DecisionForecast ideaId={id} />}
-
-          {ruleCheck && <RuleCheckCard rule={ruleCheck.rule} evaluation={ruleCheck.evaluation} />}
-          {!ruleCheck && canWrite && (
-            <p className="tiny">
-              Dit dossier heeft geen beslisregel. <Link className="text-link" href={`/app/ideas/${id}/assumptions#beslisregel`}>Leg vast wanneer je doorgaat →</Link>
-            </p>
-          )}
-
-          {canWrite && (
-            <div className="card">
-              <div className="section-title"><h3>Wat wil je nu doen?</h3><span className="pill blue">Jij beslist</span></div>
-              <p className="sub">ProofLab doet een onderbouwd voorstel, maar neemt de strategische beslissing niet over.</p>
-              <DecisionSelector
-                advised={(check?.advice as DecisionAction) ?? null}
-                action={saveDecision.bind(null, id)}
-                // Gebruikerstest D12: stap 1 (voorspelling) met wat nog ontbreekt en waar het kan, de invoer in deze kaart.
-                forecastStep={decisionSteps(progress)}
-                forecast={<DecisionForecast ideaId={id} />}
-                disabledReason={!check ? "Voer eerst de Reality Check uit." : stale ? "Voer de Reality Check opnieuw uit; er is nieuw bewijs." : (decisionBlocker(progress)?.text ?? null)}
-                ruleMet={ruleCheck ? ruleCheck.evaluation.met : null}
-                blocked={blocked}
-              />
-            </div>
-          )}
-        </div>
-      </div>
-
       <DeskEvidence ideaId={id} assumptions={d.assumptions} links={deskLinks} />
 
-      {(drafts.length > 0 || approved.length > 0) && <div className="section-title mt-24"><h2><Term k="learning-card">Learning Cards</Term></h2></div>}
-      <div className="grid-2">
+            <TaskFooter ideaId={id} next={list.next} nextLabel={list.next ? `Volgende taak: ${list.next.label}` : undefined} />
+          </>
+        )}
+
+        {stap === "geleerd" && (
+          <>
+            {header("decide-learned", "Wat heb je geleerd?", "Controleer per afgeronde test wat er gemeten is en wat je ervan leert. Met goedkeuren werkt ProofLab de aanname bij.")}
+            {drafts.length === 0 && approved.length === 0 && (
+              <div className="empty-state">
+                <h2 className="as-h3">Nog geen Learning Card</h2>
+                <p>Die maak je bij een afgeronde test: daar staat de knop om de metingen te analyseren.</p>
+                <Link className="btn primary" href={`/app/ideas/${id}/experiments`}>Naar je tests →</Link>
+              </div>
+            )}
+      {(drafts.length > 0 || approved.length > 0) && <div className="section-title"><h2 className="as-h3"><Term k="learning-card">Learning Cards</Term></h2></div>}
+      <div className="stack">
         {drafts.map((c) => {
           const exp = d.experiments.find((e) => e.id === c.experiment_id);
           return (
@@ -418,6 +347,132 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
         })}
       </div>
 
+            <TaskFooter ideaId={id} next={after("decide-learned")} />
+          </>
+        )}
+
+        {stap === "check" && (
+          <>
+            {header("decide-check", "Klopt het echt?", "De Reality Check zoekt naar valkuilen, zwakke data en conclusies die het bewijs niet draagt. Verplicht vóór elk besluit.")}
+          <div className="card">
+            <div className="section-title"><h3><Term k="reality-check">Reality Check</Term></h3><span className="pill coral">Verplicht vóór elk besluit</span></div>
+            {!check ? (
+              <p className="sub">Nog niet uitgevoerd. De check zoekt naar valkuilen, zwakke data en conclusies die het bewijs niet draagt.</p>
+            ) : (
+              <>
+                <p className="tiny">Uitgevoerd {new Date(check.created_at).toLocaleString("nl-NL")}{check.ai_used ? " · met kritische vragen van AI" : " · op basis van vaste regels"}</p>
+                {stale && <div className="form-error mt-8">Er is nieuw bewijs sinds deze check. Voer hem opnieuw uit.</div>}
+                <div className="verdict inconclusive mt-12">
+                  <strong>Advies: {DECISIONS[check.advice as DecisionAction].label}</strong>
+                  <p className="sub" style={{ marginTop: 4 }}>{check.advice_reason}</p>
+                </div>
+                {checkFindings.map((f, i) => (
+                  <div className="evidence-event" key={i}>
+                    <div className="icon-circle">{f.severity === "blocker" ? "!" : f.source === "ai" ? "✳" : "•"}</div>
+                    <div><strong>{f.title}</strong> <span className={`pill ${SEV[f.severity][1]}`}>{SEV[f.severity][0]}</span>{f.source === "ai" && <span className="pill blue" style={{ marginLeft: 4 }}>AI-vraag</span>}<p>{f.detail}</p></div>
+                  </div>
+                ))}
+                {investorQuestions.length > 0 && (
+                  <details className="mt-12">
+                    <summary className="text-link">Wat zou een kritische investeerder vragen?</summary>
+                    <ul style={{ margin: "8px 0 0 18px", fontSize: 14, lineHeight: 1.8 }}>{investorQuestions.map((q) => <li key={q}>{q}</li>)}</ul>
+                  </details>
+                )}
+              </>
+            )}
+            <div className="divider" />
+            <h4 id="premortem" style={{ fontSize: 13 }}>Pre-mortem</h4>
+            <p className="sub" style={{ fontSize: 13 }}>
+              Het is zes maanden na het besluit en dit is mislukt. Wat is de meest waarschijnlijke reden?
+            </p>
+            {premortem.length > 0 ? (
+              <ul style={{ margin: "8px 0 0 18px", fontSize: 14, lineHeight: 1.7 }}>
+                {premortem.map((a) => (
+                  <li key={a.id}>
+                    {a.statement}{" "}
+                    <span className="tiny">
+                      · belang {a.importance}/5 · geschatte kans dat dit klopt <Probability p={a.probability.probability} calibrated={calibration.calibrated} />{a.probability.counted === 0 ? " (nog geen bewijs)" : ""}{a.probability.cap?.active ? ` (${a.probability.cap.reason})` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="tiny mt-8">Nog niet gedaan. De Reality Check waarschuwt tot er minstens één reden is vastgelegd.</p>
+            )}
+            {canWrite && quick && <MoreInThorough />}
+            {canWrite && !quick && (
+              <details className="mt-8" open={premortem.length === 0}>
+                <summary className="text-link">{premortem.length ? "Nog een reden toevoegen" : "Doe de pre-mortem (1 tot 3 redenen)"}</summary>
+                <ActionForm action={addPremortem.bind(null, id)} submitLabel="Zet op de risicokaart" submitClass="btn white sm" resetOnSuccess>
+                  <p className="explain">
+                    Schrijf elke reden op als wat waar moet zijn om die mislukking te voorkomen. Reden &quot;overstappen was te veel gedoe&quot; wordt bijvoorbeeld: &quot;{who ? `${who} stappen zonder veel moeite over van hun huidige werkwijze.` : "De doelgroep stapt zonder veel moeite over van de huidige werkwijze."}&quot;
+                  </p>
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="mt-12">
+                      <label className="field-label" htmlFor={`pm-r-${i}`} style={{ marginTop: 0 }}>Reden {i}{i > 1 ? " (optioneel)" : ""}</label>
+                      <input className="field" id={`pm-r-${i}`} name={`reason_${i}`} maxLength={400} placeholder={i === 1 ? (who ? `Bijv. ${who} blijven bij hun huidige werkwijze, omdat …` : "Bijv. De doelgroep blijft bij de huidige werkwijze, omdat …") : ""} />
+                      <div className="double-field mt-8">
+                        <select className="field" name={`category_${i}`} defaultValue="desirability" aria-label={`Soort risico bij reden ${i}`}>
+                          {Object.entries(ASSUMPTION_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                        </select>
+                        <select className="field" name={`importance_${i}`} defaultValue="4" aria-label={`Belangrijkheid van reden ${i} (5 = idee valt om)`}>
+                          {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>Belang {n}{n === 5 ? " (kritiek)" : ""}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                  <p className="explain">Elke reden wordt een aanname op de risicokaart. Kritieke redenen zonder bewijs tellen mee als ongeteste kritieke aannames.</p>
+                </ActionForm>
+              </details>
+            )}
+            {canWrite && (
+              <ActionForm action={runCheck.bind(null, id)} submitLabel={check ? "Voer de check opnieuw uit" : "Voer de Reality Check uit"} submitClass="btn white sm" pendingLabel="Controleren…"><span /></ActionForm>
+            )}
+          </div>
+
+            <TaskFooter ideaId={id} next={after("decide-check")} />
+          </>
+        )}
+
+        {stap === "besluit" && (
+          <>
+            {header("decide-decision", "Neem je besluit", "Kies wat je nu doet en waarom. ProofLab doet een onderbouwd voorstel, maar het besluit is van jou.")}
+            {phase && (
+                <div className="note" role="status">
+                  {/* B6: verder testen en de verlengde testfase zijn één keuze met een duur. */}
+                  <strong>Verder testen{phase.active ? "" : ": periode afgelopen"}:</strong> {phase.weeks} weken, van {phase.start} tot {phase.end}.{" "}
+                  {phase.active
+                    ? "Verzamel nu het extra gedragsbewijs. Het definitieve besluit en de uitkomstklok volgen na deze periode."
+                    : "Neem nu het definitieve besluit: doorgaan, stoppen of pauzeren. Daarmee start de uitkomstklok."}
+                </div>
+              )}
+            <div className="stack">
+          {!canWrite && <DecisionForecast ideaId={id} />}
+
+          {ruleCheck && <RuleCheckCard rule={ruleCheck.rule} evaluation={ruleCheck.evaluation} />}
+          {!ruleCheck && canWrite && (
+            <p className="tiny">
+              Dit dossier heeft geen beslisregel. <Link className="text-link" href={`/app/ideas/${id}/assumptions#beslisregel`}>Leg vast wanneer je doorgaat →</Link>
+            </p>
+          )}
+
+          {canWrite && (
+            <div className="card">
+              <div className="section-title"><h3>Wat wil je nu doen?</h3><span className="pill blue">Jij beslist</span></div>
+              <p className="sub">ProofLab doet een onderbouwd voorstel, maar neemt de strategische beslissing niet over.</p>
+              <DecisionSelector
+                advised={(check?.advice as DecisionAction) ?? null}
+                action={saveDecision.bind(null, id)}
+                // Gebruikerstest D12: stap 1 (voorspelling) met wat nog ontbreekt en waar het kan, de invoer in deze kaart.
+                forecastStep={decisionSteps(progress)}
+                forecast={<DecisionForecast ideaId={id} />}
+                disabledReason={!check ? "Voer eerst de Reality Check uit." : stale ? "Voer de Reality Check opnieuw uit; er is nieuw bewijs." : (decisionBlocker(progress)?.text ?? null)}
+                ruleMet={ruleCheck ? ruleCheck.evaluation.met : null}
+                blocked={blocked}
+              />
+            </div>
+          )}
+            </div>
       {d.decisions.length > 0 && (
         <>
           <div className="section-title mt-24"><h2>Besluiten</h2></div>
@@ -453,6 +508,10 @@ export default async function EvidencePage({ params }: PageProps<"/app/ideas/[id
           </div>
         </>
       )}
+            <TaskFooter ideaId={id} next={after("decide-decision")} />
+          </>
+        )}
+      </div>
     </PageFrame>
   );
 }

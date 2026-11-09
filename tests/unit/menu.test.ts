@@ -7,7 +7,7 @@ const ID = "00000000-0000-0000-0000-000000000001";
 describe("menu (fase 3)", () => {
   it("heeft voor een consultant op een ideepagina hooguit 9 zichtbare items (ideekiezer meegeteld)", () => {
     const { idea, workspace } = menuItems({ ideaId: ID, isConsultant: true });
-    expect(idea.map((i) => i.label)).toEqual(["Overzicht van dit idee", "Markt", "Aannames", "Testen", "Besluit", "Rapport"]);
+    expect(idea.map((i) => i.label)).toEqual(["Wat nu?", "Markt", "Aannames", "Testen", "Besluit", "Rapport"]);
     expect(workspace.map((i) => i.label)).toEqual(["Alle ideeën", "Klanten"]);
     expect(1 + idea.length + workspace.length).toBeLessThanOrEqual(9);
   });
@@ -26,7 +26,7 @@ describe("menu (fase 3)", () => {
   it("gebruikt de iconen uit het plan", () => {
     const { idea, workspace } = menuItems({ ideaId: ID, isConsultant: true });
     expect(Object.fromEntries([...idea, ...workspace].map((i) => [i.label, i.icon]))).toEqual({
-      "Overzicht van dit idee": "layout-dashboard",
+      "Wat nu?": "layout-dashboard",
       Markt: "compass",
       Aannames: "layers",
       Testen: "flask",

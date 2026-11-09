@@ -57,10 +57,11 @@ test("Tooltips bij vaktermen: hover, toetsenbord, Escape; labels blijven gelijk"
   await expect(tip).toHaveCount(0);
 
   // Test Card: toetsenbord (focus) opent, Escape sluit; het label van het veld verandert niet.
-  await page.goto(`${ideaUrl}/experiments`);
+  await page.goto(`${ideaUrl}/experiments?nieuw=1`);
   await page.waitForLoadState("networkidle");
   await page.getByRole("radio", { name: /Prijs-\/aanbodtest/ }).click();
-  const card = page.getByRole("form", { name: "Test Card" });
+  await page.getByRole("tablist", { name: "Stappen van het testplan" }).getByRole("tab", { name: /Wanneer geslaagd/ }).click();
+  const card = page.getByRole("form", { name: "Testplan" });
   await expect(card.getByLabel("Het klopt als ≥ (%) (verplicht)", { exact: true })).toBeVisible();
   // Sinds fase B5 staat de wervingsgroep vooringevuld onder het ingeklapte deel Details van de Test Card.
   await card.locator("summary#tc-details").click();

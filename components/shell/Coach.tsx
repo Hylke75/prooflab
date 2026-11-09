@@ -25,18 +25,18 @@ export function Coach({ data, aiConnected, notes, collapsed = false, step }: { d
         modalQuery={collapsed ? undefined : "(max-width: 1160px)"}
         className={`coach${collapsed ? " collapsed" : ""}${coachOpen ? " open" : ""}`}
         id="coach"
-        label="Onderzoekscoach"
+        label="Tips en vragen"
       >
         <div className="coach-top">
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span className="orb" aria-hidden="true">✳</span>
-            <strong>Je denkpartner</strong>
+            <strong>Tips en vragen</strong>
           </div>
-          <button type="button" className="round-btn coach-close" onClick={close} aria-label="Sluit coach">
+          <button type="button" className="round-btn coach-close" onClick={close} aria-label="Sluit tips">
             <Icon name="close" />
           </button>
         </div>
-        <div className="eyebrow">{data.audience === "client" ? "ProofLab uitleg" : "ProofLab coach"}</div>
+        <div className="eyebrow">{data.audience === "client" ? "ProofLab uitleg" : aiConnected ? "Tips (vaste regels) en AI-vragen" : "Tips (vaste regels)"}</div>
         <h2 className="coach-lead">{data.title}</h2>
         <p className="coach-copy">{data.copy}</p>
         <div className="insight-card">
@@ -94,7 +94,7 @@ export function Coach({ data, aiConnected, notes, collapsed = false, step }: { d
           )}
         </div>
       </Drawer>
-      <button type="button" className="coach-toggle" onClick={openCoach} aria-label="Open onderzoekscoach" aria-expanded={coachOpen} aria-controls="coach">
+      <button type="button" className="coach-toggle" onClick={openCoach} aria-label="Open tips en vragen" title="Tips en vragen" aria-expanded={coachOpen} aria-controls="coach">
         <Icon name="spark" size="lg" />
       </button>
     </>

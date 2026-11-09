@@ -6,9 +6,9 @@ import { MOMENT_LABELS, type ForecastMoment } from "@/lib/domain/forecast";
 // niemand op wat ProofLab of een collega al denkt. De knop gaat naar het voorspelformulier van het open moment: bij het
 // besluit staat dat op deze bewijspagina, bij de andere momenten op de pagina Voorspelling & uitkomst.
 // formHere: het voorspelformulier staat op dezelfde pagina (Besluit). Dan geen tweede primaire knop ernaast, alleen een
-// verwijzing; op mobiel staat het formulier onder deze kaart.
+// verwijzing; het formulier staat direct onder deze kaart (één kolom).
 export function ForecastFirstLock({ ideaId, moment, what, client = false, formHere = false }: { ideaId: string; moment: ForecastMoment; what: string; client?: boolean; formHere?: boolean }) {
-  const href = moment === "decision" ? `/app/ideas/${ideaId}/evidence#voorspelling` : `/app/ideas/${ideaId}/outcome#voorspelling`;
+  const href = moment === "decision" ? `/app/ideas/${ideaId}/evidence?stap=besluit#voorspelling` : `/app/ideas/${ideaId}/outcome#voorspelling`;
   return (
     <div className="card" role="region" aria-labelledby="eerst-voorspellen">
       <div className="section-title">
@@ -21,7 +21,7 @@ export function ForecastFirstLock({ ideaId, moment, what, client = false, formHe
       </p>
       {formHere ? (
         <p className="tiny mt-12">
-          <a className="text-link" href="#voorspelling">{client ? "Vul uw voorspelling in bij het formulier hiernaast" : "Vul je voorspelling in bij het formulier hiernaast"}</a> (op een telefoon: hieronder).
+          <a className="text-link" href="#voorspelling">{client ? "Vul uw voorspelling in bij het formulier hieronder" : "Vul je voorspelling in bij het formulier hieronder"}</a>.
         </p>
       ) : (
         <Link className="btn primary mt-12" href={href}>
