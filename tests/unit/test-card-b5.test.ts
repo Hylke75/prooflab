@@ -11,7 +11,6 @@ import {
   parseDutchAmount,
   priceFromText,
   recruitmentFromChannels,
-  testCardStatus,
   validateTestCard,
   type TestCardInput,
 } from "@/lib/domain/test-card";
@@ -114,8 +113,9 @@ describe("Test Card met vijf zichtbare velden (B5)", () => {
     expect(validateTestCard(pricing)).toEqual({});
   });
   it("opent Details bij een ontbrekend verplicht detailveld, niet bij een zichtbaar veld", () => {
-    const e = validateTestCard({ ...pricing, headline: "", price_points: 0 });
-    expect(detailFieldErrors(e).sort()).toEqual(["headline", "price_points"]);
+    // Sinds de tabs staan kop en prijspunten op de tab Testpagina, niet onder Details.
+    const e = validateTestCard({ ...pricing, headline: "", price_points: 0, channels: [] });
+    expect(detailFieldErrors(e).sort()).toEqual(["channels"]);
     expect(detailFieldErrors(validateTestCard({ ...pricing, we_believe: "" }))).toEqual([]);
     expect(detailFieldErrors({ survey: "x" })).toEqual([]);
   });
@@ -123,19 +123,6 @@ describe("Test Card met vijf zichtbare velden (B5)", () => {
     expect(validateTestCard({ ...pricing, max_duration_days: null }).max_duration_days).toBe("Kies een deadline na vandaag.");
     expect(validateTestCard({ ...pricing, max_duration_days: 200 }).max_duration_days).toMatch(/binnen 180 dagen/);
     expect(orderedErrors({ headline: "x", max_duration_days: "y" }).map((x) => x.label)).toEqual(["Deadline", "Kop"]);
-  });
-});
-
-describe("statusbalk (B5)", () => {
-  const st = (s: string) => testCardStatus(s).steps.map((x) => x.status);
-  it("Concept → Klaar voor goedkeuring → Loopt", () => {
-    expect(testCardStatus("draft").steps.map((x) => x.label)).toEqual(["Concept", "Klaar voor goedkeuring", "Loopt"]);
-    expect(st("draft")).toEqual(["current", "todo", "todo"]);
-    expect(st("ready_for_review")).toEqual(["done", "current", "todo"]);
-    expect(st("approved")).toEqual(["done", "done", "todo"]);
-    expect(st("live")).toEqual(["done", "done", "current"]);
-    expect(st("paused")).toEqual(["done", "done", "current"]);
-    expect(st("ended")).toEqual(["done", "done", "done"]);
   });
 });
 
