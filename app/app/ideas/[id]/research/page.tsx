@@ -311,7 +311,6 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Marktverkenning"]} coach="research" ideaId={id} section="/research" badge={run?.mode === "quick" && run.status === "done" ? "Snelle marktcheck · voorlopig" : undefined}>
       <Tabs
-        key={tab}
         initial={tab}
         heads={{
           overview: head("market-question", "Begrijp je markt.", "Een marktbeeld met zicht op concurrenten, doelgroepen, kansen en onzekerheden. Elke conclusie verwijst naar een controleerbare bron.", firstSource),

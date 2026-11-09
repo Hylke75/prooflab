@@ -1419,3 +1419,10 @@ productiebuild, inclusief de hele journey idee → onderzoek → risico → test
 
 **Nog te doen (volgende ronde)**: Markt, Aannames en Rapport ombouwen naar taakschermen; klantonderzoek op één plek;
 methode en catalogus naar "Hulp en methode"; vaktermen in gewone taal; daarna testen met drie gebruikers.
+
+### Ronde 2 (9 november): Markt, Aannames en Rapport
+- ✅ Markt: per tabblad de taakkop van de bijbehorende taak; "Doelgroep en klantonderzoek" is één taak (tabbladen Doelgroepen en Klantonderzoek). Tabbladen volgen een link naar een ander tabblad zonder dat meldingen na opslaan verdwijnen.
+- ✅ Aannames: opschrijven → risicokaart → beslisregel, elk een eigen scherm; links naar `#beslisregel` en `#nieuwe-aanname` openen de juiste stap.
+- ✅ Rapport: taakkop voor het team.
+- Getest: typecheck, lint, unit-tests, alle Playwright-specs (desktop en mobiel) lokaal tegen de productiebuild.
+- Nog open: methode en catalogus naar "Hulp en methode", vaktermen in gewone taal, test met drie gebruikers.

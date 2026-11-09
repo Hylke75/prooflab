@@ -309,11 +309,6 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
         </p>
       )}
 
-          {board.length > 0 && !lock && quick && (
-            <p className="tiny mt-18">
-              <Link className="text-link" href={`/app/ideas/${id}/method`}>Hoe rekent ProofLab de kans uit? →</Link>
-            </p>
-          )}
           {board.length > 0 && (
             <p className="mt-18">
               <Link className="btn white" href={`/app/ideas/${id}/experiments?nieuw=1${first ? `&assumption=${first.id}` : ""}`}>
