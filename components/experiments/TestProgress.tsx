@@ -7,28 +7,28 @@ import type { TestProgress as Progress } from "@/lib/domain/test-progress";
 export function TestProgress({ progress, action, id = "testproces" }: { progress: Progress; action?: ReactNode; id?: string }) {
   const p = progress;
   return (
-    <section className="tp" aria-labelledby={`${id}-title`} id={id}>
-      <div className="tp-head">
-        <h2 className="tp-title" id={`${id}-title`}>Waar ben je in het testproces?</h2>
-        <strong className="tp-compact" aria-live="polite">{p.compact}</strong>
+    <section className="pgr" aria-labelledby={`${id}-title`} id={id}>
+      <div className="pgr-head">
+        <h2 className="pgr-title" id={`${id}-title`}>Waar ben je in het testproces?</h2>
+        <strong className="pgr-compact" aria-live="polite">{p.compact}</strong>
       </div>
-      <div className="tp-bar" aria-hidden="true">
+      <div className="pgr-bar" aria-hidden="true">
         <span style={{ width: `${Math.round(p.fraction * 100)}%` }} />
       </div>
-      <ol className="tp-steps">
+      <ol className="pgr-steps">
         {p.steps.map((s) => (
-          <li key={s.key} className={`tp-step ${s.status}`} aria-current={s.status === "current" ? "step" : undefined} data-step={s.key}>
-            <span className="tp-dot" aria-hidden="true">{s.status === "done" ? "✓" : s.number}</span>
-            <span className="tp-label">
+          <li key={s.key} className={`pgr-step ${s.status}`} aria-current={s.status === "current" ? "step" : undefined} data-step={s.key}>
+            <span className="pgr-dot" aria-hidden="true">{s.status === "done" ? "✓" : s.number}</span>
+            <span className="pgr-label">
               {s.label}
               <span className="sr-only">{s.status === "done" ? " (gedaan)" : s.status === "current" ? " (huidige stap)" : " (nog te doen)"}</span>
             </span>
-            {s.status === "current" && <span className="tp-here" aria-hidden="true">Je bent hier</span>}
+            {s.status === "current" && <span className="pgr-here" aria-hidden="true">Je bent hier</span>}
           </li>
         ))}
       </ol>
-      {p.note && <p className="tp-note">{p.note}</p>}
-      <div className="tp-next">
+      {p.note && <p className="pgr-note">{p.note}</p>}
+      <div className="pgr-next">
         <p>
           <strong>{p.next.prefix ?? "Volgende stap"}:</strong> {p.next.text}
         </p>

@@ -534,7 +534,6 @@ export function ExperimentBuilder({
             <h2 className="as-h3">Jouw Test Card</h2>
             <p className="sub" style={{ marginTop: 5 }}>Nog niet opgeslagen. Na opslaan bied je de Test Card ter review aan; na goedkeuring start de test.</p>
           </div>
-          <span className="pill gray">Concept</span>
         </div>
         {/* Feedback eigenaar: tabs in plaats van twee kolommen. Panelen blijven gemount (hidden), zodat niets verloren gaat. */}
         {tabs.length > 1 && <TabList tabs={tabItems} active={activeTab} onSelect={(k) => setTab(k as TestCardTabKey)} idPrefix="tc" label="Onderdelen van de Test Card" className="tc-tabs" />}

@@ -427,27 +427,27 @@ details.quickline[open]>summary::after{transform:rotate(180deg)}
 .tc-save{margin-top:8px}
 /* Voortgang over het hele testproces (feedback eigenaar): zes stappen, "Je bent hier" en de volgende stap.
    Desktop: zes kolommen met verbindingslijn; tot 700px compact ("Stap 2 van 6 · Ter review") met een balk. */
-.tp{background:var(--color-surface);box-shadow:var(--shadow-sm);border-radius:var(--radius-card);padding:24px 28px;margin:0 0 20px}
-.tp-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 16px;margin-bottom:18px}
-.tp-title{font-size:12px;line-height:18px;text-transform:uppercase;letter-spacing:.14em;font-weight:800;color:var(--color-text-muted);font-family:inherit;margin:0}
-.tp-compact{font-size:15px;color:var(--color-heading)}
-.tp-bar{display:none;height:8px;border-radius:var(--radius-pill);background:var(--color-surface-muted);overflow:hidden;margin:-6px 0 14px}
-.tp-bar span{display:block;height:100%;background:var(--color-primary);border-radius:inherit;transition:width var(--dur) ease-out}
-.tp-steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:0}
-.tp-step{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:0 4px;min-width:0;font-size:14px;line-height:19px;color:var(--color-text-muted);font-weight:500}
-.tp-step+.tp-step:before{content:'';position:absolute;top:19px;right:calc(50% + 24px);left:calc(-50% + 24px);height:2px;border-radius:2px;background:var(--color-border)}
-.tp-step.done+.tp-step:before{background:var(--color-primary)}
-.tp-dot{height:40px;width:40px;display:grid;place-items:center;border-radius:var(--radius-pill);background:var(--color-surface-muted);color:var(--color-text-muted);font-size:15px;font-weight:700;flex:none;position:relative}
-.tp-step.done .tp-dot{background:var(--color-primary);color:var(--color-on-dark)}
-.tp-step.done{color:var(--color-heading)}
-.tp-step.current{color:var(--color-heading);font-weight:700}
-.tp-step.current .tp-dot{background:var(--color-primary);color:var(--color-on-dark);box-shadow:0 0 0 4px var(--color-surface),0 0 0 7px var(--color-accent)}
-.tp-label{overflow-wrap:anywhere}
-.tp-here{display:inline-block;padding:3px 10px;border-radius:var(--radius-pill);background:var(--color-surface-soft);color:var(--color-primary);font-size:12px;line-height:16px;font-weight:700}
-.tp-note{margin:14px 0 0;font-size:14px;color:var(--color-warning-text)}
-.tp-next{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 18px;margin-top:18px;padding:14px 16px;border-radius:var(--radius-inner);background:var(--color-surface-soft)}
-.tp-next p{margin:0;font-size:15px;line-height:23px;color:var(--color-heading);flex:1 1 280px;min-width:0}
-@media(max-width:700px){.tp{padding:18px}.tp-steps{display:none}.tp-bar{display:block}.tp-head{flex-direction:column;margin-bottom:14px}.tp-next .btn{width:100%}}
+.pgr{background:var(--color-surface);box-shadow:var(--shadow-sm);border-radius:var(--radius-card);padding:24px 28px;margin:0 0 20px}
+.pgr-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 16px;margin-bottom:18px}
+.pgr-title{font-size:12px;line-height:18px;text-transform:uppercase;letter-spacing:.14em;font-weight:800;color:var(--color-text-muted);font-family:inherit;margin:0}
+.pgr-compact{font-size:15px;color:var(--color-heading)}
+.pgr-bar{display:none;height:8px;border-radius:var(--radius-pill);background:var(--color-surface-muted);overflow:hidden;margin:-6px 0 14px}
+.pgr-bar span{display:block;height:100%;background:var(--color-primary);border-radius:inherit;transition:width var(--dur) ease-out}
+.pgr-steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:0}
+.pgr-step{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:0 4px;min-width:0;font-size:14px;line-height:19px;color:var(--color-text-muted);font-weight:500}
+.pgr-step+.pgr-step:before{content:'';position:absolute;top:19px;right:calc(50% + 24px);left:calc(-50% + 24px);height:2px;border-radius:2px;background:var(--color-border)}
+.pgr-step.done+.pgr-step:before{background:var(--color-primary)}
+.pgr-dot{height:40px;width:40px;display:grid;place-items:center;border-radius:var(--radius-pill);background:var(--color-surface-muted);color:var(--color-text-muted);font-size:15px;font-weight:700;flex:none;position:relative}
+.pgr-step.done .pgr-dot{background:var(--color-primary);color:var(--color-on-dark)}
+.pgr-step.done{color:var(--color-heading)}
+.pgr-step.current{color:var(--color-heading);font-weight:700}
+.pgr-step.current .pgr-dot{background:var(--color-primary);color:var(--color-on-dark);box-shadow:0 0 0 4px var(--color-surface),0 0 0 7px var(--color-accent)}
+.pgr-label{overflow-wrap:anywhere}
+.pgr-here{display:inline-block;padding:3px 10px;border-radius:var(--radius-pill);background:var(--color-surface-soft);color:var(--color-primary);font-size:12px;line-height:16px;font-weight:700}
+.pgr-note{margin:14px 0 0;font-size:14px;color:var(--color-warning-text)}
+.pgr-next{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 18px;margin-top:18px;padding:14px 16px;border-radius:var(--radius-inner);background:var(--color-surface-soft)}
+.pgr-next p{margin:0;font-size:15px;line-height:23px;color:var(--color-heading);flex:1 1 280px;min-width:0}
+@media(max-width:700px){.pgr{padding:18px}.pgr-steps{display:none}.pgr-bar{display:block}.pgr-head{flex-direction:column;margin-bottom:14px}.pgr-next .btn{width:100%}}
 /* Tabs in de Test Card-builder (zelfde vorm als de onderzoekstabs), met een aanduiding per tab. */
 .tc-tabs{margin:4px 0 22px}
 .tc-tabs .tab{display:inline-flex;align-items:center;gap:8px}
