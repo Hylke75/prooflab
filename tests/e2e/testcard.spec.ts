@@ -3,8 +3,9 @@ import { createIdeaViaIntake, dutchDate, isoDate } from "./intake";
 
 // Fase B1: de Test Card van een prijs-/aanbodtest. Opslaan geeft altijd een zichtbaar resultaat of een duidelijke
 // fout, en de drempels liggen vast vóórdat ProofLab het aantal deelnemers uitrekent.
-// Fase B5: vijf zichtbare velden, de rest vooringevuld onder Details (ook de prijs uit de intake), een statusbalk
-// Concept → Klaar voor goedkeuring → Loopt, en een hoofdtest start pas met een vastgelegde go-regel.
+// Fase B5: vijf zichtbare velden, de rest vooringevuld onder Details, en een hoofdtest start pas met een vastgelegde
+// go-regel. Feedback eigenaar: tabs in plaats van twee kolommen (Test Card · Testpagina · Voorbeeld, met de prijs uit
+// de intake op Testpagina) en een voortgangsbalk over het hele testproces met "Je bent hier" en de volgende stap.
 
 const email = process.env.E2E_EMAIL ?? "";
 const password = process.env.E2E_PASSWORD ?? "";
@@ -63,12 +64,25 @@ test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-reg
   await expect(card.getByLabel("Verwachte uitkomst (%)", { exact: true })).toHaveCount(0);
   await expect(card.getByText("Leg eerst de drempels vast. Daarna rekent ProofLab uit hoeveel deelnemers je nodig hebt.")).toBeVisible();
 
-  // B5: bovenaan de status; zichtbaar zijn alleen wat, bij wie, de drempels, het aantal deelnemers en de deadline.
-  const status = card.locator(".tc-status");
-  await expect(status).toContainText("Concept");
-  await expect(status).toContainText("Klaar voor goedkeuring");
-  await expect(status).toContainText("Loopt");
-  await expect(status.locator("li[aria-current=step]")).toContainText("Concept");
+  // Bovenaan de voortgang over het hele testproces; zichtbaar zijn alleen wat, bij wie, de drempels, het aantal
+  // deelnemers en de deadline.
+  const status = page.locator("#testproces");
+  for (const step of ["Test Card invullen", "Ter review", "Goedgekeurd", "Loopt (meten)", "Afgerond", "Learning Card"]) await expect(status).toContainText(step);
+  await expect(status.locator("li[aria-current=step]")).toContainText("Test Card invullen");
+  await expect(status.locator("li[aria-current=step]")).toContainText("Je bent hier");
+  await expect(status).toContainText("Volgende stap: vul de Test Card in en sla hem op als concept.");
+  // Tabs in plaats van twee kolommen: alleen de tabs van een prijstest, de Test Card staat open.
+  const tabs = card.getByRole("tab");
+  await expect(tabs).toHaveCount(3);
+  await expect(tabs).toContainText(["Test Card", "Testpagina", "Voorbeeld"]);
+  await expect(card.getByRole("tab", { name: "Test Card" })).toHaveAttribute("aria-selected", "true");
+  // Pijltjestoetsen wisselen van tab; de preview beweegt live mee met de kop.
+  await card.getByRole("tab", { name: "Test Card" }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(card.getByRole("tab", { name: "Testpagina" })).toBeFocused();
+  await expect(card.getByRole("tab", { name: "Testpagina" })).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("ArrowLeft");
+  await expect(card.getByRole("tab", { name: "Test Card" })).toHaveAttribute("aria-selected", "true");
   // Gebruikerstest C4/C5: de naam staat zichtbaar bovenaan; de hypothese heet "Wij denken dat …".
   for (const label of ["Naam van het experiment (verplicht)", "Wij denken dat … (verplicht)", "Bij wie? (verplicht)", "Het klopt als ≥ (%) (verplicht)", "Het klopt niet als < (%) (verplicht)", "Minimale steekproef (verplicht)", "Deadline (verplicht)"]) {
     await expect(card.getByLabel(label, { exact: true })).toBeVisible();
@@ -79,16 +93,25 @@ test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-reg
   // De deadline is een datum; de looptijd in dagen gaat mee als verborgen veld.
   await expect(card.getByLabel("Deadline (verplicht)", { exact: true })).toHaveValue(/^\d{4}-\d{2}-\d{2}$/);
 
-  // Onder Details staat alles vooringevuld, ook de prijs uit de intake (€ 249 per maand).
-  await card.locator("#tc-details").click();
+  // Op de tab Testpagina staat alles vooringevuld, ook de prijs uit de intake (€ 249 per maand).
+  await card.getByRole("tab", { name: "Testpagina" }).click();
   await expect(card.getByLabel("Prijspunt 1: naam (verplicht)", { exact: true })).toHaveValue("Basis");
   await expect(card.getByLabel("Bedrag (€) en periode", { exact: true }).first()).toHaveValue("249");
   await expect(card.getByLabel("Periode prijspunt 1", { exact: true })).toHaveValue("per maand");
   await expect(card.getByText("Prijs uit de intake overgenomen: € 249 per maand.")).toBeVisible();
   await expect(card.getByLabel("Kop (verplicht)", { exact: true })).not.toHaveValue("");
+  // Wisselen van tab verliest niets: een aangepaste ondertitel staat live in het voorbeeld en blijft bewaard.
+  await card.getByLabel("Ondertitel", { exact: true }).fill("Minder typewerk, meer bezichtigingen.");
+  await card.getByRole("tab", { name: "Voorbeeld" }).click();
+  await expect(card.locator(".preview-mini")).toContainText("Minder typewerk, meer bezichtigingen.");
+  await card.getByRole("tab", { name: "Testpagina" }).click();
+  await expect(card.getByLabel("Ondertitel", { exact: true })).toHaveValue("Minder typewerk, meer bezichtigingen.");
+  await card.getByRole("tab", { name: "Test Card" }).click();
+  await expect(card.getByLabel("Kop (verplicht)", { exact: true })).toBeHidden();
+  // De werving staat vooringevuld onder Details van de Test Card.
+  await card.locator("#tc-details").click();
   await expect(card.getByRole("radio", { name: "Eigen netwerk", exact: true })).toBeChecked();
   await card.locator("#tc-details").click();
-  await expect(card.getByLabel("Kop (verplicht)", { exact: true })).toBeHidden();
 
   // B1a: één opslagknop; opslaan zonder vastgelegde drempels stuurt geen verzoek maar toont de melding.
   const save = card.getByRole("button", { name: "Test Card opslaan als concept" });
@@ -122,13 +145,15 @@ test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-reg
   await card.getByRole("button", { name: "Leg de drempels opnieuw vast" }).click();
   await expect(card.getByText(/Drempels vastgelegd \(gewijzigd, met motivering\)/)).toBeVisible();
 
-  // B5: een verplicht detailveld dat ontbreekt, opent Details vanzelf; de fout staat zichtbaar bij het veld.
-  await card.locator("#tc-details").click();
+  // Een verplicht veld op een andere tab dat ontbreekt: opslaan springt naar die tab, de tab toont het aantal en de
+  // fout staat zichtbaar bij het veld.
+  await card.getByRole("tab", { name: "Testpagina" }).click();
   await card.getByLabel("Kop (verplicht)", { exact: true }).fill("");
-  await card.locator("#tc-details").click();
-  await expect(card.locator("details.tc-details")).not.toHaveAttribute("open", "");
+  await card.getByRole("tab", { name: "Test Card" }).click();
+  await expect(card.getByLabel("Kop (verplicht)", { exact: true })).toBeHidden();
   await save.click();
-  await expect(card.locator("details.tc-details")).toHaveAttribute("open", "");
+  await expect(card.getByRole("tab", { name: /Testpagina/ })).toHaveAttribute("aria-selected", "true");
+  await expect(card.getByRole("tab", { name: /Testpagina/ })).toContainText("1");
   await expect(card.locator("#err-headline")).toBeVisible();
   await expect(card.locator("#err-headline")).toContainText("Schrijf een kop");
   await expect(card.getByLabel("Kop (verplicht)", { exact: true })).toBeFocused();
@@ -151,11 +176,14 @@ test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-reg
   // De prijs uit de intake staat op de testpagina en de deadline op de Test Card.
   await expect(page.getByText(/Deadline/).first()).toBeVisible();
 
-  // B5: de statusbalk volgt de Test Card: Concept → Klaar voor goedkeuring → (goedgekeurd) → Loopt.
-  const steps = page.locator(".tc-status li[aria-current=step]");
-  await expect(steps).toContainText("Concept");
+  // De voortgangsbalk volgt de test: Test Card invullen → Ter review → Goedgekeurd → Loopt, met de volgende stap.
+  const steps = page.locator("#testproces li[aria-current=step]");
+  await expect(steps).toContainText("Test Card invullen");
+  await expect(page.locator("#testproces")).toContainText("Volgende stap: controleer de Test Card en bied hem ter review aan.");
+  await expect(page.getByRole("link", { name: /Naar ter review aanbieden/ })).toHaveAttribute("href", "#ter-review");
   await page.getByRole("button", { name: "Ter review aanbieden" }).click();
-  await expect(steps).toContainText("Klaar voor goedkeuring");
+  await expect(steps).toContainText("Ter review");
+  await expect(page.locator("#testproces li.done")).toHaveCount(1);
   // Gebruikerstest B4: wie zijn eigen test goedkeurt, vinkt ook de bevestiging bij de melding aan.
   for (const box of await page.locator("input[type=checkbox][name^=check_], input[type=checkbox][name=confirm_self_approval]").all()) await box.check();
   await page.getByRole("button", { name: "Akkoord: keur goed en vergrendel" }).click();
@@ -172,6 +200,8 @@ test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-reg
   await expect(page.locator("#go-rule-row")).toContainText("achteraf vastgelegd");
   await expect(start).toBeEnabled();
   await expect(page.locator("#go-rule-block")).toHaveCount(0);
+  await expect(steps).toContainText("Goedgekeurd");
   await start.click();
-  await expect(steps).toContainText("Loopt");
+  await expect(steps).toContainText("Loopt (meten)");
+  await expect(page.locator("#testproces")).toContainText("Stap 4 van 6 · Loopt (meten)");
 });

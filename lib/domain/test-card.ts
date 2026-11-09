@@ -7,6 +7,7 @@ import { recruitmentMissing } from "./recruitment";
 import { betaQuantile, requiredSample, type BetaPrior, type DecisionRule } from "./stats";
 import { contactProblem } from "./test-privacy";
 import { absoluteRuleAllowed, type SuccessMetric } from "./success-metric";
+import { isOtherTabField } from "./test-card-tabs";
 
 export type TestCardInput = {
   type: string;
@@ -240,9 +241,10 @@ export function sampleBand(input: {
 // Velden (sleutels van FieldErrors) die op het zichtbare deel van de Test Card staan.
 export const VISIBLE_FIELDS = ["title", "we_believe", "target_group", "success_metric", "success_threshold_pct", "fail_threshold_pct", "success_count", "thresholds", "min_sample", "sample_below_reason", "max_duration_days"] as const;
 
-// Alle andere velden staan onder "Details" (de enquête staat in de preview en telt niet als detailveld).
+// Alle andere velden staan onder "Details", behalve wat op een eigen tab staat (testpagina, gespreksleidraad,
+// vragenlijst; zie test-card-tabs.ts).
 export function detailFieldErrors(e: FieldErrors): string[] {
-  return Object.keys(e).filter((k) => !(VISIBLE_FIELDS as readonly string[]).includes(k) && k !== "survey");
+  return Object.keys(e).filter((k) => !(VISIBLE_FIELDS as readonly string[]).includes(k) && !isOtherTabField(k));
 }
 
 // Deadline: op het scherm een einddatum, in de database de maximale looptijd in dagen (hypotheses.max_duration_days).
@@ -376,29 +378,4 @@ export function recruitmentFromChannels(channels: string[]): "own_network" | "co
   if (channels.some((c) => OWN_CHANNELS.includes(c))) return "own_network";
   if (channels.some((c) => COLD_CHANNELS.includes(c))) return "cold";
   return "unknown";
-}
-
-// Statusbalk: Concept → Klaar voor goedkeuring → Loopt. "Goedgekeurd" is de laatste stap vóór de start: de tweede
-// stap is dan afgerond. Na de meting zijn alle drie de stappen afgerond.
-export type StatusStep = { key: "concept" | "review" | "live"; label: string; status: "done" | "current" | "todo" };
-export function testCardStatus(state: string): { steps: StatusStep[]; note: string } {
-  const labels: [StatusStep["key"], string][] = [
-    ["concept", "Concept"],
-    ["review", "Klaar voor goedkeuring"],
-    ["live", "Loopt"],
-  ];
-  const at: Record<string, { index: number; done: boolean; note: string }> = {
-    draft: { index: 0, done: false, note: "Vul de Test Card aan en bied hem aan voor goedkeuring." },
-    ready_for_review: { index: 1, done: false, note: "Wacht op goedkeuring. Goedkeuren vergrendelt hypothese en drempels." },
-    approved: { index: 1, done: true, note: "Goedgekeurd en vergrendeld. Start de test om te gaan meten." },
-    live: { index: 2, done: false, note: "Metingen worden geteld tot de deadline of de afgesproken eindconditie." },
-    paused: { index: 2, done: false, note: "Gepauzeerd: bezoeken worden nu niet geteld." },
-  };
-  const s = at[state] ?? { index: 2, done: true, note: "De meting is afgerond." };
-  const steps = labels.map(([key, label], i) => ({
-    key,
-    label,
-    status: (i < s.index || (i === s.index && s.done) ? "done" : i === s.index ? "current" : "todo") as StatusStep["status"],
-  }));
-  return { steps, note: s.note };
 }
