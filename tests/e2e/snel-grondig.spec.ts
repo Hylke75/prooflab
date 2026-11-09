@@ -59,7 +59,7 @@ test("Snel ↔ Grondig: nieuw dossier op Snel, details pas in Grondig, de stand 
     await expect(page.getByRole("tab", { name: tab })).toBeVisible();
   }
 
-  // Aannames in Snel: een link naar de rekenwijze in plaats van de hele uitleg; zelf toevoegen blijft.
+  // Aannames in Snel: een link naar de rekenwijze in plaats van de hele uitleg; zelf toevoegen blijft bereikbaar.
   await page.goto(`${ideaUrl}/assumptions`);
   // Wacht tot de pagina interactief is: een klik vóór de hydratatie verstuurt het formulier niet.
   await page.waitForLoadState("networkidle");
@@ -69,7 +69,8 @@ test("Snel ↔ Grondig: nieuw dossier op Snel, details pas in Grondig, de stand 
   await expect(page.getByRole("link", { name: "Hoe rekent ProofLab de kans uit? →" })).toBeVisible();
   await expect(page.getByText("Hoe rekent ProofLab de kans en de informatiewaarde uit?")).toBeHidden();
   await expect(page.getByLabel(/^Startkans/)).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Aanname toevoegen" })).toBeVisible();
+  // Zelf toevoegen staat bij de eerste taak van Aannames ("Schrijf op wat waar moet zijn"), één klik verder.
+  await expect(page.locator(".task-steps").getByRole("link", { name: /Schrijf op wat waar moet zijn/ })).toBeVisible();
   const kansSnel = await page.locator(".risk-dot").first().getAttribute("aria-label");
 
   // Wisselen met het toetsenbord (pijltje rechts) naar Grondig: de details verschijnen, de kans blijft gelijk.

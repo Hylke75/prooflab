@@ -88,9 +88,13 @@ test("Zoeken binnen een dossier: sneltoets, markering, pijltjes en Enter, lege s
   await page.waitForLoadState("networkidle");
   await page.getByRole("button", { name: /Begin met de standaardset|Stel aannames voor/ }).click();
   await expect(page.getByRole("heading", { name: "Risicokaart" })).toBeVisible();
-  // Een eigen aanname met een unieke zoekterm.
+  // Een eigen aanname met een unieke zoekterm (stap "opschrijven"); daarna staat hij op de risicokaart.
+  await page.goto(`${ideaUrl}/assumptions?stap=opschrijven`);
+  await page.waitForLoadState("networkidle");
   await page.getByLabel("Wat moet waar zijn?", { exact: true }).fill(`${UNIQUE}: makelaars betalen vooraf voor de eerste maand.`);
   await page.getByRole("button", { name: "Toevoegen", exact: true }).click();
+  await expect(page.locator(".assumption-item", { hasText: UNIQUE })).toBeVisible();
+  await page.goto(`${ideaUrl}/assumptions?stap=kiezen`);
   await expect(page.getByRole("button", { name: new RegExp(UNIQUE) }).first()).toBeVisible();
 
   // Sneltoets "/" opent het venster vanaf een andere pagina; de focus staat in het zoekveld.

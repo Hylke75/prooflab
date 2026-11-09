@@ -198,7 +198,7 @@ export const RULES: Record<string, Rule> = {
       body: pay
         ? "De beslisvraag of de grootste onzekerheid gaat over betalen of prijs. Schrijf die aanname nu al op en doe de pre-mortem: dan kun je een prijs- of aanbodtest voorbereiden terwijl het marktonderzoek loopt."
         : "Je hoeft niet te wachten tot het onderzoek af is. Schrijf de belangrijkste aannames op en doe de pre-mortem ('het is mislukt: waarom?'); het onderzoek kan ze daarna gericht toetsen.",
-      href: `${base}/assumptions#nieuwe-aanname`,
+      href: `${base}/assumptions?stap=opschrijven#nieuwe-aanname`,
       audience: "consultant",
     };
   },
@@ -539,7 +539,7 @@ export const RULES: Record<string, Rule> = {
       body: approved
         ? "Er is al een test goedgekeurd zonder vooraf vastgelegde beslisregel. Leg hem alsnog vast: hij staat dan als 'achteraf vastgelegd' in het rapport."
         : "Welke aannames moeten boven welke kans uitkomen, en welke hoofdtest moet slagen, om door te gaan? Leg dat nu vast; bij de eerste goedgekeurde test gaat de regel op slot.",
-      href: `${base}/assumptions#beslisregel`,
+      href: `${base}/assumptions?stap=regel#beslisregel`,
       audience: "consultant",
     };
   },

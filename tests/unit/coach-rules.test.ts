@@ -378,7 +378,7 @@ describe("assumptions_early: aannames al in week 1", () => {
 
   it("biedt aannames en pre-mortem parallel aan het onderzoek aan, zonder te blokkeren", () => {
     const n = evaluateRules(facts(week1)).find((x) => x.code === "assumptions_early");
-    expect(n).toMatchObject({ kind: "tip", title: "Begin al met aannames en een pre-mortem", href: `${base}/assumptions#nieuwe-aanname` });
+    expect(n).toMatchObject({ kind: "tip", title: "Begin al met aannames en een pre-mortem", href: `${base}/assumptions?stap=opschrijven#nieuwe-aanname` });
     expect(n?.body).toContain("pre-mortem");
   });
 

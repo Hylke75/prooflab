@@ -452,7 +452,7 @@ export default async function EvidencePage({ params, searchParams }: PageProps<"
           {ruleCheck && <RuleCheckCard rule={ruleCheck.rule} evaluation={ruleCheck.evaluation} />}
           {!ruleCheck && canWrite && (
             <p className="tiny">
-              Dit dossier heeft geen beslisregel. <Link className="text-link" href={`/app/ideas/${id}/assumptions#beslisregel`}>Leg vast wanneer je doorgaat →</Link>
+              Dit dossier heeft geen beslisregel. <Link className="text-link" href={`/app/ideas/${id}/assumptions?stap=regel#beslisregel`}>Leg vast wanneer je doorgaat →</Link>
             </p>
           )}
 

@@ -1,4 +1,9 @@
 import type { Metadata } from "next";
+import { ideaTasks } from "@/lib/domain/tasks";
+import { TaskHeader } from "@/components/tasks/TaskHeader";
+import { loadProgress } from "@/lib/progress";
+import { aiConfigured } from "@/lib/env";
+
 import Link from "next/link";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { ActionForm } from "@/components/ui/ActionForm";
@@ -90,34 +95,64 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
     await supabase.rpc("mark_report_viewed", { p_report: current.id });
   }
   const newest = all[0];
+  const list = ideaTasks(await loadProgress(id));
   const revenue = reachableRevenue(r?.sizing.find((s) => s.label === "Realistisch") ?? r?.sizing[1] ?? null);
 
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Rapport"]} coach="report" ideaId={id} section="/report">
-      <div className="section-row report-controls">
-        <div>
-          <div className="eyebrow">Uitkomst · Onderzoeksdossier</div>
-          <h1>Een helder verhaal.<br />Met bewijs.</h1>
-          <p className="sub">
-            {canWrite
-              ? "Elke versie is een vaste momentopname: later bijwerken verandert een eerder gedeeld rapport niet. De opdrachtgever ziet alleen versies die je deelt."
-              : "U ziet de versies die het onderzoeksteam met u heeft gedeeld. Elke versie is een vaste momentopname."}
-          </p>
+      {canWrite ? (
+        // Voorstel "ProofLab eenvoudiger": voor het team is het rapport een taak met de vaste taakkop.
+        <div className="report-controls">
+          <TaskHeader
+            ideaId={id}
+            list={list}
+            taskKey={list.phases[4].tasks[0].key}
+            title="Lees het rapport na"
+            why="Na elk besluit maakt ProofLab zelf een nieuwe versie. Elke versie is een vaste momentopname; de opdrachtgever ziet alleen versies die je deelt."
+            aiConnected={aiConfigured()}
+            aside={
+                <div className="stack" style={{ justifyItems: "end" }}>
+                  {r && current && (
+                    <div className="row" style={{ justifyContent: "flex-end" }}>
+                      {/* Eén knop: de server-PDF van deze versie. Printen kan via de browser; de printstylesheet blijft. */}
+                      <a className="btn primary" href={`/app/ideas/${id}/report/pdf?v=${current.version}`} download>
+                        <Icon name="file" /> Download als PDF
+                      </a>
+                    </div>
+                  )}
+                  {canWrite && (
+                    <ActionForm action={createReportVersion.bind(null, id)} submitLabel={newest ? "Nieuwe versie maken" : "Maak het eerste rapport"} submitClass={newest ? "btn white sm" : "btn primary"} pendingLabel="Rapport samenstellen…"><span /></ActionForm>
+                  )}
+                </div>
+            }
+          />
         </div>
-        <div className="stack" style={{ justifyItems: "end" }}>
-          {r && current && (
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              {/* Eén knop: de server-PDF van deze versie. Printen kan via de browser; de printstylesheet blijft. */}
-              <a className="btn primary" href={`/app/ideas/${id}/report/pdf?v=${current.version}`} download>
-                <Icon name="file" /> Download als PDF
-              </a>
-            </div>
-          )}
-          {canWrite && (
-            <ActionForm action={createReportVersion.bind(null, id)} submitLabel={newest ? "Nieuwe versie maken" : "Maak het eerste rapport"} submitClass={newest ? "btn white sm" : "btn primary"} pendingLabel="Rapport samenstellen…"><span /></ActionForm>
-          )}
+      ) : (
+        <div className="section-row report-controls">
+          <div>
+            <div className="eyebrow">Uitkomst · Onderzoeksdossier</div>
+            <h1>Een helder verhaal.<br />Met bewijs.</h1>
+            <p className="sub">
+              {canWrite
+                ? "Elke versie is een vaste momentopname: later bijwerken verandert een eerder gedeeld rapport niet. De opdrachtgever ziet alleen versies die je deelt."
+                : "U ziet de versies die het onderzoeksteam met u heeft gedeeld. Elke versie is een vaste momentopname."}
+            </p>
+          </div>
+          <div className="stack" style={{ justifyItems: "end" }}>
+            {r && current && (
+              <div className="row" style={{ justifyContent: "flex-end" }}>
+                {/* Eén knop: de server-PDF van deze versie. Printen kan via de browser; de printstylesheet blijft. */}
+                <a className="btn primary" href={`/app/ideas/${id}/report/pdf?v=${current.version}`} download>
+                  <Icon name="file" /> Download als PDF
+                </a>
+              </div>
+            )}
+            {canWrite && (
+              <ActionForm action={createReportVersion.bind(null, id)} submitLabel={newest ? "Nieuwe versie maken" : "Maak het eerste rapport"} submitClass={newest ? "btn white sm" : "btn primary"} pendingLabel="Rapport samenstellen…"><span /></ActionForm>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {versions.length > 0 && (
         <div className="card tight report-controls" style={{ marginBottom: 22 }}>

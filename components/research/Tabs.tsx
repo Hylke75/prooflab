@@ -6,9 +6,21 @@ import { TAB_EVENT } from "./source-prefill";
 // Tabs switch instantly on the client (like the reference design) and keep the URL in sync.
 // lazy (gebruikerstest A10): zware tabs worden pas opgebouwd zodra ze voor het eerst open gaan, en blijven daarna staan.
 // Wisselen blijft direct; alleen de eerste keer bouwt de browser de inhoud op.
-export function Tabs({ tabs, initial, lazy = [], children }: { tabs: { key: string; label: string }[]; initial: string; lazy?: string[]; children: React.ReactNode[] }) {
+// heads (voorstel "ProofLab eenvoudiger"): per tab een eigen kop (de taakkop van die taak), boven de tabbalk.
+export function Tabs({ tabs, initial, lazy = [], heads, children }: { tabs: { key: string; label: string }[]; initial: string; lazy?: string[]; heads?: Record<string, React.ReactNode>; children: React.ReactNode[] }) {
   const [active, setActive] = useState(tabs.some((t) => t.key === initial) ? initial : tabs[0].key);
   const [seen, setSeen] = useState<ReadonlySet<string>>(() => new Set([active]));
+  // Een link naar een ander tabblad (bijv. de taakstappen in de kop) geeft een nieuwe initial: volg die. Een verversing
+  // na opslaan geeft dezelfde initial en laat de tab (en meldingen in formulieren) staan. Bijwerken tijdens het
+  // renderen (Reacts patroon voor "state afleiden van een prop"), niet in een effect.
+  const [lastInitial, setLastInitial] = useState(initial);
+  if (initial !== lastInitial) {
+    setLastInitial(initial);
+    if (tabs.some((t) => t.key === initial)) {
+      setActive(initial);
+      setSeen((s) => (s.has(initial) ? s : new Set([...s, initial])));
+    }
+  }
   const select = useCallback((key: string) => {
     setActive(key);
     setSeen((s) => (s.has(key) ? s : new Set([...s, key])));
@@ -27,6 +39,12 @@ export function Tabs({ tabs, initial, lazy = [], children }: { tabs: { key: stri
   }, [tabs, select]);
   return (
     <>
+      {heads &&
+        tabs.map((t) => (
+          <div key={t.key} hidden={active !== t.key} data-head={t.key}>
+            {heads[t.key]}
+          </div>
+        ))}
       <div className="tabs" role="tablist" aria-label="Onderzoeksonderdelen">
         {tabs.map((t) => (
           <button
