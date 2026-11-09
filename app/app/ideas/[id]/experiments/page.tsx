@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { asMethodVersion } from "@/lib/domain/method";
 import Link from "next/link";
 import { Term } from "@/components/ui/Term";
+import { Icon } from "@/components/Icon";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { ExperimentBuilder } from "@/components/experiments/ExperimentBuilder";
 import { getIdea, getViewMode, getWorkspace } from "@/lib/data";
@@ -24,6 +25,9 @@ import { depositAvailability } from "@/lib/integrations/mollie-server";
 import { CATALOG, catalogExperimentType, catalogMethod, catalogMethodForTest, optionsWithCatalog, runsText } from "@/lib/domain/experiment-catalog";
 import { MANUAL_SCHEMA_MISSING } from "@/lib/domain/manual-results";
 import { manualSchemaAvailable } from "@/lib/manual-results-data";
+import { loadProgress } from "@/lib/progress";
+import { ideaTasks } from "@/lib/domain/tasks";
+import { TaskFooter, TaskHeader } from "@/components/tasks/TaskHeader";
 
 export const metadata: Metadata = { title: "Experimenten" };
 
@@ -108,38 +112,27 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
     price_period: typeof ideaRow.price_period === "string" ? ideaRow.price_period : null,
   };
 
+  // Voorstel "ProofLab eenvoudiger": deze pagina toont je tests en wat je eerst test, met één knop voor een nieuwe test.
+  // Het testplan zelf is een eigen taakscherm (?nieuw=1, of via een aanname, methode of testtype in het adres).
+  const building = !!(sp.nieuw || wanted || catalogPick || wantedType);
+  const list = ideaTasks(await loadProgress(id));
+  const testTasks = list.phases.find((ph) => ph.key === "test")!.tasks;
+  const here = testTasks.find((t) => t.status === "busy" || t.status === "todo") ?? testTasks[0];
+  const catalogLink = (
+    <Link className="btn white sm" href={`/app/ideas/${id}/experiments/catalogus${selected ? `?aanname=${selected.id}` : ""}`}>
+      Alle {CATALOG.length} testmethodes
+    </Link>
+  );
+  const newHref = (assumptionId?: string) => `/app/ideas/${id}/experiments?nieuw=1${assumptionId ? `&assumption=${assumptionId}` : ""}#nieuwe-test`;
+
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Testen"]} coach="experiments" ideaId={id} section="/experiments">
-      <div className="section-row">
-        <div>
-          <div className="eyebrow">Stap 3 van 4 · Testen</div>
-          <h1>Niet raden. Testen.</h1>
-          <p className="sub">Kies een kleine proef waarmee je snel echt gedrag kunt observeren.</p>
-          {/* Experimentencatalogus: alle methodes met wat ze wel en niet bewijzen. */}
-          <Link className="btn white sm mt-12" href={`/app/ideas/${id}/experiments/catalogus${selected ? `?aanname=${selected.id}` : ""}`}>
-            Bekijk de experimentencatalogus ({CATALOG.length} methodes)
-          </Link>
-        </div>
-      </div>
-      {/* Bevinding 18: de pagina is lang (op mobiel staat de testtypekeuze ver naar beneden); ankers naar de drie delen. */}
-      {(() => {
-        const anchors = [
-          ...((experiments ?? []).length > 0 ? [{ href: "#bord", label: "Bord" }] : []),
-          ...(assumptions.length > 0 ? [{ href: "#wat-eerst", label: "Wat test je eerst" }] : []),
-          ...(selected && canWrite && rec ? [{ href: "#nieuwe-test", label: "Nieuwe test" }] : []),
-        ];
-        return anchors.length > 1 ? (
-          <nav aria-label="Op deze pagina" className="row" style={{ gap: 4, flexWrap: "wrap", alignItems: "center", margin: "-8px 0 18px" }}>
-            <span className="tiny">Ga naar:</span>
-            {anchors.map((a, i) => (
-              <span key={a.href} className="row" style={{ gap: 4, alignItems: "center" }}>
-                {i > 0 && <span className="tiny" aria-hidden="true">·</span>}
-                <a className="text-link" href={a.href} style={{ display: "inline-flex", alignItems: "center", minHeight: 44, padding: "0 6px" }}>{a.label}</a>
-              </span>
-            ))}
-          </nav>
-        ) : null;
-      })()}
+    <PageFrame crumbs={["Werkruimte", idea.title, building ? "Nieuw testplan" : "Testen"]} coach="experiments" ideaId={id} section="/experiments">
+      <div className="task-page">
+      {building ? (
+        <TaskHeader ideaId={id} list={list} taskKey="test-plan" title="Maak een testplan" why="Kies wat je test en bij wie, en leg vooraf vast wanneer de test geslaagd is. Je gaat stap voor stap; opslaan doe je aan het eind." aiConnected={aiConfigured()} aside={catalogLink} />
+      ) : (
+        <TaskHeader ideaId={id} list={list} taskKey={here.key} title="Niet raden. Testen." why="Kies een kleine proef waarmee je snel echt gedrag kunt observeren. Hieronder staan je tests en wat je het beste eerst test." aiConnected={aiConfigured()} />
+      )}
       {catalogPick && catalogPick.runs.kind === "manual" && manualAvailable === false && (
         <div className="form-error" role="status">{MANUAL_SCHEMA_MISSING}</div>
       )}
@@ -150,13 +143,20 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           <Link className="text-link" href={`/app/ideas/${id}/experiments/${saved.id}`}>Open het concept →</Link>
         </div>
       )}
-      {goProposal && <GoRuleProposalCard ideaId={id} proposal={goProposal} compact={quick} />}
+      {!building && goProposal && <GoRuleProposalCard ideaId={id} proposal={goProposal} compact={quick} />}
       {saved && rule && rule.primaryExperimentId === saved.id && (
         <p className="form-ok" role="status" id="go-regel-vast">
           <strong>Go-regel vastgelegd.</strong> {describeRule(rule, saved.title)}
         </p>
       )}
-      {(experiments ?? []).length > 0 && (
+      {!building && canWrite && selected && rec && (
+        <div className="row" style={{ marginBottom: 20 }}>
+          <Link className="btn primary" href={newHref(selected.id)}>
+            Zet een nieuwe test op <Icon name="arrow" size="sm" />
+          </Link>
+        </div>
+      )}
+      {!building && (experiments ?? []).length > 0 && (
         <div className="kpi-row" id="bord" style={{ marginBottom: 20, scrollMarginTop: 100 }}>
           {COLUMNS.map((col) => (
             <div key={col.label} className="card tight">
@@ -180,14 +180,14 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           ))}
         </div>
       )}
-      {hiddenTests > 0 && (
+      {!building && hiddenTests > 0 && (
         <p className="tiny" style={{ marginTop: -12, marginBottom: 20 }}>
           {hiddenTests === 1 ? "1 andere test staat" : `${hiddenTests} andere tests staan`} niet op het bord (één test per aanname in Snel).
           <MoreInThorough />
         </p>
       )}
 
-      {assumptions.length > 0 && (
+      {!building && assumptions.length > 0 && (
         <div className="card" id="wat-eerst" style={{ marginBottom: 20, scrollMarginTop: 100 }}>
           <div className="section-title">
             <h2 className="as-h3">Wat test je eerst?</h2>
@@ -199,7 +199,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           {assumptions.slice(0, 3).map((a, i) => (
             <Link
               key={a.id}
-              href={`/app/ideas/${id}/experiments?assumption=${a.id}`}
+              href={newHref(a.id)}
               className={`assumption-item${a.id === selected?.id ? " active" : ""}`}
               style={{ textDecoration: "none", marginTop: 10 }}
               aria-current={a.id === selected?.id ? "true" : undefined}
@@ -234,6 +234,8 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
           <p>Een experiment toetst één aanname. Maak je aannames zichtbaar en kies de belangrijkste met het minste bewijs.</p>
           <Link className="btn primary" href={`/app/ideas/${id}/assumptions`}>Naar aannames →</Link>
         </div>
+      ) : !building ? (
+        canWrite ? null : <p className="sub">Je kijkt mee als opdrachtgever. Experimenten worden opgezet door het onderzoeksteam.</p>
       ) : canWrite && rec ? (
         <div id="nieuwe-test" style={{ scrollMarginTop: 100 }}>
           <ExperimentBuilder
@@ -266,6 +268,14 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
       ) : (
         <p className="sub">Je kijkt mee als opdrachtgever. Experimenten worden opgezet door het onderzoeksteam.</p>
       )}
+      {building ? (
+        <div className="task-footer no-print">
+          <Link className="btn white" href={`/app/ideas/${id}/experiments`}>← Terug naar je tests</Link>
+        </div>
+      ) : (
+        <TaskFooter ideaId={id} next={list.next} nextLabel={list.next ? `Volgende taak: ${list.next.label}` : undefined} />
+      )}
+      </div>
     </PageFrame>
   );
 }

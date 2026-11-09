@@ -1,0 +1,67 @@
+/* Takenlijst en taakschermen (voorstel "ProofLab eenvoudiger"): één taak per scherm, één kolom. Alleen bestaande tokens. */
+.task-page{max-width:820px}
+.task-head{margin-bottom:22px}
+.task-title-row{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-start;justify-content:space-between}
+.task-title-row>div{flex:1 1 420px;min-width:0}
+.task-head h1{margin:2px 0 0}
+.task-head .sub{margin-top:10px}
+.task-steps{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:16px 0 0;padding:0}
+.task-steps a,.task-steps span.task-step{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:8px 14px;border-radius:var(--radius-pill);font-size:14px;font-weight:600;text-decoration:none;background:var(--color-surface-muted);color:var(--color-heading);border:1.5px solid transparent;transition:background-color var(--dur) ease-out,border-color var(--dur) ease-out}
+.task-steps a:hover{border-color:var(--color-border-strong)}
+.task-steps a[aria-current="step"]{background:var(--color-primary);color:var(--color-on-dark)}
+.task-steps .done{background:var(--color-success-soft);color:var(--color-success-text)}
+.task-steps .locked{color:var(--color-text-muted);border-style:dashed;border-color:var(--color-border-strong);background:transparent}
+.task-steps .task-no{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--color-surface);color:var(--color-primary);font-size:12px;font-weight:700;flex:none}
+.task-steps a[aria-current="step"] .task-no{color:var(--color-primary)}
+
+.role-block{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0 0}
+.role-block>div{border-radius:var(--radius-inner);padding:14px 16px;font-size:15px;line-height:23px}
+.role-block strong{display:block;font-size:14px;margin-bottom:2px}
+.role-me{background:var(--color-surface-soft)}
+.role-ai{background:var(--color-surface-muted);border:1.5px dashed var(--color-border-strong)}
+.role-ai.off{color:var(--color-text-muted)}
+
+.task-footer{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-top:28px;padding-top:18px;border-top:1px solid var(--color-border)}
+
+/* Startpagina "Wat nu?" */
+.now-card{background:var(--color-surface-soft);border-radius:var(--radius-card);padding:24px 26px;margin-bottom:26px}
+.now-card .eyebrow{margin-bottom:4px}
+.now-card h2{margin:0 0 6px}
+.now-card p{margin:0 0 16px;max-width:640px}
+.phase-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}
+.phase-item{border:1px solid var(--color-border);border-radius:var(--radius-panel);background:var(--color-surface);padding:16px 18px}
+.phase-item.current{border:2px solid var(--color-primary)}
+.phase-item>details>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;min-height:44px}
+.phase-item>details>summary::-webkit-details-marker{display:none}
+.phase-item>details>summary h2{font-size:18px;line-height:24px;margin:0;flex:1}
+.phase-no{display:inline-grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--color-surface-muted);color:var(--color-primary);font-weight:700;flex:none}
+.phase-item.done .phase-no{background:var(--color-success-soft);color:var(--color-success-text)}
+.phase-item.current .phase-no{background:var(--color-primary);color:var(--color-on-dark)}
+.phase-tasks{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.phase-task{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:10px 14px;border-radius:var(--radius-inner);background:var(--color-surface-muted);min-height:52px}
+.phase-task.next{outline:2px solid var(--color-primary);background:var(--color-surface)}
+.phase-task a{font-weight:600;color:var(--color-heading)}
+.phase-task .tiny{display:block;margin-top:2px}
+.phase-task .pill{flex:none}
+.pill.locked{background:transparent;color:var(--color-text-muted);border:1.5px dashed var(--color-border-strong)}
+
+/* Drie vaste labels: AI-voorstel · Door jou bevestigd · Gemeten bewijs */
+.proof-label{display:inline-flex;align-items:center;gap:6px}
+
+@media(max-width:560px){
+  .task-steps{flex-wrap:nowrap;gap:6px;overflow-x:auto}
+  .task-steps a:not([aria-current]){padding:8px 11px}
+  .task-steps a:not([aria-current]) .task-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .role-block{grid-template-columns:1fr}
+  .now-card{padding:20px}
+  .phase-task{flex-direction:column;align-items:flex-start}
+  .task-footer .btn{width:100%;justify-content:center}
+}
+@media print{.task-steps,.role-block,.task-footer{display:none}}
+
+/* Testplan in stappen (ExperimentBuilder) */
+.tc-step-count{margin:0 0 8px;font-size:15px;color:var(--color-text-muted)}
+.tc-step-count strong{color:var(--color-heading)}
+.tc-step-nav{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-top:22px;padding-top:16px;border-top:1px solid var(--color-border)}
+.tc-tabs{flex-wrap:wrap}
+@media(max-width:560px){.tc-step-nav .btn{width:100%;justify-content:center}.tc-step-nav>span:empty{display:none}}

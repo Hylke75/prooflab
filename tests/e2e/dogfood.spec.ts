@@ -204,10 +204,14 @@ test("dogfood: ProofLab op ProofLab", async ({ page }) => {
   await page.getByRole("button", { name: /Begin met de standaardset|Stel aannames voor/ }).click();
   await expect(page.getByRole("heading", { name: "Risicokaart" })).toBeVisible();
 
-  await page.goto(`${ideaUrl}/experiments`);
+  await page.goto(`${ideaUrl}/experiments?nieuw=1`);
   await page.getByRole("radio", { name: /interview/i }).click();
+  const steps = page.getByRole("tablist", { name: "Stappen van het testplan" });
+  await steps.getByRole("tab", { name: /Wat test je/ }).click();
   await page.getByLabel("Bij wie? (verplicht)", { exact: true }).fill("Vijf huidige of recente opdrachtgevers van Link & Lead (directie of eigenaar)");
+  await steps.getByRole("tab", { name: /Wanneer geslaagd/ }).click();
   await page.getByRole("button", { name: "Leg drempels vast" }).click();
+  await steps.getByRole("tab", { name: /Voorbeeld/ }).click();
   await page.getByRole("button", { name: /Test Card opslaan als concept/ }).click();
   await page.waitForURL(/\/experiments\?opgeslagen=/);
   await page.getByRole("link", { name: "Open het concept →" }).click();

@@ -259,7 +259,7 @@ describe("prediction loop in the coach", () => {
 
   it("makes the prediction loop the main action at the decision moment", () => {
     const atDecision = learned({ latestRealityCheckAt: "2026-10-21T10:00:00Z", forecast: f() });
-    expect(nextAction(atDecision)).toMatchObject({ title: "Geef je voorspelling", href: `${base}/evidence#voorspelling` });
+    expect(nextAction(atDecision)).toMatchObject({ title: "Geef je voorspelling", href: `${base}/evidence?stap=besluit#voorspelling` });
     expect(coachFor("evidence", atDecision).suggestions.map((s) => s.label)).toEqual(expect.arrayContaining(["Geef je voorspelling", "Neem het besluit"]));
     expect(nextAction(learned({ latestRealityCheckAt: "2026-10-21T10:00:00Z", forecast: f({ baseRateChosen: false }) })).title).toBe("Kies een basispercentage");
     expect(nextAction(learned({ latestRealityCheckAt: "2026-10-21T10:00:00Z", forecast: f({ outcomeDefined: false }) })).title).toBe("Leg vast wanneer dit geslaagd is");

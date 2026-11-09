@@ -63,12 +63,13 @@ describe("voortgang van een test", () => {
 describe("tabs van de Test Card-builder", () => {
   const keys = (type: string, manualPlaybook = false) => testCardTabs(type, { manualPlaybook }).map((t) => t.label);
   it("toont per testtype alleen tabs met inhoud", () => {
-    expect(keys("landing")).toEqual(["Test Card", "Testpagina", "Voorbeeld"]);
-    expect(keys("pricing")).toEqual(["Test Card", "Testpagina", "Voorbeeld"]);
-    expect(keys("survey")).toEqual(["Test Card", "Vragenlijst", "Voorbeeld"]);
-    expect(keys("interview")).toEqual(["Test Card", "Gespreksleidraad", "Voorbeeld"]);
-    expect(keys("manual", true)).toEqual(["Test Card", "Draaiboek"]);
-    expect(keys("manual")).toEqual(["Test Card"]);
+    const start = ["Testtype", "Wat test je", "Wanneer geslaagd"];
+    expect(keys("landing")).toEqual([...start, "Testpagina", "Voorbeeld"]);
+    expect(keys("pricing")).toEqual([...start, "Testpagina", "Voorbeeld"]);
+    expect(keys("survey")).toEqual([...start, "Vragenlijst", "Voorbeeld"]);
+    expect(keys("interview")).toEqual([...start, "Gespreksleidraad", "Voorbeeld"]);
+    expect(keys("manual", true)).toEqual([...start, "Draaiboek"]);
+    expect(keys("manual")).toEqual(start);
   });
 
   it("wijst elk veld met een fout aan precies één tab toe", () => {
@@ -76,12 +77,13 @@ describe("tabs van de Test Card-builder", () => {
     expect(tabForField("headline", pricing)).toBe("page");
     expect(tabForField("privacy_contact", pricing)).toBe("page");
     expect(tabForField("we_believe", pricing)).toBe("card");
-    expect(tabForField("channels", pricing)).toBe("card");
+    expect(tabForField("channels", pricing)).toBe("criteria");
+    expect(tabForField("min_sample", pricing)).toBe("criteria");
     expect(tabForField("survey", testCardTabs("survey"))).toBe("survey");
     expect(tabForField("guide", testCardTabs("interview"))).toBe("guide");
-    // Een veld van een tab die het type niet heeft, staat op de Test Card.
-    expect(tabForField("headline", testCardTabs("survey"))).toBe("card");
-    expect(errorsPerTab(["headline", "price_points", "title"], pricing)).toEqual({ page: 2, card: 1 });
+    // Een veld van een stap die het type niet heeft, staat bij "Wanneer geslaagd".
+    expect(tabForField("headline", testCardTabs("survey"))).toBe("criteria");
+    expect(errorsPerTab(["headline", "price_points", "title", "channels"], pricing)).toEqual({ page: 2, card: 1, criteria: 1 });
     expect(isOtherTabField("guide")).toBe(true);
     expect(isOtherTabField("channels")).toBe(false);
   });

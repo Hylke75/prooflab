@@ -23,8 +23,6 @@ import {
   type FieldErrors,
 } from "@/lib/domain/test-card";
 import { GO_RULE_DEFAULT_PROBABILITY } from "@/lib/domain/decision-rule-proposal";
-import { TestProgress } from "@/components/experiments/TestProgress";
-import { testProgress } from "@/lib/domain/test-progress";
 import { errorsPerTab, tabForField, testCardTabs, type TestCardTabKey } from "@/lib/domain/test-card-tabs";
 import { TabList, TabPanel, type TabItem } from "@/components/ui/Tabs";
 import { SurveyPreview } from "@/components/experiments/SurveyPreview";
@@ -47,6 +45,7 @@ import { defaultedTestCardFields } from "@/lib/defaulted-test-card";
 import { defaultedLabels } from "@/lib/view-mode";
 import { catalogExperimentType, checklistFor, manualConfigFor, runsText, templateToTestCard, type CatalogMethod } from "@/lib/domain/experiment-catalog";
 import { ManualPlaybook } from "@/components/experiments/ManualPlaybook";
+import "@/components/tasks/tasks.css";
 
 type VariantsResult = { error: string | null; variants: PreparedVariant[]; draftNotes: string[]; draftWarnings: string[] };
 type VariantsAction = (input: { assumption_id: string; type: "landing" | "pricing"; headline: string; subline: string; offer: string }) => Promise<VariantsResult>;
@@ -197,9 +196,17 @@ export function ExperimentBuilder({
   // B5: vandaag (lokale datum) voor de deadline; de looptijd in dagen gaat naar de database.
   const [today] = useState(() => isoDay(new Date()));
   const [detailsOpen, setDetailsOpen] = useState(false);
-  // Feedback eigenaar: tabs in plaats van twee kolommen. Bestaat de gekozen tab niet bij dit testtype, dan de Test Card.
-  const [tab, setTab] = useState<TestCardTabKey>("card");
+  // Voorstel "ProofLab eenvoudiger": het testplan in genummerde stappen, één tegelijk, beginnend bij het testtype.
+  // Bestaat de gekozen stap niet bij dit testtype, dan "Wat test je".
+  const [tab, setTab] = useState<TestCardTabKey>("type");
   const activeTab: TestCardTabKey = tabs.some((t) => t.key === tab) ? tab : "card";
+  const stepIndex = Math.max(0, tabs.findIndex((t) => t.key === activeTab));
+  const lastStep = stepIndex === tabs.length - 1;
+  const goStep = (i: number) => {
+    const t = tabs[Math.min(Math.max(i, 0), tabs.length - 1)];
+    setTab(t.key);
+    requestAnimationFrame(() => document.getElementById("tc-steps")?.scrollIntoView({ block: "start", behavior: "smooth" }));
+  };
   const [isPrimary, setIsPrimary] = useState(() => !assumption.primary);
   // Gebruikerstest C4: de voorgestelde naam stopt op een woordgrens; heeft de gebruiker hem zelf aangepast, dan blijft hij staan.
   const titleFor = () => experimentTitle(cat ? cat.name : EXPERIMENT_TYPES[type].label, assumption.statement);
@@ -414,20 +421,16 @@ export function ExperimentBuilder({
     // Een veld op een andere tab is pas te zien (en te focussen) als die tab openstaat; B5: een veld onder "Details"
     // pas als "Details" openstaat.
     const needTab = target !== activeTab;
-    const needDetails = target === "card" && detailFieldErrors({ [field]: "x" }).length > 0 && !detailsOpen;
+    const needDetails = target === "criteria" && detailFieldErrors({ [field]: "x" }).length > 0 && !detailsOpen;
     if (needTab) setTab(target);
     if (needDetails) setDetailsOpen(true);
     if (needTab || needDetails) requestAnimationFrame(go);
     else go();
   };
-  // Voortgangsbalk: de primaire actie van stap 1 is opslaan (onder de tabs, altijd zichtbaar).
-  const goToSave = () => {
-    const el = document.getElementById("tc-submit");
-    el?.scrollIntoView({ block: "center", behavior: "smooth" });
-    el?.focus({ preventScroll: true });
-  };
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    // Enter in een veld van een eerdere stap: door naar de volgende stap, nog niet opslaan.
+    if (!lastStep) return goStep(stepIndex + 1);
     setTried(true);
     // B5: een verplicht detailveld met een fout opent "Details" vanzelf; de fout staat dan zichtbaar bij het veld.
     if (detailFieldErrors(liveErrors).length) setDetailsOpen(true);
@@ -458,20 +461,42 @@ export function ExperimentBuilder({
   // Per tab: het aantal fouten (na een opslagpoging) en bij Voorbeeld wat er te controleren valt.
   const tabErrors = tried ? errorsPerTab(Object.keys(liveErrors), tabs) : {};
   const toCheck = type === "landing" || type === "pricing" ? draftWarnings.length : type === "interview" ? auditSum.flagged : 0;
-  const tabItems: TabItem[] = tabs.map((t) => {
+  const tabItems: TabItem[] = tabs.map((t0, i) => {
+    const t = { ...t0, label: `${i + 1}. ${t0.label}` };
     const nErr = tabErrors[t.key] ?? 0;
     if (nErr > 0) return { ...t, badge: { text: String(nErr), tone: "error", spoken: nErr === 1 ? "1 punt aan te vullen" : `${nErr} punten aan te vullen` } };
     if (t.key === "preview" && toCheck > 0) return { ...t, badge: { text: String(toCheck), tone: "check", spoken: toCheck === 1 ? "1 punt om te controleren" : `${toCheck} punten om te controleren` } };
     return t;
   });
+  // Onderaan elke stap: terug, en door naar de volgende stap. Op de laatste stap staat daar Opslaan.
+  const stepNav = (
+    <div className="tc-step-nav" key="step-nav">
+      {stepIndex > 0 ? (
+        <button type="button" className="btn white" onClick={() => goStep(stepIndex - 1)}>
+          ← Vorige
+        </button>
+      ) : (
+        <span />
+      )}
+      {!lastStep && (
+        // Eigen key: React mag deze knop niet hergebruiken als opslagknop (type="submit") op de laatste stap, anders
+        // verstuurt dezelfde klik het formulier.
+        <button key="next" type="button" className="btn primary" onClick={() => goStep(stepIndex + 1)}>
+          Volgende: {tabs[stepIndex + 1].label} <Icon name="arrow" size="sm" />
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <>
-      {/* Feedback eigenaar: heel duidelijk waar je in het testproces zit. Een nieuwe Test Card is stap 1. */}
-      <TestProgress
-        progress={testProgress({ state: "draft", saved: false })}
-        action={<button type="button" className="btn primary sm" onClick={goToSave}>Naar opslaan <Icon name="arrow" size="sm" /></button>}
-      />
+      {/* Voorstel "ProofLab eenvoudiger": waar je bent in het testplan, als genummerde stappen. Panelen blijven gemount
+          (hidden), zodat niets verloren gaat als je terug- of vooruitgaat. */}
+      <p className="tc-step-count" id="tc-steps" aria-live="polite">
+        Stap {stepIndex + 1} van {tabs.length}: <strong>{tabs[stepIndex].label}</strong>
+      </p>
+      <TabList tabs={tabItems} active={activeTab} onSelect={(k) => setTab(k as TestCardTabKey)} idPrefix="tc" label="Stappen van het testplan" className="tc-tabs" />
+      <TabPanel idPrefix="tc" tabKey="type" active={activeTab === "type"}>
       <div className="card">
         <div className="section-title">
           <div>
@@ -521,9 +546,11 @@ export function ExperimentBuilder({
           </div>
         </div>
         <p className="tiny mt-8">Kan de uitkomst de beslissing veranderen? {options[tier].canChangeDecision}</p>
+        {stepNav}
       </div>
+      </TabPanel>
 
-      <form ref={formRef} className="card tc-builder" style={{ marginTop: 18 }} noValidate onSubmit={submit} aria-label="Test Card">
+      <form ref={formRef} className="card tc-builder" style={{ marginTop: 18, display: activeTab === "type" ? "none" : undefined }} noValidate onSubmit={submit} aria-label="Testplan">
         <input type="hidden" name="assumption_id" value={assumption.id} />
         <input type="hidden" name="type" value={type} />
         {cat && <input type="hidden" name="catalog_method_id" value={cat.id} />}
@@ -531,14 +558,12 @@ export function ExperimentBuilder({
         {thresholdsChanged && <input type="hidden" name="threshold_change_reason" value={changeReason.trim()} />}
         <div className="section-title">
           <div>
-            <h2 className="as-h3">Jouw Test Card</h2>
-            <p className="sub" style={{ marginTop: 5 }}>Nog niet opgeslagen. Na opslaan bied je de Test Card ter review aan; na goedkeuring start de test.</p>
+            <h2 className="as-h3">{tabs[stepIndex].label}</h2>
+            <p className="sub" style={{ marginTop: 5 }}>Je testplan (<Term k="test-card">Test Card</Term>) is nog niet opgeslagen. Dat doe je bij de laatste stap; daarna bied je het ter review aan.</p>
           </div>
         </div>
-        {/* Feedback eigenaar: tabs in plaats van twee kolommen. Panelen blijven gemount (hidden), zodat niets verloren gaat. */}
-        {tabs.length > 1 && <TabList tabs={tabItems} active={activeTab} onSelect={(k) => setTab(k as TestCardTabKey)} idPrefix="tc" label="Onderdelen van de Test Card" className="tc-tabs" />}
         <TabPanel idPrefix="tc" tabKey="card" active={activeTab === "card"}>
-          <p className="explain" style={{ marginTop: 0, marginBottom: 14 }}>Vijf vragen; de rest staat vooringevuld onder Details. Na goedkeuring kan niets meer stil veranderen.</p>
+          <p className="explain" style={{ marginTop: 0, marginBottom: 14 }}>Drie vragen. In de volgende stap leg je vast wanneer de test geslaagd is.</p>
           {type === "manual" && !manualChecklist && <p className="note" style={{ marginTop: 0 }}>Kies eerst een handmatige methode in de experimentencatalogus; daarna staat het draaiboek in een eigen tab.</p>}
           {/* Gebruikerstest C4: de naam zichtbaar boven Details, vooringevuld en aanpasbaar. */}
           <div className="form-line">
@@ -569,6 +594,9 @@ export function ExperimentBuilder({
           </div>
           <div className="form-line"><label htmlFor="tc-target">Bij wie?<RequiredMark /></label><input className="field" id="tc-target" name="target_group" value={card.target_group} onChange={(e) => set("target_group", e.target.value)} {...aria("target_group")} />{fieldError("target_group")}</div>
           {v2 && <input type="hidden" name="decision_rule" value={activeRule} />}
+        </TabPanel>
+        <TabPanel idPrefix="tc" tabKey="criteria" active={activeTab === "criteria"}>
+          <p className="explain" style={{ marginTop: 0, marginBottom: 14 }}>Spreek vooraf af wanneer de test geslaagd is. De rest staat vooringevuld onder Details. Na goedkeuring kan niets meer stil veranderen.</p>
           {(type === "landing" || type === "pricing") && (
             <fieldset className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }} disabled={locked} id="tc-metric-choice" aria-describedby="tc-metric-hint">
               <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Wat telt als succes?</legend>
@@ -862,7 +890,7 @@ export function ExperimentBuilder({
           {defaultedNow.length > 0 && (
             <div className="note" id="tc-defaults" role="status">
               <strong>Standaardwaarden van ProofLab:</strong> {defaultedNow.join(", ")}. Controleer ze{" "}
-              <button type="button" className="text-link" onClick={() => { setTab("card"); setDetailsOpen(true); requestAnimationFrame(() => document.getElementById("tc-details")?.scrollIntoView({ block: "start", behavior: "smooth" })); }}>
+              <button type="button" className="text-link" onClick={() => { setTab("criteria"); setDetailsOpen(true); requestAnimationFrame(() => document.getElementById("tc-details")?.scrollIntoView({ block: "start", behavior: "smooth" })); }}>
                 onder Details
               </button>{" "}
               of laat ze staan; bij opslaan komt in het auditspoor dat ze standaard zijn ingevuld.
@@ -1123,9 +1151,16 @@ export function ExperimentBuilder({
               </div>
             )}
             {serverOnly && <div className="form-error" role="alert">{serverOnly}</div>}
-            <button type="submit" id="tc-submit" className="btn primary" style={{ marginTop: 18, width: "100%" }} disabled={saving}>
-              {saving ? "Opslaan…" : "Test Card opslaan als concept"} <Icon name="arrow" size="sm" />
-            </button>
+            {lastStep ? (
+              <div className="tc-step-nav" key="save-nav">
+                {stepIndex > 0 ? <button type="button" className="btn white" onClick={() => goStep(stepIndex - 1)}>← Vorige</button> : <span />}
+                <button key="submit" type="submit" id="tc-submit" className="btn primary" disabled={saving}>
+                  {saving ? "Opslaan…" : "Test Card opslaan als concept"} <Icon name="arrow" size="sm" />
+                </button>
+              </div>
+            ) : (
+              stepNav
+            )}
           </div>
         <SavingOverlay active={saving} label="Test Card opslaan…" />
       </form>

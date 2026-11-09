@@ -49,7 +49,7 @@ export const STEPS: readonly StepDef[] = [
   },
 ];
 
-export const IDEA_OVERVIEW = { label: "Overzicht van dit idee", icon: "layout-dashboard", path: "" } as const satisfies { label: string; icon: IconName; path: string };
+export const IDEA_OVERVIEW = { label: "Wat nu?", icon: "layout-dashboard", path: "" } as const satisfies { label: string; icon: IconName; path: string };
 export const IDEA_REPORT = { label: "Rapport", icon: "file", path: "/report" } as const satisfies { label: string; icon: IconName; path: string };
 
 // Het deel van het adres na /app/ideas/[id], bijv. "/research" of "/experiments/…". Leeg voor het overzicht.

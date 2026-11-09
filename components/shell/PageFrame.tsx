@@ -1,9 +1,6 @@
 import { Coach } from "./Coach";
 import { Topbar } from "./Topbar";
-import { SprintStrip } from "@/components/sprint/SprintCard";
-import { Stepper } from "@/components/ui/Stepper";
 import { coachFor, type CoachPage } from "@/lib/domain/coach";
-import { todayInNL } from "@/lib/domain/sprint";
 import { getIdea, getWorkspace } from "@/lib/data";
 import { loadProgress } from "@/lib/progress";
 import { aiConfigured } from "@/lib/env";
@@ -29,7 +26,7 @@ export async function PageFrame({
   ideaId,
   section,
   badge,
-  coachCollapsed = false,
+  coachCollapsed = true,
   children,
 }: {
   crumbs: string[];
@@ -39,7 +36,8 @@ export async function PageFrame({
   // en het tabblad in de kop van een ideepagina.
   section?: string;
   badge?: string;
-  // Klapt het coachpaneel rechts in (opent via de coachknop), voor pagina's met een eigen coachblok.
+  // Voorstel "ProofLab eenvoudiger": het coachpaneel is geen vaste kolom meer maar opent via de knop "Tips". Wie de
+  // vaste kolom toch wil (false), krijgt de oude driekoloms opbouw.
   coachCollapsed?: boolean;
   children: React.ReactNode;
 }) {
@@ -75,19 +73,15 @@ export async function PageFrame({
       <main className="main" id="main" tabIndex={-1}>
         <Topbar crumbs={crumbs} initials={initials} email={ws.user.email} name={name} badge={badge} isConsultant={!!ws.org} isOwner={ws.org?.role === "owner"} />
         <div className="workspace">
-          {/* Eén kop voor alle pagina's van een idee (ook /outcome): sprintbalk, stappenbalk en eventuele tabbladen. */}
+          {/* Voorstel "ProofLab eenvoudiger": geen sprintbalk en geen stappenbalk meer boven elke pagina. De voortgang staat
+              op Wat nu? en in de kop van elke taak (lib/domain/tasks.ts); het menu links toont de fasen. Hier alleen de
+              hulpmiddelen: Snel | Grondig, zoeken (sneltoets "/") en Vraag de AI. */}
           {access && progress && section !== undefined && (
-            <>
-              <SprintStrip idea={access.idea} progress={progress} canWrite={access.canWrite} today={todayInNL()} />
-              <Stepper current={stepKey} ideaId={ideaId} states={stepStates(progress)} />
-              {/* Zoeken binnen dit dossier: knop of sneltoets "/" (alleen wat de gebruiker mag zien, via RLS).
-                  Fase 1 · punt 1: links daarvan de weergave Snel | Grondig (schrijvers wisselen, opdrachtgevers zien de stand). */}
-              <div className="dossier-search-bar no-print">
-                <DetailLevelSwitch />
-                <DossierSearch ideaId={access.idea.id} />
-                {access.canWrite && aiConfigured() && <AskAiButton />}
-              </div>
-            </>
+            <div className="dossier-search-bar no-print">
+              <DetailLevelSwitch />
+              <DossierSearch ideaId={access.idea.id} />
+              {access.canWrite && aiConfigured() && <AskAiButton />}
+            </div>
           )}
           {ideaId && step && tabs.length > 1 && (
             <nav className="step-tabs no-print" aria-label={`Tabbladen van ${step.label}`}>
