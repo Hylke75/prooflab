@@ -38,7 +38,8 @@ import { loadDecisionRule } from "@/lib/decision-rule-data";
 import { proposeGoRule } from "@/lib/domain/decision-rule-proposal";
 import { describeRule } from "@/lib/domain/decision-rule";
 import { GoRuleProposalCard } from "@/components/experiments/GoRuleProposal";
-import { TestCardStatus } from "@/components/experiments/TestCardStatus";
+import { TestProgress } from "@/components/experiments/TestProgress";
+import { testProgress, type NextTarget } from "@/lib/domain/test-progress";
 import { deadlineFromDays, isoDay } from "@/lib/domain/test-card";
 import { decisive, isExploratory } from "@/lib/domain/customer-research";
 import { StudyView } from "./StudyView";
@@ -200,6 +201,19 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
   const shortTitle = truncateWords(exp.title, TITLE_MAX);
   // Fase 2 · punt 4: zonder verwerkingsverantwoordelijke gaat een nieuwe testpagina niet live (ook in de database).
   const privacyGate = privacyBlock(exp.config, type);
+  // Feedback eigenaar: waar zit je in het testproces, en wat is de volgende stap? Afgeleid uit de status en de Learning Cards.
+  const progress = testProgress({ state, saved: true, learningCards: (cards ?? []).length });
+  const nextHref: Partial<Record<Exclude<NextTarget, null>, string>> = {
+    review: "#ter-review",
+    approve: "#goedkeuren",
+    start: "#publiceren",
+    end: "#afronden",
+    learning: "#learning-card",
+    evidence: `/app/ideas/${id}/evidence`,
+  };
+  const target = progress.next.target;
+  // Meekijkers zien de stap, maar de knoppen staan er alleen voor het onderzoeksteam (Bewijs & besluit mag wel).
+  const href = target && (canWrite || target === "evidence") ? nextHref[target] : undefined;
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Testen", exp.title]} coach="experiments" ideaId={id} section={`/experiments/${expId}`}>
       <div className="section-row">
@@ -211,7 +225,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
         </div>
         <span className={`pill ${EXPERIMENT_STATES[state].pill}`}>{EXPERIMENT_STATES[state].label}</span>
       </div>
-      <TestCardStatus state={state} />
+      <TestProgress progress={progress} action={href && progress.next.cta ? <Link className="btn primary sm" href={href} prefetch={false}>{progress.next.cta} →</Link> : null} />
 
       {running && (
         <div className="insight-banner">
@@ -472,7 +486,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
             </div>
           )}
           {canWrite && running && (
-            <div className="row">
+            <div className="row coach-target" id="afronden">
               <ActionForm action={transitionExperiment.bind(null, id, expId, state === "live" ? "paused" : "live")} submitLabel={state === "live" ? "Pauzeer" : "Hervat"} submitClass="btn white sm"><span /></ActionForm>
               {!endBelowSample && <ActionForm action={transitionExperiment.bind(null, id, expId, "ended")} submitLabel="Rond af" submitClass="btn dark sm"><span /></ActionForm>}
             </div>
@@ -496,9 +510,11 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
             </div>
           )}
           {canWrite && state === "ended" && (cards ?? []).length === 0 && (
-            <ActionForm action={createLearningCard.bind(null, id, expId)} submitLabel="Analyseer en maak de Learning Card" pendingLabel="Analyseren…">
-              <p className="sub">ProofLab berekent het resultaat uit de ruwe, ontdubbelde metingen en maakt een concept-<Term k="learning-card">Learning Card</Term>.</p>
-            </ActionForm>
+            <div id="learning-card" className="coach-target">
+              <ActionForm action={createLearningCard.bind(null, id, expId)} submitLabel="Analyseer en maak de Learning Card" pendingLabel="Analyseren…">
+                <p className="sub">ProofLab berekent het resultaat uit de ruwe, ontdubbelde metingen en maakt een concept-<Term k="learning-card">Learning Card</Term>.</p>
+              </ActionForm>
+            </div>
           )}
           {(cards ?? []).length > 0 && <Link className="btn primary" href={`/app/ideas/${id}/evidence`}>Naar bewijs & besluit →</Link>}
 

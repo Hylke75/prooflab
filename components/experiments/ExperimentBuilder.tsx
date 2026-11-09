@@ -23,7 +23,11 @@ import {
   type FieldErrors,
 } from "@/lib/domain/test-card";
 import { GO_RULE_DEFAULT_PROBABILITY } from "@/lib/domain/decision-rule-proposal";
-import { TestCardStatus } from "@/components/experiments/TestCardStatus";
+import { TestProgress } from "@/components/experiments/TestProgress";
+import { testProgress } from "@/lib/domain/test-progress";
+import { errorsPerTab, tabForField, testCardTabs, type TestCardTabKey } from "@/lib/domain/test-card-tabs";
+import { TabList, TabPanel, type TabItem } from "@/components/ui/Tabs";
+import { SurveyPreview } from "@/components/experiments/SurveyPreview";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { METHODS, type MethodVersion } from "@/lib/domain/method";
 import { RECRUITMENT_GROUPS, RECRUITMENT_KEYS, RECRUITMENT_REQUIRED_TYPES, type RecruitmentGroup } from "@/lib/domain/recruitment";
@@ -165,6 +169,7 @@ export function ExperimentBuilder({
     return m && (m !== "payment" || deposit.available) ? m : "signup";
   };
   const manualChecklist = cat && cat.runs.kind === "manual" ? checklistFor(cat) : null;
+  const tabs = testCardTabs(type, { manualPlaybook: !!manualChecklist });
   // Bevinding 19: bij een handmatig catalogussjabloon telt de steekproef in de eenheid van de methode (bijv.
   // "waargenomen situaties"), niet in deelnemers.
   const unit = (cat && cat.runs.kind === "manual" ? manualConfigFor(cat)?.unit : null) ?? { one: "deelnemer", many: "deelnemers" };
@@ -192,6 +197,9 @@ export function ExperimentBuilder({
   // B5: vandaag (lokale datum) voor de deadline; de looptijd in dagen gaat naar de database.
   const [today] = useState(() => isoDay(new Date()));
   const [detailsOpen, setDetailsOpen] = useState(false);
+  // Feedback eigenaar: tabs in plaats van twee kolommen. Bestaat de gekozen tab niet bij dit testtype, dan de Test Card.
+  const [tab, setTab] = useState<TestCardTabKey>("card");
+  const activeTab: TestCardTabKey = tabs.some((t) => t.key === tab) ? tab : "card";
   const [isPrimary, setIsPrimary] = useState(() => !assumption.primary);
   // Gebruikerstest C4: de voorgestelde naam stopt op een woordgrens; heeft de gebruiker hem zelf aangepast, dan blijft hij staan.
   const titleFor = () => experimentTitle(cat ? cat.name : EXPERIMENT_TYPES[type].label, assumption.statement);
@@ -282,7 +290,6 @@ export function ExperimentBuilder({
     setPage({ headline: g.headline, subline: g.subline, offer: g.offer, cta_label: g.cta_label, product_name: g.product_name });
     if (type === "pricing") setPrices(g.price_points);
     setGenerated(g);
-    setDetailsOpen(true);
   };
   const [variantsPending, startVariants] = useTransition();
   const draftWarnings = honestyWarnings(page.headline, page.subline, page.offer);
@@ -396,6 +403,7 @@ export function ExperimentBuilder({
   const errs = orderedErrors(shown);
   const serverOnly = tried && errs.length === 0 && saveState.error ? saveState.error : null;
   const focusField = (field: string) => {
+    const target = tabForField(field, tabs);
     const go = () => {
       const el = document.getElementById(FIELD_FOCUS[field] ?? "");
       if (el) {
@@ -403,11 +411,20 @@ export function ExperimentBuilder({
         (el as HTMLElement).focus({ preventScroll: true });
       }
     };
-    // B5: een veld onder "Details" is pas te zien (en te focussen) als "Details" openstaat.
-    if (detailFieldErrors({ [field]: "x" }).length && !detailsOpen) {
-      setDetailsOpen(true);
-      requestAnimationFrame(go);
-    } else go();
+    // Een veld op een andere tab is pas te zien (en te focussen) als die tab openstaat; B5: een veld onder "Details"
+    // pas als "Details" openstaat.
+    const needTab = target !== activeTab;
+    const needDetails = target === "card" && detailFieldErrors({ [field]: "x" }).length > 0 && !detailsOpen;
+    if (needTab) setTab(target);
+    if (needDetails) setDetailsOpen(true);
+    if (needTab || needDetails) requestAnimationFrame(go);
+    else go();
+  };
+  // Voortgangsbalk: de primaire actie van stap 1 is opslaan (onder de tabs, altijd zichtbaar).
+  const goToSave = () => {
+    const el = document.getElementById("tc-submit");
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+    el?.focus({ preventScroll: true });
   };
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -438,9 +455,23 @@ export function ExperimentBuilder({
     }),
   );
   const set = (k: keyof typeof card, v: string) => setCard((c) => ({ ...c, [k]: v }));
+  // Per tab: het aantal fouten (na een opslagpoging) en bij Voorbeeld wat er te controleren valt.
+  const tabErrors = tried ? errorsPerTab(Object.keys(liveErrors), tabs) : {};
+  const toCheck = type === "landing" || type === "pricing" ? draftWarnings.length : type === "interview" ? auditSum.flagged : 0;
+  const tabItems: TabItem[] = tabs.map((t) => {
+    const nErr = tabErrors[t.key] ?? 0;
+    if (nErr > 0) return { ...t, badge: { text: String(nErr), tone: "error", spoken: nErr === 1 ? "1 punt aan te vullen" : `${nErr} punten aan te vullen` } };
+    if (t.key === "preview" && toCheck > 0) return { ...t, badge: { text: String(toCheck), tone: "check", spoken: toCheck === 1 ? "1 punt om te controleren" : `${toCheck} punten om te controleren` } };
+    return t;
+  });
 
   return (
     <>
+      {/* Feedback eigenaar: heel duidelijk waar je in het testproces zit. Een nieuwe Test Card is stap 1. */}
+      <TestProgress
+        progress={testProgress({ state: "draft", saved: false })}
+        action={<button type="button" className="btn primary sm" onClick={goToSave}>Naar opslaan <Icon name="arrow" size="sm" /></button>}
+      />
       <div className="card">
         <div className="section-title">
           <div>
@@ -492,17 +523,24 @@ export function ExperimentBuilder({
         <p className="tiny mt-8">Kan de uitkomst de beslissing veranderen? {options[tier].canChangeDecision}</p>
       </div>
 
-      <form ref={formRef} className="grid-2" noValidate onSubmit={submit} aria-label="Test Card">
+      <form ref={formRef} className="card tc-builder" style={{ marginTop: 18 }} noValidate onSubmit={submit} aria-label="Test Card">
         <input type="hidden" name="assumption_id" value={assumption.id} />
         <input type="hidden" name="type" value={type} />
         {cat && <input type="hidden" name="catalog_method_id" value={cat.id} />}
         {locked && <input type="hidden" name="thresholds_locked" value="1" />}
         {thresholdsChanged && <input type="hidden" name="threshold_change_reason" value={changeReason.trim()} />}
-        <div className="card" style={{ marginTop: 18 }}>
-          <div className="section-title"><h2 className="as-h3">Jouw Test Card</h2></div>
-          {/* B5: één duidelijke status bovenaan; een nieuwe Test Card is altijd een concept. */}
-          <TestCardStatus state="draft" note="Nog niet opgeslagen. Na opslaan bied je de Test Card aan voor goedkeuring; daarna start de test." />
+        <div className="section-title">
+          <div>
+            <h2 className="as-h3">Jouw Test Card</h2>
+            <p className="sub" style={{ marginTop: 5 }}>Nog niet opgeslagen. Na opslaan bied je de Test Card ter review aan; na goedkeuring start de test.</p>
+          </div>
+          <span className="pill gray">Concept</span>
+        </div>
+        {/* Feedback eigenaar: tabs in plaats van twee kolommen. Panelen blijven gemount (hidden), zodat niets verloren gaat. */}
+        {tabs.length > 1 && <TabList tabs={tabItems} active={activeTab} onSelect={(k) => setTab(k as TestCardTabKey)} idPrefix="tc" label="Onderdelen van de Test Card" className="tc-tabs" />}
+        <TabPanel idPrefix="tc" tabKey="card" active={activeTab === "card"}>
           <p className="explain" style={{ marginTop: 0, marginBottom: 14 }}>Vijf vragen; de rest staat vooringevuld onder Details. Na goedkeuring kan niets meer stil veranderen.</p>
+          {type === "manual" && !manualChecklist && <p className="note" style={{ marginTop: 0 }}>Kies eerst een handmatige methode in de experimentencatalogus; daarna staat het draaiboek in een eigen tab.</p>}
           {/* Gebruikerstest C4: de naam zichtbaar boven Details, vooringevuld en aanpasbaar. */}
           <div className="form-line">
             <label htmlFor="tc-title">Naam van het experiment<RequiredMark /></label>
@@ -753,7 +791,7 @@ export function ExperimentBuilder({
           {/* B5: alles hieronder staat vooringevuld. Een verplicht veld met een fout opent dit deel vanzelf. */}
           <details className="tc-details" open={detailsOpen} onToggle={(e) => setDetailsOpen(e.currentTarget.open)}>
           <summary id="tc-details">
-            <strong>Details</strong> <small>meting, vertekeningen, werving{type === "landing" || type === "pricing" ? ", aanbodtekst" : ""}{type === "pricing" ? " en prijspunten" : ""}{type === "interview" ? " en gespreksleidraad" : ""}{type === "manual" ? " en draaiboek" : ""} (vooringevuld)</small>
+            <strong>Details</strong> <small>meting, vertekeningen en werving (vooringevuld)</small>
             {tried && detailFieldErrors(liveErrors).length > 0 && <span className="pill coral">{detailFieldErrors(liveErrors).length} aan te vullen</span>}
           </summary>
           <div className="form-line mt-12"><label htmlFor="tc-method">Dat toetsen we door…<RequiredMark /></label><input className="field" id="tc-method" name="test_method" value={card.test_method} onChange={(e) => set("test_method", e.target.value)} {...aria("test_method")} />{fieldError("test_method")}</div>
@@ -763,7 +801,7 @@ export function ExperimentBuilder({
             <div className="form-line"><label htmlFor="tc-den">Noemer<RequiredMark /></label><input className="field" id="tc-den" name="metric_denominator" value={card.metric_denominator} readOnly={type === "survey"} aria-describedby={type === "survey" ? "tc-metric-hint" : undefined} onChange={(e) => set("metric_denominator", e.target.value)} aria-required /></div>
           </div>
           {fieldError("metric_numerator")}
-          {type === "survey" && <p className="field-hint" id="tc-metric-hint" style={{ marginTop: -8, marginBottom: 12 }}>Teller en noemer volgen uit de kernvraag en de succesopties in de enquête hiernaast.</p>}
+          {type === "survey" && <p className="field-hint" id="tc-metric-hint" style={{ marginTop: -8, marginBottom: 12 }}>Teller en noemer volgen uit de kernvraag en de succesopties in de tab Vragenlijst.</p>}
           <div className="form-line"><label htmlFor="tc-bias">Verwachte vertekeningen</label><input className="field" id="tc-bias" name="expected_biases" value={card.expected_biases} onChange={(e) => set("expected_biases", e.target.value)} /></div>
           {v2 && (
             <div className="form-line">
@@ -821,120 +859,257 @@ export function ExperimentBuilder({
           <p className="field-hint">
             Per aanname wijs je vooraf één <Term k="hoofdtest">hoofdtest</Term> aan; alleen die beslist over de aanname. Andere tests heten <Term k="verkennende-test">verkennend</Term>. Na goedkeuring ligt de keuze vast.
           </p>
-          {type === "interview" && (
-            <>
-              <div className="form-line">
-                <label htmlFor="tc-guide">Gespreksleidraad (één vraag per regel)<RequiredMark /></label>
-                <textarea className="field" id="tc-guide" name="guide" rows={9} value={guide} onChange={(e) => setGuide(e.target.value)} aria-describedby={shown.guide ? "err-guide tc-guide-audit" : "tc-guide-audit"} aria-invalid={shown.guide ? true : undefined} aria-required />
-                {fieldError("guide")}
-                <p className="field-hint">Vragen over gedrag in het verleden. Geen pitch en geen &quot;zou je dit kopen?&quot;. De controle staat hiernaast.</p>
-              </div>
-              <div className="form-line">
-                <label htmlFor="tc-screen">Selectiecriteria en uitsluitingen</label>
-                <textarea className="field" id="tc-screen" name="screener" rows={3} placeholder="Bijv. organiseert minstens 4 zakelijke events per jaar; geen vrienden of collega's" />
-              </div>
-            </>
-          )}
-          {type === "manual" && manualChecklist && (
-            <div className="form-line">
-              <label htmlFor="tc-extra">Eigen aanvullingen op het draaiboek (optioneel, één stap per regel)</label>
-              <textarea className="field" id="tc-extra" name="extra_steps" rows={3} maxLength={3000} value={extraSteps} onChange={(e) => setExtraSteps(e.target.value)} aria-describedby="tc-extra-hint" />
-              <p className="field-hint" id="tc-extra-hint">Het draaiboek uit de catalogus staat hiernaast. Je aanvullingen komen erbij en liggen na goedkeuring vast, net als de Test Card.</p>
-            </div>
-          )}
-          {(type === "landing" || type === "pricing") && (
-            <>
-              <div className="form-line"><label htmlFor="pg-name">Naam van het aanbod (merkneutraal)</label><input className="field" id="pg-name" name="product_name" value={page.product_name} onChange={(e) => setPage({ ...page, product_name: e.target.value })} /></div>
-              <div className="form-line"><label htmlFor="pg-head">Kop<RequiredMark /></label><input className="field" id="pg-head" name="headline" value={page.headline} onChange={(e) => setPage({ ...page, headline: e.target.value })} {...aria("headline")} />{fieldError("headline")}</div>
-              <div className="form-line"><label htmlFor="pg-sub">Ondertitel</label><input className="field" id="pg-sub" name="subline" value={page.subline} onChange={(e) => setPage({ ...page, subline: e.target.value })} /></div>
-              <div className="form-line">
-                <label htmlFor="pg-offer">Aanbod (wat krijgt iemand precies?)</label>
-                <textarea className="field" id="pg-offer" name="offer" rows={3} value={page.offer} onChange={(e) => setPage({ ...page, offer: e.target.value })} aria-describedby="pg-offer-hint" />
-                <p className="field-hint" id="pg-offer-hint">
-                  Schrijf het voor de bezoeker; leeg laten mag. De ideebeschrijving uit de intake is intern en staat niet vanzelf op de testpagina.
-                  {intake.description.trim() && !page.offer.trim() && (
-                    <>
-                      {" "}
-                      <button type="button" className="text-link" onClick={() => setPage({ ...page, offer: intake.description.trim().slice(0, 600) })}>
-                        Neem de ideebeschrijving over als begin
-                      </button>
-                    </>
-                  )}
-                </p>
-              </div>
-              <div className="form-line"><label htmlFor="pg-cta">Knoptekst</label><input className="field" id="pg-cta" name="cta_label" value={page.cta_label} onChange={(e) => setPage({ ...page, cta_label: e.target.value })} /></div>
-              {type === "pricing" && (
-                <p className="field-hint" id="pp-hint">
-                  {fromIntake
-                    ? `Prijs uit de intake overgenomen: ${fromIntake.text}.${fromIntake.period ? "" : " De intake noemt geen periode: controleer die."}`
-                    : "De intake noemt geen prijs: vul minstens één prijspunt in."}
-                </p>
-              )}
-              {type === "pricing" &&
-                prices.map((p, i) => (
-                  <div className="double-field" key={i}>
-                    <div className="form-line"><label htmlFor={`pp-l-${i}`}>Prijspunt {i + 1}: naam{i === 0 && <RequiredMark />}</label><input className="field" id={`pp-l-${i}`} name={`price_label_${i}`} {...(i === 0 ? aria("price_points") : {})} value={p.label} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} /></div>
-                    <div className="form-line"><label htmlFor={`pp-a-${i}`}>Bedrag (€) en periode</label>
-                      <div className="row" style={{ flexWrap: "nowrap" }}>
-                        <input className="field num" id={`pp-a-${i}`} name={`price_amount_${i}`} inputMode="decimal" value={p.amount} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} />
-                        <input className="field" aria-label={`Periode prijspunt ${i + 1}`} name={`price_period_${i}`} value={p.period} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, period: e.target.value } : x)))} />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              {type === "pricing" && fieldError("price_points")}
-              <label className="check-row"><input type="checkbox" name="collect_email" defaultChecked={type === "landing"} /> Na de klik om een e-mailadres vragen (met toestemming)</label>
-              <div className="form-line"><label htmlFor="pg-reveal">Bericht na de klik</label><textarea className="field" id="pg-reveal" name="reveal_message" rows={3} defaultValue={REVEAL_DEFAULT} /></div>
-              <p className="field-hint">
-                Na elke klik toont ProofLab altijd ook: “{HONEST_REVEAL}” Dit is niet uit te zetten. Vraag je geen e-mailadres, dan valt het standaardbericht weg.
-              </p>
-              <fieldset className="mt-12" style={{ border: 0, padding: 0, margin: 0 }} aria-describedby="tc-deposit-hint">
-                <legend className="field-label">Betaalde intentie (optioneel)</legend>
-                <label className="check-row">
-                  <input type="checkbox" name="deposit_enabled" checked={depositOn && deposit.available} disabled={!deposit.available} onChange={(e) => setDepositOn(e.target.checked)} />{" "}
-                  Reserveer met een terugbetaalbare aanbetaling van € {depositAmount || "…"}
-                </label>
-                {depositOn && deposit.available && (
-                  <div className="form-line">
-                    <label htmlFor="tc-deposit-amount">Bedrag van de aanbetaling (€)</label>
-                    <input className="field num" id="tc-deposit-amount" name="deposit_amount" inputMode="decimal" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)} style={{ maxWidth: 140 }} />
-                  </div>
-                )}
-                <p className="field-hint" id="tc-deposit-hint">
-                  {deposit.available
-                    ? `Na de klik kan een bezoeker een plek reserveren met een aanbetaling via Mollie. De pagina zegt altijd dat het product nog niet bestaat en dat het volledige bedrag wordt terugbetaald. Telt als Geverifieerde betaling${deposit.mode === "test" ? "; de werkruimte gebruikt nu een testsleutel: testbetalingen tellen niet als bewijs" : ""}.`
-                    : (deposit.reason ?? "Mollie niet ingesteld.")}
-                </p>
-              </fieldset>
-              <fieldset className="mt-12" style={{ border: 0, padding: 0, margin: 0 }}>
-                <legend className="field-label">Privacy op de testpagina (AVG)</legend>
-                <div className="double-field">
-                  <div className="form-line">
-                    <label htmlFor="pg-controller">Verwerkingsverantwoordelijke<RequiredMark /></label>
-                    <input className="field" id="pg-controller" name="privacy_controller" maxLength={120} value={privacy.controller} onChange={(e) => setPrivacy({ ...privacy, controller: e.target.value })} {...aria("privacy_controller")} aria-required />
-                    {fieldError("privacy_controller")}
-                  </div>
-                  <div className="form-line">
-                    <label htmlFor="pg-contact">Contact voor privacyvragen<RequiredMark /></label>
-                    <input className="field" id="pg-contact" name="privacy_contact" maxLength={200} placeholder="privacy@organisatie.nl" value={privacy.contact} onChange={(e) => setPrivacy({ ...privacy, contact: e.target.value })} {...aria("privacy_contact")} aria-required />
-                    {fieldError("privacy_contact")}
-                  </div>
-                </div>
-                <p className="field-hint">De organisatie die het onderzoek laat doen en waar bezoekers hun privacyrechten uitoefenen. Staat onderaan de testpagina; zonder deze gegevens gaat de test niet live. Aanmeldingen worden hooguit 12 maanden bewaard.</p>
-              </fieldset>
-            </>
-          )}
           </details>
           {defaultedNow.length > 0 && (
             <div className="note" id="tc-defaults" role="status">
               <strong>Standaardwaarden van ProofLab:</strong> {defaultedNow.join(", ")}. Controleer ze{" "}
-              <button type="button" className="text-link" onClick={() => { setDetailsOpen(true); requestAnimationFrame(() => document.getElementById("tc-details")?.scrollIntoView({ block: "start", behavior: "smooth" })); }}>
+              <button type="button" className="text-link" onClick={() => { setTab("card"); setDetailsOpen(true); requestAnimationFrame(() => document.getElementById("tc-details")?.scrollIntoView({ block: "start", behavior: "smooth" })); }}>
                 onder Details
               </button>{" "}
               of laat ze staan; bij opslaan komt in het auditspoor dat ze standaard zijn ingevuld.
             </div>
           )}
           <div className="note">Je legt deze criteria vast vóór de test. Na goedkeuring zijn ze vergrendeld; wijzigen kan alleen met een nieuwe versie en een motivering.</div>
+        </TabPanel>
+        {(type === "landing" || type === "pricing") && (
+          <TabPanel idPrefix="tc" tabKey="page" active={activeTab === "page"}>
+            <p className="explain" style={{ marginTop: 0, marginBottom: 14 }}>Wat de bezoeker op de testpagina leest. Het resultaat zie je live in de tab Voorbeeld.</p>
+              <>
+                <div className="form-line"><label htmlFor="pg-name">Naam van het aanbod (merkneutraal)</label><input className="field" id="pg-name" name="product_name" value={page.product_name} onChange={(e) => setPage({ ...page, product_name: e.target.value })} /></div>
+                <div className="form-line"><label htmlFor="pg-head">Kop<RequiredMark /></label><input className="field" id="pg-head" name="headline" value={page.headline} onChange={(e) => setPage({ ...page, headline: e.target.value })} {...aria("headline")} />{fieldError("headline")}</div>
+                <div className="form-line"><label htmlFor="pg-sub">Ondertitel</label><input className="field" id="pg-sub" name="subline" value={page.subline} onChange={(e) => setPage({ ...page, subline: e.target.value })} /></div>
+                <div className="form-line">
+                  <label htmlFor="pg-offer">Aanbod (wat krijgt iemand precies?)</label>
+                  <textarea className="field" id="pg-offer" name="offer" rows={3} value={page.offer} onChange={(e) => setPage({ ...page, offer: e.target.value })} aria-describedby="pg-offer-hint" />
+                  <p className="field-hint" id="pg-offer-hint">
+                    Schrijf het voor de bezoeker; leeg laten mag. De ideebeschrijving uit de intake is intern en staat niet vanzelf op de testpagina.
+                    {intake.description.trim() && !page.offer.trim() && (
+                      <>
+                        {" "}
+                        <button type="button" className="text-link" onClick={() => setPage({ ...page, offer: intake.description.trim().slice(0, 600) })}>
+                          Neem de ideebeschrijving over als begin
+                        </button>
+                      </>
+                    )}
+                  </p>
+                </div>
+                <div className="form-line"><label htmlFor="pg-cta">Knoptekst</label><input className="field" id="pg-cta" name="cta_label" value={page.cta_label} onChange={(e) => setPage({ ...page, cta_label: e.target.value })} /></div>
+                {type === "pricing" && (
+                  <p className="field-hint" id="pp-hint">
+                    {fromIntake
+                      ? `Prijs uit de intake overgenomen: ${fromIntake.text}.${fromIntake.period ? "" : " De intake noemt geen periode: controleer die."}`
+                      : "De intake noemt geen prijs: vul minstens één prijspunt in."}
+                  </p>
+                )}
+                {type === "pricing" &&
+                  prices.map((p, i) => (
+                    <div className="double-field" key={i}>
+                      <div className="form-line"><label htmlFor={`pp-l-${i}`}>Prijspunt {i + 1}: naam{i === 0 && <RequiredMark />}</label><input className="field" id={`pp-l-${i}`} name={`price_label_${i}`} {...(i === 0 ? aria("price_points") : {})} value={p.label} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} /></div>
+                      <div className="form-line"><label htmlFor={`pp-a-${i}`}>Bedrag (€) en periode</label>
+                        <div className="row" style={{ flexWrap: "nowrap" }}>
+                          <input className="field num" id={`pp-a-${i}`} name={`price_amount_${i}`} inputMode="decimal" value={p.amount} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} />
+                          <input className="field" aria-label={`Periode prijspunt ${i + 1}`} name={`price_period_${i}`} value={p.period} onChange={(e) => setPrices(prices.map((x, j) => (j === i ? { ...x, period: e.target.value } : x)))} />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                {type === "pricing" && fieldError("price_points")}
+                <label className="check-row"><input type="checkbox" name="collect_email" defaultChecked={type === "landing"} /> Na de klik om een e-mailadres vragen (met toestemming)</label>
+                <div className="form-line"><label htmlFor="pg-reveal">Bericht na de klik</label><textarea className="field" id="pg-reveal" name="reveal_message" rows={3} defaultValue={REVEAL_DEFAULT} /></div>
+                <p className="field-hint">
+                  Na elke klik toont ProofLab altijd ook: “{HONEST_REVEAL}” Dit is niet uit te zetten. Vraag je geen e-mailadres, dan valt het standaardbericht weg.
+                </p>
+                <fieldset className="mt-12" style={{ border: 0, padding: 0, margin: 0 }} aria-describedby="tc-deposit-hint">
+                  <legend className="field-label">Betaalde intentie (optioneel)</legend>
+                  <label className="check-row">
+                    <input type="checkbox" name="deposit_enabled" checked={depositOn && deposit.available} disabled={!deposit.available} onChange={(e) => setDepositOn(e.target.checked)} />{" "}
+                    Reserveer met een terugbetaalbare aanbetaling van € {depositAmount || "…"}
+                  </label>
+                  {depositOn && deposit.available && (
+                    <div className="form-line">
+                      <label htmlFor="tc-deposit-amount">Bedrag van de aanbetaling (€)</label>
+                      <input className="field num" id="tc-deposit-amount" name="deposit_amount" inputMode="decimal" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)} style={{ maxWidth: 140 }} />
+                    </div>
+                  )}
+                  <p className="field-hint" id="tc-deposit-hint">
+                    {deposit.available
+                      ? `Na de klik kan een bezoeker een plek reserveren met een aanbetaling via Mollie. De pagina zegt altijd dat het product nog niet bestaat en dat het volledige bedrag wordt terugbetaald. Telt als Geverifieerde betaling${deposit.mode === "test" ? "; de werkruimte gebruikt nu een testsleutel: testbetalingen tellen niet als bewijs" : ""}.`
+                      : (deposit.reason ?? "Mollie niet ingesteld.")}
+                  </p>
+                </fieldset>
+                <fieldset className="mt-12" style={{ border: 0, padding: 0, margin: 0 }}>
+                  <legend className="field-label">Privacy op de testpagina (AVG)</legend>
+                  <div className="double-field">
+                    <div className="form-line">
+                      <label htmlFor="pg-controller">Verwerkingsverantwoordelijke<RequiredMark /></label>
+                      <input className="field" id="pg-controller" name="privacy_controller" maxLength={120} value={privacy.controller} onChange={(e) => setPrivacy({ ...privacy, controller: e.target.value })} {...aria("privacy_controller")} aria-required />
+                      {fieldError("privacy_controller")}
+                    </div>
+                    <div className="form-line">
+                      <label htmlFor="pg-contact">Contact voor privacyvragen<RequiredMark /></label>
+                      <input className="field" id="pg-contact" name="privacy_contact" maxLength={200} placeholder="privacy@organisatie.nl" value={privacy.contact} onChange={(e) => setPrivacy({ ...privacy, contact: e.target.value })} {...aria("privacy_contact")} aria-required />
+                      {fieldError("privacy_contact")}
+                    </div>
+                  </div>
+                  <p className="field-hint">De organisatie die het onderzoek laat doen en waar bezoekers hun privacyrechten uitoefenen. Staat onderaan de testpagina; zonder deze gegevens gaat de test niet live. Aanmeldingen worden hooguit 12 maanden bewaard.</p>
+                </fieldset>
+              </>
+          </TabPanel>
+        )}
+        {type === "interview" && (
+          <TabPanel idPrefix="tc" tabKey="guide" active={activeTab === "guide"}>
+              <>
+                <div className="form-line">
+                  <label htmlFor="tc-guide">Gespreksleidraad (één vraag per regel)<RequiredMark /></label>
+                  <textarea className="field" id="tc-guide" name="guide" rows={9} value={guide} onChange={(e) => setGuide(e.target.value)} aria-describedby={shown.guide ? "err-guide tc-guide-audit" : "tc-guide-audit"} aria-invalid={shown.guide ? true : undefined} aria-required />
+                  {fieldError("guide")}
+                  <p className="field-hint">Vragen over gedrag in het verleden. Geen pitch en geen &quot;zou je dit kopen?&quot;. De controle staat in de tab Voorbeeld.</p>
+                </div>
+                <div className="form-line">
+                  <label htmlFor="tc-screen">Selectiecriteria en uitsluitingen</label>
+                  <textarea className="field" id="tc-screen" name="screener" rows={3} placeholder="Bijv. organiseert minstens 4 zakelijke events per jaar; geen vrienden of collega's" />
+                </div>
+              </>
+          </TabPanel>
+        )}
+        {type === "manual" && manualChecklist && (
+          <TabPanel idPrefix="tc" tabKey="playbook" active={activeTab === "playbook"}>
+            {cat && (
+              <ManualPlaybook
+                name={cat.name}
+                summary={cat.summary}
+                steps={manualChecklist}
+                extra={extraSteps.split("\n").map((s) => s.trim()).filter(Boolean)}
+                numerator={card.metric_numerator}
+                denominator={card.metric_denominator}
+                kind={cat.evidenceKind}
+              />
+            )}
+            <div className="form-line">
+              <label htmlFor="tc-extra">Eigen aanvullingen op het draaiboek (optioneel, één stap per regel)</label>
+              <textarea className="field" id="tc-extra" name="extra_steps" rows={3} maxLength={3000} value={extraSteps} onChange={(e) => setExtraSteps(e.target.value)} aria-describedby="tc-extra-hint" />
+              <p className="field-hint" id="tc-extra-hint">Het draaiboek uit de catalogus staat hierboven. Je aanvullingen komen erbij en liggen na goedkeuring vast, net als de Test Card.</p>
+            </div>
+          </TabPanel>
+        )}
+        {type === "survey" && (
+          <TabPanel idPrefix="tc" tabKey="survey" active={activeTab === "survey"}>
+              <>
+                <input type="hidden" name="survey_config" value={JSON.stringify(survey)} />
+                <div id="tc-survey" tabIndex={-1}>{fieldError("survey")}</div>
+                {surveyDraftId && <input type="hidden" name="survey_ai_draft_id" value={surveyDraftId} />}
+                <SurveyEditor
+                  value={survey}
+                  onChange={updateSurvey}
+                  productNames={[ideaTitle]}
+                  assumptionId={assumption.id}
+                  targetGroup={card.target_group}
+                  aiConnected={aiConnected}
+                  draftAction={surveyDraftAction}
+                  onDraftId={setSurveyDraftId}
+                />
+              </>
+          </TabPanel>
+        )}
+        {tabs.some((t) => t.key === "preview") && (
+          <TabPanel idPrefix="tc" tabKey="preview" active={activeTab === "preview"}>
+            <div className="section-title"><h3 className="as-h3">Zo ziet jouw experiment eruit</h3><span className="pill blue">Live preview</span></div>
+            {type === "survey" ? (
+              <SurveyPreview survey={survey} />
+            ) : type === "interview" ? (
+              <>
+                {/* De leidraad bewerk je in de tab Gespreksleidraad; hier staat wat de deelnemer hoort. */}
+                <ol className="signal-steps" aria-label="Gespreksleidraad">
+                  {guide.split("\n").map((q) => q.trim()).filter(Boolean).map((q, i) => <li key={i}>{q}</li>)}
+                </ol>
+                <div id="tc-guide-audit" aria-live="polite" className="mt-12">
+                  {auditSum.flagged === 0 ? (
+                    <div className="form-ok" style={{ marginTop: 0 }}>Leidraadcontrole: geen hypothetische, sturende of verkopende vragen gevonden.</div>
+                  ) : (
+                    <div className="note" style={{ marginTop: 0 }}>
+                      <strong>Leidraadcontrole: {auditSum.flagged} van {auditSum.total} vragen verdienen aandacht.</strong> Dit zijn waarschuwingen; je beslist zelf.
+                      <GuideAuditList audit={audit} />
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="preview-mini">
+                  <div className="preview-tag">{type === "pricing" ? "PRIJS-/AANBODTEST" : "LANDINGPAGE"}</div>
+                  <h3>{page.headline || "Jouw kop verschijnt hier."}</h3>
+                  <p>{page.subline || "Eén concrete belofte voor één doelgroep."}</p>
+                  {type === "pricing" && (
+                    <div className="row" style={{ justifyContent: "center", marginBottom: 14 }}>
+                      {prices.filter((p) => p.label && p.amount).map((p, i) => (
+                        <span key={i} className="pill gray">{p.label}: € {p.amount} {p.period}</span>
+                      ))}
+                    </div>
+                  )}
+                  <span className="btn dark sm">{page.cta_label} →</span>
+                </div>
+                <div className="mt-12">
+                  <button type="button" className="btn white sm" id="tc-generate" onClick={generatePage} aria-describedby="tc-generate-hint">
+                    Maak testpagina uit de Test Card
+                  </button>
+                  <p className="field-hint" id="tc-generate-hint">
+                    Vult kop, ondertitel, aanbod, knoptekst{type === "pricing" ? " en prijspunten" : ""} in uit de hypothese, de doelgroep en de intake. Je past alles daarna zelf aan in de tab Testpagina.
+                  </p>
+                  {generated && (
+                    <div className="note" role="status" style={{ marginTop: 8 }}>
+                      <strong>Voorstel ingevuld.</strong> Controleer het in de tab Testpagina:
+                      <ul style={{ margin: "6px 0 0 16px", padding: 0 }}>{generated.notes.map((n) => <li key={n}>{n}</li>)}</ul>
+                    </div>
+                  )}
+                  {draftWarnings.length > 0 && (
+                    <div className="note" style={{ marginTop: 0 }} role="status">
+                      <strong>Eerlijkheidscontrole:</strong>
+                      <ul style={{ margin: "6px 0 0 16px", padding: 0 }}>{draftWarnings.map((w) => <li key={w}>{w}</li>)}</ul>
+                    </div>
+                  )}
+                  {variantsAction && (
+                    aiConnected ? (
+                      <button type="button" className="btn ai sm mt-8" onClick={askVariants} disabled={variantsPending}>
+                        {variantsPending ? "Varianten bedenken…" : "Stel varianten voor (AI)"}
+                      </button>
+                    ) : (
+                      <p className="field-hint">AI niet verbonden: schrijf zelf twee of drie varianten en kies er één. De eerlijkheidscontrole werkt wel.</p>
+                    )
+                  )}
+                  {variants?.error && <div className="form-error" role="alert">{variants.error}</div>}
+                  {variants && variants.draftNotes.length > 0 && (
+                    <div className="note">
+                      <strong>AI over je huidige concept (voorstel):</strong>
+                      <ul style={{ margin: "6px 0 0 16px", padding: 0 }}>{variants.draftNotes.map((w) => <li key={w}>{w}</li>)}</ul>
+                    </div>
+                  )}
+                  {variants && variants.variants.length > 0 && (
+                    <div className="stack mt-12" aria-label="Voorgestelde varianten">
+                      <div className="tiny"><span className="pill blue">AI-voorstel</span> Kies er één om in je concept over te nemen. Na goedkeuring verandert er niets meer.</div>
+                      {variants.variants.map((v, i) => (
+                        <div key={i} className="card tight">
+                          <div className="tiny">Variant {i + 1} · {v.angle}</div>
+                          <strong style={{ display: "block", marginTop: 6 }}>{v.headline}</strong>
+                          <p className="sub" style={{ fontSize: 13 }}>{v.subline}</p>
+                          <p className="tiny mt-8">{v.offer}</p>
+                          {[...v.ai_honesty_notes, ...v.warnings].length > 0 && (
+                            <ul className="tiny" style={{ margin: "6px 0 0 16px", padding: 0, color: "var(--color-warning-text)" }}>
+                              {[...v.ai_honesty_notes, ...v.warnings].map((w) => <li key={w}>Let op: {w}</li>)}
+                            </ul>
+                          )}
+                          <button type="button" className="btn white sm mt-8" onClick={() => setPage({ ...page, headline: v.headline, subline: v.subline, offer: v.offer })}>
+                            Neem variant {i + 1} over
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <p className="field-hint mt-12">Kop, aanbod{type === "pricing" ? " en prijspunten" : ""} pas je aan in de tab <button type="button" className="text-link" onClick={() => setTab("page")}>Testpagina</button>.</p>
+              </>
+            )}
+          </TabPanel>
+        )}
           <div className="tc-save" id="tc-save">
             {errs.length > 0 && (
               <div className="form-error" role="alert" aria-labelledby="tc-err-title">
@@ -949,138 +1124,11 @@ export function ExperimentBuilder({
               </div>
             )}
             {serverOnly && <div className="form-error" role="alert">{serverOnly}</div>}
-            <button type="submit" className="btn primary" style={{ marginTop: 18, width: "100%" }} disabled={saving}>
+            <button type="submit" id="tc-submit" className="btn primary" style={{ marginTop: 18, width: "100%" }} disabled={saving}>
               {saving ? "Opslaan…" : "Test Card opslaan als concept"} <Icon name="arrow" size="sm" />
             </button>
           </div>
-          <SavingOverlay active={saving} label="Test Card opslaan…" />
-        </div>
-
-        <div className="card" style={{ marginTop: 18 }}>
-          <div className="section-title"><h2 className="as-h3">Zo ziet jouw experiment eruit</h2><span className="pill blue">Live preview</span></div>
-          {type === "survey" ? (
-            <>
-              <input type="hidden" name="survey_config" value={JSON.stringify(survey)} />
-              <div id="tc-survey" tabIndex={-1}>{fieldError("survey")}</div>
-              {surveyDraftId && <input type="hidden" name="survey_ai_draft_id" value={surveyDraftId} />}
-              <SurveyEditor
-                value={survey}
-                onChange={updateSurvey}
-                productNames={[ideaTitle]}
-                assumptionId={assumption.id}
-                targetGroup={card.target_group}
-                aiConnected={aiConnected}
-                draftAction={surveyDraftAction}
-                onDraftId={setSurveyDraftId}
-              />
-            </>
-          ) : type === "manual" ? (
-            cat && manualChecklist ? (
-              <ManualPlaybook
-                name={cat.name}
-                summary={cat.summary}
-                steps={manualChecklist}
-                extra={extraSteps.split("\n").map((s) => s.trim()).filter(Boolean)}
-                numerator={card.metric_numerator}
-                denominator={card.metric_denominator}
-                kind={cat.evidenceKind}
-              />
-            ) : (
-              <p className="sub">Kies eerst een handmatige methode in de experimentencatalogus.</p>
-            )
-          ) : type === "interview" ? (
-            <>
-              {/* B5: de leidraad bewerk je onder Details; hier staat wat de deelnemer hoort. */}
-              <ol className="signal-steps" aria-label="Gespreksleidraad">
-                {guide.split("\n").map((q) => q.trim()).filter(Boolean).map((q, i) => <li key={i}>{q}</li>)}
-              </ol>
-              <div id="tc-guide-audit" aria-live="polite" className="mt-12">
-                {auditSum.flagged === 0 ? (
-                  <div className="form-ok" style={{ marginTop: 0 }}>Leidraadcontrole: geen hypothetische, sturende of verkopende vragen gevonden.</div>
-                ) : (
-                  <div className="note" style={{ marginTop: 0 }}>
-                    <strong>Leidraadcontrole: {auditSum.flagged} van {auditSum.total} vragen verdienen aandacht.</strong> Dit zijn waarschuwingen; je beslist zelf.
-                    <GuideAuditList audit={audit} />
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="preview-mini">
-                <div className="preview-tag">{type === "pricing" ? "PRIJS-/AANBODTEST" : "LANDINGPAGE"}</div>
-                <h3>{page.headline || "Jouw kop verschijnt hier."}</h3>
-                <p>{page.subline || "Eén concrete belofte voor één doelgroep."}</p>
-                {type === "pricing" && (
-                  <div className="row" style={{ justifyContent: "center", marginBottom: 14 }}>
-                    {prices.filter((p) => p.label && p.amount).map((p, i) => (
-                      <span key={i} className="pill gray">{p.label}: € {p.amount} {p.period}</span>
-                    ))}
-                  </div>
-                )}
-                <span className="btn dark sm">{page.cta_label} →</span>
-              </div>
-              <div className="mt-12">
-                <button type="button" className="btn white sm" id="tc-generate" onClick={generatePage} aria-describedby="tc-generate-hint">
-                  Maak testpagina uit de Test Card
-                </button>
-                <p className="field-hint" id="tc-generate-hint">
-                  Vult kop, ondertitel, aanbod, knoptekst{type === "pricing" ? " en prijspunten" : ""} in uit de hypothese, de doelgroep en de intake. Je past alles daarna zelf aan onder Details.
-                </p>
-                {generated && (
-                  <div className="note" role="status" style={{ marginTop: 8 }}>
-                    <strong>Voorstel ingevuld.</strong> Controleer het onder Details:
-                    <ul style={{ margin: "6px 0 0 16px", padding: 0 }}>{generated.notes.map((n) => <li key={n}>{n}</li>)}</ul>
-                  </div>
-                )}
-                {draftWarnings.length > 0 && (
-                  <div className="note" style={{ marginTop: 0 }} role="status">
-                    <strong>Eerlijkheidscontrole:</strong>
-                    <ul style={{ margin: "6px 0 0 16px", padding: 0 }}>{draftWarnings.map((w) => <li key={w}>{w}</li>)}</ul>
-                  </div>
-                )}
-                {variantsAction && (
-                  aiConnected ? (
-                    <button type="button" className="btn ai sm mt-8" onClick={askVariants} disabled={variantsPending}>
-                      {variantsPending ? "Varianten bedenken…" : "Stel varianten voor (AI)"}
-                    </button>
-                  ) : (
-                    <p className="field-hint">AI niet verbonden: schrijf zelf twee of drie varianten en kies er één. De eerlijkheidscontrole werkt wel.</p>
-                  )
-                )}
-                {variants?.error && <div className="form-error" role="alert">{variants.error}</div>}
-                {variants && variants.draftNotes.length > 0 && (
-                  <div className="note">
-                    <strong>AI over je huidige concept (voorstel):</strong>
-                    <ul style={{ margin: "6px 0 0 16px", padding: 0 }}>{variants.draftNotes.map((w) => <li key={w}>{w}</li>)}</ul>
-                  </div>
-                )}
-                {variants && variants.variants.length > 0 && (
-                  <div className="stack mt-12" aria-label="Voorgestelde varianten">
-                    <div className="tiny"><span className="pill blue">AI-voorstel</span> Kies er één om in je concept over te nemen. Na goedkeuring verandert er niets meer.</div>
-                    {variants.variants.map((v, i) => (
-                      <div key={i} className="card tight">
-                        <div className="tiny">Variant {i + 1} · {v.angle}</div>
-                        <strong style={{ display: "block", marginTop: 6 }}>{v.headline}</strong>
-                        <p className="sub" style={{ fontSize: 13 }}>{v.subline}</p>
-                        <p className="tiny mt-8">{v.offer}</p>
-                        {[...v.ai_honesty_notes, ...v.warnings].length > 0 && (
-                          <ul className="tiny" style={{ margin: "6px 0 0 16px", padding: 0, color: "var(--color-warning-text)" }}>
-                            {[...v.ai_honesty_notes, ...v.warnings].map((w) => <li key={w}>Let op: {w}</li>)}
-                          </ul>
-                        )}
-                        <button type="button" className="btn white sm mt-8" onClick={() => setPage({ ...page, headline: v.headline, subline: v.subline, offer: v.offer })}>
-                          Neem variant {i + 1} over
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <p className="field-hint mt-12">Kop, aanbod{type === "pricing" ? " en prijspunten" : ""} pas je aan onder Details in de Test Card.</p>
-            </>
-          )}
-        </div>
+        <SavingOverlay active={saving} label="Test Card opslaan…" />
       </form>
     </>
   );
