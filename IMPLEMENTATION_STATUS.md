@@ -1336,3 +1336,49 @@ migratie werkt de app zoals voorheen: de opzet meldt dat de database moet worden
   wel bij elk citaat). De doorvraag komt niet als stream binnen (de respondent wacht op het hele antwoord). Spraak
   (VoiceProvider) volgt later. Migratie nog toepassen
 
+
+## Gebruiksvriendelijkheid: review van de hele route (8 november)
+
+De hele route is als nieuwe consultant doorlopen op 1440×900 en 390×844, tegen een lokale Supabase met alle migraties
+(`supabase start` + `scripts/e2e-seed.sh`) en de productiebuild. Laadtijden ±0,7–1,2 s per pagina. Uitkomst: 24
+bevindingen; alle 24 opgelost.
+
+**Echte fouten**
+- ✅ Interviewtest (opzet AI-interviewer) en een lopende handmatige catalogustest crashten in productie met "Element
+  type is invalid" (React #130). Oorzaak: `Field` kloonde zijn invoerveld met `cloneElement`, en React Flight gaf dat
+  veld soms als lazy verwijzing door. `Field` pakt die nu eerst uit (`resolveLazyElement`, unit-test
+  `field-lazy.test.ts`). Bevestigd in de productiebuild, inclusief een resultaat vastleggen.
+- ✅ Risicokaart: punten dichter dan 44 px bij elkaar worden uitgespreid; alle punten zijn klikbaar (300 willekeurige
+  sets in `risk-layout.test.ts`).
+- ✅ Marktpotentieel: bevestiging na "Scenario opslaan" blijft zichtbaar en het gekozen scenario blijft geselecteerd;
+  "Niet opgeslagen" per factor en een waarschuwing bij vertrek; "onbekend" in plaats van 0 zonder basisaantal.
+- ✅ Concurrenten: een nieuwe aanbieder telt vanaf de aanmaakdatum; "niets doen" en items zonder pagina krijgen geen
+  controle-alarm.
+- ✅ Bron toevoegen: geen standaard "Officiële statistiek" meer; het soort bron is verplicht (ook op de server).
+- ✅ "1. Voorspelling ✓ klaar" zonder voorspelling: nu "volgt bij het besluit".
+- ✅ Rapport en Markt noemen dezelfde beslissende vraag (`pickDecisiveQuestion`).
+- ✅ Publieke testpagina: geen belofte "we nemen contact op" vóór een e-mailadres; de interne ideebeschrijving wordt
+  niet meer voorgevuld als aanbod; dubbele privacytekst samengevoegd.
+- ✅ Inlogfout houdt het e-mailadres vast.
+
+**Begrijpelijkheid**
+- ✅ "Kritiek" betekent overal belang 4–5; de stand van het bewijs telt "gekozen aannames getest".
+- ✅ Primaire knop per stap volgt de stand ("Voeg je eerste bron toe", "Begin met de standaardset").
+- ✅ Testpagina: "Ga naar: Bord · Wat test je eerst · Nieuwe test".
+- ✅ Test Card: uitleg bij beslisregel, kansregel, go-regel, informatiewaarde en Learning Card; eenheid van de
+  catalogusmethode i.p.v. "deelnemers"; uitleg waarom de steekproef automatisch omhoog ging.
+- ✅ Korter kopvoorstel voor de testpagina; "Maak aanname" in het canvas vult een "We geloven dat …"-zin voor.
+- ✅ API-sleutelinstructie alleen voor de eigenaar; enkelvoud/meervoud; geen voorloopnullen in KPI's.
+- ✅ Intake: "Meer instellen" voor niet-essentiële velden (11 i.p.v. 16 velden zichtbaar), regio standaard Nederland,
+  bedrag met periode, betere korte naam.
+- ✅ Coach zonder werkruimte spreekt een beginnende consultant aan, niet een opdrachtgever.
+
+**Mobiel**
+- ✅ Compacte dossierkop (titel op 376 px i.p.v. 558 px), zwevende knoppen dekken geen invoer meer af, catalogus met
+  inklapbare filters, aanraakdoelen ≥44 px. Geen horizontale overloop op 390 en 1440. Zie DESIGN_DIFF_LOG #63–#70.
+
+**Open**
+- Bestaande testpagina's waarvan het aanbod al de ideebeschrijving is, tonen die nog (de publieke pagina kan de
+  herkomst niet zien zonder RPC-wijziging).
+- In `next dev` (niet in productie) gaf het server-renderen van dossierpagina's soms dezelfde #130-fout rond
+  `StepNotes`; met de `Field`-reparatie niet meer gezien in de productiebuild.

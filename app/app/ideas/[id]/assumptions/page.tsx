@@ -135,9 +135,19 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
           <h1>Wat moet waar zijn?</h1>
           <p className="sub">Een idee is een verzameling aannames. Begin bij de aannames die het belangrijkst zijn en waarover je nog het minst weet.</p>
         </div>
-        <Link className="btn primary" href={`/app/ideas/${id}/experiments${first ? `?assumption=${first.id}` : ""}`}>
-          Ontwerp een test <Icon name="arrow" size="sm" />
-        </Link>
+        {/* De primaire knop volgt de stand: zonder aannames eerst aannames maken, pas daarna naar de testpagina. */}
+        {board.length > 0 ? (
+          <Link className="btn primary" href={`/app/ideas/${id}/experiments${first ? `?assumption=${first.id}` : ""}`}>
+            Ontwerp een test <Icon name="arrow" size="sm" />
+          </Link>
+        ) : (
+          canWrite &&
+          !lock && (
+            <ActionForm action={seedAssumptions.bind(null, id)} submitLabel={aiConfigured() ? "Stel aannames voor" : "Begin met de standaardset"} pendingLabel="Bezig…">
+              <span />
+            </ActionForm>
+          )
+        )}
       </div>
       {method !== CURRENT_METHOD && (
         <div className="note">
@@ -181,9 +191,9 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
               : "Begin met de standaardset (wenselijkheid, haalbaarheid, levensvatbaarheid, context) en maak die specifiek, of voeg ze zelf toe."}
           </p>
           {canWrite && (
-            <ActionForm action={seedAssumptions.bind(null, id)} submitLabel={aiConfigured() ? "Stel aannames voor" : "Begin met de standaardset"} pendingLabel="Bezig…">
-              <span />
-            </ActionForm>
+            <p className="tiny">
+              Gebruik de knop bovenaan, of <a className="text-link" href="#nieuwe-aanname">voeg een aanname zelf toe</a>.
+            </p>
           )}
         </div>
       ) : (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { computeSizing, factorConsistency, MODEL_FACTORS, SCENARIO_LABELS, simulateSizing, type FactorUnit, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import { CLAIM_STATUS, type ClaimStatus } from "@/lib/domain/labels";
@@ -29,6 +29,26 @@ const EMPTY: FactorState = { value: 0, claim: "", low: "", high: "", year: "", r
 // Jaar uit een peildatum ("2025-06" → "2025"); leeg als die onbekend is.
 const yearOf = (ref: string | null | undefined) => (ref && /^\d{4}/.test(ref) ? ref.slice(0, 4) : "");
 const knownText = (v: string | null | undefined) => (v && v.trim().toLowerCase() !== "onbekend" ? v : "");
+
+// De waarden zoals ze op de server staan; de vergelijkingsbasis voor "Niet opgeslagen".
+const fromServer = (f: Factor): FactorState => ({
+  value: f.value,
+  claim: f.claim_id ?? "",
+  low: f.low == null ? "" : String(f.low),
+  high: f.high == null ? "" : String(f.high),
+  year: f.year == null ? "" : String(f.year),
+  region: f.region ?? "",
+});
+const sameFactor = (a: FactorState, b: FactorState) =>
+  a.value === b.value && a.claim === b.claim && a.low.trim() === b.low.trim() && a.high.trim() === b.high.trim() && a.year.trim() === b.year.trim() && a.region.trim() === b.region.trim();
+
+// Na "Scenario opslaan" bouwt de pagina dit paneel opnieuw op (de key in de pagina hangt aan de opgeslagen waarden), waardoor
+// de bevestiging van het formulier verdween en het paneel terugsprong naar Realistisch. Daarom bewaart de opslaan-actie
+// hier kort wat de nieuwe instantie moet laten zien: de bevestiging, het gekozen scenario en nog niet opgeslagen
+// wijzigingen in de andere scenario's.
+type SavedFlash = { scenarioId: string; kind: ScenarioKind; message: string; at: number; carry: Record<string, Record<string, FactorState>> };
+let savedFlash: SavedFlash | null = null;
+const FLASH_MS = 10_000;
 
 const eur = (n: number) => `€ ${Math.round(n).toLocaleString("nl-NL")}`;
 const int = (n: number) => Math.round(n).toLocaleString("nl-NL");
@@ -62,27 +82,57 @@ export function SizingPanel({
 }) {
   const order: ScenarioKind[] = ["conservative", "realistic", "optimistic"];
   const sorted = order.map((k) => scenarios.find((s) => s.kind === k)).filter(Boolean) as Scenario[];
-  const [kind, setKind] = useState<ScenarioKind>("realistic");
+  // Bevestiging van een opslag vlak voor deze (nieuwe) instantie; alleen als die net is gezet.
+  const [flash, setFlash] = useState<SavedFlash | null>(() =>
+    savedFlash && Date.now() - savedFlash.at < FLASH_MS && sorted.some((s) => s.id === savedFlash!.scenarioId) ? savedFlash : null,
+  );
+  useEffect(() => {
+    savedFlash = null;
+  }, []);
+  const [kind, setKind] = useState<ScenarioKind>(flash?.kind ?? "realistic");
   const scenario = sorted.find((s) => s.kind === kind) ?? sorted[0];
   const [values, setValues] = useState<Record<string, Record<string, FactorState>>>(() =>
     Object.fromEntries(
-      sorted.map((s) => [
-        s.id,
-        Object.fromEntries(
-          s.factors.map((f) => [
-            f.key,
-            {
-              value: f.value,
-              claim: f.claim_id ?? "",
-              low: f.low == null ? "" : String(f.low),
-              high: f.high == null ? "" : String(f.high),
-              year: f.year == null ? "" : String(f.year),
-              region: f.region ?? "",
-            },
-          ]),
-        ),
-      ]),
+      sorted.map((s) => [s.id, { ...Object.fromEntries(s.factors.map((f) => [f.key, fromServer(f)])), ...(flash?.carry[s.id] ?? {}) }]),
     ),
+  );
+  // Fase 2 · bevinding 5: welke factoren wijken af van wat er is opgeslagen, per scenario.
+  const unsaved = useMemo(
+    () =>
+      Object.fromEntries(
+        sorted.map((s) => [s.id, s.factors.filter((f) => values[s.id]?.[f.key] && !sameFactor(values[s.id][f.key], fromServer(f))).map((f) => f.key)]),
+      ) as Record<string, string[]>,
+    [sorted, values],
+  );
+  const anyUnsaved = canWrite && Object.values(unsaved).some((keys) => keys.length > 0);
+  // Waarschuw bij vertrek (sluiten, herladen, andere site) zolang er niet-opgeslagen wijzigingen zijn.
+  useEffect(() => {
+    if (!anyUnsaved) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [anyUnsaved]);
+  const scenarioId = scenario?.id ?? "";
+  const scenarioKind = scenario?.kind ?? "realistic";
+  const baseAction = actions[scenarioId];
+  // De opslaan-actie zet de bevestiging klaar voor het geval de pagina dit paneel opnieuw opbouwt.
+  const saveAction = useCallback<Action>(
+    async (state, form) => {
+      const res = await baseAction(state, form);
+      if (res.ok && !res.error) {
+        const carry = Object.fromEntries(
+          Object.entries(unsaved)
+            .filter(([id, keys]) => id !== scenarioId && keys.length > 0)
+            .map(([id, keys]) => [id, Object.fromEntries(keys.map((k) => [k, values[id][k]]))]),
+        );
+        savedFlash = { scenarioId, kind: scenarioKind, message: res.ok, at: Date.now(), carry };
+      }
+      return res;
+    },
+    [baseAction, scenarioId, scenarioKind, unsaved, values],
   );
   const [threshold, setThreshold] = useState(breakEvenRevenue == null ? "" : String(Math.round(breakEvenRevenue)));
   const current = useMemo(() => (scenario ? values[scenario.id] : {}), [scenario, values]);
@@ -119,8 +169,11 @@ export function SizingPanel({
   }, [scenario, current, thresholdValue, consistency]);
 
   if (!scenario || !result) return <div className="empty-state"><p>Geen scenario&apos;s gevonden.</p></div>;
-  const set = (key: string, patch: Partial<FactorState>) =>
+  const set = (key: string, patch: Partial<FactorState>) => {
+    setFlash(null);
     setValues((v) => ({ ...v, [scenario.id]: { ...v[scenario.id], [key]: { ...v[scenario.id][key], ...patch } } }));
+  };
+  const unsavedHere = canWrite ? (unsaved[scenario.id] ?? []) : [];
   const defs = MODEL_FACTORS[scenario.model];
   const labelOf = (key: string) => defs.find((d) => d.key === key)?.label ?? key;
   const isBreakEven = breakEvenRevenue != null && thresholdValue != null && Math.round(breakEvenRevenue) === thresholdValue;
@@ -147,6 +200,13 @@ export function SizingPanel({
         {sorted.map((s) => (
           <button key={s.id} className={`filter-btn${s.kind === kind ? " active" : ""}`} aria-pressed={s.kind === kind} onClick={() => setKind(s.kind)}>
             {SCENARIO_LABELS[s.kind].label}
+            {canWrite && (unsaved[s.id]?.length ?? 0) > 0 && (
+              <>
+                {" "}
+                <span aria-hidden="true">•</span>
+                <span className="sr-only">(niet opgeslagen wijzigingen)</span>
+              </>
+            )}
           </button>
         ))}
       </div>
@@ -156,7 +216,7 @@ export function SizingPanel({
           <p className="sub" style={{ marginTop: 7 }}>
             {SCENARIO_LABELS[scenario.kind].meaning}. Pas de waarden aan en zie direct wat dat betekent. Weet je een factor niet precies, geef dan een bandbreedte waarbinnen hij met 90% zekerheid ligt.
           </p>
-          <ActionForm key={scenario.id} action={actions[scenario.id]} submitLabel="Scenario opslaan" submitClass={canWrite ? "btn primary" : "btn primary hidden"}>
+          <ActionForm key={scenario.id} action={saveAction} submitLabel="Scenario opslaan" submitClass={canWrite ? "btn primary" : "btn primary hidden"}>
             <div className="scenario-inputs">
               {defs.map((def) => {
                 const f = current[def.key] ?? EMPTY;
@@ -173,6 +233,9 @@ export function SizingPanel({
                           </span>
                         ) : (
                           <span className="pill orange" style={{ marginTop: 5 }}>Nog te toetsen</span>
+                        )}
+                        {unsavedHere.includes(def.key) && (
+                          <span className="pill coral" style={{ marginTop: 5, marginLeft: 6 }}>Niet opgeslagen</span>
                         )}
                       </small>
                       {canWrite && (
@@ -218,6 +281,21 @@ export function SizingPanel({
                 );
               })}
             </div>
+            {unsavedHere.length > 0 ? (
+              <div className="form-feedback">
+                <div className="note" role="status" style={{ margin: "16px 0 0" }}>
+                  <strong>Niet opgeslagen.</strong> {unsavedHere.length === 1 ? "Eén factor wijkt" : `${unsavedHere.length} factoren wijken`} af van wat er is
+                  bewaard. De berekening rekent al mee, maar pas na &quot;Scenario opslaan&quot; staat het in het dossier en het rapport.
+                </div>
+              </div>
+            ) : (
+              flash &&
+              flash.scenarioId === scenario.id && (
+                <div className="form-feedback">
+                  <div className="form-ok" role="status">{flash.message}</div>
+                </div>
+              )
+            )}
           </ActionForm>
           {offerPrice && (
             <div className="note" role="note">
@@ -238,9 +316,9 @@ export function SizingPanel({
           )}
           <div className="divider" />
           <div className="kpi-row" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>
-            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="tam">TAM</Term> (aantal)</p><strong className="num">{int(result.tamCount)}</strong></div>
-            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="sam">SAM</Term> (aantal)</p><strong className="num">{int(result.samCount)}</strong></div>
-            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="som">SOM</Term> (klanten)</p><strong className="num">{int(result.somCount)}</strong></div>
+            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="tam">TAM</Term> (aantal)</p><strong className="num">{result.countsKnown.tam ? int(result.tamCount) : "onbekend"}</strong></div>
+            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="sam">SAM</Term> (aantal)</p><strong className="num">{result.countsKnown.sam ? int(result.samCount) : "onbekend"}</strong></div>
+            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="som">SOM</Term> (klanten)</p><strong className="num">{result.countsKnown.som ? int(result.somCount) : "onbekend"}</strong></div>
           </div>
           <p style={{ color: "var(--color-on-dark-muted)", fontSize: 14, marginTop: 16 }}>Formule</p>
           <div className="calc-formula">{result.formula} = {notEstablished ? "niet vastgesteld" : eur(result.somRevenue)}</div>

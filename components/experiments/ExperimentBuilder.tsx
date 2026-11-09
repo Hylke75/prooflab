@@ -5,7 +5,7 @@ import { RequiredMark, type FormState } from "@/components/ui/ActionForm";
 import { Term } from "@/components/ui/Term";
 import { SavingOverlay } from "@/components/ui/SavingOverlay";
 import { Icon } from "@/components/Icon";
-import { EXPERIMENT_TYPES, HONEST_REVEAL, NEUTRAL_INTERVIEW_GUIDE, type ExperimentType } from "@/lib/domain/labels";
+import { EXPERIMENT_TYPES, HONEST_REVEAL, NEUTRAL_INTERVIEW_GUIDE, REVEAL_DEFAULT, type ExperimentType } from "@/lib/domain/labels";
 import { testCardDefaults, type Option } from "@/lib/domain/recommend";
 import { DECISION_RULES, PASS_PROBABILITY, FAIL_PROBABILITY, FLAT_PRIOR, wilson, type BetaPrior, type DecisionRule } from "@/lib/domain/stats";
 import {
@@ -13,7 +13,7 @@ import {
   deadlineFromDays,
   detailFieldErrors,
   formatAmount,
-  headlineFromIdea,
+  shortHeadline,
   intakePrice,
   isoDay,
   orderedErrors,
@@ -41,7 +41,7 @@ import { experimentTitle } from "@/lib/domain/truncate";
 import { MoreInThorough, useViewMode } from "@/components/shell/ViewMode";
 import { defaultedTestCardFields } from "@/lib/defaulted-test-card";
 import { defaultedLabels } from "@/lib/view-mode";
-import { catalogExperimentType, checklistFor, runsText, templateToTestCard, type CatalogMethod } from "@/lib/domain/experiment-catalog";
+import { catalogExperimentType, checklistFor, manualConfigFor, runsText, templateToTestCard, type CatalogMethod } from "@/lib/domain/experiment-catalog";
 import { ManualPlaybook } from "@/components/experiments/ManualPlaybook";
 
 type VariantsResult = { error: string | null; variants: PreparedVariant[]; draftNotes: string[]; draftWarnings: string[] };
@@ -165,16 +165,20 @@ export function ExperimentBuilder({
     return m && (m !== "payment" || deposit.available) ? m : "signup";
   };
   const manualChecklist = cat && cat.runs.kind === "manual" ? checklistFor(cat) : null;
+  // Bevinding 19: bij een handmatig catalogussjabloon telt de steekproef in de eenheid van de methode (bijv.
+  // "waargenomen situaties"), niet in deelnemers.
+  const unit = (cat && cat.runs.kind === "manual" ? manualConfigFor(cat)?.unit : null) ?? { one: "deelnemer", many: "deelnemers" };
   const [extraSteps, setExtraSteps] = useState("");
   const withSurveyMetric = (d: typeof defaults, s: SurveyConfig) => (type === "survey" ? { ...d, ...metricFromKey(s) } : d);
   const [card, setCard] = useState(() => withSurveyMetric(defaults, survey));
   const [rule, setRule] = useState<DecisionRule>("probability");
   const [lastKey, setLastKey] = useState(`${type}|${assumption.id}`);
-  // B5: kop en aanbod staan vooringevuld uit de intake (onder "Details" aan te passen).
+  // B5: de kop staat vooringevuld uit de intake (kort voorstel, bevinding 20), onder "Details" aan te passen. Het aanbod
+  // niet: de ideebeschrijving is interne intaketekst en komt alleen op de testpagina als de consultant hem overneemt.
   const [page, setPage] = useState(() => ({
-    headline: headlineFromIdea(intake.description, ideaTitle),
+    headline: shortHeadline(intake.description, ideaTitle),
     subline: "",
-    offer: intake.description.trim().slice(0, 600),
+    offer: "",
     cta_label: (type === "landing" || type === "pricing") && catMetric() !== "signup" ? ctaFor(type, catMetric()) : CTA_DEFAULT[type],
     product_name: "",
   }));
@@ -193,8 +197,9 @@ export function ExperimentBuilder({
   const titleFor = () => experimentTitle(cat ? cat.name : EXPERIMENT_TYPES[type].label, assumption.statement);
   const [title, setTitle] = useState(titleFor);
   const [titleTouched, setTitleTouched] = useState(false);
-  // Gebruikerstest C3: de minimale steekproef die ProofLab bij het vastleggen ophoogde (de oude waarde, voor de hint).
-  const [autoSample, setAutoSample] = useState<string | null>(null);
+  // Gebruikerstest C3: de minimale steekproef die ProofLab bij het vastleggen ophoogde (de oude waarde, voor de hint),
+  // en of die oude waarde het voorstel van het sjabloon was (bevinding 19: zeg waarom het getal veranderde).
+  const [autoSample, setAutoSample] = useState<{ was: string; proposed: boolean } | null>(null);
   const [sampleReason, setSampleReason] = useState("");
   // Fase B1b, stap 1: de drempels liggen vast vóórdat ProofLab rekent. Wijzigen kan daarna alleen met een motivering.
   const [locked, setLocked] = useState(false);
@@ -343,7 +348,7 @@ export function ExperimentBuilder({
     if (v2 && activeRule !== "absolute" && thresholdPct > 0) {
       const b = sampleBand({ rule: activeRule, thresholdPct, successCount: countN, prior, availablePerWeek: Number(perWeek) > 0 ? Number(perWeek) : null, maxDurationDays: Number(card.max_duration_days) || 0 });
       if (b.requiredN != null && n < b.requiredN) {
-        setAutoSample(n > 0 ? String(n) : "leeg");
+        setAutoSample({ was: n > 0 ? String(n) : "leeg", proposed: n > 0 && String(card.min_sample) === String(defaults.min_sample) });
         set("min_sample", String(b.requiredN));
       }
     }
@@ -553,12 +558,13 @@ export function ExperimentBuilder({
           <h3 id="tc-step1" className="tc-step-title"><span className="num">1</span> Wanneer is de test geslaagd?</h3>
           {v2 && (
           <fieldset disabled={locked} className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }}>
-            <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>Beslisregel</legend>
+            <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}><Term k="beslisregel">Beslisregel</Term></legend>
             {absoluteAllowed ? (
               <div className="row" role="radiogroup" aria-label="Beslisregel">
                 {(["probability", "absolute"] as DecisionRule[]).map((r) => (
                   <label key={r} className="check-row" style={{ margin: "2px 12px 2px 0" }}>
-                    <input type="radio" name="decision_rule_choice" value={r} checked={rule === r} onChange={() => chooseRule(r)} /> {DECISION_RULES[r].label}
+                    <input type="radio" name="decision_rule_choice" value={r} checked={rule === r} onChange={() => chooseRule(r)} />{" "}
+                    {r === "probability" ? <Term k="kansregel">{DECISION_RULES[r].label}</Term> : DECISION_RULES[r].label}
                   </label>
                 ))}
               </div>
@@ -620,12 +626,12 @@ export function ExperimentBuilder({
           )}
           </section>
           <section className="tc-step" aria-labelledby="tc-step2">
-          <h3 id="tc-step2" className="tc-step-title"><span className="num">2</span> Hoeveel deelnemers heb je nodig?</h3>
-          {v2 && !locked && <p className="sub" style={{ fontSize: 14, marginTop: 0 }}>Leg eerst de drempels vast. Daarna rekent ProofLab uit hoeveel deelnemers je nodig hebt.</p>}
+          <h3 id="tc-step2" className="tc-step-title"><span className="num">2</span> Hoeveel {unit.many} heb je nodig?</h3>
+          {v2 && !locked && <p className="sub" style={{ fontSize: 14, marginTop: 0 }}>Leg eerst de drempels vast. Daarna rekent ProofLab uit hoeveel {unit.many} je nodig hebt.</p>}
           {v2 && band && (
             <div id="tc-plan" aria-live="polite">
               {band.requiredN != null ? (
-                <p className="tc-need">Je hebt ongeveer <strong className="num">{band.requiredN}</strong> deelnemers nodig.</p>
+                <p className="tc-need">Je hebt ongeveer <strong className="num">{band.requiredN}</strong> {band.requiredN === 1 ? unit.one : unit.many} nodig.</p>
               ) : (
                 <p className="tc-need">Met dit testtype is de drempel niet aantoonbaar te halen. Opslaan als concept kan; goedkeuren niet.</p>
               )}
@@ -637,7 +643,7 @@ export function ExperimentBuilder({
                   <p style={{ marginTop: 0 }}>
                     {band.basis === "earlier_tests"
                       ? `Op basis van ${band.earlierTests} afgeronde ${EXPERIMENT_TYPES[type].label.toLowerCase()}s in je organisatie: wat die tests werkelijk lieten zien (25e, 50e en 75e percentiel).`
-                      : `Er zijn nog geen drie afgeronde ${EXPERIMENT_TYPES[type].label.toLowerCase()}s in je organisatie. ProofLab rekent daarom met scenario's net boven je succesdrempel: hoeveel deelnemers heb je nodig als het echte percentage de drempel ruim haalt?`}
+                      : `Er zijn nog geen drie afgeronde ${EXPERIMENT_TYPES[type].label.toLowerCase()}s in je organisatie. ProofLab rekent daarom met scenario's net boven je succesdrempel: hoeveel ${unit.many} heb je nodig als het echte percentage de drempel ruim haalt?`}
                   </p>
                   <table className="table">
                     <thead><tr><th scope="col">Scenario</th><th scope="col">Echt percentage</th><th scope="col">Benodigd</th></tr></thead>
@@ -674,7 +680,11 @@ export function ExperimentBuilder({
                 <input className="field num" id="tc-n" name="min_sample" type="number" min={5} value={card.min_sample} onChange={(e) => set("min_sample", e.target.value)} {...aria("min_sample")} />
                 {fieldError("min_sample")}
                 {autoSample !== null && band?.requiredN != null && n === band.requiredN && (
-                  <p className="field-hint">Automatisch berekend (was {autoSample}).</p>
+                  <p className="field-hint" id="tc-n-auto">
+                    {autoSample.was === "leeg" ? "Automatisch berekend" : `Automatisch verhoogd van ${autoSample.was}${autoSample.proposed ? (cat ? " (het voorstel uit de catalogus)" : " (het standaardvoorstel)") : ""} naar ${n}`}: met een
+                    succesdrempel van {thresholdPct}% heb je minstens {n} {unit.many} nodig om met {PASS_PROBABILITY * 100}% zekerheid te kunnen zeggen dat de test
+                    geslaagd is. Minder kan, met een motivering.
+                  </p>
                 )}
                 {band?.requiredN != null && band.requiredN !== n && (
                   <button type="button" className="text-link mt-8" onClick={() => set("min_sample", String(band.requiredN))}>Neem {band.requiredN} over</button>
@@ -682,7 +692,7 @@ export function ExperimentBuilder({
                 {/* Gebruikerstest C3: lager dan berekend kan, maar alleen met een motivering (bewaard bij de Test Card). */}
                 {band?.requiredN != null && n > 0 && n < band.requiredN && (
                   <div className="form-line mt-8">
-                    <label htmlFor="tc-n-reason">Waarom minder deelnemers dan berekend ({band.requiredN})?<RequiredMark /></label>
+                    <label htmlFor="tc-n-reason">Waarom minder {unit.many} dan berekend ({band.requiredN})?<RequiredMark /></label>
                     <textarea
                       className="field"
                       id="tc-n-reason"
@@ -727,7 +737,7 @@ export function ExperimentBuilder({
           {!v2 && (
             needed !== null ? (
               <div className="note" style={{ marginTop: 0 }}>
-                Met {n} deelnemers is &quot;geslaagd&quot; pas vast te stellen bij minimaal <strong>{needed}</strong> keer {card.metric_label.toLowerCase()} ({Math.round((needed / n) * 100)}%).
+                Met {n} {unit.many} is &quot;geslaagd&quot; pas vast te stellen bij minimaal <strong>{needed}</strong> keer {card.metric_label.toLowerCase()} ({Math.round((needed / n) * 100)}%).
                 Daaronder blijft het onbeslist. Dit dossier rekent met methode 2026-11-a (intervalregel).
               </div>
             ) : (
@@ -736,7 +746,7 @@ export function ExperimentBuilder({
           )}
           {goRuleMissing && isPrimary && (
             <p className="field-hint" id="tc-go-rule">
-              Dit dossier heeft nog geen go-regel. Na opslaan stelt ProofLab hem voor: doorgaan als deze hoofdtest slaagt en de aanname minstens{" "}
+              Dit dossier heeft nog geen <Term k="go-regel">go-regel</Term>. Na opslaan stelt ProofLab hem voor: doorgaan als deze hoofdtest slaagt en de aanname minstens{" "}
               {Math.round(GO_RULE_DEFAULT_PROBABILITY * 100)}% kans haalt. Een hoofdtest start pas als de go-regel vastligt.
             </p>
           )}
@@ -757,7 +767,7 @@ export function ExperimentBuilder({
           <div className="form-line"><label htmlFor="tc-bias">Verwachte vertekeningen</label><input className="field" id="tc-bias" name="expected_biases" value={card.expected_biases} onChange={(e) => set("expected_biases", e.target.value)} /></div>
           {v2 && (
             <div className="form-line">
-              <label htmlFor="tc-week">Beschikbare deelnemers per week (optioneel)</label>
+              <label htmlFor="tc-week">Beschikbare {unit.many} per week (optioneel)</label>
               <input className="field num" id="tc-week" name="available_per_week" type="number" min={0} value={perWeek} onChange={(e) => setPerWeek(e.target.value)} aria-describedby="tc-week-hint" />
               <p className="field-hint" id="tc-week-hint">Hoeveel mensen uit de doelgroep je per week kunt bereiken. ProofLab toetst daarmee of de test vóór de deadline haalbaar is.</p>
             </div>
@@ -837,7 +847,21 @@ export function ExperimentBuilder({
               <div className="form-line"><label htmlFor="pg-name">Naam van het aanbod (merkneutraal)</label><input className="field" id="pg-name" name="product_name" value={page.product_name} onChange={(e) => setPage({ ...page, product_name: e.target.value })} /></div>
               <div className="form-line"><label htmlFor="pg-head">Kop<RequiredMark /></label><input className="field" id="pg-head" name="headline" value={page.headline} onChange={(e) => setPage({ ...page, headline: e.target.value })} {...aria("headline")} />{fieldError("headline")}</div>
               <div className="form-line"><label htmlFor="pg-sub">Ondertitel</label><input className="field" id="pg-sub" name="subline" value={page.subline} onChange={(e) => setPage({ ...page, subline: e.target.value })} /></div>
-              <div className="form-line"><label htmlFor="pg-offer">Aanbod (wat krijgt iemand precies?)</label><textarea className="field" id="pg-offer" name="offer" rows={3} value={page.offer} onChange={(e) => setPage({ ...page, offer: e.target.value })} /></div>
+              <div className="form-line">
+                <label htmlFor="pg-offer">Aanbod (wat krijgt iemand precies?)</label>
+                <textarea className="field" id="pg-offer" name="offer" rows={3} value={page.offer} onChange={(e) => setPage({ ...page, offer: e.target.value })} aria-describedby="pg-offer-hint" />
+                <p className="field-hint" id="pg-offer-hint">
+                  Schrijf het voor de bezoeker; leeg laten mag. De ideebeschrijving uit de intake is intern en staat niet vanzelf op de testpagina.
+                  {intake.description.trim() && !page.offer.trim() && (
+                    <>
+                      {" "}
+                      <button type="button" className="text-link" onClick={() => setPage({ ...page, offer: intake.description.trim().slice(0, 600) })}>
+                        Neem de ideebeschrijving over als begin
+                      </button>
+                    </>
+                  )}
+                </p>
+              </div>
               <div className="form-line"><label htmlFor="pg-cta">Knoptekst</label><input className="field" id="pg-cta" name="cta_label" value={page.cta_label} onChange={(e) => setPage({ ...page, cta_label: e.target.value })} /></div>
               {type === "pricing" && (
                 <p className="field-hint" id="pp-hint">
@@ -860,8 +884,10 @@ export function ExperimentBuilder({
                 ))}
               {type === "pricing" && fieldError("price_points")}
               <label className="check-row"><input type="checkbox" name="collect_email" defaultChecked={type === "landing"} /> Na de klik om een e-mailadres vragen (met toestemming)</label>
-              <div className="form-line"><label htmlFor="pg-reveal">Bericht na de klik</label><textarea className="field" id="pg-reveal" name="reveal_message" rows={3} defaultValue="Bedankt! We nemen contact op zodra we kunnen starten." /></div>
-              <p className="field-hint">Na elke klik toont ProofLab altijd ook: “{HONEST_REVEAL}” Dit is niet uit te zetten.</p>
+              <div className="form-line"><label htmlFor="pg-reveal">Bericht na de klik</label><textarea className="field" id="pg-reveal" name="reveal_message" rows={3} defaultValue={REVEAL_DEFAULT} /></div>
+              <p className="field-hint">
+                Na elke klik toont ProofLab altijd ook: “{HONEST_REVEAL}” Dit is niet uit te zetten. Vraag je geen e-mailadres, dan valt het standaardbericht weg.
+              </p>
               <fieldset className="mt-12" style={{ border: 0, padding: 0, margin: 0 }} aria-describedby="tc-deposit-hint">
                 <legend className="field-label">Betaalde intentie (optioneel)</legend>
                 <label className="check-row">

@@ -32,7 +32,7 @@ import { annualPriceFromOffer } from "@/lib/intake-proposal";
 import { proposalAdoptionProblem } from "@/lib/domain/competitor-proposals";
 import { priceFromIntake } from "@/lib/research-questions";
 
-export type ActionState = { error: string | null; ok?: string | null };
+export type ActionState = { error: string | null; ok?: string | null; fieldErrors?: Record<string, string> };
 
 const blank = (s: unknown) => {
   const v = typeof s === "string" ? s.trim() : "";
@@ -166,7 +166,10 @@ const SourceSchema = z.object({
   title: z.string().trim().min(2, "Geef de bron een titel.").max(300),
   publisher: z.string().trim().max(200).optional(),
   published_on: z.string().trim().optional(),
-  source_type: z.enum(["official_statistic", "primary_document", "company_page", "research_report", "news", "review_site", "blog", "forum", "outreach", "dataset_upload", "interview", "other"]),
+  // Geen standaard: wie het soort bron niet kiest, krijgt deze melding (bij het veld en bij de knop).
+  source_type: z.enum(["official_statistic", "primary_document", "company_page", "research_report", "news", "review_site", "blog", "forum", "outreach", "dataset_upload", "interview", "other"], {
+    error: "Kies het soort bron (bijv. officiële statistiek, bedrijfspagina of reviewsite).",
+  }),
   excerpt: z.string().trim().min(20, "Plak het relevante fragment (minimaal 20 tekens).").max(6000),
   location: z.string().trim().max(200).optional(),
 });
@@ -174,7 +177,10 @@ const SourceSchema = z.object({
 export async function addSource(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
   await requireWritableIdea(ideaId);
   const parsed = SourceSchema.safeParse(Object.fromEntries(form));
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return { error: issue.message, fieldErrors: issue.path.length ? { [String(issue.path[0])]: issue.message } : undefined };
+  }
   const v = parsed.data;
   const url = blank(v.url);
   let accessNote: string | null = "Fragment handmatig ingevoerd; niet automatisch gecontroleerd.";

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SOURCE_PREFILL_EVENT, SOURCE_TITLE_PARAM, type SourcePrefill } from "./source-prefill";
-import { ActionForm, type FormState } from "@/components/ui/ActionForm";
+import { ActionForm, useFieldError, type FormState } from "@/components/ui/ActionForm";
 import { DirectionField } from "@/components/ui/DirectionField";
 import { checkQuote } from "@/lib/domain/verify";
 import { EVIDENCE_TYPES, SOURCE_TYPES, type EvidenceType } from "@/lib/domain/labels";
@@ -10,6 +10,14 @@ import { defaultsForSource, deviationHint, SELF_REPORTED_SOURCES } from "@/lib/d
 import type { FreshnessKind } from "@/lib/domain/verify";
 
 type Action = (s: FormState, f: FormData) => Promise<FormState>;
+
+const SOURCE_TYPE_REQUIRED = "Kies het soort bron (bijv. officiële statistiek, bedrijfspagina of reviewsite).";
+
+// De melding van de server bij het brontype, als die toch zonder keuze is verstuurd.
+function SourceTypeError() {
+  const error = useFieldError("source_type");
+  return error ? <p className="field-error" role="alert">{error}</p> : null;
+}
 
 export function AddSourceForm({ action }: { action: Action }) {
   const titleRef = useRef<HTMLInputElement>(null);
@@ -33,7 +41,11 @@ export function AddSourceForm({ action }: { action: Action }) {
         return;
       }
       if (urlRef.current) urlRef.current.value = d.url;
-      if (typeRef.current) typeRef.current.value = "other";
+      // Ook een kandidaat-bron krijgt geen vooraf gekozen type: de gebruiker kiest het na het openen van de pagina.
+      if (typeRef.current) {
+        typeRef.current.value = "";
+        typeRef.current.setCustomValidity("");
+      }
       setFromDocument(false);
       setPrefilled(d.url);
       requestAnimationFrame(() => {
@@ -72,13 +84,28 @@ export function AddSourceForm({ action }: { action: Action }) {
         </div>
         <div className="form-line">
           <label htmlFor="src-type">Type bron</label>
-          <select ref={typeRef} className="field" id="src-type" name="source_type" defaultValue="official_statistic">
+          {/* Geen standaard (vroeger "Officiële statistiek"): het soort bron bepaalt hoe zwaar een bevinding telt, dus kiest
+              de gebruiker het zelf. Zonder keuze een eigen, Nederlandse melding in plaats van de browserballon. */}
+          <select
+            ref={typeRef}
+            className="field"
+            id="src-type"
+            name="source_type"
+            defaultValue=""
+            required
+            aria-required
+            aria-describedby="src-type-hint"
+            onInvalid={(e) => e.currentTarget.setCustomValidity(SOURCE_TYPE_REQUIRED)}
+            onChange={(e) => e.currentTarget.setCustomValidity("")}
+          >
+            <option value="" disabled>Kies het soort bron…</option>
             {/* Een eigen wervingsregistratie maakt ProofLab zelf vanaf de testpagina (fase 2 · punt 5). */}
             {Object.entries(SOURCE_TYPES).filter(([k]) => k !== "recruitment_log").map(([k, v]) => (
               <option key={k} value={k}>{v}</option>
             ))}
           </select>
-          <p className="field-hint">Reviews, forumdraden en reacties van klanten: kies Reviewsite of Forum. Ze verschijnen dan bij Doelgroepen → Klantsignalen.</p>
+          <SourceTypeError />
+          <p className="field-hint" id="src-type-hint">Reviews, forumdraden en reacties van klanten: kies Reviewsite of Forum. Ze verschijnen dan bij Doelgroepen → Klantsignalen.</p>
         </div>
       </div>
       <div className="form-line">

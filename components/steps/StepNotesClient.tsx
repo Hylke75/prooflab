@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useId, useRef, useState } from "react";
+import { createContext, Fragment, useContext, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ActionForm, Field, type FormState } from "@/components/ui/ActionForm";
 import { ConfirmDialogForm } from "@/components/ui/ConfirmDialog";
@@ -107,6 +107,40 @@ export function NoteBody({ text }: { text: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Melding na verwijderen. Het verwijderde item verdwijnt met de vernieuwde pagina, en daarmee ook een melding die
+// het zelf zou tonen. Daarom staat de melding bij de lijst, die blijft staan.
+// ---------------------------------------------------------------------------
+
+const RemovedNotice = createContext<(message: string) => void>(() => {});
+
+export function StepListFeedback({ children }: { children: React.ReactNode }) {
+  const [message, setMessage] = useState<string | null>(null);
+  return (
+    <RemovedNotice.Provider value={setMessage}>
+      {children}
+      {/* Altijd aanwezig, zodat schermlezers de melding oppikken zodra die verschijnt. */}
+      <div role="status">
+        {message && (
+          <div className="form-feedback">
+            <div className="form-ok">{message}</div>
+          </div>
+        )}
+      </div>
+    </RemovedNotice.Provider>
+  );
+}
+
+// Verwijderactie die bij succes de melding bij de lijst zet.
+function useAnnouncedDelete(action: Action): Action {
+  const announce = useContext(RemovedNotice);
+  return async (s, f) => {
+    const r = await action(s, f);
+    if (r.ok && !r.error) announce(r.ok);
+    return r;
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Eén notitie, met bewerken en verwijderen
 // ---------------------------------------------------------------------------
 
@@ -114,6 +148,7 @@ export function NoteItem({ note }: { note: NoteView }) {
   const [editing, setEditing] = useState(false);
   const editRef = useRef<HTMLButtonElement>(null);
   const ids = useId();
+  const remove = useAnnouncedDelete(note.deleteAction);
   const edited = new Date(note.updatedAt).getTime() - new Date(note.createdAt).getTime() > 1000;
   // Na opslaan klapt het formulier dicht en gaat de focus terug naar de knop Bewerken.
   const save: Action = async (s, f) => {
@@ -148,7 +183,7 @@ export function NoteItem({ note }: { note: NoteView }) {
           <button ref={editRef} type="button" className="btn white sm" onClick={() => setEditing(true)} aria-label={`Bewerk notitie${note.title ? ` "${note.title}"` : ""}`}>
             Bewerken
           </button>
-          <ConfirmDialogForm action={note.deleteAction} triggerLabel="Verwijderen" triggerClass="btn clear sm" title="Notitie verwijderen?" confirmLabel="Ja, verwijderen" pendingLabel="Verwijderen…">
+          <ConfirmDialogForm action={remove} triggerLabel="Verwijderen" triggerClass="btn clear sm" title="Notitie verwijderen?" confirmLabel="Ja, verwijderen" pendingLabel="Verwijderen…">
             <p className="sub">De notitie verdwijnt voor iedereen in dit dossier. Het auditspoor bewaart dat jij haar hebt verwijderd.</p>
           </ConfirmDialogForm>
         </div>
@@ -165,6 +200,7 @@ const stem = (name: string) => name.replace(/\.[A-Za-z0-9]{1,10}$/, "");
 
 export function DocumentItem({ doc, ideaId, useAsSource }: { doc: DocView; ideaId: string; useAsSource: boolean }) {
   const router = useRouter();
+  const remove = useAnnouncedDelete(doc.deleteAction);
   const ext = (/\.([A-Za-z0-9]{1,10})$/.exec(doc.fileName)?.[1] ?? "").toUpperCase();
   // Een document wordt pas bron via het gewone bronformulier: titel vooringevuld, het letterlijke fragment plakt de
   // gebruiker zelf en ProofLab controleert het citaat. Op de pagina Marktverkenning zonder herladen, elders via een link.
@@ -213,7 +249,7 @@ export function DocumentItem({ doc, ideaId, useAsSource }: { doc: DocView; ideaI
             </button>
           )}
           {doc.canDelete && (
-            <ConfirmDialogForm action={doc.deleteAction} triggerLabel="Verwijderen" triggerClass="btn clear sm" title="Document verwijderen?" confirmLabel="Ja, verwijderen" pendingLabel="Verwijderen…">
+            <ConfirmDialogForm action={remove} triggerLabel="Verwijderen" triggerClass="btn clear sm" title="Document verwijderen?" confirmLabel="Ja, verwijderen" pendingLabel="Verwijderen…">
               <p className="sub">
                 &ldquo;{doc.fileName}&rdquo; wordt uit het dossier en uit de opslag verwijderd. Het auditspoor bewaart dat jij het hebt verwijderd. Bronnen die je eerder op basis van dit
                 document vastlegde, blijven staan.

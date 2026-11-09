@@ -180,6 +180,15 @@ describe("beslisblad: oudere rapporten", () => {
     expect(sh.notProven[0]).toMatch(/beslissende vraag is nog niet beantwoord/);
   });
 
+  it("noemt dezelfde beslissende vraag als Markt (de gemarkeerde, niet vraag 1)", () => {
+    const questions = [
+      { position: 1, question: "Hoe plannen eventbureaus nu?", status: "open" },
+      { position: 4, question: "Betalen bureaus 49 euro per maand?", status: "open", decisive: true },
+    ];
+    const sh = sheetFromSnapshot({ ...legacy, questions }, null);
+    expect(sh.notProven[0]).toContain("Betalen bureaus 49 euro per maand?");
+  });
+
   it("gebruikt het opgeslagen beslisblad als dat er is", () => {
     const stored = buildDecisionSheet(input());
     expect(sheetFromSnapshot({ ...legacy, sheet: stored }, null)).toBe(stored);

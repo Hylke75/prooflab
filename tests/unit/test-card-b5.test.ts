@@ -5,6 +5,7 @@ import {
   detailFieldErrors,
   formatAmount,
   headlineFromIdea,
+  shortHeadline,
   intakePrice,
   orderedErrors,
   parseDutchAmount,
@@ -15,6 +16,7 @@ import {
   type TestCardInput,
 } from "@/lib/domain/test-card";
 import { GO_RULE_MISSING, goRuleBlock } from "@/lib/domain/experiment-gates";
+import { LEGACY_REVEAL_DEFAULT, REVEAL_DEFAULT, revealMessageFor } from "@/lib/domain/labels";
 import { GO_RULE_DEFAULT_PROBABILITY, proposeGoRule } from "@/lib/domain/decision-rule-proposal";
 import { acceptAiLearning, isUnchangedProposal, ruleBasedLearning, type LearningInput } from "@/lib/domain/learning-proposal";
 
@@ -56,6 +58,18 @@ describe("vooringevulde details (B5)", () => {
       "Een AI-assistent voor zelfstandige NVM-makelaars die woningteksten en klantmails schrijft",
     );
     expect(headlineFromIdea("", "Makelaarsassistent")).toBe("Makelaarsassistent");
+  });
+  it("stelt een korte kop voor (hooguit 8 woorden) in plaats van de volledige intakezin", () => {
+    expect(shortHeadline("Een AI-assistent voor zelfstandige NVM-makelaars die woningteksten en klantmails schrijft, voor € 249 per maand.", "X")).toBe(
+      "Een AI-assistent voor zelfstandige NVM-makelaars",
+    );
+    expect(shortHeadline("Planning voor sportclubs.", "X")).toBe("Planning voor sportclubs");
+    expect(shortHeadline("", "Makelaarsassistent")).toBe("Makelaarsassistent");
+    // Zonder zinsdeel: de eerste woorden, zonder los voorzetsel aan het eind.
+    const long = shortHeadline("Wij bouwen een slimme app voor het plannen van vrijwilligers bij amateurvoetbalclubs in Nederland", "X");
+    expect(long.split(" ").length).toBeLessThanOrEqual(8);
+    expect(long).toBe("Wij bouwen een slimme app voor het plannen");
+    expect(long).not.toMatch(/…$/);
   });
   it("leidt de wervingsgroep af uit de kanalen, voorzichtig bij gemengde kanalen", () => {
     expect(recruitmentFromChannels(["linkedin", "network"])).toBe("own_network");
@@ -191,5 +205,15 @@ describe("Learning Card-voorstel (B5)", () => {
     expect(isUnchangedProposal({ we_learned: "A leren", therefore: "B doen" }, metrics)).toEqual({ learned: true, therefore: true, source: "ai" });
     expect(isUnchangedProposal({ we_learned: "Aangepast", therefore: "B doen" }, metrics)).toEqual({ learned: false, therefore: true, source: "ai" });
     expect(isUnchangedProposal({ we_learned: "A", therefore: "B" }, {})).toBeNull();
+  });
+});
+
+describe("bericht na de klik op de testpagina (bevinding 10)", () => {
+  it("belooft geen contact zonder e-mailadres en vervangt het oude standaardbericht", () => {
+    expect(revealMessageFor(LEGACY_REVEAL_DEFAULT, true)).toBe(REVEAL_DEFAULT);
+    expect(revealMessageFor(LEGACY_REVEAL_DEFAULT, false)).toBe("");
+    expect(revealMessageFor(REVEAL_DEFAULT, false)).toBe("");
+    expect(revealMessageFor("  Eigen tekst van de consultant. ", false)).toBe("Eigen tekst van de consultant.");
+    expect(revealMessageFor(null, true)).toBe("");
   });
 });

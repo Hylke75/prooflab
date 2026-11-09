@@ -70,7 +70,7 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
     idea: "Een AI-assistent die zakelijke eventmanagers helpt binnen minuten een passende locatie te vinden, voor € 150 per maand.",
     decision: `Lanceren we dit aanbod met twee consultants en € 25.000, of stoppen we, vóór ${dutchDate(60)}?`,
     uncertainty: "Of eventmanagers zelf een locatie willen zoeken in plaats van een eventbureau te bellen.",
-    fill: { "Korte naam": title, "Doelgroep": "zakelijke eventmanagers", "Inzet (euro)": "25000", "Uiterlijke beslisdatum": isoDate(60), "Wat meet je?": "betalende eventbureaus", "Doelwaarde": "10", "Minimumbedrag per klant (€)": "1500" },
+    fill: { "Korte naam": title, "Doelgroep": "zakelijke eventmanagers", "Inzet (euro)": "25000", "Uiterlijke beslisdatum": isoDate(60), "Wat meet je?": "betalende eventbureaus", "Doelwaarde": "10", "Minimumbedrag per klant": "1500" },
     select: { "Soort klant": "Zakelijke klanten (B2B)", "Regio": "Nederland", "Type project": "new_product", "Opdrachtgever": "none" },
   });
   await expect(page.getByRole("heading", { name: "Begrijp je markt." })).toBeVisible();
@@ -85,6 +85,7 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   // 2. Source + verified claim
   await page.getByRole("tab", { name: "Bronnen" }).click();
   await page.getByLabel("Titel van de bron", { exact: true }).fill("Vestigingen van bedrijven; bedrijfstak, regio");
+  await page.locator("#src-type").selectOption("official_statistic");
   await page.getByLabel("Uitgever / instelling", { exact: true }).fill("CBS");
   await page.getByLabel("Publicatie- of peildatum", { exact: true }).fill("2026-05-01");
   await page.getByLabel("Relevant fragment (letterlijk overgenomen)", { exact: true }).fill("In 2026 telde Nederland 41.230 vestigingen in de branche congres- en beursorganisatie.");

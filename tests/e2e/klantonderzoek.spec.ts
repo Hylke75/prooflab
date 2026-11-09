@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { setDetailLevel } from "./intake";
+import { createIdeaViaIntake, dutchDate, isoDate } from "./intake";
 
 // Markt: klantonderzoek vanuit stap 1. Op het tabblad Klantonderzoek maak je een verkennende enquête en een online
 // interview (schriftelijk) bij een onderzoeksvraag, zonder Test Card. Daarna opent de editor; het onderzoek is
@@ -29,29 +29,14 @@ async function login(page: Page) {
 
 // Hetzelfde dossier als tests/e2e/b4-aannames.spec.ts.
 async function createIdea(page: Page): Promise<string> {
-  await page.goto("/app/ideas/new");
-  await page.getByRole("button", { name: "Lanceren we dit aanbod in het eerste kwartaal met twee consultants, of stoppen we?" }).click();
-  await page.getByLabel("Hoeveel (euro)", { exact: true }).fill("40000");
-  await page.getByLabel("Uiterlijke beslisdatum", { exact: true }).fill(new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10));
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByLabel("Geslaagd als…", { exact: true }).fill("Zes maanden na de lancering betalen minstens 20 makelaarskantoren € 249 per maand.");
-  await page.getByLabel("Wat meet je?", { exact: true }).fill("betalende makelaarskantoren");
-  await page.getByLabel("Doelwaarde", { exact: true }).fill("20");
-  await page.getByLabel("Omzetdoel (€)", { exact: true }).fill("59760");
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByLabel("Korte naam", { exact: true }).fill(`TEST klantonderzoek ${Date.now()}`);
-  await page.getByLabel("Mijn idee", { exact: true }).fill("Een AI-assistent voor zelfstandige NVM-makelaars die woningteksten en klantmails schrijft, voor € 249 per maand.");
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: "Zakelijke klanten (B2B)" }).click();
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: /Nederland/ }).click();
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: "Nieuw product" }).click();
-  await page.getByLabel("Opdrachtgever", { exact: true }).selectOption("none");
-  await page.getByRole("button", { name: "Start de marktverkenning" }).click();
-  await page.waitForURL(/\/research/);
-  await setDetailLevel(page, "Grondig");
-  return page.url().replace(/\/research.*$/, "");
+  // Fase B3: de intake in drie vragen en één bevestiging (gedeelde helper, zoals journey.spec.ts).
+  return createIdeaViaIntake(page, {
+    idea: "Een AI-assistent voor zelfstandige NVM-makelaars die woningteksten en klantmails schrijft, voor € 249 per maand.",
+    decision: `Lanceren we dit aanbod met twee consultants en € 40,000, of stoppen we, vóór ${dutchDate(60)}?`.replace(/,(?=\d{3})/g, "."),
+    uncertainty: "Of de doelgroep hier echt voor wil betalen in plaats van het zelf te blijven doen.",
+    fill: { "Korte naam": `TEST klantonderzoek ${Date.now()}`, "Doelgroep": "zelfstandige NVM-makelaars", "Inzet (euro)": "40000", "Uiterlijke beslisdatum": isoDate(60), "Wat meet je?": "betalende makelaarskantoren", "Doelwaarde": "20", "Minimumbedrag per klant": "249" },
+    select: { "Soort klant": "Zakelijke klanten (B2B)", "Regio": "Nederland", "Type project": "new_product", "Opdrachtgever": "none" },
+  });
 }
 
 async function newStudy(page: Page, ideaUrl: string, open: string, title: string, template: boolean) {

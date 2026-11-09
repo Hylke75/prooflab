@@ -193,6 +193,17 @@ export type DmuRole = keyof typeof DMU_ROLES;
 export const HONEST_REVEAL =
   "Dit aanbod is nog in ontwikkeling. Je hebt niets gekocht of besteld en er is niets afgerekend. Met je klik help je onderzoeken of hier behoefte aan is.";
 
+// Bevinding 10: het standaardbericht na de klik belooft geen contact zolang er nog geen e-mailadres is gegeven. Het
+// oude standaardbericht ("Bedankt! We nemen contact op …") staat nog in bestaande tests; de testpagina toont dan het
+// nieuwe bericht, en zonder e-mailvraag geen bericht (het eerlijke bericht hierboven staat er altijd).
+export const REVEAL_DEFAULT = "Laat je e-mailadres achter als je bericht wilt krijgen.";
+export const LEGACY_REVEAL_DEFAULT = "Bedankt! We nemen contact op zodra we kunnen starten.";
+export function revealMessageFor(message: string | null | undefined, collectEmail: boolean): string {
+  const m = (message ?? "").trim();
+  if (m === LEGACY_REVEAL_DEFAULT || m === REVEAL_DEFAULT) return collectEmail ? REVEAL_DEFAULT : "";
+  return m;
+}
+
 export const NEUTRAL_INTERVIEW_GUIDE = [
   "Kun je vertellen over de laatste keer dat je hiermee te maken had?",
   "Wat deed je toen precies, stap voor stap?",

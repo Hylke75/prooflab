@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { cancelResearchRun, retryResearchStep, startResearchRun } from "@/app/app/ideas/[id]/research/actions";
@@ -138,7 +139,10 @@ export function ResearchRunPanel({
   cbsAction,
   estimates,
   worker = "unknown",
+  isOwner = false,
 }: {
+  // Alleen de eigenaar van de werkruimte krijgt de technische instructie over API-sleutels.
+  isOwner?: boolean;
   // Of er nu een serverportie aan de run werkt (lease), voor de statusregel.
   worker?: "busy" | "idle" | "unknown";
   // Fase B2: schatting vóór de start per modus ("geschat: $x–$y van max $z") en wie er zoekt.
@@ -288,10 +292,15 @@ export function ResearchRunPanel({
           toe onder <em>Bronnen</em>: plak het relevante fragment en een letterlijk citaat, dan controleert ProofLab de
           bevinding automatisch.
           <br />
-          <span className="tiny">
-            Voor de eigenaar: zet minstens één API-sleutel ({providers.map((p) => p.keyEnv).join(", ")}) bij de omgevingsvariabelen van het
-            Vercel-project (Settings → Environment Variables) en rol opnieuw uit. Eén sleutel is genoeg; met meer zoeken de aanbieders los van elkaar.
-          </span>
+          {isOwner ? (
+            <span className="tiny">
+              Voor de eigenaar: zet minstens één API-sleutel ({providers.map((p) => p.keyEnv).join(", ")}) bij de omgevingsvariabelen van het
+              Vercel-project (Settings → Environment Variables) en rol opnieuw uit. Eén sleutel is genoeg; met meer zoeken de aanbieders los van elkaar.
+              Zie ook <Link className="text-link" href="/app/status" prefetch={false}>Systeemstatus</Link>.
+            </span>
+          ) : (
+            <span className="tiny">AI niet verbonden — vraag de eigenaar van de werkruimte om AI te koppelen.</span>
+          )}
         </div>
       ) : (
         <>

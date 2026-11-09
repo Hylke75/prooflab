@@ -89,11 +89,11 @@ describe("Stand van het bewijs: het beslisscherm", () => {
     const s = evidenceStanding(input([assumption("a1", { observations: [obs("o1", "opinion", "interview:1"), obs("o2", "opinion", "interview:2")] })]));
     expect(s.certainty).toBe("low");
     expect(s.strongest).toMatchObject({ step: "opinion", level: "opinion", label: "uitgesproken intentie", persons: 2, sources: 2 });
-    expect(s.certaintyReason).toBe("laagste kans onder de kritieke aannames 35–45% (aanname 1); zwakste bewijs: mening");
+    expect(s.certaintyReason).toBe("laagste kans onder de gekozen aannames 35–45% (aanname 1); zwakste bewijs: mening");
     const none = evidenceStanding(input([assumption("a1", { importance: 3 })]));
     expect(none.certainty).toBe("low");
-    expect(none.certaintyReason).toBe("nog geen kritieke aanname gekozen om te testen (belangrijkheid 4 of 5)");
-    expect(none.summary).toBe("Zekerheid: laag · 0 van 0 kritieke aannames getest · sterkste bewijs: nog geen echte waarneming");
+    expect(none.certaintyReason).toBe("nog geen aanname gekozen om nu te testen (belangrijkheid 4 of 5)");
+    expect(none.summary).toBe("Zekerheid: laag · nog geen aanname gekozen om te testen · sterkste bewijs: nog geen echte waarneming");
   });
 
   it("zekerheid midden en hoog: laagste kans plus het niveau op de schaal (de zwakste kritieke aanname telt)", () => {
@@ -120,7 +120,7 @@ describe("Stand van het bewijs: het beslisscherm", () => {
       input([assumption("a1", { primary: "t1", observations: [obs("o1", "waitlist_signup", "experiment:t1"), obs("o2", "demo_request", "interview:7")] })], tests),
     );
     expect(s.strongest).toMatchObject({ step: "behaviour", level: "small_action", persons: 13, sources: 2 });
-    expect(s.summary).toBe("Zekerheid: midden · 1 van 1 kritieke aanname getest · sterkste bewijs: kleine handeling (13 personen)");
+    expect(s.summary).toBe("Zekerheid: midden · 1 van 1 gekozen aanname getest · sterkste bewijs: kleine handeling (13 personen)");
   });
 
   it("volgende stap: de eerste uit de informatiewaarde, met test en reden", () => {
@@ -132,7 +132,7 @@ describe("Stand van het bewijs: het beslisscherm", () => {
     expect(next).toEqual({ title: "7 interviews (aanname 1)", detail: "Test deze eerst, omdat …", href: "/app/ideas/idee/experiments?assumption=a2" });
     expect(nextFromInformationValue("idee", [])).toBeNull();
     const s = evidenceStanding(input([assumption("a1", { observations: [obs("o1", "opinion", "interview:1")] })], [], next));
-    expect(s.summary).toBe("Zekerheid: laag · 0 van 1 kritieke aanname getest · sterkste bewijs: uitgesproken intentie (1 persoon) · volgende stap: 7 interviews (aanname 1)");
+    expect(s.summary).toBe("Zekerheid: laag · 0 van 1 gekozen aanname getest · sterkste bewijs: uitgesproken intentie (1 persoon) · volgende stap: 7 interviews (aanname 1)");
     expect(s.next).toEqual(next);
   });
 

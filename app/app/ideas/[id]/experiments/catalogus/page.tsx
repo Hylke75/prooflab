@@ -35,7 +35,7 @@ export default async function CatalogPage({ params, searchParams }: PageProps<"/
       <div className="section-row">
         <div>
           <div className="eyebrow">Stap 3 van 4 · Testen</div>
-          <h1>Experimentencatalogus</h1>
+          <h1>Experimenten{"\u00AD"}catalogus</h1>
           <p className="sub">
             {CATALOG.length} methodes om een aanname te toetsen, van gesprek tot aanbetaling. Per methode: wat ze wel en niet bewijst, wat ze kost en hoe je
             haar in ProofLab uitvoert.

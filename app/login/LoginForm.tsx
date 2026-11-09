@@ -12,6 +12,8 @@ export function LoginForm({ next, email = "" }: { next: string; email?: string }
   const state = mode === "password" ? pwState : mlState;
   const action = mode === "password" ? pwAction : mlAction;
   const pending = pwPending || mlPending;
+  // React maakt het formulier na elke action leeg; het ingevulde e-mailadres komt terug uit de action-state.
+  const typedEmail = state.email ?? email;
 
   return (
     <div className="card login-card" style={{ padding: 30 }}>
@@ -27,7 +29,7 @@ export function LoginForm({ next, email = "" }: { next: string; email?: string }
       <form action={action}>
         <input type="hidden" name="next" value={next} />
         <label className="field-label" htmlFor="email" style={{ marginTop: 0 }}>E-mailadres</label>
-        <input className="field" id="email" name="email" type="email" autoComplete="email" defaultValue={email} required />
+        <input className="field" id="email" name="email" type="email" autoComplete="email" defaultValue={typedEmail} required />
         {mode !== "magic" && (
           <>
             <label className="field-label" htmlFor="password">Wachtwoord</label>

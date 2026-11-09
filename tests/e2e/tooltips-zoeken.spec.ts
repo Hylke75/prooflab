@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { setDetailLevel } from "./intake";
+import { createIdeaViaIntake, dutchDate, isoDate } from "./intake";
 
 // Uitlegtooltips bij vaktermen (components/ui/Term.tsx) en zoeken binnen een dossier (components/search/DossierSearch.tsx).
 // Draai dit tegen een lokale of test-Supabase, niet tegen de live omgeving.
@@ -10,6 +10,7 @@ test.skip(!email || !password, "E2E_EMAIL en E2E_PASSWORD zijn niet gezet");
 
 async function login(page: Page) {
   await page.goto("/login");
+  await page.waitForLoadState("networkidle");
   await page.getByLabel("E-mailadres", { exact: true }).fill(email);
   await page.getByLabel("Wachtwoord", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Inloggen", exact: true }).click();
@@ -26,29 +27,14 @@ async function login(page: Page) {
 
 // Zelfde intake als tests/e2e/testcard.spec.ts.
 async function createIdea(page: Page): Promise<string> {
-  await page.goto("/app/ideas/new");
-  await page.getByRole("button", { name: "Lanceren we dit aanbod in het eerste kwartaal met twee consultants, of stoppen we?" }).click();
-  await page.getByLabel("Hoeveel (euro)", { exact: true }).fill("40000");
-  await page.getByLabel("Uiterlijke beslisdatum", { exact: true }).fill(new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10));
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByLabel("Geslaagd als…", { exact: true }).fill("Zes maanden na de lancering betalen minstens 20 makelaarskantoren € 249 per maand.");
-  await page.getByLabel("Wat meet je?", { exact: true }).fill("betalende makelaarskantoren");
-  await page.getByLabel("Doelwaarde", { exact: true }).fill("20");
-  await page.getByLabel("Omzetdoel (€)", { exact: true }).fill("59760");
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByLabel("Korte naam", { exact: true }).fill(`TEST zoeken ${Date.now()}`);
-  await page.getByLabel("Mijn idee", { exact: true }).fill("Een AI-assistent voor zelfstandige NVM-makelaars die woningteksten en klantmails schrijft, voor € 249 per maand.");
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: "Zakelijke klanten (B2B)" }).click();
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: /Nederland/ }).click();
-  await page.getByRole("button", { name: "Volgende stap" }).click();
-  await page.getByRole("button", { name: "Nieuw product" }).click();
-  await page.getByLabel("Opdrachtgever", { exact: true }).selectOption("none");
-  await page.getByRole("button", { name: "Start de marktverkenning" }).click();
-  await page.waitForURL(/\/research/);
-  await setDetailLevel(page, "Grondig");
-  return page.url().replace(/\/research.*$/, "");
+  // Fase B3: de intake in drie vragen en één bevestiging (gedeelde helper, zoals journey.spec.ts).
+  return createIdeaViaIntake(page, {
+    idea: "Een AI-assistent voor zelfstandige NVM-makelaars die woningteksten en klantmails schrijft, voor € 249 per maand.",
+    decision: `Lanceren we dit aanbod met twee consultants en € 40,000, of stoppen we, vóór ${dutchDate(60)}?`.replace(/,(?=\d{3})/g, "."),
+    uncertainty: "Of de doelgroep hier echt voor wil betalen in plaats van het zelf te blijven doen.",
+    fill: { "Korte naam": `TEST zoeken ${Date.now()}`, "Doelgroep": "zelfstandige NVM-makelaars", "Inzet (euro)": "40000", "Uiterlijke beslisdatum": isoDate(60), "Wat meet je?": "betalende makelaarskantoren", "Doelwaarde": "20", "Minimumbedrag per klant": "249" },
+    select: { "Soort klant": "Zakelijke klanten (B2B)", "Regio": "Nederland", "Type project": "new_product", "Opdrachtgever": "none" },
+  });
 }
 
 const UNIQUE = `Zoekproef${Date.now().toString(36)}`;
@@ -57,6 +43,7 @@ test("Tooltips bij vaktermen: hover, toetsenbord, Escape; labels blijven gelijk"
   await login(page);
   const ideaUrl = await createIdea(page);
   await page.goto(`${ideaUrl}/assumptions`);
+  await page.waitForLoadState("networkidle");
   await page.getByRole("button", { name: /Begin met de standaardset|Stel aannames voor/ }).click();
   await expect(page.getByRole("heading", { name: "Risicokaart" })).toBeVisible();
 
@@ -71,10 +58,14 @@ test("Tooltips bij vaktermen: hover, toetsenbord, Escape; labels blijven gelijk"
 
   // Test Card: toetsenbord (focus) opent, Escape sluit; het label van het veld verandert niet.
   await page.goto(`${ideaUrl}/experiments`);
+  await page.waitForLoadState("networkidle");
   await page.getByRole("radio", { name: /Prijs-\/aanbodtest/ }).click();
   const card = page.getByRole("form", { name: "Test Card" });
   await expect(card.getByLabel("Het klopt als ≥ (%) (verplicht)", { exact: true })).toBeVisible();
+  // Sinds fase B5 staat de wervingsgroep vooringevuld onder het ingeklapte deel Details van de Test Card.
+  await card.locator("summary#tc-details").click();
   const recruit = card.getByRole("button", { name: "Wervingsgroep", exact: true });
+  await expect(recruit).toBeVisible();
   await recruit.focus();
   await expect(page.getByRole("tooltip")).toContainText("eigen netwerk, warm contact, koud");
   await expect(recruit).toHaveAttribute("aria-describedby", /.+/);
@@ -93,6 +84,7 @@ test("Zoeken binnen een dossier: sneltoets, markering, pijltjes en Enter, lege s
   await login(page);
   const ideaUrl = await createIdea(page);
   await page.goto(`${ideaUrl}/assumptions`);
+  await page.waitForLoadState("networkidle");
   await page.getByRole("button", { name: /Begin met de standaardset|Stel aannames voor/ }).click();
   await expect(page.getByRole("heading", { name: "Risicokaart" })).toBeVisible();
   // Een eigen aanname met een unieke zoekterm.
@@ -102,6 +94,7 @@ test("Zoeken binnen een dossier: sneltoets, markering, pijltjes en Enter, lege s
 
   // Sneltoets "/" opent het venster vanaf een andere pagina; de focus staat in het zoekveld.
   await page.goto(ideaUrl);
+  await page.waitForLoadState("networkidle");
   await page.locator("body").press("/");
   const dialog = page.getByRole("dialog", { name: "Zoeken in dit dossier" });
   await expect(dialog).toBeVisible();
@@ -141,6 +134,7 @@ test("@mobile tooltips werken met tikken en zoeken past op een smal scherm", asy
   await login(page);
   const ideaUrl = await createIdea(page);
   await page.goto(`${ideaUrl}/assumptions`);
+  await page.waitForLoadState("networkidle");
   await page.getByRole("button", { name: /Begin met de standaardset|Stel aannames voor/ }).click();
   const critical = page.getByRole("button", { name: "kritieke aanname", exact: true });
   await critical.tap();

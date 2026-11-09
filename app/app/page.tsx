@@ -19,7 +19,6 @@ export const metadata: Metadata = { title: "Overzicht" };
 const SYMBOLS = ["⌘", "▧", "◆", "✦", "◎", "▲"];
 // An assumption counts as strongly supported once observed behaviour lifts it past desk research (max. 0.45).
 const STRONG_EVIDENCE = 0.6;
-const pad = (n: number) => String(n).padStart(2, "0");
 
 type IdeaRow = {
   id: string;
@@ -130,7 +129,7 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
         <div className="card tight">
           <div className="tiny">Kritieke aannames met sterk bewijs</div>
           <div className="mini-kpi num">
-            {pad(strong.length)}
+            {strong.length}
             <span className="tiny" style={{ fontSize: 13, letterSpacing: 0, marginLeft: 6 }}>van {critical.length}</span>
           </div>
           <span className={`pill ${critical.length && strong.length === critical.length ? "green" : critical.length ? "orange" : "gray"}`}>
@@ -139,7 +138,7 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
         </div>
         <div className="card tight">
           <div className="tiny">Lopende tests</div>
-          <div className="mini-kpi num">{pad(liveTests.length)}</div>
+          <div className="mini-kpi num">{liveTests.length}</div>
           {liveTests[0] ? (
             <span className="pill green" title={`${liveTests[0].idea}: ${liveTests[0].title}`}>
               {liveTests[0].day ? `Dag ${liveTests[0].day.day} van ${liveTests[0].day.of}` : "Loopt"} · {liveTests[0].title.length > 26 ? `${liveTests[0].title.slice(0, 25)}…` : liveTests[0].title}
@@ -150,7 +149,7 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
         </div>
         <div className="card tight">
           <div className="tiny">Besluiten die wachten op bevestiging</div>
-          <div className="mini-kpi num">{pad(awaiting)}</div>
+          <div className="mini-kpi num">{awaiting}</div>
           <span className={`pill ${awaiting ? "orange" : "green"}`}>{awaiting ? "Opdrachtgever moet bevestigen" : "Niets openstaand"}</span>
         </div>
       </div>
@@ -313,17 +312,17 @@ async function ClientHome({ ws, list, progresses }: { ws: Workspace; list: IdeaR
       <div className="grid-3" style={{ marginBottom: 31 }}>
         <div className="card tight">
           <div className="tiny">Dossiers</div>
-          <div className="mini-kpi num">{pad(list.length)}</div>
+          <div className="mini-kpi num">{list.length}</div>
           <span className="pill blue">{list.filter((i) => i.status === "active").length} in onderzoek</span>
         </div>
         <div className="card tight">
           <div className="tiny">Gedeelde rapporten</div>
-          <div className="mini-kpi num">{pad(reports.length)}</div>
+          <div className="mini-kpi num">{reports.length}</div>
           <span className={`pill ${reports.length ? "green" : "gray"}`}>{reports.length ? `Laatste ${calendarDate(reports[0].shared_at!)}` : "Nog niets gedeeld"}</span>
         </div>
         <div className="card tight">
           <div className="tiny">Besluiten om te bevestigen</div>
-          <div className="mini-kpi num">{pad(toConfirm.length)}</div>
+          <div className="mini-kpi num">{toConfirm.length}</div>
           <span className={`pill ${toConfirm.length ? "orange" : "green"}`}>{toConfirm.length ? "Wacht op u" : "Niets openstaand"}</span>
         </div>
       </div>
