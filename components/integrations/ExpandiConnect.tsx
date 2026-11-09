@@ -29,10 +29,10 @@ export function ExpandiConnect({ action, configured }: { action: Action; configu
         {state.error && <div className="form-error" role="alert">{state.error}</div>}
         <div className="form-line">
           <label htmlFor="exp-label">Naam van de koppeling</label>
-          <input className="field" id="exp-label" name="label" required minLength={2} maxLength={120} defaultValue="Expandi – LinkedIn-outreach" />
+          <input className="field" id="exp-label" name="label" required minLength={2} maxLength={120} defaultValue="LinkedIn-outreach" />
         </div>
         <div className="row mt-12">
-          <button className="btn primary" disabled={pending}>{pending ? "Koppelen…" : "Koppel Expandi"}</button>
+          <button className="btn primary" disabled={pending}>{pending ? "Koppelen…" : "Koppel outreachtool"}</button>
         </div>
         <FormPendingOverlay />
       </form>
@@ -45,9 +45,9 @@ export function ExpandiConnect({ action, configured }: { action: Action; configu
             <button type="button" className="btn dark sm" onClick={copy}>{copied ? "Gekopieerd ✓" : "Kopieer URL"}</button>
           </div>
           <ol className="signal-steps">
-            <li>Open Expandi en ga naar <strong>Webhooks</strong> (bij de instellingen van je LinkedIn-account).</li>
+            <li>Open je outreachtool en ga naar <strong>Webhooks</strong> (bij de instellingen van je LinkedIn-account).</li>
             <li>Maak per campagne een webhook voor de gebeurtenissen <strong>reply</strong>, <strong>connection accepted</strong> en <strong>message sent</strong>.</li>
-            <li>Plak de URL hierboven als bestemming en sla op. Gebruik de testknop van Expandi als die er is.</li>
+            <li>Plak de URL hierboven als bestemming en sla op. Gebruik de testknop van de outreachtool als die er is.</li>
             <li>Binnengekomen gebeurtenissen verschijnen hieronder. Namen en profiel-URL&apos;s worden niet bewaard.</li>
           </ol>
           {!configured && (

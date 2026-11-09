@@ -169,10 +169,13 @@ describe("definitie van dezelfde bron", () => {
     expect(evidenceSourceKey({ itemType: "claim", itemId: "c1", sourceId: "s1", sourceTitle: "CBS" })).toEqual({ key: "source:s1", label: "CBS" });
     expect(evidenceSourceKey({ itemType: "claim", itemId: "c1" }).key).toBe("claim:c1");
     expect(evidenceSourceKey({ itemType: "claim", itemId: "c1", sourceId: "s9", surveyExperimentId: "e1", experimentTitle: "Enquête X" }).key).toBe("experiment:e1");
-    const a = evidenceSourceKey({ itemType: "claim", itemId: "c1", sourceId: "s1", sourceType: "outreach", sourceTitle: "Expandi-antwoorden – Event-Q4 – 3 november 2026" });
+    const a = evidenceSourceKey({ itemType: "claim", itemId: "c1", sourceId: "s1", sourceType: "outreach", sourceTitle: "Outreach-antwoorden – Event-Q4 – 3 november 2026" });
     const b = evidenceSourceKey({ itemType: "claim", itemId: "c2", sourceId: "s2", sourceType: "outreach", sourceTitle: "Expandi-antwoorden – Event-Q4 – 9 november 2026" });
     expect(a.key).toBe("campaign:Event-Q4");
     expect(b.key).toBe(a.key);
+    expect(campaignFromTitle("Outreach-antwoorden – Campagne – met streepje – 3 november 2026")).toBe("Campagne – met streepje");
+    // Oude opgeslagen titels (vóór de neutrale benaming) horen bij dezelfde campagne.
     expect(campaignFromTitle("Expandi-antwoorden – Campagne – met streepje – 3 november 2026")).toBe("Campagne – met streepje");
+    expect(campaignFromTitle("Antwoorden – Campagne – 3 november 2026")).toBeNull();
   });
 });

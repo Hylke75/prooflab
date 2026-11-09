@@ -77,11 +77,11 @@ export default async function IntegrationsPage({ params }: PageProps<"/app/ideas
       <div className="grid-2">
         <div className="card">
           <div className="section-title">
-            <h2 className="as-h3">LinkedIn via Expandi</h2>
+            <h2 className="as-h3">LinkedIn-outreach</h2>
             <span className={`pill ${configured ? "green" : "orange"}`}>{configured ? "Ontvangst actief" : "Niet verbonden"}</span>
           </div>
           <p className="sub" style={{ fontSize: 13 }}>
-            Expandi stuurt bij elke reactie, geaccepteerde connectie of verstuurd bericht een melding naar ProofLab. De contactpersoon wordt een
+            De outreachtool stuurt bij elke reactie, geaccepteerde connectie of verstuurd bericht een melding naar ProofLab. De contactpersoon wordt een
             pseudoniem; antwoorden worden 180 dagen bewaard.
           </p>
           {!configured && (
@@ -105,7 +105,7 @@ export default async function IntegrationsPage({ params }: PageProps<"/app/ideas
                     <ConfirmButton
                       action={deactivateEndpoint.bind(null, id, e.id)}
                       label="Deactiveer"
-                      confirm="Deze koppeling deactiveren? Expandi-meldingen naar deze URL worden daarna genegeerd. Dit kan niet ongedaan worden; maak zo nodig een nieuwe koppeling."
+                      confirm="Deze koppeling deactiveren? Meldingen van de outreachtool naar deze URL worden daarna genegeerd. Dit kan niet ongedaan worden; maak zo nodig een nieuwe koppeling."
                     />
                   ) : (
                     <span className="pill gray">Gedeactiveerd</span>
@@ -125,7 +125,7 @@ export default async function IntegrationsPage({ params }: PageProps<"/app/ideas
           {stats.length === 0 ? (
             <div className="empty-state">
               <h3>Nog geen meldingen</h3>
-              <p>Koppel Expandi en zet de webhooks per campagne aan. Elke geaccepteerde connectie en elk antwoord verschijnt hier.</p>
+              <p>Koppel je outreachtool en zet de webhooks per campagne aan. Elke geaccepteerde connectie en elk antwoord verschijnt hier.</p>
             </div>
           ) : (
             <div aria-label="Outreach per campagne" role="list">

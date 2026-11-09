@@ -551,7 +551,11 @@ export type EvidenceSourceRef = {
   interviewLabel?: string | null;
 };
 
-const OUTREACH_TITLE = /^Expandi-antwoorden – (.+) – [^–]+$/;
+// Titel van een bron met outreach-antwoorden: "<voorvoegsel> – <campagne> – <datum>". Bronnen van vóór
+// november 2026 hebben nog het oude voorvoegsel met de naam van de tool; die worden ook herkend (en door de
+// migratie 20261119090000_outreach_neutraal.sql hernoemd).
+export const OUTREACH_TITLE_PREFIX = "Outreach-antwoorden";
+const OUTREACH_TITLE = /^(?:Outreach|Expandi)-antwoorden – (.+) – [^–]+$/;
 
 export function campaignFromTitle(title: string | null | undefined): string | null {
   const m = title ? OUTREACH_TITLE.exec(title.trim()) : null;

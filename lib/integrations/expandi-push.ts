@@ -25,8 +25,8 @@ export type UrlCheck = { ok: true; url: string } | { ok: false; error: string };
 // Only an https URL on an Expandi host, on the default port, without user info. Nothing else is ever called.
 export function validateCampaignUrl(raw: string): UrlCheck {
   const s = raw.trim();
-  if (!s) return { ok: false, error: "Plak de webhook-URL van de Expandi-campagne." };
-  if (s.length > 600) return { ok: false, error: "Deze URL is te lang voor een Expandi-webhook." };
+  if (!s) return { ok: false, error: "Plak de webhook-URL van de outreachcampagne." };
+  if (s.length > 600) return { ok: false, error: "Deze URL is te lang voor een webhook van de outreachtool." };
   let u: URL;
   try {
     u = new URL(s);
@@ -37,7 +37,7 @@ export function validateCampaignUrl(raw: string): UrlCheck {
   if (u.username || u.password) return { ok: false, error: "Adressen met inloggegevens vóór de host zijn niet toegestaan." };
   if (u.port && u.port !== "443") return { ok: false, error: "Alleen de standaardpoort (443) is toegestaan." };
   if (!isExpandiHost(u.hostname)) {
-    return { ok: false, error: `Dit is geen Expandi-adres. Verwacht wordt een URL op ${EXPANDI_HOSTS.join(" of ")} (of *.expandi.io), te vinden in de campagne onder Webhooks: "Assign people by using a webhook".` };
+    return { ok: false, error: `Dit is geen adres van de outreachtool. Verwacht wordt een URL op ${EXPANDI_HOSTS.join(" of ")} (of een subdomein van de outreachtool), te vinden in de campagne onder Webhooks: "Assign people by using a webhook".` };
   }
   u.hash = "";
   return { ok: true, url: u.toString() };

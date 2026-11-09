@@ -56,7 +56,7 @@ describe("buildFunnel", () => {
     expect(f.channels[0].channel).toBe("linkedin");
   });
 
-  it("telt Expandi als unieke contacten onder outreach, naast handmatige regels", () => {
+  it("telt de outreachtool als unieke contacten onder outreach, naast handmatige regels", () => {
     const f = buildFunnel(
       input({
         entries: [{ entry_date: "2026-11-01", channel: "outreach", step: "approached", quantity: 10 }],
@@ -76,7 +76,7 @@ describe("buildFunnel", () => {
       { source: "expandi", count: 2 },
     ]);
     expect(o.steps.responded).toEqual({ total: 1, parts: [{ source: "expandi", count: 1 }] });
-    expect(describeCount(o.steps.approached)).toBe("12 (handmatig 10, Expandi 2)");
+    expect(describeCount(o.steps.approached)).toBe("12 (handmatig 10, outreachtool 2)");
     expect(o.period).toEqual({ from: "2026-11-01", to: "2026-11-06" });
   });
 

@@ -7,7 +7,7 @@ import { honestyWarnings } from "./copy-honesty";
 
 export const PROMO_PLATFORMS = {
   linkedin: { label: "LinkedIn-bericht", channel: "linkedin", max: 1300, hint: "Organisch bericht op je eigen profiel of bedrijfspagina." },
-  linkedin_dm: { label: "LinkedIn-DM (Expandi)", channel: "outreach", max: 500, hint: "Kort en persoonlijk. {first_name} vult Expandi zelf in. Zonder link in het eerste bericht, tenzij je dat kiest." },
+  linkedin_dm: { label: "LinkedIn-DM (outreach)", channel: "outreach", max: 500, hint: "Kort en persoonlijk. {first_name} vult de outreachtool zelf in. Zonder link in het eerste bericht, tenzij je dat kiest." },
   instagram: { label: "Instagram-caption", channel: "meta", max: 2200, hint: "Links in captions zijn niet klikbaar: zet de link ook in je bio of story." },
   facebook: { label: "Facebook-bericht", channel: "meta", max: 1200, hint: "Voor je tijdlijn, pagina of een relevante groep (check de groepsregels)." },
   x: { label: "X-bericht", channel: "x", max: 280, hint: "Maximaal 280 tekens, inclusief de link." },

@@ -594,7 +594,7 @@ export const RULES: Record<string, Rule> = {
       code: "outreach_unimported",
       kind: "tip",
       title: "Nieuwe LinkedIn-antwoorden klaar om op te nemen",
-      body: "Via Expandi kwamen antwoorden binnen die nog niet als klantsignaal in de bronnen staan. Neem ze op, zodat ze meetellen in de analyse van klantsignalen.",
+      body: "Via de outreachtool kwamen antwoorden binnen die nog niet als klantsignaal in de bronnen staan. Neem ze op, zodat ze meetellen in de analyse van klantsignalen.",
       href: `${base}/integrations`,
       audience: "consultant",
     };

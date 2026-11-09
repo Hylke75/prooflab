@@ -62,7 +62,7 @@ async function dmAndContacts(ideaId: string, expId: string, postId: string, cont
     supabase.from("promo_posts").select("id, platform, body, code").eq("id", postId).eq("experiment_id", expId).maybeSingle(),
   ]);
   if (!exp?.public_slug || !OPEN_STATES.includes(exp.state)) throw new Error("De test heeft (nog) geen open publiek adres.");
-  if (!post || post.platform !== "linkedin_dm") throw new Error("Alleen het LinkedIn-DM-bericht kan naar Expandi.");
+  if (!post || post.platform !== "linkedin_dm") throw new Error("Alleen het LinkedIn-DM-bericht kan naar de outreachcampagne.");
   const link = postLink(channelLink(env.appUrl, exp.type, exp.public_slug, PROMO_PLATFORMS.linkedin_dm.channel), post.code);
   const parsed = parseContacts(typeof contactsText === "string" ? contactsText.slice(0, 200_000) : "");
   return { supabase, exp, post, link, parsed };
@@ -86,12 +86,12 @@ export async function exportExpandiCsv(ideaId: string, expId: string, postId: st
 // campaign's own steps (connection request, messages) with its own daily limits.
 export async function pushToExpandi(ideaId: string, expId: string, postId: string, input: { contacts: unknown; confirm: unknown }): Promise<ExpandiState> {
   try {
-    if (input.confirm !== true) return fail("Bevestig dat deze mensen benaderd mogen worden en dat de campagne in Expandi klaarstaat.");
+    if (input.confirm !== true) return fail("Bevestig dat deze mensen benaderd mogen worden en dat de campagne in de outreachtool klaarstaat.");
     const { supabase, post, link, parsed } = await dmAndContacts(ideaId, expId, postId, input.contacts);
     if (parsed.contacts.length === 0) return fail("Er staan geen geldige LinkedIn-profiel-URL's in de lijst (verwacht: https://www.linkedin.com/in/…).");
-    if (parsed.contacts.length > MAX_PUSH_CONTACTS) return fail(`Maximaal ${MAX_PUSH_CONTACTS} contacten per keer; gebruik voor grotere lijsten de CSV-import van Expandi.`);
+    if (parsed.contacts.length > MAX_PUSH_CONTACTS) return fail(`Maximaal ${MAX_PUSH_CONTACTS} contacten per keer; gebruik voor grotere lijsten de CSV-import van de outreachtool.`);
     const { data: hook } = await supabase.from("expandi_campaign_hooks").select("url, pushed_count").eq("experiment_id", expId).maybeSingle();
-    if (!hook) return fail("Sla eerst de webhook-URL van de Expandi-campagne op.");
+    if (!hook) return fail("Sla eerst de webhook-URL van de outreachcampagne op.");
     let sent = 0;
     const errors: string[] = [];
     for (const c of parsed.contacts) {
@@ -113,7 +113,7 @@ export async function pushToExpandi(ideaId: string, expId: string, postId: strin
     const notSent = parsed.contacts.length - sent;
     if (sent === 0) return { error: `Geen contacten doorgezet. ${errors[0] ?? ""}`.trim(), errors };
     return {
-      ok: `${sent} contact(en) doorgezet naar de Expandi-campagne.${notSent ? ` ${notSent} niet doorgezet.` : ""}${parsed.invalid.length ? ` ${parsed.invalid.length} regel(s) overgeslagen (geen profiel-URL).` : ""} Expandi verstuurt de berichten volgens de campagne en zijn eigen daglimieten.`,
+      ok: `${sent} contact(en) doorgezet naar de outreachcampagne.${notSent ? ` ${notSent} niet doorgezet.` : ""}${parsed.invalid.length ? ` ${parsed.invalid.length} regel(s) overgeslagen (geen profiel-URL).` : ""} De outreachtool verstuurt de berichten volgens de campagne en zijn eigen daglimieten.`,
       errors,
     };
   } catch (e) {

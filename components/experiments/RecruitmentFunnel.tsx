@@ -149,7 +149,7 @@ export function RecruitmentFunnel({
           </details>
 
           <details>
-            <summary className="text-link">Expandi-campagne koppelen</summary>
+            <summary className="text-link">Outreachcampagne koppelen</summary>
             <div className="mt-8">
               {view.campaigns.length > 0 && (
                 <ul className="recruit-list">
@@ -168,7 +168,7 @@ export function RecruitmentFunnel({
                 <RecruitmentCampaignForm action={linkRecruitmentCampaign.bind(null, ideaId, expId)} options={view.campaignOptions} />
               ) : (
                 <p className="tiny">
-                  {view.campaigns.length ? "Geen andere campagnes beschikbaar." : "Nog geen Expandi-gebeurtenissen met een campagnenaam in dit dossier."} Koppel de webhook via{" "}
+                  {view.campaigns.length ? "Geen andere campagnes beschikbaar." : "Nog geen outreachgebeurtenissen met een campagnenaam in dit dossier."} Koppel de webhook via{" "}
                   <a className="text-link" href={`/app/ideas/${ideaId}/integrations`}>Bronnen &amp; koppelingen</a>.
                 </p>
               )}

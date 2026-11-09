@@ -259,7 +259,7 @@ describe("invitation posts", () => {
     }
   });
 
-  it("uses the expected channels (DM via Expandi = outreach, WhatsApp = own network)", () => {
+  it("uses the expected channels (DM via outreachtool = outreach, WhatsApp = own network)", () => {
     expect(PROMO_PLATFORMS.linkedin_dm.channel).toBe("outreach");
     expect(PROMO_PLATFORMS.whatsapp.channel).toBe("network");
     expect(PROMO_PLATFORMS.instagram.channel).toBe("meta");

@@ -143,7 +143,7 @@ d("trajectory coach and outreach signals", () => {
 
   it("accepts the new source types for customer signals", async () => {
     const r = await as(alice, (c) =>
-      c.query("insert into public.sources (idea_id, title, source_type) values ($1, 'Expandi-antwoorden', 'outreach'), ($1, 'Forumdraad', 'forum') returning id", [idea]),
+      c.query("insert into public.sources (idea_id, title, source_type) values ($1, 'Outreach-antwoorden', 'outreach'), ($1, 'Forumdraad', 'forum') returning id", [idea]),
     );
     expect(r.rowCount).toBe(2);
   });

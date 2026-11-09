@@ -54,7 +54,7 @@ export const SOURCE_TYPES = {
   review_site: "Reviewsite",
   blog: "Blog / opinie",
   forum: "Forum / community",
-  outreach: "Outreach-antwoord (LinkedIn/Expandi)",
+  outreach: "Outreach-antwoord (LinkedIn)",
   survey: "Enquête (open antwoorden)",
   dataset_upload: "Eigen dataset",
   interview: "Interview",
