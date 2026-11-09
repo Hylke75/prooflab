@@ -158,7 +158,7 @@ d("methode 2026-11-b", () => {
       const h = (await c.query("select id from public.hypotheses where idea_id = $1 limit 1", [A.idea])).rows[0].id;
       const survey = (await c.query("insert into public.experiments (idea_id, hypothesis_id, type, title) values ($1, $2, 'survey', 'Enquête X') returning id", [A.idea, h])).rows[0].id as string;
       const cbs = await src("official_statistic", "CBS Statline");
-      const out1 = await src("outreach", "Expandi-antwoorden – Event-Q4 – 3 november 2026");
+      const out1 = await src("outreach", "Outreach-antwoorden – Event-Q4 – 3 november 2026");
       const out2 = await src("outreach", "Expandi-antwoorden – Event-Q4 – 9 november 2026");
       const open = await src("survey", "Enquête – Enquête X – open antwoorden – 4 november 2026");
       const iv = (

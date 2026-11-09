@@ -13,7 +13,7 @@ import { SamplePlanner } from "./SamplePlanner";
 
 // The channels a survey link is shared through; LinkedIn DMs via Expandi count as outreach.
 const SHARE_CHANNELS = ["network", "linkedin", "outreach", "meta", "newsletter", "other"] as const;
-const SHARE_LABELS: Partial<Record<keyof typeof CHANNELS, string>> = { outreach: "LinkedIn-DM via Expandi (outreach)" };
+const SHARE_LABELS: Partial<Record<keyof typeof CHANNELS, string>> = { outreach: "LinkedIn-DM (outreach)" };
 
 type Exp = { id: string; type: string; state: string; public_slug: string | null; config: unknown };
 

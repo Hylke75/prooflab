@@ -138,7 +138,7 @@ export async function linkRecruitmentCampaign(ideaId: string, expId: string, _: 
     if (!exp) return fail("Test niet gevonden.");
     // Alleen campagnes die echt in de ontvangen Expandi-gebeurtenissen van dit dossier voorkomen.
     const { count } = await supabase.from("outreach_events").select("id", { count: "exact", head: true }).eq("idea_id", ideaId).eq("campaign", campaign);
-    if (!count) return fail("Deze campagne komt niet voor in de ontvangen Expandi-gebeurtenissen van dit dossier.");
+    if (!count) return fail("Deze campagne komt niet voor in de ontvangen outreachgebeurtenissen van dit dossier.");
     const { error } = await supabase.from("recruitment_campaigns").insert({ idea_id: ideaId, experiment_id: expId, campaign });
     if (error) return fail(dbMessage(error.message));
     refresh(ideaId, expId);
@@ -199,7 +199,7 @@ export async function recordResponseFinding(ideaId: string, expId: string, _: Fo
         source_type: "recruitment_log",
         is_primary: false,
         access_note:
-          "Eigen meting: telling van benaderde en reagerende mensen in de wervingsregistratie van ProofLab (handmatige regels en gekoppelde Expandi-campagnes). Zegt iets over het kanaal, niet over betalingsbereidheid.",
+          "Eigen meting: telling van benaderde en reagerende mensen in de wervingsregistratie van ProofLab (handmatige regels en gekoppelde outreachcampagnes). Zegt iets over het kanaal, niet over betalingsbereidheid.",
         origin: "manual",
         content_hash: contentHash(text.fragment),
       })

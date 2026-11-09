@@ -39,7 +39,7 @@ export function stepLabel(step: FunnelStep, testType: string): string {
 
 export const FUNNEL_SOURCES = {
   manual: "handmatig",
-  expandi: "Expandi",
+  expandi: "outreachtool",
   agenda: "agenda",
   interviews: "interviews",
   measurement: "meting",
@@ -211,7 +211,7 @@ export function buildFunnel(input: FunnelInput): Funnel {
   return { testType: input.testType, steps, channels, totals, planned, held };
 }
 
-// "12 (handmatig 8, Expandi 4)"
+// "12 (handmatig 8, outreachtool 4)"
 export function describeCount(s: StepCount): string {
   if (s.parts.length <= 1) return `${s.total}${s.parts[0] ? ` (${FUNNEL_SOURCES[s.parts[0].source]})` : ""}`;
   return `${s.total} (${s.parts.map((p) => `${FUNNEL_SOURCES[p.source]} ${p.count}`).join(", ")})`;

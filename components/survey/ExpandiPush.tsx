@@ -33,7 +33,7 @@ export function ExpandiPush({ ideaId, expId, postId, hook, link, unsaved }: { id
     setMsg(null);
     try {
       const out = await fn();
-      if (out.csv) download("expandi-contacten.csv", out.csv);
+      if (out.csv) download("outreach-contacten.csv", out.csv);
       setMsg(out);
     } catch {
       setMsg({ error: "Er ging iets mis. Probeer het opnieuw." });
@@ -44,15 +44,15 @@ export function ExpandiPush({ ideaId, expId, postId, hook, link, unsaved }: { id
 
   return (
     <details className="mt-12">
-      <summary className="text-link">Naar een Expandi-campagne sturen</summary>
+      <summary className="text-link">Naar een outreachcampagne sturen</summary>
       <div className="note" role="note">
         <strong>Wat er gebeurt.</strong> ProofLab stuurt per contact het LinkedIn-profiel, de voornaam en twee placeholders naar de
-        webhook van één Expandi-campagne: <span className="mono">{`{${MESSAGE_PLACEHOLDER}}`}</span> (dit bericht, met de voornaam ingevuld) en{" "}
-        <span className="mono">{`{${LINK_PLACEHOLDER}}`}</span> (de link van dit bericht: <span className="mono">{link}</span>). Expandi kan via de
-        webhook geen berichtsjabloon instellen: zet die placeholders zelf in het campagnebericht in Expandi. Expandi verstuurt
+        webhook van één outreachcampagne: <span className="mono">{`{${MESSAGE_PLACEHOLDER}}`}</span> (dit bericht, met de voornaam ingevuld) en{" "}
+        <span className="mono">{`{${LINK_PLACEHOLDER}}`}</span> (de link van dit bericht: <span className="mono">{link}</span>). De outreachtool kan via de
+        webhook geen berichtsjabloon instellen: zet die placeholders zelf in het campagnebericht in de outreachtool. De outreachtool verstuurt
         connectieverzoeken en berichten volgens de campagne en zijn eigen daglimieten. ProofLab bewaart de profiel-URL&apos;s en namen niet.
       </div>
-      {unsaved && <p className="form-error mt-8">Je hebt de tekst aangepast maar nog niet opgeslagen. Naar Expandi gaat de opgeslagen versie.</p>}
+      {unsaved && <p className="form-error mt-8">Je hebt de tekst aangepast maar nog niet opgeslagen. Naar de outreachcampagne gaat de opgeslagen versie.</p>}
 
       <div className="form-line">
         <label htmlFor={`${id}-url`}>Webhook-URL van de campagne</label>
@@ -69,7 +69,7 @@ export function ExpandiPush({ ideaId, expId, postId, hook, link, unsaved }: { id
               <button type="button" className="btn dark sm" disabled={busy || !url.trim()} onClick={() => run(() => saveExpandiHook(ideaId, expId, url))}>Opslaan</button>
             </div>
             <p id={`${id}-url-hint`} className="field-hint">
-              In Expandi: campagne → Webhooks → &quot;Assign people by using a webhook&quot;. De URL bevat de sleutel van de campagne; alleen consultants zien hem.
+              In je outreachtool: campagne → Webhooks → &quot;Assign people by using a webhook&quot;. De URL bevat de sleutel van de campagne; alleen consultants zien hem.
             </p>
           </>
         )}
@@ -84,14 +84,14 @@ export function ExpandiPush({ ideaId, expId, postId, hook, link, unsaved }: { id
       </div>
       <label className="check-row">
         <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} />
-        <span>Deze mensen mogen voor dit onderzoek benaderd worden en de campagne in Expandi staat klaar met de placeholders.</span>
+        <span>Deze mensen mogen voor dit onderzoek benaderd worden en de campagne in de outreachtool staat klaar met de placeholders.</span>
       </label>
       <div className="row mt-8">
         <button type="button" className="btn primary sm" disabled={busy || !hook || !confirm || parsed.contacts.length === 0} onClick={() => run(() => pushToExpandi(ideaId, expId, postId, { contacts, confirm }))}>
-          {busy ? "Bezig…" : `Stuur ${parsed.contacts.length || ""} naar Expandi`}
+          {busy ? "Bezig…" : `Stuur ${parsed.contacts.length || ""} naar de outreachcampagne`}
         </button>
         <button type="button" className="btn white sm" disabled={busy || parsed.contacts.length === 0} onClick={() => run(() => exportExpandiCsv(ideaId, expId, postId, contacts))}>
-          Download CSV voor Expandi-import
+          Download CSV voor import in de outreachtool
         </button>
       </div>
       <div aria-live="polite">

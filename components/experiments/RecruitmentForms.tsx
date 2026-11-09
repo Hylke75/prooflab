@@ -55,7 +55,7 @@ export function RecruitmentEntryForm({
 export function RecruitmentCampaignForm({ action, options }: { action: (state: FormState, form: FormData) => Promise<FormState>; options: string[] }) {
   return (
     <ActionForm action={action} submitLabel="Koppel campagne" submitClass="btn white sm">
-      <Field name="campaign" id="rec-campaign" label="Campagne uit de ontvangen Expandi-gebeurtenissen" required>
+      <Field name="campaign" id="rec-campaign" label="Campagne uit de ontvangen outreachgebeurtenissen" required>
         <select className="field">
           {options.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>

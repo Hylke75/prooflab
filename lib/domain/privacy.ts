@@ -97,9 +97,9 @@ export function dsrLines(r: DsrResult): DsrLine[] {
 // What is never found by an e-mail search, said plainly on the page.
 export const NOT_SEARCHABLE = [
   "Antwoorden via een open enquêtelink en bezoeken van testpagina's: die zijn anoniem (een bezoekerscode per test, geen adres) en zijn niet aan een persoon te koppelen.",
-  "LinkedIn-outreach via Expandi: contacten zijn opgeslagen als versleutelde code van hun LinkedIn-profiel, niet van een e-mailadres. Antwoordteksten verlopen na 180 dagen.",
+  "LinkedIn-outreach via de outreachtool: contacten zijn opgeslagen als versleutelde code van hun LinkedIn-profiel, niet van een e-mailadres. Antwoordteksten verlopen na 180 dagen.",
   "Bronfragmenten en klantsignalen: e-mailadressen worden bij import automatisch verwijderd; namen kunnen erin staan. Zoek die in de bronnenbibliotheek van het dossier.",
-  "Gegevens bij externe diensten (Resend, Expandi, Supabase-back-ups): verwijder ze daar volgens hun eigen procedure.",
+  "Gegevens bij externe diensten (Resend, de LinkedIn-outreachtool, Supabase-back-ups): verwijder ze daar volgens hun eigen procedure.",
 ];
 
 export function exportFilename(email: string, date: string): string {

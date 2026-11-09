@@ -8,6 +8,7 @@ import { contentHash } from "@/lib/claims";
 import { env } from "@/lib/env";
 import { fetchPageText } from "@/lib/fetch-page";
 import { registrableDomain } from "@/lib/domain/verify";
+import { OUTREACH_TITLE_PREFIX } from "@/lib/domain/evidence";
 import { newWebhookToken, tokenHash } from "@/lib/integrations/expandi";
 import { NO_CAMPAIGN } from "@/lib/integrations/outreach-stats";
 import { scrubAll } from "@/lib/signals/scrub";
@@ -213,7 +214,7 @@ export async function fetchPageSource(ideaId: string, _: ActionState, form: Form
 }
 
 // ---------------------------------------------------------------------------
-// Expandi replies → customer signals
+// Outreach replies (Expandi webhook) → customer signals
 // ---------------------------------------------------------------------------
 
 export async function importOutreachReplies(ideaId: string, _: ActionState, form: FormData): Promise<ActionState> {
@@ -246,13 +247,13 @@ export async function importOutreachReplies(ideaId: string, _: ActionState, form
       supabase,
       ideaId,
       {
-        title: `Expandi-antwoorden – ${campaign} – ${nlDate()}`,
+        title: `${OUTREACH_TITLE_PREFIX} – ${campaign} – ${nlDate()}`,
         source_type: "outreach",
-        publisher: "LinkedIn (via Expandi)",
+        publisher: "LinkedIn (via outreachtool)",
         url: null,
         published_on: today(),
         access_note:
-          "Antwoorden op LinkedIn-outreach, ontvangen via de Expandi-webhook. Contacten zijn gepseudonimiseerd; e-mailadressen, telefoonnummers, links en ondertekeningen zijn automatisch verwijderd. Alleen zichtbaar voor consultants, verloopt na 180 dagen. Kwalitatieve signalen: een antwoord is geen bewijs van betalingsbereidheid.",
+          "Antwoorden op LinkedIn-outreach, ontvangen via de webhook van de outreachtool. Contacten zijn gepseudonimiseerd; e-mailadressen, telefoonnummers, links en ondertekeningen zijn automatisch verwijderd. Alleen zichtbaar voor consultants, verloopt na 180 dagen. Kwalitatieve signalen: een antwoord is geen bewijs van betalingsbereidheid.",
       },
       result.fragments,
     );
