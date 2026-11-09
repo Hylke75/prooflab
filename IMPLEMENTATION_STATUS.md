@@ -11,9 +11,9 @@ Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van e
 | ~~Migraties `integrity` t/m `method_d` en `b3_intake` t/m `interviews_import`~~ | Toegepast op project `prooflab` (gecontroleerd 6-11 met de migratielijst) | ✅ |
 | ~~Migratie `20261114090000_fase1_weergave.sql` toepassen (Snel en Grondig)~~ | Toegepast op project `prooflab` (gecontroleerd 6-11) | ✅ |
 | ~~Migratie `20261115090000_interviews_import.sql` toepassen (interviews importeren, thema's, Fathom-sleutel)~~ | Toegepast op project `prooflab` (gecontroleerd 6-11) | ✅ |
-| Migratie `20261117090000_fase2_werving.sql` toepassen (werving bijhouden) | Zonder de migratie meldt de testpagina dat de wervingsregistratie nog niet beschikbaar is; de trechter toont dan alleen interviews of metingen, "Leg vast als bevinding" en campagnes koppelen werken niet | Claude, na bevestiging in Supabase |
+| ~~Migratie `20261117090000_fase2_werving.sql` toepassen (werving bijhouden)~~ | Toegepast op project `prooflab` op 9-11 (via de Management API, functies vergeleken met de lokale referentie) | ✅ |
 | Optioneel: `FATHOM_ENABLED=1` (Vercel) en een Fathom-API-sleutel op `/app/status` | Opnames rechtstreeks uit Fathom kiezen; zonder koppeling werkt importeren via een bestand | Hylke |
-| Migratie `20261116090000_fase2_testen.sql` toepassen (testen uitvoeren) | Zonder de migratie kent de Test Card alleen "aanmelding" en melden aanbetalingen, toezeggingen en afspraken dat de database moet worden bijgewerkt | Claude, na bevestiging in Supabase |
+| ~~Migratie `20261116090000_fase2_testen.sql` toepassen (testen uitvoeren)~~ | Toegepast op project `prooflab` op 9-11 (via de Management API, functies vergeleken met de lokale referentie) | ✅ |
 | Optioneel: `SECRETS_ENCRYPTION_KEY` + `MOLLIE_ENABLED=1` (Vercel) en een Mollie-sleutel op `/app/status` | Terugbetaalbare aanbetalingen; zonder: "Mollie niet ingesteld", betaalstap niet te kiezen | Hylke |
 | Auth-hook "Before user created" → `public.hook_before_user_created` (Authentication → Hooks) | Registratie alleen op uitnodiging, ook bij directe aanroepen van Supabase Auth | Hylke |
 | E-mailsjabloon "Magic Link": link naar `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next={{ .RedirectTo }}` | Uitnodigingen werken dan op elk apparaat | Hylke |
@@ -23,6 +23,7 @@ Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van e
 | Eigen SMTP (bijv. Resend) in Supabase Auth | Uitnodigingen aan opdrachtgevers buiten het Supabase-team | Hylke |
 | Vercel-project + domein (na merkcheck) | Publieke testpagina's en app online | Hylke |
 | LinkedIn Advertising API-aanvraag | Doorlooptijd weken tot maanden | Hylke |
+| ~~Migraties `ai_interviews`, `experiment_catalog` en `canvas` toepassen~~ | Toegepast op project `prooflab` op 9-11; migratiegeschiedenis bijgewerkt. Supabase-adviezen: geen nieuwe waarschuwingen buiten de bewuste keuzes (tabellen zonder policies die alleen via functies werken, publieke functies achter de ingest-sleutel) | ✅ |
 
 ## Systeemreview 29 oktober: 20 verbeterpunten
 
