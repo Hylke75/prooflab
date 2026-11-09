@@ -280,7 +280,7 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
       if (p.segments === 0) add("Leg gebruiker en betaler vast", `${base}/research?tab=customers`, "users");
       if (!p.sizingEstablished) add("Onderbouw het basisaantal van de marktomvang", `${base}/research?tab=sizing`, "trend");
       // Aannames en pre-mortem mogen parallel aan het onderzoek: niets wacht op het einde van week 1.
-      if (p.assumptions === 0) add("Schrijf alvast de eerste aannames op", `${base}/assumptions#nieuwe-aanname`, "layers");
+      if (p.assumptions === 0) add("Schrijf alvast de eerste aannames op", `${base}/assumptions?stap=opschrijven#nieuwe-aanname`, "layers");
       if (p.weakClaims > 0) insight = ["Let hierop", `${p.weakClaims} bevinding(en) hebben nog onvoldoende bewijs. Zoekcijfers en AI-conclusies zijn geen bewijs dat klanten willen betalen.`];
       else if (!p.sizingEstablished) insight = ["Let hierop", "Het basisaantal van de marktomvang heeft nog geen bron. Tot die tijd is de omvang een verkenning, geen feit."];
       if (items.length === 0) add("Ga door naar de aannames", `${base}/assumptions`, "layers");
@@ -294,7 +294,7 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
       break;
     }
     case "assumptions": {
-      if (p.assumptions === 0) add("Schrijf de eerste aanname op", `${base}/assumptions#nieuwe-aanname`, "layers");
+      if (p.assumptions === 0) add("Schrijf de eerste aanname op", `${base}/assumptions?stap=opschrijven#nieuwe-aanname`, "layers");
       if (p.topAssumption && p.untestedCritical > 0)
         add(`Kies een test voor de grootste onzekerheid`, `${base}/experiments?assumption=${p.topAssumption.id}`, "flask");
       if (p.assumptionsWithoutEvidence > 0) add(`Koppel bewijs aan ${p.assumptionsWithoutEvidence} aanname${p.assumptionsWithoutEvidence === 1 ? "" : "s"} zonder bewijs`, `${base}/research?tab=sources`, "compass");
@@ -302,7 +302,7 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
       break;
     }
     case "model": {
-      if (p.assumptions === 0) add("Schrijf de eerste aanname op", `${base}/assumptions#nieuwe-aanname`, "layers");
+      if (p.assumptions === 0) add("Schrijf de eerste aanname op", `${base}/assumptions?stap=opschrijven#nieuwe-aanname`, "layers");
       if (p.topAssumption && p.untestedCritical > 0) add("Kies een test voor de grootste onzekerheid", `${base}/experiments?assumption=${p.topAssumption.id}`, "flask");
       add("Bekijk de aannamekaart", `${base}/assumptions`, "layers");
       insight = ["Mijn advies", "Niet sturen op een vol canvas. Koppel de onderdelen waar het model op rust aan een aanname; de stand per onderdeel laat zien wat getoetst is en wat nog geloof is."];

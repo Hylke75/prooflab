@@ -37,7 +37,7 @@ export function GoRuleProposalCard({ ideaId, proposal, compact = false }: { idea
         {!compact && (
         <p className="tiny" style={{ margin: "0 0 8px" }}>
           Een hoofdtest start pas als de go-regel vastligt. Liever een andere kans of andere aannames?{" "}
-          <Link className="text-link" href={`/app/ideas/${ideaId}/assumptions#beslisregel`}>Pas de regel aan op de aannamepagina</Link>.
+          <Link className="text-link" href={`/app/ideas/${ideaId}/assumptions?stap=regel#beslisregel`}>Pas de regel aan op de aannamepagina</Link>.
         </p>
         )}
       </ActionForm>

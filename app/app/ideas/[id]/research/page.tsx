@@ -7,6 +7,9 @@ import { InsightCard, type ClaimView } from "@/components/ui/InsightCard";
 import { Term } from "@/components/ui/Term";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { Tabs } from "@/components/research/Tabs";
+import { ideaTasks } from "@/lib/domain/tasks";
+import { loadProgress } from "@/lib/progress";
+import { TaskFooter, TaskHeader } from "@/components/tasks/TaskHeader";
 import { TabJumpLink } from "@/components/research/TabJumpLink";
 import { ResearchRunPanel, SearchLogList, type QuestionLog, type SearchLogUrl } from "@/components/research/ResearchRunPanel";
 import { EXPECTED_SOURCES, isExpectedSource } from "@/lib/domain/research-plan";
@@ -293,31 +296,45 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
       </form>
     ) : null;
 
+  // Voorstel "ProofLab eenvoudiger": elk tabblad is een taak van Markt met de vaste taakkop.
+  const list = ideaTasks(await loadProgress(id));
+  const head = (key: "market-question" | "market-competitors" | "market-customers" | "market-sizing", title: string, why: string, aside?: React.ReactNode) => (
+    <TaskHeader ideaId={id} list={list} taskKey={key} title={title} why={why} aiConnected={aiConfigured()} aside={aside} />
+  );
+  const firstSource =
+    canWrite && sources.length === 0 && claims.length === 0 ? (
+      <TabJumpLink className="btn primary" tab="sources" anchor="bron-toevoegen" href={`/app/ideas/${id}/research?tab=sources#bron-toevoegen`}>
+        Voeg je eerste bron toe
+      </TabJumpLink>
+    ) : undefined;
+
   return (
     <PageFrame crumbs={["Werkruimte", idea.title, "Marktverkenning"]} coach="research" ideaId={id} section="/research" badge={run?.mode === "quick" && run.status === "done" ? "Snelle marktcheck · voorlopig" : undefined}>
-      <div className="section-row">
-        <div>
-          <div className="eyebrow">Stap 1 van 4 · Markt</div>
-          <h1>Begrijp je markt.</h1>
-          <p className="sub">Een marktbeeld met zicht op concurrenten, doelgroepen, kansen en onzekerheden. Elke conclusie verwijst naar een controleerbare bron.</p>
-        </div>
-        {/* De primaire knop volgt de stand: zonder bron eerst een bron toevoegen; "Naar aannames" pas als er iets ligt. */}
-        {canWrite && sources.length === 0 && claims.length === 0 ? (
-          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-            <TabJumpLink className="btn primary" tab="sources" anchor="bron-toevoegen" href={`/app/ideas/${id}/research?tab=sources#bron-toevoegen`}>
-              Voeg je eerste bron toe
-            </TabJumpLink>
-            <Link className="btn white" href={`/app/ideas/${id}/assumptions`}>
-              Naar aannames →
-            </Link>
-          </div>
-        ) : (
-          <Link className="btn primary" href={`/app/ideas/${id}/assumptions`}>
-            Naar aannames →
-          </Link>
-        )}
-      </div>
-
+      <Tabs
+        key={tab}
+        initial={tab}
+        heads={{
+          overview: head("market-question", "Begrijp je markt.", "Een marktbeeld met zicht op concurrenten, doelgroepen, kansen en onzekerheden. Elke conclusie verwijst naar een controleerbare bron.", firstSource),
+          sources: head("market-question", "Bronnen en bevindingen", "Voeg bronnen toe en leg per bevinding vast wat de bron wel en niet bewijst. Een AI-tekst is zelf nooit een bron."),
+          competitors: head("market-competitors", "Concurrenten en alternatieven", "Wat doen klanten nu in plaats van jouw idee? Ook niets doen, Excel of het eigen netwerk telt als alternatief."),
+          customers: head("market-customers", "Doelgroep en klantonderzoek", "Wie heeft het probleem, wie betaalt en wie beslist? Hier beschrijf je de doelgroep; bij Klantonderzoek hoor je hen in hun eigen woorden."),
+          klantonderzoek: head("market-customers", "Doelgroep en klantonderzoek", "Praat met echte klanten of zet een korte enquête uit. Alleen wat mensen zelf zeggen of doen telt als bewijs."),
+          sizing: head("market-sizing", "Hoe groot is de markt?", "Reken met aannames die je kunt onderbouwen. Ontbrekende data blijft zichtbaar onbekend; een schatting is geen bewezen marktomvang."),
+        }}
+        // Gebruikerstest A10: concurrenten, klantonderzoek en marktpotentieel (zware interactieve panelen) pas opbouwen bij
+        // het openen. Marktbeeld en Bronnen niet: daar springen zoekresultaten en "Voeg toe als bron" direct naartoe.
+        lazy={["competitors", "klantonderzoek", "sizing"]}
+        tabs={[
+          { key: "overview", label: "Marktbeeld" },
+          { key: "competitors", label: "Concurrenten" },
+          { key: "customers", label: "Doelgroepen" },
+          { key: "klantonderzoek", label: "Klantonderzoek" },
+          { key: "sizing", label: "Marktpotentieel" },
+          { key: "sources", label: "Bronnen" },
+        ]}
+      >
+        {/* Marktbeeld */}
+        <div key="overview">
       <div className="insight-banner">
         <div>
           <span className="pill blue">✳ Beslisvraag</span>
@@ -343,22 +360,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
         aiConnected={aiConfigured()}
       />
 
-      <Tabs
-        initial={tab}
-        // Gebruikerstest A10: concurrenten, klantonderzoek en marktpotentieel (zware interactieve panelen) pas opbouwen bij
-        // het openen. Marktbeeld en Bronnen niet: daar springen zoekresultaten en "Voeg toe als bron" direct naartoe.
-        lazy={["competitors", "klantonderzoek", "sizing"]}
-        tabs={[
-          { key: "overview", label: "Marktbeeld" },
-          { key: "competitors", label: "Concurrenten" },
-          { key: "customers", label: "Doelgroepen" },
-          { key: "klantonderzoek", label: "Klantonderzoek" },
-          { key: "sizing", label: "Marktpotentieel" },
-          { key: "sources", label: "Bronnen" },
-        ]}
-      >
-        {/* Marktbeeld */}
-        <div key="overview">
+
           <Detail>
           <div className="research-kpis">
             <div className="card tight">
@@ -875,6 +877,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
           </div>
         </div>
       </Tabs>
+      <TaskFooter ideaId={id} next={list.phases.find((ph) => ph.key === "assumptions")!.tasks[0]} nextLabel="Verder: Aannames" />
     </PageFrame>
   );
 }

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ideaTasks, taskAfter } from "@/lib/domain/tasks";
+import { TaskFooter, TaskHeader } from "@/components/tasks/TaskHeader";
 import { Icon } from "@/components/Icon";
 import { PageFrame } from "@/components/shell/PageFrame";
 import { ActionForm } from "@/components/ui/ActionForm";
@@ -87,6 +89,11 @@ function HowWeCalculate({ weights, method, caps }: { weights: WeightsInUse; meth
   );
 }
 
+const STAPPEN = ["opschrijven", "kiezen", "regel"] as const;
+type Stap = (typeof STAPPEN)[number];
+const STAP_TASK = { opschrijven: "assumptions-write", kiezen: "assumptions-primary", regel: "assumptions-rule" } as const;
+const STAP_LABELS: Record<Stap, string> = { opschrijven: "Aannames opschrijven", kiezen: "Risicokaart", regel: "Beslisregel" };
+
 export default async function AssumptionsPage({ params, searchParams }: PageProps<"/app/ideas/[id]/assumptions">) {
   const { id } = await params;
   // ?select=<aanname> (vanuit het zoeken binnen een dossier): die aanname staat geselecteerd op de risicokaart.
@@ -127,47 +134,60 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
   const missing = (Object.keys(ASSUMPTION_CATEGORIES) as AssumptionCategory[]).filter((c) => !board.some((a) => a.category === c));
   const usable = (claims ?? []).filter((c) => c.status !== "insufficient");
 
+  // Voorstel "ProofLab eenvoudiger": Aannames is drie taken, elk op een eigen scherm: opschrijven → de belangrijkste
+  // kiezen (risicokaart) → vastleggen wanneer je doorgaat (beslisregel).
+  const list = ideaTasks(progress);
+  const phaseTasks = list.phases.find((ph) => ph.key === "assumptions")!.tasks;
+  const askedStap = (await searchParams).stap;
+  const firstOpen = phaseTasks.find((t) => t.status === "busy" || t.status === "todo")?.key;
+  const stap: Stap =
+    typeof askedStap === "string" && (STAPPEN as readonly string[]).includes(askedStap)
+      ? (askedStap as Stap)
+      : select
+        ? "kiezen"
+        : board.length === 0
+          ? "opschrijven"
+          : firstOpen === "assumptions-rule"
+            ? "regel"
+            : "kiezen";
+  const taskKey = STAP_TASK[stap];
+  const header = (title: string, why: string) => (
+    <TaskHeader ideaId={id} list={list} taskKey={taskKey} title={title} why={why} aiConnected={aiConfigured()} />
+  );
+
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Aannames"]} coach="assumptions" ideaId={id} section="/assumptions">
-      <div className="section-row">
-        <div>
-          <div className="eyebrow">Stap 2 van 4 · Aannames</div>
-          <h1>Wat moet waar zijn?</h1>
-          <p className="sub">Een idee is een verzameling aannames. Begin bij de aannames die het belangrijkst zijn en waarover je nog het minst weet.</p>
-        </div>
-        {/* De primaire knop volgt de stand: zonder aannames eerst aannames maken, pas daarna naar de testpagina. */}
-        {board.length > 0 ? (
-          <Link className="btn primary" href={`/app/ideas/${id}/experiments${first ? `?assumption=${first.id}` : ""}`}>
-            Ontwerp een test <Icon name="arrow" size="sm" />
-          </Link>
-        ) : (
-          canWrite &&
-          !lock && (
-            <ActionForm action={seedAssumptions.bind(null, id)} submitLabel={aiConfigured() ? "Stel aannames voor" : "Begin met de standaardset"} pendingLabel="Bezig…">
-              <span />
-            </ActionForm>
-          )
-        )}
-      </div>
+    <PageFrame crumbs={["Werkruimte", idea.title, STAP_LABELS[stap]]} coach="assumptions" ideaId={id} section="/assumptions">
+      <div className="task-page">
       {method !== CURRENT_METHOD && (
         <div className="note">
           Dit dossier rekent met methode {method}. <Link className="text-link" href={`/app/ideas/${id}/method`}>Bekijk wat overstappen naar methode {CURRENT_METHOD} verandert →</Link>
         </div>
       )}
 
-      {lock ? (
-        // Golf B, punt 15: eerst de eigen voorspelling, dan de berekende kansen op de risicokaart.
+
+      {stap === "opschrijven" && (
         <>
-          <ForecastFirstLock ideaId={id} moment={lock} what="de risicokaart met de berekende kans per aanname" client={!canWrite} />
-          {/* Systeemcontrole: de aannames zelf zijn wel zichtbaar (op belang, niet op berekende rangorde), zodat de pagina
-              niet leeg lijkt. Verborgen tot de voorspelling: de berekende kansen, de rangorde en de risicokaart. */}
-          {board.length > 0 && (
-            <div className="card mt-18" role="region" aria-labelledby="aannames-lijst">
+          {header("Wat moet waar zijn?", "Een idee is een verzameling aannames. Schrijf op wat waar moet zijn voordat dit idee kan slagen: over de klant, de prijs, het kanaal en de uitvoering.")}
+          {board.length === 0 ? (
+            <div className="empty-state">
+              <h2 className="as-h3">Nog geen aannames</h2>
+              <p>
+                {aiConfigured()
+                  ? "Laat ProofLab aannames voorstellen op basis van je idee en de gevonden bevindingen, of voeg ze zelf toe."
+                  : "Begin met de standaardset (wenselijkheid, haalbaarheid, levensvatbaarheid, context) en maak die specifiek, of voeg ze zelf toe."}
+              </p>
+              {canWrite && !lock && (
+            <ActionForm action={seedAssumptions.bind(null, id)} submitLabel={aiConfigured() ? "Stel aannames voor" : "Begin met de standaardset"} pendingLabel="Bezig…">
+              <span />
+            </ActionForm>
+              )}
+            </div>
+          ) : (
+            <div className="card" role="region" aria-labelledby="aannames-lijst">
               <div className="section-title">
                 <h2 className="as-h3" id="aannames-lijst">Je aannames ({board.length})</h2>
                 <span className="pill gray">Op belang</span>
               </div>
-              <p className="tiny" style={{ marginTop: -8 }}>Kansen en rangorde zie je na je voorspelling.</p>
               <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
                 {[...board]
                   .sort((a, b) => b.importance - a.importance || a.statement.localeCompare(b.statement, "nl"))
@@ -181,42 +201,6 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
               </ul>
             </div>
           )}
-        </>
-      ) : board.length === 0 ? (
-        <div className="empty-state">
-          <h2 className="as-h3">Nog geen aannames</h2>
-          <p>
-            {aiConfigured()
-              ? "Laat ProofLab aannames voorstellen op basis van je idee en de gevonden bevindingen, of voeg ze zelf toe."
-              : "Begin met de standaardset (wenselijkheid, haalbaarheid, levensvatbaarheid, context) en maak die specifiek, of voeg ze zelf toe."}
-          </p>
-          {canWrite && (
-            <p className="tiny">
-              Gebruik de knop bovenaan, of <a className="text-link" href="#nieuwe-aanname">voeg een aanname zelf toe</a>.
-            </p>
-          )}
-        </div>
-      ) : (
-        <RiskBoard
-          key={select ?? "rangorde"}
-          ideaId={id}
-          initialId={select}
-          assumptions={board}
-          claims={usable}
-          canWrite={canWrite}
-          calibrated={calibration.calibrated}
-          linkActions={Object.fromEntries(board.map((a) => [a.id, linkClaim.bind(null, id, a.id)]))}
-          unlinkActions={Object.fromEntries(board.map((a) => [a.id, Object.fromEntries(a.claims.map((c) => [c.id, unlinkClaim.bind(null, id, a.id, c.id)]))]))}
-          importanceActions={Object.fromEntries(board.map((a) => [a.id, setImportance.bind(null, id, a.id)]))}
-          priorActions={Object.fromEntries(board.map((a) => [a.id, setPrior.bind(null, id, a.id)]))}
-          deleteActions={Object.fromEntries(board.map((a) => [a.id, deleteAssumption.bind(null, id, a.id)]))}
-          kindActions={Object.fromEntries(board.map((a) => [a.id, setKind.bind(null, id, a.id)]))}
-          selectActions={Object.fromEntries(board.map((a) => [a.id, setSelectedForTest.bind(null, id, a.id, !a.selectedForTest)]))}
-          selectionAvailable={!selectionColumn.error}
-          refutedCounts={METHODS[method].refutedCounts}
-        />
-      )}
-
       {board.length > 0 && missing.length > 0 && (
         <div className="note">
           Blinde vlek: er is nog geen aanname over {missing.map((m) => ASSUMPTION_CATEGORIES[m].toLowerCase()).join(", ")}. Denk aan
@@ -229,27 +213,6 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
           <RedTeamButton ideaId={id} assumptions={board} canWrite={canWrite} />
         </Detail>
       )}
-      {rule !== undefined && (
-        <DecisionRuleCard
-          ideaId={id}
-          rule={rule}
-          assumptions={ranked.map((a) => ({ id: a.id, statement: a.statement, importance: a.importance, primaryExperimentId: a.primaryExperimentId, selectedForTest: !!a.selectedForTest }))}
-          experiments={experiments ?? []}
-          canWrite={canWrite}
-          compact={quick}
-        />
-      )}
-      {board.length > 0 && !lock && (
-        <Detail hint={false}>
-          <HowWeCalculate weights={weights.inUse} method={method} caps={caps.caps} />
-        </Detail>
-      )}
-      {board.length > 0 && !lock && quick && (
-        <p className="tiny mt-18">
-          <Link className="text-link" href={`/app/ideas/${id}/method`}>Hoe rekent ProofLab de kans uit? →</Link>
-        </p>
-      )}
-
       {canWrite && (
         <div className="card mt-18">
           <h2 className="as-h3" id="nieuwe-aanname">Aanname toevoegen</h2>
@@ -275,6 +238,111 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
           </ActionForm>
         </div>
       )}
+          <TaskFooter ideaId={id} next={taskAfter(list, "assumptions-write")} />
+        </>
+      )}
+
+      {stap === "kiezen" && (
+        <>
+          {header("Begin met je grootste risico", "Welke aanname haalt het hele idee onderuit als hij niet klopt? Kies er hooguit drie om nu te testen en wijs bij de belangrijkste een hoofdtest aan.")}
+          {lock ? (
+            // Golf B, punt 15: eerst de eigen voorspelling, dan de berekende kansen op de risicokaart.
+        <>
+          <ForecastFirstLock ideaId={id} moment={lock} what="de risicokaart met de berekende kans per aanname" client={!canWrite} />
+          {/* Systeemcontrole: de aannames zelf zijn wel zichtbaar (op belang, niet op berekende rangorde), zodat de pagina
+              niet leeg lijkt. Verborgen tot de voorspelling: de berekende kansen, de rangorde en de risicokaart. */}
+          {board.length > 0 && (
+            <div className="card mt-18" role="region" aria-labelledby="aannames-lijst">
+              <div className="section-title">
+                <h2 className="as-h3" id="aannames-lijst">Je aannames ({board.length})</h2>
+                <span className="pill gray">Op belang</span>
+              </div>
+              <p className="tiny" style={{ marginTop: -8 }}>Kansen en rangorde zie je na je voorspelling.</p>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                {[...board]
+                  .sort((a, b) => b.importance - a.importance || a.statement.localeCompare(b.statement, "nl"))
+                  .map((a) => (
+                    <li key={a.id} className="assumption-item" style={{ cursor: "default" }}>
+                      <span className="count" title="Belang (1–5)">{a.importance}</span>
+                      <span>{a.statement}</span>
+                      <small>{ASSUMPTION_KINDS[a.kind].label}</small>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
+        </>
+          ) : board.length === 0 ? (
+            <div className="empty-state">
+              <h2 className="as-h3">Nog geen aannames</h2>
+              <p>Schrijf eerst op wat waar moet zijn; daarna kies je hier de belangrijkste.</p>
+              <Link className="btn primary" href={`/app/ideas/${id}/assumptions?stap=opschrijven`}>Naar aannames opschrijven →</Link>
+            </div>
+          ) : (
+        <RiskBoard
+          key={select ?? "rangorde"}
+          ideaId={id}
+          initialId={select}
+          assumptions={board}
+          claims={usable}
+          canWrite={canWrite}
+          calibrated={calibration.calibrated}
+          linkActions={Object.fromEntries(board.map((a) => [a.id, linkClaim.bind(null, id, a.id)]))}
+          unlinkActions={Object.fromEntries(board.map((a) => [a.id, Object.fromEntries(a.claims.map((c) => [c.id, unlinkClaim.bind(null, id, a.id, c.id)]))]))}
+          importanceActions={Object.fromEntries(board.map((a) => [a.id, setImportance.bind(null, id, a.id)]))}
+          priorActions={Object.fromEntries(board.map((a) => [a.id, setPrior.bind(null, id, a.id)]))}
+          deleteActions={Object.fromEntries(board.map((a) => [a.id, deleteAssumption.bind(null, id, a.id)]))}
+          kindActions={Object.fromEntries(board.map((a) => [a.id, setKind.bind(null, id, a.id)]))}
+          selectActions={Object.fromEntries(board.map((a) => [a.id, setSelectedForTest.bind(null, id, a.id, !a.selectedForTest)]))}
+          selectionAvailable={!selectionColumn.error}
+          refutedCounts={METHODS[method].refutedCounts}
+        />
+          )}
+      {board.length > 0 && !lock && (
+        <Detail hint={false}>
+          <HowWeCalculate weights={weights.inUse} method={method} caps={caps.caps} />
+        </Detail>
+      )}
+      {board.length > 0 && !lock && quick && (
+        <p className="tiny mt-18">
+          <Link className="text-link" href={`/app/ideas/${id}/method`}>Hoe rekent ProofLab de kans uit? →</Link>
+        </p>
+      )}
+
+          {board.length > 0 && !lock && quick && (
+            <p className="tiny mt-18">
+              <Link className="text-link" href={`/app/ideas/${id}/method`}>Hoe rekent ProofLab de kans uit? →</Link>
+            </p>
+          )}
+          {board.length > 0 && (
+            <p className="mt-18">
+              <Link className="btn white" href={`/app/ideas/${id}/experiments?nieuw=1${first ? `&assumption=${first.id}` : ""}`}>
+                Ontwerp een test voor de belangrijkste aanname <Icon name="arrow" size="sm" />
+              </Link>
+            </p>
+          )}
+          <TaskFooter ideaId={id} next={taskAfter(list, "assumptions-primary")} />
+        </>
+      )}
+
+      {stap === "regel" && (
+        <>
+          {header("Leg vast wanneer je doorgaat", "Spreek vóór de test af bij welke uitslag je doorgaat. Zo kun je jezelf achteraf niet voor de gek houden.")}
+      {rule !== undefined && (
+        <DecisionRuleCard
+          ideaId={id}
+          rule={rule}
+          assumptions={ranked.map((a) => ({ id: a.id, statement: a.statement, importance: a.importance, primaryExperimentId: a.primaryExperimentId, selectedForTest: !!a.selectedForTest }))}
+          experiments={experiments ?? []}
+          canWrite={canWrite}
+          compact={quick}
+        />
+      )}
+          {rule === undefined && <p className="sub">De beslisregel is in deze database nog niet beschikbaar.</p>}
+          <TaskFooter ideaId={id} next={taskAfter(list, "assumptions-rule")} />
+        </>
+      )}
+      </div>
     </PageFrame>
   );
 }
