@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { TAB_EVENT } from "./source-prefill";
 
 // Tabs switch instantly on the client (like the reference design) and keep the URL in sync.
@@ -11,16 +11,16 @@ export function Tabs({ tabs, initial, lazy = [], heads, children }: { tabs: { ke
   const [active, setActive] = useState(tabs.some((t) => t.key === initial) ? initial : tabs[0].key);
   const [seen, setSeen] = useState<ReadonlySet<string>>(() => new Set([active]));
   // Een link naar een ander tabblad (bijv. de taakstappen in de kop) geeft een nieuwe initial: volg die. Een verversing
-  // na opslaan geeft dezelfde initial en laat de tab (en meldingen in formulieren) staan.
-  const lastInitial = useRef(initial);
-  useEffect(() => {
-    if (initial === lastInitial.current) return;
-    lastInitial.current = initial;
+  // na opslaan geeft dezelfde initial en laat de tab (en meldingen in formulieren) staan. Bijwerken tijdens het
+  // renderen (Reacts patroon voor "state afleiden van een prop"), niet in een effect.
+  const [lastInitial, setLastInitial] = useState(initial);
+  if (initial !== lastInitial) {
+    setLastInitial(initial);
     if (tabs.some((t) => t.key === initial)) {
       setActive(initial);
       setSeen((s) => (s.has(initial) ? s : new Set([...s, initial])));
     }
-  }, [initial, tabs]);
+  }
   const select = useCallback((key: string) => {
     setActive(key);
     setSeen((s) => (s.has(key) ? s : new Set([...s, key])));
