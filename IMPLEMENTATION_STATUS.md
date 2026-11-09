@@ -15,12 +15,12 @@ Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van e
 | Optioneel: `FATHOM_ENABLED=1` (Vercel) en een Fathom-API-sleutel op `/app/status` | Opnames rechtstreeks uit Fathom kiezen; zonder koppeling werkt importeren via een bestand | Hylke |
 | ~~Migratie `20261116090000_fase2_testen.sql` toepassen (testen uitvoeren)~~ | Toegepast op project `prooflab` op 9-11 (via de Management API, functies vergeleken met de lokale referentie) | ✅ |
 | Optioneel: `SECRETS_ENCRYPTION_KEY` + `MOLLIE_ENABLED=1` (Vercel) en een Mollie-sleutel op `/app/status` | Terugbetaalbare aanbetalingen; zonder: "Mollie niet ingesteld", betaalstap niet te kiezen | Hylke |
-| Auth-hook "Before user created" → `public.hook_before_user_created` (Authentication → Hooks) | Registratie alleen op uitnodiging, ook bij directe aanroepen van Supabase Auth | Hylke |
-| E-mailsjabloon "Magic Link": link naar `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next={{ .RedirectTo }}` | Uitnodigingen werken dan op elk apparaat | Hylke |
+| ~~Auth-hook "Before user created" → `public.hook_before_user_created`~~ | Aangezet op 9-11; getest: een niet-uitgenodigd adres krijgt "ProofLab werkt op uitnodiging" en er komt geen account | ✅ |
+| ~~E-mailsjabloon "Magic Link" naar `/auth/confirm?token_hash=…`~~ | Ingesteld op 9-11 (Nederlandse tekst); Site URL `https://www.proof-lab.nl`, redirects `https://www.proof-lab.nl/**` en `https://proof-lab.nl/**` | ✅ |
 | Eigen adres of domein op de toegangslijst (`insert into public.signup_allowlist (entry) values ('naam@bureau.nl')`) | Registratie staat dicht; consultants hebben een plek op de lijst nodig | Claude of Hylke |
 | "Leaked password protection" aanzetten (Authentication → Passwords) | Enige resterende security-advieswaarschuwing die geen bewuste keuze is | Hylke |
 | Minstens één van `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` als secret (Vercel) | AI-onderzoek, AI-aannames, interviewcodering, coach, AI-vragen in de Reality Check; met meer sleutels zoeken en voorspellen de aanbieders los van elkaar | Hylke |
-| Eigen SMTP (bijv. Resend) in Supabase Auth | Uitnodigingen aan opdrachtgevers buiten het Supabase-team | Hylke |
+| ~~Eigen SMTP (Resend) in Supabase Auth~~ | Ingesteld op 9-11: `ProofLab <onderzoek@proof-lab.nl>` via smtp.resend.com, domein proof-lab.nl geverifieerd in Resend, 30 mails per uur | ✅ |
 | Vercel-project + domein (na merkcheck) | Publieke testpagina's en app online | Hylke |
 | LinkedIn Advertising API-aanvraag | Doorlooptijd weken tot maanden | Hylke |
 | ~~Migraties `ai_interviews`, `experiment_catalog` en `canvas` toepassen~~ | Toegepast op project `prooflab` op 9-11; migratiegeschiedenis bijgewerkt. Supabase-adviezen: geen nieuwe waarschuwingen buiten de bewuste keuzes (tabellen zonder policies die alleen via functies werken, publieke functies achter de ingest-sleutel) | ✅ |
