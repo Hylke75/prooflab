@@ -166,13 +166,13 @@ Alles deterministisch (geen LLM), met unit-tests in `tests/unit/quantify.test.ts
 ## Nog niet gebouwd (na de route)
 
 - 🟡 AI-gemodereerde chatinterviews (tekst gebouwd; spraak later) — zie "AI-gemodereerde interviews (7 november)"; echte modelaanroepen alleen met een API-sleutel te controleren
-- ⬜ Weekritmes: leersessie en besluitsessie met de klant, Fathom-import
+- ⬜ Weekritmes: leersessie en besluitsessie met de klant (Fathom-import is gebouwd: zie "Fase 1 · punt 3: Interviews importeren en analyseren")
 - ⬜ Koppelingen met de Meta- en LinkedIn-advertentie-API's (nu: kanaallinks + handmatig live zetten)
 - ✅ Experimentencatalogus (41 methodes met metadata) en begeleide handmatige sjablonen — zie "Experimentencatalogus en begeleide handmatige sjablonen (7 november)"
 - ✅ Propositie- en businessmodelcanvas — zie sectie "Propositie- en businessmodelcanvas (7 november)" onderaan
 - ⬜ Automatische maandelijkse concurrentiecheck (handmatig starten kan al), verschillenrapport tussen onderzoeksversies
-- ⬜ Betalingen/aanbetalingen (na juridische check), Stripe
-- ⬜ Server-side PDF-rendering (nu printstylesheet)
+- 🟡 Betalingen/aanbetalingen: terugbetaalbare aanbetalingen via Mollie gebouwd ("Fase 2 · punt 4"); Stripe niet; live gebruik na juridische check
+- ✅ Server-side PDF-rendering (`@react-pdf/renderer`, zie "Achtergrondtaken en PDF")
 - ⬜ Gebruiksniveaus (begeleid / verdiepend / expert)
 
 ## Onderzoeksmethodes en AI (Voorspelkracht v1, hoofdstuk 7)
