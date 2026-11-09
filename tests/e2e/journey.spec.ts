@@ -121,10 +121,11 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   expect(fitting, "een markt- of gedragsaanname").toBeTruthy();
   await page.getByLabel("Aanname die je toetst", { exact: true }).selectOption({ label: fitting! });
   await page.getByRole("radio", { name: /Landingpage-test/ }).click();
-  // Fase B5: kop, ondertitel en werving staan onder Details.
-  await page.locator("#tc-details").click();
+  // Kop en ondertitel staan op de tab Testpagina; de werving onder Details van de tab Test Card.
+  await page.getByRole("tab", { name: "Testpagina" }).click();
   await page.getByLabel("Kop (verplicht)", { exact: true }).fill("Vind de perfecte eventlocatie in minuten.");
   await page.getByLabel("Ondertitel", { exact: true }).fill("Een persoonlijke selectie, zonder eindeloos zoeken.");
+  await page.getByRole("tab", { name: "Test Card" }).click();
   // Fase B1b: eerst de drempels vastleggen; daarna rekent ProofLab het aantal deelnemers uit.
   await page.getByRole("button", { name: "Leg drempels vast" }).click();
   await expect(page.getByText(/Je hebt ongeveer \d+ deelnemers nodig/)).toBeVisible();
@@ -132,6 +133,7 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   // Gebruikerstest C3: lager dan het berekende aantal vraagt een motivering.
   const belowReason = page.getByLabel(/Waarom minder deelnemers dan berekend/);
   if (await belowReason.isVisible()) await belowReason.fill("Testomgeving: vijf bezoekers volstaan om de journey te doorlopen.");
+  await page.locator("#tc-details").click();
   await page.getByRole("radio", { name: "Koud", exact: true }).check();
   await page.getByRole("button", { name: /Test Card opslaan als concept/ }).click();
   // Fase B1a: na opslaan terug op het bord met een bevestiging; daarvandaan naar het concept.
