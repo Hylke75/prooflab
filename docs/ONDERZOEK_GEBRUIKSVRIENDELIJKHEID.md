@@ -31,13 +31,13 @@ naast de nieuwe takenlijst.
 | 5 | Progressive disclosure (NN/g) | Marktpotentieel: bandbreedte, jaar en regio per factor ingeklapt ("Meer over deze factor") | ✅ ronde 4 |
 | 6 | Minder chrome, inhoud bovenaan (NN/g) | Markt zonder dubbele rij taakstappen (de tabbladen zijn de taken), geen dubbele koppen, compacter rolblok | ✅ ronde 4 |
 | 7 | Vooraf invullen, de gebruiker controleert (Belastingdienst, NN/g defaults) | Testkaart wordt al voorgevuld uit intake en catalogus; volgende stap: AI-voorstel per veld met Overnemen / Aanpassen / Weggooien | ⬜ voorstel |
-| 8 | AI-uitvoer per stuk accepteren of afwijzen (Microsoft G8/G9) | Eén vast AI-voorstelblok voor aannames, concurrenten en testkaarttekst | ⬜ voorstel |
+| 8 | AI-uitvoer per stuk accepteren of afwijzen (Microsoft G8/G9) | Leerkaart-voorstel met Overnemen / Aanpassen / Weggooien en zelf schrijven; volgende stap: hetzelfde blok voor aannames, concurrenten en testkaarttekst | 🟡 ronde 5 |
 | 9 | Herkomst per bewering (NN/g explainable AI, Microsoft G11) | Labels AI-voorstel / Berekend voorstel / Door jou bevestigd / Gemeten bewijs bestaan; overal toepassen in onderzoek en rapport | 🟡 deels |
-| 10 | Automatisch opslaan, ongedaan maken in plaats van bevestigen (NN/g) | Autosave van formulieren met "Opgeslagen 12:04"; verwijderen met "Ongedaan maken"; bevestigen alleen bij publiceren of geld | ⬜ voorstel |
-| 11 | Hulp in de context ("Waarom vragen we dit?") boven rondleidingen (NN/g, TurboTax) | Uitleg-tooltips op vaktermen bestaan; per veld een korte "Waarom?" | 🟡 deels |
+| 10 | Automatisch opslaan, ongedaan maken in plaats van bevestigen (NN/g) | Concept op dit apparaat voor bron, bevinding en aanname ("Concept bewaard op dit apparaat (12:04)", wissen kan); verwijderen van bron, bevinding, aanname en aanbieder met 6 s "Ongedaan maken"; bevestigen blijft bij delen en publiceren | ✅ ronde 5 |
+| 11 | Hulp in de context ("Waarom vragen we dit?") boven rondleidingen (NN/g, TurboTax) | "Waarom vragen we dit?" (uitklapbaar, ook op telefoon) bij bronfragment, soort bron, citaat, populatie, hypothese, doelgroep, slaaggrens, deadline, aanname, belang en de onderbouwing van het besluit; `Field` heeft een `why`-veld | ✅ ronde 5 |
 | 12 | Startpagina per taak: wat, hoe lang, wat heb je nodig (GOV.UK start page) | Taakkop met waarom, tijd en Wat jij doet / Wat AI kan | ✅ |
 | 13 | Gewone taal en vaste schrijfgids (Monzo) | Vaktermen vervangen (ronde 3); schrijfgids in DESIGN_DIFF_LOG #79 | ✅ |
-| 14 | Foutmeldingen met oorzaak, oplossing en vervolgstap (Stripe, GOV.UK error summary) | Testkaart heeft een foutoverzicht met links; overal toepassen | 🟡 deels |
+| 14 | Foutmeldingen met oorzaak, oplossing en vervolgstap (Stripe, GOV.UK error summary) | Elk formulier (ActionForm) toont bij fouten "Er is een probleem" met links naar de velden en zet de focus daarop | ✅ ronde 5 |
 | 15 | Sneltoetsen en commandomenu voor ervaren gebruikers (Linear) | Zoeken met "/" bestaat; commandomenu later | ⬜ later |
 
 ## Bronnen

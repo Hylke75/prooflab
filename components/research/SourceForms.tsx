@@ -1,5 +1,7 @@
 "use client";
 
+import { Why } from "@/components/ui/Why";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SOURCE_PREFILL_EVENT, SOURCE_TITLE_PARAM, type SourcePrefill } from "./source-prefill";
 import { ActionForm, useFieldError, type FormState } from "@/components/ui/ActionForm";
@@ -64,7 +66,7 @@ export function AddSourceForm({ action }: { action: Action }) {
     return () => window.removeEventListener(SOURCE_PREFILL_EVENT, onPrefill);
   }, []);
   return (
-    <ActionForm action={action} submitLabel="Bron opslaan" resetOnSuccess>
+    <ActionForm action={action} submitLabel="Bron opslaan" resetOnSuccess draftKey="bron">
       {fromDocument && (
         <div className="note" role="status" style={{ marginTop: 0 }}>
           Titel overgenomen uit je document. Een document is geen bron vanzelf: kies het type bron, vul eventueel de URL of
@@ -84,6 +86,7 @@ export function AddSourceForm({ action }: { action: Action }) {
         </div>
         <div className="form-line">
           <label htmlFor="src-type">Type bron</label>
+          <Why>Een officiële statistiek weegt zwaarder dan een blog. Het type bepaalt hoe sterk een bevinding uit deze bron meetelt.</Why>
           {/* Geen standaard (vroeger "Officiële statistiek"): het soort bron bepaalt hoe zwaar een bevinding telt, dus kiest
               de gebruiker het zelf. Zonder keuze een eigen, Nederlandse melding in plaats van de browserballon. */}
           <select
@@ -124,6 +127,7 @@ export function AddSourceForm({ action }: { action: Action }) {
       </div>
       <div className="form-line">
         <label htmlFor="src-excerpt">Relevant fragment (letterlijk overgenomen)</label>
+        <Why>ProofLab bewaart alleen dit stukje, niet het hele document. Met het letterlijke fragment kan iedereen later controleren of je bevinding echt in de bron staat.</Why>
         <textarea ref={excerptRef} className="field" id="src-excerpt" name="excerpt" required minLength={20} maxLength={6000} placeholder="Plak hier de passage of tabelregel waar je bevinding op steunt. Alleen dit fragment wordt bewaard, niet het hele document." />
       </div>
       <div className="double-field">
@@ -169,7 +173,7 @@ export function AddClaimForm({ action, excerpts, questions }: { action: Action; 
     return <div className="note" style={{ marginTop: 0 }}>Voeg eerst een bron met fragment toe. Een bevinding zonder bron is een aanname.</div>;
   }
   return (
-    <ActionForm action={action} submitLabel="Bevinding toetsen en opslaan" resetOnSuccess>
+    <ActionForm action={action} submitLabel="Bevinding toetsen en opslaan" resetOnSuccess draftKey="bevinding">
       <div className="form-line">
         <label htmlFor="cl-ex">Bronfragment</label>
         <select className="field" id="cl-ex" name="excerpt_id" value={excerptId} onChange={(e) => setExcerptId(e.target.value)}>
@@ -185,6 +189,7 @@ export function AddClaimForm({ action, excerpts, questions }: { action: Action; 
       </div>
       <div className="form-line">
         <label htmlFor="cl-q">Letterlijk citaat uit het fragment</label>
+        <Why>ProofLab controleert of dit citaat woord voor woord in het fragment staat. Alleen dan telt de bevinding als geverifieerd; zo kan niemand een bron iets laten zeggen wat er niet staat.</Why>
         <textarea className="field" id="cl-q" name="quote" value={quote} onChange={(e) => setQuote(e.target.value)} style={{ minHeight: 70 }} required />
         {check && (
           <div className={check === "exact" ? "form-ok" : "form-error"} style={{ marginTop: 8, marginBottom: 0 }}>
@@ -255,6 +260,7 @@ export function AddClaimForm({ action, excerpts, questions }: { action: Action; 
       </p>
       <div className="form-line">
         <label htmlFor="cl-pop">Populatie</label>
+        <Why>Over wie gaat het getal? Een cijfer over &ldquo;alle bedrijven&rdquo; zegt minder over jouw doelgroep dan een cijfer over precies die groep. Wijkt de populatie af, dan telt de bevinding als indirect bewijs.</Why>
         <input className="field" id="cl-pop" name="population" required maxLength={200} placeholder="Bijv. mkb-bedrijven met 10-50 werknemers, of onbekend" />
       </div>
       <div className="double-field">

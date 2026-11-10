@@ -289,7 +289,9 @@ export default async function EvidencePage({ params, searchParams }: PageProps<"
                       </select>
                     </Field>
                   </ActionForm>
-                  <ActionForm action={approveLearningCard.bind(null, id, c.id)} submitLabel="Keur goed: werk de aanname bij" submitClass="btn primary sm"><span /></ActionForm>
+                  <div id={`lc-approve-${c.id}`}>
+                    <ActionForm action={approveLearningCard.bind(null, id, c.id)} submitLabel="Keur goed: werk de aanname bij" submitClass="btn primary sm"><span /></ActionForm>
+                  </div>
                 </>
               ) : (
                 <p className="sub mt-12">Wordt nog beoordeeld door het onderzoeksteam.</p>

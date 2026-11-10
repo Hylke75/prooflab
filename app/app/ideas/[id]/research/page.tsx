@@ -7,6 +7,7 @@ import { InsightCard, type ClaimView } from "@/components/ui/InsightCard";
 import { Term } from "@/components/ui/Term";
 import { ActionForm } from "@/components/ui/ActionForm";
 import { Tabs } from "@/components/research/Tabs";
+import { UndoDeleteButton } from "@/components/ui/UndoDelete";
 import { ideaTasks } from "@/lib/domain/tasks";
 import { loadProgress } from "@/lib/progress";
 import { TaskFooter, TaskHeader } from "@/components/tasks/TaskHeader";
@@ -290,10 +291,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
       : undefined;
   const claimActions = (cid: string) =>
     canWrite ? (
-      <form action={deleteClaim.bind(null, id, cid)}>
-        <button className="text-link" style={{ color: "var(--color-risk-text)" }}>Bevinding verwijderen</button>
-        <FormPendingOverlay />
-      </form>
+      <UndoDeleteButton action={deleteClaim.bind(null, id, cid)} label="Bevinding verwijderen" what="Bevinding" />
     ) : null;
 
   // Voorstel "ProofLab eenvoudiger": elk tabblad is een taak van Markt met de vaste taakkop.
@@ -797,7 +795,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               const sc = supportCounts(s.id);
               const missingHere = claims.some((c) => c.evidence.some((e) => e.source_id === s.id && e.live_found === false));
               return (
-                <div className="source-item" key={s.id} id={`bron-${s.id}`}>
+                <div className="source-item" key={s.id} id={`bron-${s.id}`} data-undo-item>
                   <span className="source-icon" aria-hidden="true">{s.source_type === "official_statistic" ? "▣" : s.url ? "↗" : "◉"}</span>
                   <div style={{ flex: 1 }}>
                     <strong>{s.url ? <a href={s.url} target="_blank" rel="noreferrer noopener">{s.title}</a> : s.title}</strong>
@@ -838,7 +836,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                   <div className="stack" style={{ justifyItems: "end" }}>
                     <span className={`pill ${s.is_primary || s.source_type === "official_statistic" ? "green" : "gray"}`}>{s.is_primary ? "Primair" : s.source_type === "official_statistic" ? "Officieel" : "Secundair"}</span>
                     {canWrite && (
-                      <form action={deleteSource.bind(null, id, s.id)}><button className="text-link" style={{ color: "var(--color-risk-text)" }}>Verwijderen</button><FormPendingOverlay /></form>
+                      <UndoDeleteButton action={deleteSource.bind(null, id, s.id)} what="Bron" />
                     )}
                   </div>
                 </div>

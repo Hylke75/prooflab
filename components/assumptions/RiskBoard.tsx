@@ -1,5 +1,7 @@
 "use client";
 
+import { UndoDeleteButton } from "@/components/ui/UndoDelete";
+
 import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState } from "react";
 import { DEFAULT_MAP, layoutRiskPoints, type MapSize } from "@/lib/domain/risk-layout";
@@ -396,15 +398,18 @@ export function RiskBoard({
               <summary className="text-link">Bevinding koppelen als bewijs</summary>
               <LinkClaimForm key={current.id} action={linkActions[current.id]} claims={claims} refutedCounts={refutedCounts} />
             </details>
-            <form action={importanceActions[current.id]} className="row mt-12" key={`imp-${current.id}`}>
-              <label className="tiny" htmlFor="imp">Belangrijkheid</label>
-              <select className="field" id="imp" name="importance" defaultValue={current.importance} style={{ width: 120, padding: "8px 30px 8px 10px" }}>
-                {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n} {n === 5 ? "(kritiek)" : ""}</option>)}
-              </select>
-              <button className="btn white sm">Opslaan</button>
-              <button formAction={deleteActions[current.id]} className="text-link" style={{ color: "var(--color-risk-text)" }}>Verwijderen</button>
-              <FormPendingOverlay />
-            </form>
+            {/* Ongedaan maken in plaats van direct verwijderen: de aanname blijft 6 s grijs staan met "Ongedaan maken". */}
+            <div className="row mt-12" data-undo-item key={`imp-${current.id}`} style={{ gap: 12, alignItems: "center" }}>
+              <form action={importanceActions[current.id]} className="row">
+                <label className="tiny" htmlFor="imp">Belangrijkheid</label>
+                <select className="field" id="imp" name="importance" defaultValue={current.importance} style={{ width: 120, padding: "8px 30px 8px 10px" }}>
+                  {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n} {n === 5 ? "(kritiek)" : ""}</option>)}
+                </select>
+                <button className="btn white sm">Opslaan</button>
+                <FormPendingOverlay />
+              </form>
+              <UndoDeleteButton action={deleteActions[current.id]} label="Aanname verwijderen" what="Aanname" />
+            </div>
           </>
         )}
         <Link className="btn dark" href={`/app/ideas/${ideaId}/experiments?assumption=${current.id}`} style={{ marginTop: 17 }}>
