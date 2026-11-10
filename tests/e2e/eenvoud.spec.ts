@@ -137,3 +137,43 @@ test("voorgestelde aannames per stuk overnemen, aanpassen of weggooien; concept 
   await steps.getByRole("tab", { name: /Wat test je/ }).click();
   await expect(page.getByLabel("Wij denken dat … (verplicht)", { exact: true })).not.toHaveValue(hypothese);
 });
+
+test("commandomenu: Ctrl+K, zoeken op naam en oude vaktermen, Enter opent; ook via de knop", async ({ page }) => {
+  await login(page);
+  const ideaUrl = await createIdeaViaIntake(page, {
+    idea: "Een abonnement voor kleine fysiotherapiepraktijken dat afspraken herinnert en no-shows opvolgt, voor € 49 per maand.",
+    decision: `Steken we € 20.000 in dit abonnement, ja of nee, vóór ${dutchDate(60)}?`,
+    uncertainty: "Of praktijken no-shows een groot genoeg probleem vinden.",
+    fill: { "Korte naam": `TEST commandomenu ${Date.now()}`, "Inzet (euro)": "20000", "Uiterlijke beslisdatum": isoDate(60), "Wat meet je?": "betalende praktijken", "Doelwaarde": "15", "Minimumbedrag per klant": "49" },
+    select: { "Type project": "new_product", "Opdrachtgever": "none" },
+  });
+  await page.goto(ideaUrl);
+  await page.waitForLoadState("networkidle");
+
+  const menu = page.getByRole("dialog", { name: "Snel naar" });
+  const box = page.getByRole("combobox", { name: /Waar wil je heen/ });
+  await page.keyboard.press("Control+k");
+  await expect(menu).toBeVisible();
+  await expect(box).toBeFocused();
+  // Een oude vakterm vindt de nieuwe naam; Enter opent de eerste treffer.
+  await box.fill("test card");
+  await expect(page.getByRole("option").first()).toHaveText("Testen: nieuwe testkaart");
+  await page.keyboard.press("Enter");
+  await page.waitForURL(/experiments\?nieuw=1/);
+  await expect(menu).toBeHidden();
+
+  // Via de knop, pijltjes en Escape.
+  await page.getByRole("button", { name: /Snel naar/ }).click();
+  await expect(menu).toBeVisible();
+  await box.fill("bewijs");
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("option", { selected: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+
+  // "Zoek in dit dossier" opent het zoekvenster van het dossier.
+  await page.keyboard.press("Control+k");
+  await box.fill("zoek in dit dossier");
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Zoekterm", { exact: true })).toBeFocused();
+});

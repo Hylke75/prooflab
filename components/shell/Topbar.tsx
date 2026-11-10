@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { useShell } from "./ShellProvider";
+import { CommandMenuButton } from "./CommandMenu";
 import { truncateWords } from "@/lib/domain/truncate";
 
 // Lange titels in het kruimelpad (B1): afkappen op een woordgrens met "…", de volledige tekst als tooltip.
@@ -58,6 +59,7 @@ export function Topbar({
       </div>
       <div className="top-actions">
         {badge && <span className="demo-ribbon">{badge}</span>}
+        <CommandMenuButton />
         <Link className="round-btn help-link" href="/app/help" aria-label="Uitleg over ProofLab" title="Uitleg">
           <Icon name="info" />
         </Link>

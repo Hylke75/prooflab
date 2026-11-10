@@ -1457,3 +1457,6 @@ methode en catalogus naar "Hulp en methode"; vaktermen in gewone taal; daarna te
 - ✅ AI-varianten van de testpaginatekst: Overnemen / Aanpassen / Weggooien; voorgestelde alternatieven bij concurrenten: Weggooien.
 - ✅ Concept van de hele testkaart op dit apparaat, teruggezet na herladen, gewist na opslaan.
 - ✅ E2E `tests/e2e/eenvoud.spec.ts` uitgebreid.
+
+### Ronde 7 (10 november): commandomenu
+- ✅ Ctrl+K / ⌘K of "Snel naar…": alle pagina's en taken van het idee, andere ideeën, werkruimte en beheer (alleen eigenaren); zoekt ook op oude vaktermen ("learning card" vindt de leerkaart). Lijst en zoeken in `lib/domain/commands.ts` (unit-test `commands.test.ts`), component `components/shell/CommandMenu.tsx`, E2E in `eenvoud.spec.ts`.

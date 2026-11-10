@@ -66,8 +66,14 @@ export function DossierSearch({ ideaId }: { ideaId: string }) {
       e.preventDefault();
       open();
     };
+    // Ook te openen vanuit het commandomenu ("Zoek in dit dossier").
+    const onEvent = () => open();
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    window.addEventListener("prooflab:dossier-search", onEvent);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("prooflab:dossier-search", onEvent);
+    };
   }, [open]);
 
   // Zoeken met een korte vertraging na het typen; een antwoord op een oudere zoekterm wordt genegeerd.
