@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Why } from "@/components/ui/Why";
 import { ideaTasks, taskAfter } from "@/lib/domain/tasks";
 import { TaskFooter, TaskHeader } from "@/components/tasks/TaskHeader";
 import { Icon } from "@/components/Icon";
@@ -216,9 +217,10 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
       {canWrite && (
         <div className="card mt-18">
           <h2 className="as-h3" id="nieuwe-aanname">Aanname toevoegen</h2>
-          <ActionForm action={addAssumption.bind(null, id)} submitLabel="Toevoegen" resetOnSuccess>
+          <ActionForm action={addAssumption.bind(null, id)} submitLabel="Toevoegen" resetOnSuccess draftKey="aanname">
             <div className="form-line mt-12">
               <label htmlFor="as-st">Wat moet waar zijn?</label>
+              <Why>Een idee slaagt alleen als een paar dingen kloppen: klanten hebben het probleem, betalen deze prijs, zijn te bereiken. Door ze op te schrijven, zie je wat je moet testen.</Why>
               <input className="field" id="as-st" name="statement" placeholder={who ? `Bijv. ${who} stappen over van hun huidige werkwijze, omdat …` : "Bijv. De doelgroep stapt over van de huidige werkwijze, omdat …"} />
             </div>
             <div className="double-field">
@@ -230,6 +232,7 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
               </div>
               <div className="form-line">
                 <label htmlFor="as-imp">Belangrijkheid (5 = idee valt om)</label>
+                <Why>Begin met wat het idee onderuit haalt als het niet klopt. Belang 4 of 5 betekent: dit test je eerst.</Why>
                 <select className="field" id="as-imp" name="importance" defaultValue="4">
                   {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n}</option>)}
                 </select>

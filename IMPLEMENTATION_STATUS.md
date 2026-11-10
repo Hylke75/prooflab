@@ -1442,3 +1442,12 @@ methode en catalogus naar "Hulp en methode"; vaktermen in gewone taal; daarna te
 - ✅ Bronnen in één kolom en vaste volgorde; Marktpotentieel met optionele velden ingeklapt.
 - ✅ Testkaart: "Controleer je antwoorden" vóór opslaan.
 - ⬜ Voorstel volgende ronde: AI-voorstel per veld (overnemen/aanpassen/weggooien), automatisch opslaan met ongedaan maken, "Waarom vragen we dit?" per veld, foutoverzicht op alle formulieren.
+
+### Ronde 5 (10 november): ongedaan maken, concepten, uitleg per veld, foutoverzicht
+- ✅ `UndoDeleteButton`: ongedaan maken bij verwijderen van bron, bevinding, aanname en aanbieder.
+- ✅ `ActionForm draftKey`: concept op dit apparaat (localStorage, per pagina) voor bron, bevinding en aanname; gewist na opslaan.
+- ✅ `Why` en `Field why`: "Waarom vragen we dit?" bij elf kernvelden.
+- ✅ Foutoverzicht "Er is een probleem" met focus in elk formulier.
+- ✅ Leerkaart-voorstel: Overnemen / Aanpassen / Weggooien en zelf schrijven.
+- ✅ E2E `tests/e2e/eenvoud.spec.ts` (uitleg, concept, ongedaan maken).
+- ⬜ Nog open: hetzelfde voorstelblok voor AI-aannames, concurrenten en testkaarttekst; concepten voor de testkaart.

@@ -1,7 +1,8 @@
 "use client";
 
-import { cloneElement, createContext, isValidElement, startTransition, useActionState, useContext, useEffect, useRef } from "react";
+import { cloneElement, createContext, isValidElement, startTransition, useActionState, useContext, useEffect, useRef, useState } from "react";
 import { FormPendingOverlay, SavingOverlay } from "@/components/ui/SavingOverlay";
+import { Why } from "@/components/ui/Why";
 import { CopyButton } from "@/components/survey/CopyButton";
 
 // copy: een waarde (bijv. een link) die de gebruiker zelf kan kopiëren, naast de bevestiging.
@@ -49,6 +50,7 @@ export function ActionForm({
   noValidate = false,
   submitStyle,
   submitIcon,
+  draftKey,
 }: {
   action: (state: FormState, form: FormData) => Promise<FormState>;
   children: React.ReactNode;
@@ -64,11 +66,21 @@ export function ActionForm({
   noValidate?: boolean;
   submitStyle?: React.CSSProperties;
   submitIcon?: React.ReactNode;
+  // Voorstel "ProofLab eenvoudiger" (NN/g: automatisch bewaren): met een sleutel bewaart het formulier wat je typt als
+  // concept op dit apparaat en zet het terug na herladen. Na opslaan wordt het concept gewist. Alleen voor formulieren
+  // die iets nieuws toevoegen, niet voor formulieren die bestaande waarden bewerken.
+  draftKey?: string;
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(action, { error: null, ok: null });
   const ref = useRef<HTMLFormElement>(null);
+  const summaryRef = useRef<HTMLDivElement>(null);
+  const draft = useFormDraft(ref, draftKey);
   useEffect(() => {
     if (resetOnSuccess && state.ok && !state.error) ref.current?.reset();
+    if (state.ok && !state.error) draft.clear();
+    // GOV.UK-foutoverzicht: na een mislukte poging gaat de focus naar het overzicht, zodat je ziet wat er mis is.
+    if (state.error) summaryRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, resetOnSuccess]);
   const fieldErrors = state.error ? Object.entries(state.fieldErrors ?? {}) : [];
   const focusField = (name: string) => {
@@ -81,7 +93,8 @@ export function ActionForm({
       <FieldErrorsContext.Provider value={state.error ? state.fieldErrors : undefined}>{children}</FieldErrorsContext.Provider>
       <div className="form-feedback">
         {state.error && (
-          <div className="form-error" role="alert">
+          <div className="form-error" role="alert" ref={summaryRef} tabIndex={-1}>
+            {fieldErrors.length > 0 && <p style={{ margin: "0 0 4px", fontWeight: 700 }}>Er is een probleem</p>}
             <p style={{ margin: 0 }}>{state.error}</p>
             {fieldErrors.length > 0 && (
               <ul style={{ margin: "6px 0 0 18px", padding: 0, fontWeight: 400 }}>
@@ -109,6 +122,14 @@ export function ActionForm({
           {!pending && submitIcon ? <> {submitIcon}</> : null}
         </button>
         {footer}
+        {draftKey && draft.savedAt && (
+          <span className="tiny draft-note" role="status">
+            Concept bewaard op dit apparaat ({draft.savedAt}).{" "}
+            <button type="button" className="text-link" onClick={() => { ref.current?.reset(); draft.clear(); }}>
+              Concept wissen
+            </button>
+          </span>
+        )}
       </div>
       <SavingOverlay active={pending} label={pendingLabel} />
     </form>
@@ -133,6 +154,7 @@ export function Field({
   label,
   required = false,
   hint,
+  why,
   className = "form-line",
   labelClassName,
   children,
@@ -142,6 +164,8 @@ export function Field({
   label: React.ReactNode;
   required?: boolean;
   hint?: React.ReactNode;
+  // "Waarom vragen we dit?": korte uitleg die je zelf openklapt.
+  why?: React.ReactNode;
   // Standaard het patroon form-line; met className="" en labelClassName="field-label" het losse labelpatroon.
   className?: string;
   labelClassName?: string;
@@ -166,6 +190,7 @@ export function Field({
         {label}
         {required && <RequiredMark />}
       </label>
+      {why && <Why>{why}</Why>}
       {control}
       {error && <p className="field-error" id={errId} role="alert">{error}</p>}
       {hint && <p className="field-hint" id={hintId}>{hint}</p>}
@@ -241,4 +266,97 @@ export function ConfirmButton({ action, label, confirm, className = "btn white s
       <FormPendingOverlay />
     </form>
   );
+}
+
+// Concept van een formulier op dit apparaat (localStorage). Bewaart tekstvelden, keuzelijsten en vinkjes 0,6 s na het
+// typen; zet ze bij het laden terug in lege velden. Bestanden, wachtwoorden en verborgen velden nooit. Alles in
+// try/catch: zonder opslag (privévenster) werkt het formulier gewoon zonder concept.
+function useFormDraft(ref: React.RefObject<HTMLFormElement | null>, key?: string) {
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  // Per pagina (adres) en per formulier, zodat het concept van het ene idee niet in het andere opduikt.
+  const keyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const form = ref.current;
+    if (!form || !key) return;
+    const storageKey = `prooflab:concept:${window.location.pathname}:${key}`;
+    keyRef.current = storageKey;
+    const fields = () =>
+      [...form.elements].filter(
+        (el): el is HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement =>
+          (el instanceof HTMLInputElement && !["hidden", "file", "password", "submit", "button"].includes(el.type)) ||
+          el instanceof HTMLTextAreaElement ||
+          el instanceof HTMLSelectElement,
+      ).filter((el) => !!el.name);
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (raw) {
+        const data = JSON.parse(raw) as { at: string; values: Record<string, string | boolean> };
+        let restored = false;
+        for (const el of fields()) {
+          const v = data.values[el.name];
+          if (v === undefined) continue;
+          if (el instanceof HTMLInputElement && (el.type === "checkbox" || el.type === "radio")) {
+            if (el.type === "checkbox" && typeof v === "boolean") el.checked = v;
+            if (el.type === "radio" && typeof v === "string") el.checked = el.value === v;
+          } else if (typeof v === "string" && v !== "" && el.value === "") {
+            el.value = v;
+            restored = true;
+          }
+        }
+        // Na het terugzetten de melding tonen (buiten de effectronde, om een dubbele render te voorkomen).
+        if (restored) window.setTimeout(() => setSavedAt(data.at), 0);
+      }
+    } catch {
+      /* geen opslag beschikbaar */
+    }
+    let timer: number | undefined;
+    const save = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const values: Record<string, string | boolean> = {};
+        let any = false;
+        for (const el of fields()) {
+          if (el instanceof HTMLInputElement && el.type === "checkbox") values[el.name] = el.checked;
+          else if (el instanceof HTMLInputElement && el.type === "radio") {
+            if (el.checked) values[el.name] = el.value;
+          } else {
+            values[el.name] = el.value;
+            if (el.value.trim()) any = true;
+          }
+        }
+        try {
+          if (!any) {
+            window.localStorage.removeItem(storageKey);
+            setSavedAt(null);
+            return;
+          }
+          const at = new Date().toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+          window.localStorage.setItem(storageKey, JSON.stringify({ at, values }));
+          setSavedAt(at);
+        } catch {
+          /* geen opslag beschikbaar */
+        }
+      }, 600);
+    };
+    form.addEventListener("input", save);
+    form.addEventListener("change", save);
+    return () => {
+      window.clearTimeout(timer);
+      form.removeEventListener("input", save);
+      form.removeEventListener("change", save);
+    };
+  }, [ref, key]);
+  return {
+    savedAt,
+    clear: () => {
+      const storageKey = keyRef.current;
+      if (!storageKey) return;
+      try {
+        window.localStorage.removeItem(storageKey);
+      } catch {
+        /* geen opslag beschikbaar */
+      }
+      setSavedAt(null);
+    },
+  };
 }

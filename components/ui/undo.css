@@ -1,0 +1,11 @@
+/* Ongedaan maken (UndoDeleteButton) */
+.undo-delete{color:var(--color-risk-text);min-height:44px}
+.undo-bar{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:6px 12px;border-radius:var(--radius-pill);background:var(--color-surface);border:1px solid var(--color-border-strong);font-size:14px;color:var(--color-heading)}
+.undo-bar .text-link{min-height:36px;font-weight:700}
+[data-undo-item].is-deleting>*:not(:has(.undo-bar)){opacity:.45;text-decoration:line-through}
+@media(prefers-reduced-motion:no-preference){[data-undo-item]>*{transition:opacity var(--dur) ease-out}}
+/* Waarom vragen we dit? (Why) */
+.why{display:block;margin:2px 0 6px;font-weight:400}
+.why-toggle{background:none;border:0;padding:6px 0;min-height:44px;color:var(--color-accent-text);font:600 13px/18px var(--font-body);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.why-text{display:block;margin-top:2px;padding:8px 12px;border-radius:var(--radius-inner);background:var(--color-surface-soft);font-size:14px;line-height:21px;color:var(--color-heading)}
+.draft-note{display:inline-flex;flex-wrap:wrap;gap:4px;align-items:center;color:var(--color-text-muted)}

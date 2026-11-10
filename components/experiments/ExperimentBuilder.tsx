@@ -25,6 +25,7 @@ import {
 import { GO_RULE_DEFAULT_PROBABILITY } from "@/lib/domain/decision-rule-proposal";
 import { errorsPerTab, tabForField, testCardTabs, type TestCardTabKey } from "@/lib/domain/test-card-tabs";
 import { TabList, TabPanel, type TabItem } from "@/components/ui/Tabs";
+import { Why } from "@/components/ui/Why";
 import { SurveyPreview } from "@/components/experiments/SurveyPreview";
 import { CHANNELS } from "@/lib/domain/tracking";
 import { METHODS, type MethodVersion } from "@/lib/domain/method";
@@ -575,6 +576,7 @@ export function ExperimentBuilder({
           {/* Gebruikerstest C5: de hypothese als bewering, niet als vraag. */}
           <div className="form-line">
             <label htmlFor="tc-believe">Wij denken dat …<RequiredMark /></label>
+            <Why>Schrijf op wat je verwacht dat er gebeurt, als een bewering die kan mislukken. Alleen een bewering die kan mislukken, levert echt bewijs op.</Why>
             <textarea
               className="field"
               id="tc-believe"
@@ -592,7 +594,7 @@ export function ExperimentBuilder({
             )}
             <p className="field-hint" id="tc-believe-hint">Schrijf een bewering, geen vraag.</p>
           </div>
-          <div className="form-line"><label htmlFor="tc-target">Bij wie?<RequiredMark /></label><input className="field" id="tc-target" name="target_group" value={card.target_group} onChange={(e) => set("target_group", e.target.value)} {...aria("target_group")} />{fieldError("target_group")}</div>
+          <div className="form-line"><label htmlFor="tc-target">Bij wie?<RequiredMark /></label><Why>Een test zegt alleen iets over de groep die meedeed. Hoe preciezer de groep, hoe beter je weet voor wie de uitslag geldt.</Why><input className="field" id="tc-target" name="target_group" value={card.target_group} onChange={(e) => set("target_group", e.target.value)} {...aria("target_group")} />{fieldError("target_group")}</div>
           {v2 && <input type="hidden" name="decision_rule" value={activeRule} />}
         </TabPanel>
         <TabPanel idPrefix="tc" tabKey="criteria" active={activeTab === "criteria"}>
@@ -621,6 +623,7 @@ export function ExperimentBuilder({
           )}
           <section className="tc-step" aria-labelledby="tc-step1">
           <h3 id="tc-step1" className="tc-step-title"><span className="num">1</span> Wanneer is de test geslaagd?</h3>
+          <Why>Spreek de grens af vóór je de uitslag ziet. Achteraf vind je bijna elke uitslag &ldquo;goed genoeg&rdquo;; vooraf vastleggen voorkomt dat je jezelf voor de gek houdt.</Why>
           {v2 && (
           <fieldset disabled={locked} className="form-line" style={{ border: 0, padding: 0, margin: "0 0 15px" }}>
             <legend style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}><Term k="beslisregel">Beslisregel</Term></legend>
@@ -777,6 +780,7 @@ export function ExperimentBuilder({
             {/* B5: de deadline is een datum op het scherm; de database bewaart de maximale looptijd in dagen. */}
             <div className="form-line">
               <label htmlFor="tc-deadline">Deadline<RequiredMark /></label>
+              <Why>Een einddatum voorkomt dat een test eindeloos doorloopt tot de uitslag je bevalt. Op de deadline rond je af, ook als het aantal niet gehaald is.</Why>
               <input type="hidden" name="max_duration_days" value={card.max_duration_days} />
               <input
                 className="field num"

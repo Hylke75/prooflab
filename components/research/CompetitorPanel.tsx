@@ -4,9 +4,9 @@ import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { ActionForm, type FormState } from "@/components/ui/ActionForm";
 import { Drawer } from "@/components/ui/Drawer";
+import { UndoDeleteButton } from "@/components/ui/UndoDelete";
 import { COMPETITOR_KINDS, type CompetitorKind } from "@/lib/domain/labels";
 import { competitorRecheckDue, RECHECK_DAYS, recheckApplies } from "@/lib/domain/recheck";
-import { FormPendingOverlay } from "@/components/ui/SavingOverlay";
 import { isProposal, PROPOSAL_LABEL } from "@/lib/domain/competitor-proposals";
 
 export type CompetitorView = {
@@ -211,10 +211,9 @@ export function CompetitorPanel({
               )
             )}
             {canWrite && current && (
-              <form action={deleteActions[current.id]} className="mt-18">
-                <button className="text-link" style={{ color: "var(--color-risk-text)" }}>Verwijderen</button>
-                <FormPendingOverlay />
-              </form>
+              <div className="mt-18" data-undo-item>
+                <UndoDeleteButton key={current.id} action={deleteActions[current.id]} label="Aanbieder verwijderen" what="Aanbieder" />
+              </div>
             )}
       </Drawer>
     </>

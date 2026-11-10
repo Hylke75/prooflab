@@ -91,7 +91,7 @@ export function DecisionSelector({
           </button>
         ))}
       </div>
-      <Field className="" labelClassName="field-label" name="rationale" id="dec-why" label="Waarom? (komt in het rapport)" required hint="Minstens één zin (15 tekens).">
+      <Field className="" labelClassName="field-label" name="rationale" id="dec-why" label="Waarom? (komt in het rapport)" required hint="Minstens één zin (15 tekens)." why="Wie het rapport later leest, moet het besluit kunnen narekenen. Schrijf het belangrijkste bewijs op, en wat ertegen pleit.">
         <textarea className="field" rows={3} minLength={15} maxLength={2000} />
       </Field>
       {choice === "test_more" && (
