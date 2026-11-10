@@ -38,7 +38,7 @@ naast de nieuwe takenlijst.
 | 12 | Startpagina per taak: wat, hoe lang, wat heb je nodig (GOV.UK start page) | Taakkop met waarom, tijd en Wat jij doet / Wat AI kan | ✅ |
 | 13 | Gewone taal en vaste schrijfgids (Monzo) | Vaktermen vervangen (ronde 3); schrijfgids in DESIGN_DIFF_LOG #79 | ✅ |
 | 14 | Foutmeldingen met oorzaak, oplossing en vervolgstap (Stripe, GOV.UK error summary) | Elk formulier (ActionForm) toont bij fouten "Er is een probleem" met links naar de velden en zet de focus daarop | ✅ ronde 5 |
-| 15 | Sneltoetsen en commandomenu voor ervaren gebruikers (Linear) | Zoeken met "/" bestaat; commandomenu later | ⬜ later |
+| 15 | Sneltoetsen en commandomenu voor ervaren gebruikers (Linear) | Commandomenu met Ctrl+K / ⌘K of de knop "Snel naar…": elke pagina, taak en idee op naam (ook op oude vaktermen), plus "Zoek in dit dossier" ("/") | ✅ ronde 7 |
 
 ## Bronnen
 
