@@ -293,7 +293,8 @@ describe("coach: canvas bijwerken na een besluit", () => {
 describe("plaats in de app", () => {
   it("/model is een tabblad onder stap 2 Aannames, met notities van die stap", () => {
     expect(stepForPath("/model")).toBe("assumptions");
-    expect(STEPS.find((s) => s.key === "assumptions")?.tabs?.map((t) => t.path)).toEqual(["/assumptions", "/model"]);
+    expect(stepForPath("/businesscase")).toBe("assumptions");
+    expect(STEPS.find((s) => s.key === "assumptions")?.tabs?.map((t) => t.path)).toEqual(["/assumptions", "/model", "/businesscase"]);
     // Ook opdrachtgevers zien het tabblad (alleen-lezen).
     expect(STEPS.find((s) => s.key === "assumptions")?.tabs?.some((t) => t.consultantOnly)).toBe(false);
     expect(noteStepForSection("/model")).toBe("assumptions");

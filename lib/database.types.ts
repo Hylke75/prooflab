@@ -3705,6 +3705,38 @@ export type Database = {
           },
         ]
       }
+      business_cases: {
+        Row: {
+          idea_id: string
+          inputs: Json
+          updated_at: string
+          updated_by: string | null
+          version: number
+        }
+        Insert: {
+          idea_id: string
+          inputs?: Json
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Update: {
+          idea_id?: string
+          inputs?: Json
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_cases_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: true
+            referencedRelation: "ideas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       unit_economics: {
         Row: {
           annual_churn_pct: number | null

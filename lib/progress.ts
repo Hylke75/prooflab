@@ -22,6 +22,7 @@ import { decisionConfirmation, decisionSettled } from "@/lib/domain/decision-con
 import { isExploratory } from "@/lib/domain/customer-research";
 import { loadDecisionRule } from "@/lib/decision-rule-data";
 import { withoutThemeOnly } from "@/lib/theme-filter";
+import { businessCaseState } from "@/lib/business-case-schema";
 
 export type AssumptionWithEvidence = {
   id: string;
@@ -411,7 +412,7 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
   const decisionRule = loadDecisionRule(ideaId);
   // B0: waarnemingen uit oefen- of niet-aangegeven gesprekken tellen niet mee.
   const realObs = realObservationFilter(await loadRealInterviewIds(ideaId));
-  const [questions, claims, verified, weak, competitors, alternatives, segments, experiments, cards, checks, decisions, behaviour, sizing, reports, ideaRow] = await Promise.all([
+  const [questions, claims, verified, weak, competitors, alternatives, segments, experiments, cards, checks, decisions, behaviour, sizing, reports, businessCaseRow, ideaRow] = await Promise.all([
     loadQuestionsWithDecisive(supabase, ideaId),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId),
     supabase.from("claims").select("id", count).eq("idea_id", ideaId).eq("status", "verified"),
@@ -427,6 +428,8 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     supabase.from("observations").select("id", count).eq("idea_id", ideaId).eq("is_behaviour", true).eq("is_synthetic", false).or(realObs),
     supabase.from("sizing_factors").select("key, claims(status)").eq("idea_id", ideaId).eq("key", "base_count"),
     loadReportMeta(ideaId),
+    // Businesscase: zonder de migratie 20261120090000_business_case.sql geeft dit een fout en geldt "niet begonnen".
+    supabase.from("business_cases").select("inputs").eq("idea_id", ideaId).maybeSingle(),
     // B1: zonder opdrachtgever wacht een besluit niet op bevestiging.
     supabase.from("ideas").select("client_id").eq("id", ideaId).maybeSingle(),
   ]);
@@ -469,6 +472,7 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
     hasAlternatives: (alternatives.count ?? 0) > 0,
     segments: segments.count ?? 0,
     sizingEstablished: (sizing.data ?? []).some((f) => f.claims && ["verified", "estimate"].includes(f.claims.status)),
+    businessCase: businessCaseState(businessCaseRow.error ? null : businessCaseRow.data?.inputs),
     assumptions: assumptions.length,
     assumptionsWithoutEvidence: assumptions.filter((a) => a.evidence === 0).length,
     untestedCritical: assumptions.filter((a) => a.importance >= 4 && a.status === "untested").length,

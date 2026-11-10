@@ -39,6 +39,7 @@ export function buildCommands({
       ["risicokaart", "Aannames: risicokaart", "/assumptions?stap=kiezen", "belangrijkste kiezen hoofdtest"],
       ["beslisregel", "Aannames: beslisregel", "/assumptions?stap=regel#beslisregel", "go-regel doorgaan"],
       ["model", "Aannames: businessmodel", "/model", "canvas propositie"],
+      ["businesscase", "Aannames: reken je idee door (businesscase)", "/businesscase", "rendabel winst omzet kosten investering startgeld startkapitaal quitte break-even capex scenario"],
       ["testen", "Testen: je tests", "/experiments", "experimenten bord"],
       ["testkaart", "Testen: nieuwe testkaart", "/experiments?nieuw=1", "test card testplan experiment opzetten"],
       ["geleerd", "Besluit: wat heb je geleerd?", "/evidence?stap=geleerd", "leerkaart learning card"],

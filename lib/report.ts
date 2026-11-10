@@ -1,3 +1,4 @@
+import type { BusinessCaseReport } from "@/lib/domain/business-case";
 import "server-only";
 import { CLAIM_STATUS, COMPETITOR_KINDS, DECISIONS, DMU_ROLES, EVIDENCE_TYPES, SOURCE_TYPES, type ClaimStatus, type CompetitorKind, type DecisionAction, type DmuRole, type EvidenceType, type SourceType } from "@/lib/domain/labels";
 import { experimentTypeLabel } from "@/lib/domain/experiment-catalog";
@@ -137,6 +138,8 @@ export function buildSnapshot(d: Dossier, meta: { orgName: string; createdBy: st
       originWarnings: s.consistency.warnings,
     })),
     unit: d.unit,
+    // Businesscase (vanaf 20 november; oudere rapporten hebben dit veld niet).
+    businessCase: d.businessCase as BusinessCaseReport | null | undefined,
     assumptions: d.assumptions.map((a) => {
       const p = d.probabilities.find((x) => x.id === a.id);
       return {
