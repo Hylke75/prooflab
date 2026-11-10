@@ -102,10 +102,11 @@ export function TaskFooter({ ideaId, next, nextLabel }: { ideaId: string; next: 
 }
 
 // De drie vaste labels voor herkomst. Alleen "Gemeten bewijs" telt als bewijs.
-export type ProofKind = "ai" | "rules" | "confirmed" | "measured";
+export type ProofKind = "ai" | "rules" | "template" | "confirmed" | "measured";
 const PROOF: Record<ProofKind, { label: string; pill: string }> = {
   ai: { label: "AI-voorstel", pill: "blue" },
   rules: { label: "Berekend voorstel", pill: "gray" },
+  template: { label: "Voorstel uit de standaardset", pill: "gray" },
   confirmed: { label: "Door jou bevestigd", pill: "orange" },
   measured: { label: "Gemeten bewijs", pill: "green" },
 };

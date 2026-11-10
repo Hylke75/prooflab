@@ -1451,3 +1451,9 @@ methode en catalogus naar "Hulp en methode"; vaktermen in gewone taal; daarna te
 - ✅ Leerkaart-voorstel: Overnemen / Aanpassen / Weggooien en zelf schrijven.
 - ✅ E2E `tests/e2e/eenvoud.spec.ts` (uitleg, concept, ongedaan maken).
 - ⬜ Nog open: hetzelfde voorstelblok voor AI-aannames, concurrenten en testkaarttekst; concepten voor de testkaart.
+
+### Ronde 6 (10 november): voorstellen per stuk en concept van de testkaart
+- ✅ Voorgestelde aannames (origin `ai`/`template`): Overnemen (wordt `manual`), Aanpassen (tekst wijzigen en overnemen), Weggooien (ongedaan te maken) en Alles overnemen; melding op de risicokaart.
+- ✅ AI-varianten van de testpaginatekst: Overnemen / Aanpassen / Weggooien; voorgestelde alternatieven bij concurrenten: Weggooien.
+- ✅ Concept van de hele testkaart op dit apparaat, teruggezet na herladen, gewist na opslaan.
+- ✅ E2E `tests/e2e/eenvoud.spec.ts` uitgebreid.

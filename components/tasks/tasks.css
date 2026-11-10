@@ -80,3 +80,7 @@
 .check-row-item .text-link{min-height:44px;display:inline-flex;align-items:center}
 .muted-text{color:var(--color-text-muted)}
 @media(max-width:560px){.check-row-item{grid-template-columns:minmax(0,1fr) auto}.check-row-item dd:nth-of-type(1){grid-column:1/-1;grid-row:2}}
+
+/* Voorstellen per stuk overnemen / aanpassen / weggooien */
+.proposal-list{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:10px}
+.proposal-item{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border:1.5px dashed var(--color-border-strong);border-radius:var(--radius-inner);background:var(--color-surface)}

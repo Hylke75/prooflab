@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useActionState, useMemo, useRef, useState, useTransition } from "react";
+import { startTransition, useActionState, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { RequiredMark, type FormState } from "@/components/ui/ActionForm";
 import { Term } from "@/components/ui/Term";
 import { SavingOverlay } from "@/components/ui/SavingOverlay";
@@ -402,6 +402,75 @@ export function ExperimentBuilder({
     }),
     ...(surveyIssues.length ? { survey: "Maak de enquête eerst compleet (zie de meldingen bij de vragen)." } : {}),
   };
+  // Voorstel "ProofLab eenvoudiger" (NN/g: automatisch bewaren): de testkaart is lang, dus wat je invult blijft als
+  // concept op dit apparaat staan (per idee), ook na herladen of per ongeluk wegklikken. Alleen bewaard zodra je iets
+  // verandert; teruggezet in één keer, samen met de sleutel van testtype en aanname, zodat niets wordt overschreven.
+  // Vergrendelde drempels zet je na terugzetten opnieuw vast. Na opslaan wordt het concept gewist.
+  const draftSnap = { assumptionId, tier, type, title, card, page, guide, successCount, rule, recruitmentChoice, channels, reach, perWeek, prices, successMetric, extraSteps };
+  const draftJson = JSON.stringify(draftSnap);
+  const firstSnap = useRef<string | null>(null);
+  const restoreDone = useRef(false);
+  const [draftInfo, setDraftInfo] = useState<{ at: string; restored: boolean } | null>(null);
+  const draftStorageKey = () => `prooflab:testkaart:${window.location.pathname}`;
+  useEffect(() => {
+    if (restoreDone.current) return;
+    restoreDone.current = true;
+    try {
+      const raw = window.localStorage.getItem(draftStorageKey());
+      if (!raw) return;
+      const d = JSON.parse(raw) as { at: string; v: typeof draftSnap };
+      const v = d.v;
+      if (!v || !assumptions.some((a) => a.id === v.assumptionId) || !options[v.tier] || options[v.tier].type !== v.type) return;
+      window.setTimeout(() => {
+        setAssumptionId(v.assumptionId);
+        setTier(v.tier);
+        setLastKey(`${v.type}|${v.assumptionId}`);
+        setTitle(v.title);
+        setTitleTouched(true);
+        setCard(v.card);
+        setPage(v.page);
+        setGuide(v.guide);
+        setSuccessCount(v.successCount);
+        setRule(v.rule);
+        setRecruitment(v.recruitmentChoice);
+        setChannels(v.channels);
+        setReach(v.reach);
+        setPerWeek(v.perWeek);
+        setPrices(v.prices);
+        setSuccessMetric(v.successMetric);
+        setExtraSteps(v.extraSteps);
+        setDraftInfo({ at: d.at, restored: true });
+      }, 0);
+    } catch {
+      /* geen opslag beschikbaar */
+    }
+    // Alleen bij het openen; de waarden hierboven zijn de beginstand.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (firstSnap.current === null) {
+      firstSnap.current = draftJson;
+      return;
+    }
+    if (draftJson === firstSnap.current) return;
+    const t = window.setTimeout(() => {
+      try {
+        const at = new Date().toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+        window.localStorage.setItem(draftStorageKey(), JSON.stringify({ at, v: JSON.parse(draftJson) }));
+        setDraftInfo((cur) => ({ at, restored: cur?.restored ?? false }));
+      } catch {
+        /* geen opslag beschikbaar */
+      }
+    }, 800);
+    return () => window.clearTimeout(t);
+  }, [draftJson]);
+  const clearDraft = () => {
+    try {
+      window.localStorage.removeItem(draftStorageKey());
+    } catch {
+      /* geen opslag beschikbaar */
+    }
+  };
   // Opslaan (B1a): één knop, nooit uitgeschakeld. Eerst de controle op het scherm; bij fouten geen verzoek, wel
   // een melding bij elk veld en een samenvatting bij de knop. De server controleert hetzelfde nog een keer.
   const [saveState, saveAction, saving] = useActionState<SaveState, FormData>(action, { error: null });
@@ -438,6 +507,7 @@ export function ExperimentBuilder({
     const first = orderedErrors(liveErrors)[0];
     if (first) return focusField(first.field);
     const fd = new FormData(e.currentTarget);
+    clearDraft();
     startTransition(() => saveAction(fd));
   };
   const fieldError = (f: string) => (shown[f] ? <p className="field-error" id={`err-${f}`} role="alert">{shown[f]}</p> : null);
@@ -493,6 +563,21 @@ export function ExperimentBuilder({
     <>
       {/* Voorstel "ProofLab eenvoudiger": waar je bent in de testkaart, als genummerde stappen. Panelen blijven gemount
           (hidden), zodat niets verloren gaat als je terug- of vooruitgaat. */}
+      {draftInfo && (
+        <p className="tiny draft-note" role="status" style={{ margin: "0 0 8px" }}>
+          {draftInfo.restored ? `Je concept van ${draftInfo.at} is teruggezet.` : `Concept bewaard op dit apparaat (${draftInfo.at}).`}{" "}
+          <button
+            type="button"
+            className="text-link"
+            onClick={() => {
+              clearDraft();
+              window.location.reload();
+            }}
+          >
+            Opnieuw beginnen
+          </button>
+        </p>
+      )}
       <p className="tc-step-count" id="tc-steps" aria-live="polite">
         Stap {stepIndex + 1} van {tabs.length}: <strong>{tabs[stepIndex].label}</strong>
       </p>
@@ -1128,9 +1213,30 @@ export function ExperimentBuilder({
                               {[...v.ai_honesty_notes, ...v.warnings].map((w) => <li key={w}>Let op: {w}</li>)}
                             </ul>
                           )}
-                          <button type="button" className="btn white sm mt-8" onClick={() => setPage({ ...page, headline: v.headline, subline: v.subline, offer: v.offer })}>
-                            Neem variant {i + 1} over
-                          </button>
+                          {/* Microsoft HAX G8/G9: per variant overnemen, aanpassen (overnemen en meteen bewerken) of weggooien. */}
+                          <div className="row mt-8" role="group" aria-label={`Wat doe je met variant ${i + 1}?`} style={{ gap: 8, flexWrap: "wrap" }}>
+                            <button type="button" className="btn white sm" onClick={() => setPage({ ...page, headline: v.headline, subline: v.subline, offer: v.offer })}>
+                              Neem variant {i + 1} over
+                            </button>
+                            <button
+                              type="button"
+                              className="btn white sm"
+                              onClick={() => {
+                                setPage({ ...page, headline: v.headline, subline: v.subline, offer: v.offer });
+                                setTab("page");
+                                requestAnimationFrame(() => document.getElementById("pg-head")?.focus());
+                              }}
+                            >
+                              Aanpassen
+                            </button>
+                            <button
+                              type="button"
+                              className="btn white sm"
+                              onClick={() => setVariants((cur) => (cur ? { ...cur, variants: cur.variants.filter((_, k) => k !== i) } : cur))}
+                            >
+                              Weggooien
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
