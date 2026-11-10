@@ -360,6 +360,20 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 {r.unit.missing.length ? ` Nog onbekend: ${r.unit.missing.join(", ")}.` : ""}
               </p>
             )}
+            {r.businessCase && (
+              <div className="mt-18">
+                <h4>Businesscase: {r.businessCase.verdict.toLowerCase()}</h4>
+                <p>{r.businessCase.sentence}</p>
+                <table className="table">
+                  <thead><tr><th>Scenario</th><th>Omzet jaar 1</th><th>Resultaat jaar {r.businessCase.years}</th><th>Quitte vanaf</th><th>Startgeld nodig</th></tr></thead>
+                  <tbody>{r.businessCase.scenarios.map((s) => <tr key={s.label}><td>{s.label}</td><td className="num">{eur(s.revenueYear1)}</td><td className="num">{eur(s.resultLastYear)}</td><td>{s.breakEven}</td><td className="num">{eur(s.startCapital)}</td></tr>)}</tbody>
+                </table>
+                <p className="tiny mt-8">Betrouwbaarheid: {r.businessCase.reliability}.{r.businessCase.drivers.length ? ` Weegt het zwaarst: ${r.businessCase.drivers.join("; ")}.` : ""}</p>
+                {r.businessCase.warnings.length > 0 && <p className="tiny mt-8">Let op: {r.businessCase.warnings.join(" ")}</p>}
+                {r.businessCase.missing.length > 0 && <p className="tiny mt-8">Nog onbekend: {r.businessCase.missing.join(", ").toLowerCase()}.</p>}
+                <p className="tiny mt-8">Een businesscase is een berekening met aannames, geen voorspelling en geen bewijs. Conservatief en optimistisch zijn vaste afwijkingen van het realistische scenario.</p>
+              </div>
+            )}
           </section>
 
           <section className="report-section">

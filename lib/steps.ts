@@ -32,6 +32,7 @@ export const STEPS: readonly StepDef[] = [
     tabs: [
       { path: "/assumptions", label: "Aannamekaart" },
       { path: "/model", label: "Businessmodel" },
+      { path: "/businesscase", label: "Businesscase" },
     ],
   },
   { key: "test", number: 3, label: STEP_LABELS.test, icon: "flask", path: "/experiments" },

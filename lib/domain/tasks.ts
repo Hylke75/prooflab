@@ -20,6 +20,7 @@ export type TaskKey =
   | "assumptions-write"
   | "assumptions-primary"
   | "assumptions-rule"
+  | "assumptions-businesscase"
   | "test-plan"
   | "test-run"
   | "test-learning"
@@ -189,6 +190,23 @@ export function ideaTasks(p: IdeaProgress): TaskList {
       why: d.assumptions === 0 ? "Schrijf eerst je aannames op." : d.criticalWithPrimaryTest > 0 ? "Minstens één kritieke aanname heeft een hoofdtest." : "Wijs bij een kritieke aanname een hoofdtest aan.",
       path: "/assumptions?stap=kiezen",
       me: "Kiezen welke aanname het idee onderuit haalt als hij niet klopt.",
+      ai: null,
+    },
+    {
+      key: "assumptions-businesscase",
+      time: "± 10 min",
+      phase: "assumptions",
+      label: "Reken je idee door",
+      status: p.businessCase === "calculated" ? "done" : p.businessCase === "started" ? "busy" : "todo",
+      why:
+        p.businessCase === "calculated"
+          ? "Omzet, kosten en resultaat zijn doorgerekend."
+          : p.businessCase === "started"
+            ? "Je businesscase is begonnen; vul verder in voor een eerste oordeel."
+            : "Nog niet doorgerekend: is het idee rendabel, en hoeveel startgeld is nodig?",
+      path: "/businesscase",
+      optional: true,
+      me: "In gewone taal invullen hoe je geld verdient, wat het kost en wat je vooraf moet investeren.",
       ai: null,
     },
     ...(rulePossible

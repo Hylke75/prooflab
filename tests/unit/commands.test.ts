@@ -31,6 +31,8 @@ describe("commandomenu", () => {
     expect(filterCommands(list, "REALITY")[0].id).toBe("idee-check");
     expect(filterCommands(list, "enquete")[0].id).toBe("idee-klantonderzoek");
     expect(filterCommands(list, "rapport")[0].id).toBe("idee-rapport");
+    expect(filterCommands(list, "break-even")[0].id).toBe("idee-businesscase");
+    expect(filterCommands(list, "startkapitaal")[0].id).toBe("idee-businesscase");
     expect(filterCommands(list, "fysio")[0].label).toBe("Open idee: Fysio no-shows");
     expect(filterCommands(list, "xyzzy")).toEqual([]);
     expect(filterCommands(list, "")).toHaveLength(list.length);

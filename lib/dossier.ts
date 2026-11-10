@@ -5,6 +5,8 @@ import { PROPOSAL_REFERENCE_PREFIX } from "@/lib/domain/reference-proposal";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadAssumptions, rankAssumptions } from "@/lib/progress";
 import { experimentMetrics } from "@/lib/experiment-metrics";
+import { parseStoredInputs } from "@/lib/business-case-schema";
+import { businessCaseReport } from "@/lib/domain/business-case";
 import { breakEvenRevenue, computeSizing, computeUnitEconomics, factorConsistency, SCENARIO_LABELS, simulateSizing, type ScenarioKind, type SizingModel } from "@/lib/domain/sizing";
 import { explainContribution } from "@/lib/domain/evidence";
 import { dossierLabel, type LadderObservation } from "@/lib/domain/dossier-label";
@@ -22,7 +24,7 @@ import { countsAsEvidence, realInterviewIds, withPracticeFlag } from "@/lib/doma
 export async function loadDossier(idea: Idea) {
   const supabase = await supabaseServer();
   const id = idea.id;
-  const [questions, claims, competitors, segments, scenarios, ue, experiments, interviews, observations, cards, checks, decisions, members, client, runs, ai, aiInterviews] =
+  const [questions, claims, competitors, segments, scenarios, ue, experiments, interviews, observations, cards, checks, decisions, members, client, runs, ai, aiInterviews, businessCaseRow] =
     await Promise.all([
       supabase.from("research_questions").select("*").eq("idea_id", id).order("position"),
       supabase
@@ -47,6 +49,8 @@ export async function loadDossier(idea: Idea) {
       supabase.from("ai_runs").select("purpose, model, prompt_version, cost_usd, outcome, created_at").eq("idea_id", id),
       // AI-gemodereerde interviews (apart gelabeld en geteld). Zonder de migratie bestaat de kolom niet: dan geen.
       supabase.from("interviews").select("id").eq("idea_id", id).eq("ai_moderated", true).then((r) => (r.error ? [] : (r.data ?? []).map((x) => x.id))),
+      // Businesscase. Zonder de migratie 20261120090000_business_case.sql bestaat de tabel niet: dan geen.
+      supabase.from("business_cases").select("inputs").eq("idea_id", id).maybeSingle().then((r) => (r.error ? null : (r.data?.inputs ?? null))),
     ]);
 
   const assumptions = rankAssumptions(await loadAssumptions(id));
@@ -197,6 +201,17 @@ export async function loadDossier(idea: Idea) {
       .filter((x): x is { verdict: string; channels: string[]; endedOn: string | null } => !!x),
   });
 
+  // Businesscase: samenvatting voor rapport en realiteitscheck, met de haalbare markt (realistisch) als controle.
+  const storedCase = businessCaseRow ? parseStoredInputs(businessCaseRow) : null;
+  const realisticSizing = sizing.find((x) => x.kind === "realistic")?.result;
+  const businessCase = storedCase
+    ? businessCaseReport(storedCase, {
+        somCount: realisticSizing?.countsKnown.som ? realisticSizing.somCount : null,
+        somRevenue: realisticSizing?.countsKnown.som && realisticSizing.missing.length === 0 ? realisticSizing.somRevenue : null,
+        intakePricePerYear: null,
+      })
+    : null;
+
   return {
     idea,
     clientName: client.data?.name ?? null,
@@ -208,6 +223,7 @@ export async function loadDossier(idea: Idea) {
     sizing,
     unitEconomics: ue.data,
     unit,
+    businessCase,
     assumptions,
     experiments: expList.map((e, i) => ({ ...e, metrics: metrics[i] })),
     interviews: interviews.data ?? [],

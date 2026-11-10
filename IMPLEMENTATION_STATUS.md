@@ -176,7 +176,7 @@ Alles deterministisch (geen LLM), met unit-tests in `tests/unit/quantify.test.ts
 - ✅ Automatische maandelijkse concurrentiecheck (zie "Ronde 8"); ⬜ verschillenrapport tussen onderzoeksversies
 - 🟡 Betalingen/aanbetalingen: terugbetaalbare aanbetalingen via Mollie gebouwd ("Fase 2 · punt 4"); Stripe niet; live gebruik na juridische check
 - ✅ Server-side PDF-rendering (`@react-pdf/renderer`, zie "Achtergrondtaken en PDF")
-- ⬜ Gebruiksniveaus (begeleid / verdiepend / expert)
+- 🟡 Gebruiksniveaus: Snel en Grondig bestaan; de businesscase gebruikt ze als "snel (± 10 min)" en "uitgebreid" (zie "Ronde 9"); begeleid / verdiepend / expert als drie niveaus niet
 
 ## Onderzoeksmethodes en AI (Voorspelkracht v1, hoofdstuk 7)
 
@@ -1466,3 +1466,18 @@ methode en catalogus naar "Hulp en methode"; vaktermen in gewone taal; daarna te
 - ✅ Een verschil wordt een "Let op"-tip met wat er veranderde (één per aanbieder per maand); de coach sluit die tips niet zelf.
 - ✅ Gedeelde code `lib/competitor-recheck.ts`; pure keuze en tiptekst in `lib/domain/recheck.ts` (unit-test `auto-recheck.test.ts`); E2E in `eenvoud.spec.ts` (alleen met lokale database).
 - Bewust: geen tijdschema zonder gebruiker. Een dossier dat niemand opent, wordt niet gecontroleerd; dat scheelt verzoeken en vraagt geen nieuwe databasefuncties of service-sleutel. Een echte nachtelijke controle kan later via de takenwachtrij met eigen databasefuncties.
+
+### Ronde 9 (10 november): businesscase voor wie geen financiële kennis heeft
+Ontwerp en analyse: `docs/ONTWERP_BUSINESSCASE.md` (fase 1, akkoord gegeven). Gebouwd in deze ronde:
+- ✅ Nieuwe pagina **Aannames › Businesscase** (`/app/ideas/[id]/businesscase`), ook als taak "Reken je idee door" (optioneel, fase Aannames), in het commandomenu en als tabblad.
+- ✅ Acht korte vragen, één tegelijk, terug kan altijd: idee (uit de intake) → hoe verdien je geld (abonnement, verkoop per stuk, dienst/uur, verhuur, subsidie/fonds/donaties, overig; voorstel op basis van je omschrijving) → verkoop en prijs (conditioneel per soort; intakeprijs voorgevuld) → aanloop → kosten per verkoop → vaste kosten → investeringen (suggestielijsten zonder bedragen) → je vraag.
+- ✅ Uitkomst naast de vragen vanaf de eerste omzet: oordeel (te weinig gegevens / alleen omzet / nog niet haalbaar / krap / lijkt haalbaar), omzet jaar 1, resultaat, quitte-moment, startgeld, en wat nog ontbreekt.
+- ✅ Overzicht met vijf blokken: hoe haalbaar, wat nu, wat moet nog, risico's (controles + "wat weegt het zwaarst"), wat weten we al. Drie scenario's naast elkaar; conservatief en optimistisch zijn zichtbare, aanpasbare afwijkingen van realistisch. Cijfers per jaar; in Grondig ook per maand, 5 jaar, groei, wervingskosten, afschrijvingstermijn en prijsafwijking.
+- ✅ Elk getal heeft een label: eigen schatting, bevestigd (alleen met herkomst) of voorstel (telt pas na overnemen). Geen verzonnen bedragen.
+- ✅ Automatisch bewaren (0,7 s na de laatste wijziging, met status en waarschuwing bij weggaan); strikte controle in de browser én op de server (`lib/business-case-schema.ts`).
+- ✅ Rekenkern `lib/domain/business-case.ts` (maandmodel, puur en deterministisch). De bestaande formules (marktomvang, simulatie, financiële haalbaarheid) zijn **ongewijzigd** en nu vastgelegd met `tests/unit/financial-golden.test.ts`.
+- ✅ Koppelingen: startwaarden uit Financiële haalbaarheid; bij opslaan schrijft de businesscase de overeenkomende velden terug (vaste kosten, investering, en bij één abonnement prijs, verloop, wervingskosten; marge als alle kosten per verkoop bekend zijn). De haalbare markt en de intakeprijs zijn controles.
+- ✅ Rapport (web en PDF): onderdeel "Businesscase" in hoofdstuk 05, met oordeel, drie scenario's, betrouwbaarheid, zwaarste aannames, waarschuwingen en ontbrekende gegevens. Oudere rapporten zijn ongewijzigd.
+- ✅ Database: één nieuwe tabel `business_cases` (migratie `20261120090000_business_case.sql`, RLS zoals `unit_economics`, audit). Zonder migratie werkt de pagina met een melding, zonder opslaan.
+- ✅ Tests: `business-case.test.ts` (16), `financial-golden.test.ts` (5); E2E `businesscase.spec.ts` met drie fictieve cases (evenementenlocatie, nieuwe dienst, stichting): onvolledige en onrealistische invoer, scenario aanpassen, opslaan en opnieuw openen, koppeling met Financiële haalbaarheid, telefoonbreedte.
+- ⬜ Nog niet: AI-voorstellen bij het invullen (bewust nog niet: eerst regels, AI alleen als gelabeld voorstel), knop die een zwaarwegende schatting direct als aanname aanmaakt (nu een link naar Aannames), financiering (lening, rente).

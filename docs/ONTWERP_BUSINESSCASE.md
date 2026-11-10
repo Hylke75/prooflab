@@ -1,6 +1,6 @@
 # Businesscase eenvoudiger maken — fase 1: analyse en voorstel
 
-Status: **voorstel, wacht op akkoord** (10 november 2026). Er is nog niets gebouwd of aan de database veranderd.
+Status: **akkoord gegeven; eerste bouwronde klaar** (10 november 2026). Wat gebouwd is en wat nog openstaat: IMPLEMENTATION_STATUS.md, "Ronde 9".
 
 Uitgangspunt van de opdracht: iemand zonder financiële kennis maakt zelfstandig een professionele businesscase. De
 berekeningen blijven even uitgebreid en betrouwbaar; het systeem vangt de complexiteit op.

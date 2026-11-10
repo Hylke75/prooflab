@@ -4,7 +4,7 @@ import type { IconName } from "@/components/Icon";
 import type { SprintStage } from "@/lib/domain/sprint";
 import { followUpFor, forecastDue, MOMENT_LABELS, openMomentFor, type ForecastState } from "@/lib/domain/forecast";
 
-export type CoachPage = "dashboard" | "overview" | "intake" | "research" | "integrations" | "assumptions" | "model" | "experiments" | "evidence" | "report" | "outcome" | "forecasts" | "clients" | "other";
+export type CoachPage = "dashboard" | "overview" | "intake" | "research" | "integrations" | "assumptions" | "model" | "businesscase" | "experiments" | "evidence" | "report" | "outcome" | "forecasts" | "clients" | "other";
 
 export type ExperimentSummary = {
   id: string;
@@ -28,6 +28,8 @@ export type IdeaProgress = {
   hasAlternatives: boolean;
   segments: number;
   sizingEstablished: boolean;
+  // Businesscase: "calculated" = omzet en vaste kosten zijn ingevuld, "started" = begonnen. Ontbreekt = niet begonnen.
+  businessCase?: "none" | "started" | "calculated";
   assumptions: number;
   assumptionsWithoutEvidence: number;
   untestedCritical: number; // importance >= 4, still untested
@@ -78,6 +80,7 @@ const PAGE_COPY: Record<CoachPage, [string, string]> = {
   integrations: ["Hoor de klant in zijn eigen woorden.", "Reviews, forumdraden, enquête-antwoorden en LinkedIn-reacties laten zien welke problemen klanten zelf noemen. Haal ze hier binnen; ze verschijnen bij Doelgroepen."],
   assumptions: ["Begin met je grootste risico.", "Welke aanname zou het hele idee onderuit halen als die niet klopt? Daar beginnen we. Kies er hooguit drie om nu te testen; de rest wacht op later."],
   model: ["Een vol canvas is geen bewijs.", "Elk vak is een aanname. Koppel de onderdelen waar het model op rust aan een aanname en toets de riskantste eerst; zo zie je welk deel getoetst, onderbouwd of nog geloof is."],
+  businesscase: ["Eerst een ruwe rekensom, dan verfijnen.", "Je hoeft niet alles te weten. Vul in wat je verwacht; ProofLab rekent mee, zegt wat ontbreekt en welk getal het zwaarst weegt."],
   experiments: ["Test gedrag, geen complimenten.", "Een enthousiaste reactie is prettig. Een echte afspraak of betaling zegt vaak meer."],
   evidence: ["Wat zegt dit bewijs echt?", "Het doel is leren, niet gelijk krijgen. Kijk ook naar wat een resultaat niet aantoont."],
   report: ["Maak je verhaal controleerbaar.", "Goede directierapporten maken duidelijk wat bekend is, wat geschat is en welke beslissing volgt."],
@@ -96,6 +99,7 @@ const CLIENT_COPY: Record<CoachPage, [string, string, string]> = {
   research: ["Wat weten we over de markt?", "Elke bevinding verwijst naar een bron met een letterlijk citaat. ProofLab controleert dat citaat zelf.", "Een bevinding met 'onvoldoende bewijs' is een open vraag, geen feit. Een AI-tekst telt nooit als bron."],
   assumptions: ["Wat moet waar zijn?", "De risicokaart zet af hoe belangrijk een aanname is tegen hoeveel bewijs er al voor is.", "Rechtsboven staan de aannames die het meest belangrijk zijn en het minst bewezen. Die worden als eerste getest."],
   model: ["Het businessmodel.", "Het canvas laat zien hoe het idee moet werken: voor wie, wat, via welke kanalen, waar het geld vandaan komt en wat het kost.", "Bij elk onderdeel staat of het getoetst is, onderbouwd met bronnen of nog een aanname. Een gevuld vak is geen bewijs."],
+  businesscase: ["De businesscase.", "Een rekensom van omzet, kosten en investeringen in drie scenario's: als het tegenvalt, realistisch en als het meevalt.", "Bij elk cijfer staat of het bevestigd is, een schatting of een voorstel. Een businesscase is een berekening met aannames, geen bewijs."],
   experiments: ["Hoe wordt er getest?", "Elke test heeft vooraf vastgelegde drempels. Na goedkeuring kunnen die niet meer stil worden aangepast.", "Tijdens een lopende test ziet u voortgang, maar nog geen conclusie. Een uitspraak volgt pas na de afgesproken eindconditie."],
   evidence: ["Wat zegt het bewijs?", "Hier staan de waargenomen signalen, de realiteitscheck en het besluitvoorstel van het onderzoeksteam.", "Bent u aangewezen als beslisser, dan bevestigt u hier het besluit. Daarmee wordt het onderdeel van het rapport."],
   report: ["Het rapport.", "Elke gedeelde versie is een vaste momentopname met bronnen, beperkingen en tegenbewijs.", "Het rapport laat zien wat bekend is, wat geschat is en wat nog niet bewezen is."],
@@ -306,6 +310,12 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
       if (p.topAssumption && p.untestedCritical > 0) add("Kies een test voor de grootste onzekerheid", `${base}/experiments?assumption=${p.topAssumption.id}`, "flask");
       add("Bekijk de aannamekaart", `${base}/assumptions`, "layers");
       insight = ["Mijn advies", "Niet sturen op een vol canvas. Koppel de onderdelen waar het model op rust aan een aanname; de stand per onderdeel laat zien wat getoetst is en wat nog geloof is."];
+      break;
+    }
+    case "businesscase": {
+      if (p.assumptions === 0) add("Schrijf op wat waar moet zijn", `${base}/assumptions?stap=opschrijven#nieuwe-aanname`, "layers");
+      add("Bekijk de marktomvang als controle", `${base}/research?tab=sizing`, "trend");
+      insight = ["Mijn advies", "Een businesscase is een rekensom met aannames, geen bewijs. Toets het getal dat de uitkomst het meest bepaalt; dat staat onder \"Wat weegt het zwaarst\"."];
       break;
     }
     case "experiments": {

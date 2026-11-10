@@ -291,6 +291,26 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
         (u.missing.length ? ` Nog onbekend: ${u.missing.join(", ")}.` : ""),
     });
   }
+  if (r.businessCase) {
+    const b = r.businessCase;
+    sizing.push({ t: "p", text: `Businesscase: ${b.verdict.toLowerCase()}. ${b.sentence}` });
+    sizing.push({
+      t: "table",
+      head: ["Scenario", "Omzet jaar 1", `Resultaat jaar ${b.years}`, "Quitte vanaf", "Startgeld nodig"],
+      widths: [20, 20, 20, 20, 20],
+      rows: b.scenarios.map((s) => [s.label, eur(s.revenueYear1), eur(s.resultLastYear), s.breakEven, eur(s.startCapital)]),
+    });
+    sizing.push({
+      t: "p",
+      small: true,
+      text:
+        `Betrouwbaarheid: ${b.reliability}.` +
+        (b.drivers.length ? ` Weegt het zwaarst: ${b.drivers.join("; ")}.` : "") +
+        (b.warnings.length ? ` Let op: ${b.warnings.join(" ")}` : "") +
+        (b.missing.length ? ` Nog onbekend: ${b.missing.join(", ").toLowerCase()}.` : "") +
+        " Een businesscase is een berekening met aannames, geen voorspelling en geen bewijs.",
+    });
+  }
   chapters.push({ id: "sizing", eyebrow: "05 / MARKTPOTENTIEEL", title: "Van onderaf berekend, met zichtbare aannames", blocks: sizing });
 
   // 06 Assumptions
