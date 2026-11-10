@@ -173,7 +173,7 @@ Alles deterministisch (geen LLM), met unit-tests in `tests/unit/quantify.test.ts
 - ⬜ Koppelingen met de Meta- en LinkedIn-advertentie-API's (nu: kanaallinks + handmatig live zetten)
 - ✅ Experimentencatalogus (41 methodes met metadata) en begeleide handmatige sjablonen — zie "Experimentencatalogus en begeleide handmatige sjablonen (7 november)"
 - ✅ Propositie- en businessmodelcanvas — zie sectie "Propositie- en businessmodelcanvas (7 november)" onderaan
-- ⬜ Automatische maandelijkse concurrentiecheck (handmatig starten kan al), verschillenrapport tussen onderzoeksversies
+- ✅ Automatische maandelijkse concurrentiecheck (zie "Ronde 8"); ⬜ verschillenrapport tussen onderzoeksversies
 - 🟡 Betalingen/aanbetalingen: terugbetaalbare aanbetalingen via Mollie gebouwd ("Fase 2 · punt 4"); Stripe niet; live gebruik na juridische check
 - ✅ Server-side PDF-rendering (`@react-pdf/renderer`, zie "Achtergrondtaken en PDF")
 - ⬜ Gebruiksniveaus (begeleid / verdiepend / expert)
@@ -1460,3 +1460,9 @@ methode en catalogus naar "Hulp en methode"; vaktermen in gewone taal; daarna te
 
 ### Ronde 7 (10 november): commandomenu
 - ✅ Ctrl+K / ⌘K of "Snel naar…": alle pagina's en taken van het idee, andere ideeën, werkruimte en beheer (alleen eigenaren); zoekt ook op oude vaktermen ("learning card" vindt de leerkaart). Lijst en zoeken in `lib/domain/commands.ts` (unit-test `commands.test.ts`), component `components/shell/CommandMenu.tsx`, E2E in `eenvoud.spec.ts`.
+
+### Ronde 8 (10 november): automatische maandelijkse concurrentiecheck
+- ✅ Zodra iemand van het team een idee opent, controleert ProofLab na het tonen van de pagina (`after()`, onder de sessie van de gebruiker, RLS) de aanbieders waarvan de laatste controle meer dan 30 dagen oud is: de oudste eerst, hooguit drie per keer, eerst geclaimd zodat twee open pagina's niet dubbel controleren. Zelfde controle als de knop (citaten en prijs letterlijk, niets verwijderd).
+- ✅ Een verschil wordt een "Let op"-tip met wat er veranderde (één per aanbieder per maand); de coach sluit die tips niet zelf.
+- ✅ Gedeelde code `lib/competitor-recheck.ts`; pure keuze en tiptekst in `lib/domain/recheck.ts` (unit-test `auto-recheck.test.ts`); E2E in `eenvoud.spec.ts` (alleen met lokale database).
+- Bewust: geen tijdschema zonder gebruiker. Een dossier dat niemand opent, wordt niet gecontroleerd; dat scheelt verzoeken en vraagt geen nieuwe databasefuncties of service-sleutel. Een echte nachtelijke controle kan later via de takenwachtrij met eigen databasefuncties.

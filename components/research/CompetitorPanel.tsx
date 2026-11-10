@@ -77,8 +77,10 @@ export function CompetitorPanel({
       </div>
       {canWrite && recheckAll && competitors.length > 0 && (
         <div className="note" style={{ marginTop: 0, marginBottom: 14 }}>
-          <strong>Maandelijkse controle.</strong> ProofLab haalt de bronpagina&apos;s en websites opnieuw op en controleert of de citaten en prijzen er
-          nog letterlijk staan. Geen AI-oordeel; verdwenen citaten maken een bevinding &quot;verouderd&quot;, er wordt niets verwijderd.
+          <strong>Maandelijkse controle, automatisch.</strong> Elke {RECHECK_DAYS} dagen haalt ProofLab de bronpagina&apos;s en websites opnieuw op en
+          controleert of de citaten en prijzen er nog letterlijk staan. Dat gebeurt vanzelf als iemand van het team dit idee opent (hooguit drie
+          aanbieders per keer); wat veranderde, verschijnt als &quot;Let op&quot;-tip. Geen AI-oordeel; verdwenen citaten maken een bevinding
+          &quot;verouderd&quot;, er wordt niets verwijderd. Liever nu? Gebruik de knop.
           {competitors.some(due) && ` ${competitors.filter(due).length} ${competitors.filter(due).length === 1 ? "aanbieder" : "aanbieders"} langer dan ${RECHECK_DAYS} dagen niet gecontroleerd.`}
           <ActionForm action={recheckAll} submitLabel="Alles opnieuw controleren" submitClass="btn ai sm" pendingLabel="Pagina's ophalen…">
             <span />

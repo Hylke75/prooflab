@@ -747,6 +747,7 @@ export function planNoteChanges(drafts: CoachNoteDraft[], stored: StoredNote[], 
     create.push(d);
   }
   const live = new Set(drafts.map((d) => d.code));
-  const close = stored.filter((s) => s.status === "open" && s.source === "rules" && !live.has(s.code)).map((s) => s.id);
+  // Tips van de automatische concurrentiecontrole (code "recheck:…") horen bij geen regel: die sluit de gebruiker zelf.
+  const close = stored.filter((s) => s.status === "open" && s.source === "rules" && !live.has(s.code) && !s.code.startsWith("recheck:")).map((s) => s.id);
   return { create, close };
 }

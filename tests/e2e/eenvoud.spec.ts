@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import { expect, test, type Page } from "@playwright/test";
 import { createIdeaViaIntake, dutchDate, isoDate } from "./intake";
 
@@ -176,4 +177,59 @@ test("commandomenu: Ctrl+K, zoeken op naam en oude vaktermen, Enter opent; ook v
   await box.fill("zoek in dit dossier");
   await page.keyboard.press("Enter");
   await expect(page.getByLabel("Zoekterm", { exact: true })).toBeFocused();
+});
+
+
+// Automatische maandelijkse concurrentiecontrole. De test zet "laatst gecontroleerd" van een aanbieder 40 dagen terug
+// via de lokale database (docker), opent het idee en verwacht dat de controle vanzelf draait: een site die niet bestaat
+// (.invalid) geeft een verschil, dus een Let op-tip. Zonder lokale database (bijv. tegen een gedeelde omgeving): overslaan.
+const sql = (q: string) => execSync(`docker exec supabase_db_prooflab psql -U postgres -d postgres -tAc ${JSON.stringify(q)}`, { encoding: "utf8" }).trim();
+const hasLocalDb = (() => {
+  try {
+    return sql("select 1") === "1";
+  } catch {
+    return false;
+  }
+})();
+
+test("automatische maandelijkse concurrentiecontrole: draait vanzelf bij openen, verschil wordt een tip", async ({ page }) => {
+  test.skip(!hasLocalDb, "Geen lokale Supabase-database in docker");
+  await login(page);
+  const ideaUrl = await createIdeaViaIntake(page, {
+    idea: "Een abonnement voor kleine fysiotherapiepraktijken dat afspraken herinnert en no-shows opvolgt, voor € 49 per maand.",
+    decision: `Steken we € 20.000 in dit abonnement, ja of nee, vóór ${dutchDate(60)}?`,
+    uncertainty: "Of praktijken no-shows een groot genoeg probleem vinden.",
+    fill: { "Korte naam": `TEST controle ${Date.now()}`, "Inzet (euro)": "20000", "Uiterlijke beslisdatum": isoDate(60), "Wat meet je?": "betalende praktijken", "Doelwaarde": "15", "Minimumbedrag per klant": "49" },
+    select: { "Type project": "new_product", "Opdrachtgever": "none" },
+  });
+  const ideaId = ideaUrl.split("/").pop()!;
+  const name = `Testaanbieder ${Date.now()}`;
+  await page.goto(`${ideaUrl}/research?tab=competitors`);
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "+ Aanbieder of alternatief" }).click();
+  await page.locator("#co-name").fill(name);
+  await page.locator("#co-web").fill("https://prooflab-test.invalid");
+  await page.locator("#co-name").locator("xpath=ancestor::form").getByRole("button", { name: "Opslaan", exact: true }).click();
+  await expect.poll(() => sql(`select count(*) from public.competitors where idea_id = '${ideaId}' and name = '${name}'`), { timeout: 15_000 }).toBe("1");
+  await page.keyboard.press("Escape");
+  await page.reload();
+  await expect(page.getByText(/Maandelijkse controle, automatisch/)).toBeVisible();
+
+  // 40 dagen geleden voor het laatst gecontroleerd (en aangemaakt).
+  sql(`update public.competitors set last_checked_at = now() - interval '40 days', created_at = now() - interval '40 days' where idea_id = '${ideaId}'`);
+  await page.goto(ideaUrl);
+  await page.waitForLoadState("networkidle");
+  await expect
+    .poll(() => sql(`select count(*) from public.coach_notes where idea_id = '${ideaId}' and code like 'recheck:%' and status = 'open'`), { timeout: 30_000 })
+    .toBe("1");
+  expect(Number(sql(`select extract(epoch from now() - last_checked_at) from public.competitors where idea_id = '${ideaId}' and name = '${name}'`))).toBeLessThan(120);
+
+  // De tip staat op Wat nu? (Tips) met wat er veranderde.
+  await page.reload();
+  await expect(page.getByText(new RegExp(`Maandelijkse controle: er veranderde iets bij ${name}`)).first()).toBeVisible();
+
+  // Opnieuw openen: niets meer aan de beurt, dus geen tweede tip.
+  await page.reload();
+  await page.waitForTimeout(3_000);
+  expect(sql(`select count(*) from public.coach_notes where idea_id = '${ideaId}' and code like 'recheck:%'`)).toBe("1");
 });
