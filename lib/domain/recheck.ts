@@ -70,3 +70,39 @@ export function priceOnPage(visiblePrice: string | null, pageText: string): bool
   if (!visiblePrice) return null;
   return figuresAppearIn(visiblePrice, pageText);
 }
+
+// ---------------------------------------------------------------------------
+// Automatische maandelijkse controle (voorstel "ProofLab eenvoudiger"): geen knop nodig. Zodra iemand van het team een
+// idee opent, controleert ProofLab op de achtergrond de aanbieders waarvan de laatste controle meer dan RECHECK_DAYS
+// geleden is, de oudste eerst en hooguit AUTO_RECHECK_MAX per keer. Wat veranderde, komt als "Let op"-tip bij Markt.
+// ---------------------------------------------------------------------------
+
+export const AUTO_RECHECK_MAX = 3;
+export const RECHECK_NOTE_PREFIX = "recheck:";
+
+export type AutoRecheckCandidate = RecheckSubject & { id: string; origin?: string | null };
+
+// Welke aanbieders nu aan de beurt zijn: geen voorstellen (die hebben nog geen bron), alleen wat iets op te halen
+// heeft en over tijd is; de langst niet gecontroleerde eerst.
+export function pickDueForRecheck<T extends AutoRecheckCandidate>(list: T[], now: Date = new Date(), max = AUTO_RECHECK_MAX): T[] {
+  const since = (c: T) => new Date(c.last_checked_at ?? c.created_at ?? 0).getTime() || 0;
+  return list
+    .filter((c) => c.origin !== "proposal" && competitorRecheckDue(c, now))
+    .sort((a, b) => since(a) - since(b))
+    .slice(0, Math.max(0, max));
+}
+
+// De tip na een automatische controle met verschillen. De code is per aanbieder en per maand, zodat dezelfde
+// wijziging niet elke dag opnieuw een tip wordt; de coach sluit deze tips niet zelf (de gebruiker doet dat).
+export function recheckNote(c: { id: string; name: string }, changes: string[], ideaId: string, now: Date = new Date()) {
+  const month = now.toISOString().slice(0, 7);
+  const body = `${changes.join(" ")} Niets is verwijderd; de betrokken bevindingen zijn opnieuw beoordeeld. Controleer de aanbieder en pas prijs of bron aan waar nodig.`;
+  return {
+    code: `${RECHECK_NOTE_PREFIX}${c.id.slice(0, 8)}:${month}`,
+    kind: "warning" as const,
+    title: `Maandelijkse controle: er veranderde iets bij ${c.name}`.slice(0, 160),
+    body: body.length > 1200 ? `${body.slice(0, 1197)}…` : body,
+    href: `/app/ideas/${ideaId}/research?tab=competitors`,
+    audience: "consultant" as const,
+  };
+}

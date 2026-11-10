@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getIdea } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadCoachFacts, runCoachReview } from "@/lib/coach/review";
+import { runAutoRecheck } from "@/lib/competitor-recheck";
 import { checkNoteDone, type DoneCheck } from "@/lib/coach/rules";
 import { log } from "@/lib/log";
 
@@ -21,6 +22,13 @@ export async function autoReview(ideaId: string): Promise<void> {
       await runCoachReview(ideaId);
     } catch (e) {
       await log.error("coach_review_failed", { ideaId }, e);
+    }
+    // Automatische maandelijkse concurrentiecontrole: alleen aanbieders die meer dan 30 dagen niet gecontroleerd zijn,
+    // hooguit drie per keer. Meestal is er niets aan de beurt en kost dit één query.
+    try {
+      await runAutoRecheck(ideaId);
+    } catch (e) {
+      await log.error("auto_recheck_failed", { ideaId }, e);
     }
   });
 }

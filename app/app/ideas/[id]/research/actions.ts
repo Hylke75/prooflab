@@ -15,7 +15,7 @@ import { aiConfigured, env } from "@/lib/env";
 import { analyzeSignals, planResearch } from "@/lib/ai/research";
 import { aiSupportCheck, collectCbsFigures } from "@/lib/research-runner";
 import { isSupportCheck } from "@/lib/domain/support";
-import { priceOnPage, recheckChanges, recheckQuotes, type CompetitorRecheck, type PageRecheck } from "@/lib/domain/recheck";
+import { recheckCompetitorRow } from "@/lib/competitor-recheck";
 import { isSignalSource, painAsAssumption, verifySignalGroups, type SignalExcerpt, type SignalQuote } from "@/lib/domain/customer-signals";
 import { ideaContext } from "@/lib/idea-context";
 import { aiErrorMessage, runAi } from "@/lib/ai/guard";
@@ -692,53 +692,6 @@ export async function overrideSupport(ideaId: string, claimSourceId: string, _: 
 // ---------------------------------------------------------------------------
 // Competitor recheck (research 7.2): re-fetch, re-run the literal check, never delete
 // ---------------------------------------------------------------------------
-
-type CompetitorRow = { id: string; name: string; website: string | null; visible_price: string | null; claim_id: string | null };
-
-async function recheckCompetitorRow(ideaId: string, comp: CompetitorRow) {
-  const supabase = await supabaseServer();
-  const pages: PageRecheck[] = [];
-  const affectedClaims = new Set<string>();
-  if (comp.claim_id) {
-    affectedClaims.add(comp.claim_id);
-    const { data: links } = await supabase.from("claim_sources").select("source_id, sources(id, url)").eq("claim_id", comp.claim_id).eq("idea_id", ideaId);
-    const seen = new Set<string>();
-    for (const l of links ?? []) {
-      const src = l.sources;
-      if (!src?.url || seen.has(src.id)) continue;
-      seen.add(src.id);
-      // Every quote stored from this page is rechecked, also those of other findings.
-      const { data: quotes } = await supabase.from("claim_sources").select("id, quote, claim_id").eq("source_id", src.id).eq("idea_id", ideaId);
-      try {
-        const page = await fetchPageText(src.url);
-        const result = recheckQuotes((quotes ?? []).map((q) => ({ id: q.id, quote: q.quote })), page.text);
-        pages.push({ url: src.url, reachable: true, quotes: result });
-        const checkedAt = new Date().toISOString();
-        for (const r of result) {
-          await supabase.from("claim_sources").update({ live_found: r.found, live_checked_at: checkedAt }).eq("id", r.id).eq("idea_id", ideaId);
-        }
-        await supabase.from("sources").update({ live_checked_at: checkedAt, live_error: null }).eq("id", src.id).eq("idea_id", ideaId);
-        for (const q of quotes ?? []) affectedClaims.add(q.claim_id);
-      } catch (e) {
-        const message = e instanceof Error ? e.message.slice(0, 120) : "onbekende fout";
-        pages.push({ url: src.url, reachable: false, error: message });
-        await supabase.from("sources").update({ live_checked_at: new Date().toISOString(), live_error: message }).eq("id", src.id).eq("idea_id", ideaId);
-      }
-    }
-  }
-  let website: CompetitorRecheck["website"] = null;
-  if (comp.website) {
-    try {
-      const page = await fetchPageText(comp.website);
-      website = { reachable: true, priceFound: priceOnPage(comp.visible_price, page.text) };
-    } catch {
-      website = { reachable: false, priceFound: null };
-    }
-  }
-  for (const c of affectedClaims) await recomputeClaim(c);
-  await supabase.from("competitors").update({ last_checked_at: new Date().toISOString() }).eq("id", comp.id).eq("idea_id", ideaId);
-  return { name: comp.name, checked: pages.length + (website ? 1 : 0), changes: recheckChanges({ name: comp.name, pages, website }) };
-}
 
 export async function recheckCompetitors(ideaId: string, competitorId: string | null, _: ActionState): Promise<ActionState> {
   await requireWritableIdea(ideaId);
