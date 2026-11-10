@@ -17,12 +17,15 @@ Legenda: ✅ gebouwd en getest · 🟡 gebouwd, test of koppeling hangt af van e
 | Optioneel: `SECRETS_ENCRYPTION_KEY` + `MOLLIE_ENABLED=1` (Vercel) en een Mollie-sleutel op `/app/status` | Terugbetaalbare aanbetalingen; zonder: "Mollie niet ingesteld", betaalstap niet te kiezen | Hylke |
 | ~~Auth-hook "Before user created" → `public.hook_before_user_created`~~ | Aangezet op 9-11; getest: een niet-uitgenodigd adres krijgt "ProofLab werkt op uitnodiging" en er komt geen account | ✅ |
 | ~~E-mailsjabloon "Magic Link" naar `/auth/confirm?token_hash=…`~~ | Ingesteld op 9-11 (Nederlandse tekst); Site URL `https://www.proof-lab.nl`, redirects `https://www.proof-lab.nl/**` en `https://proof-lab.nl/**` | ✅ |
-| Eigen adres of domein op de toegangslijst (`insert into public.signup_allowlist (entry) values ('naam@bureau.nl')`) | Registratie staat dicht; consultants hebben een plek op de lijst nodig | Claude of Hylke |
-| "Leaked password protection" aanzetten (Authentication → Passwords) | Enige resterende security-advieswaarschuwing die geen bewuste keuze is | Hylke |
-| Minstens één van `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` als secret (Vercel) | AI-onderzoek, AI-aannames, interviewcodering, coach, AI-vragen in de Reality Check; met meer sleutels zoeken en voorspellen de aanbieders los van elkaar | Hylke |
+| Eigen adres op de toegangslijst | Gedaan (migratie `allowlist_hylke`). Nieuwe consultants of testers die zelf een idee maken, moeten er ook op (`signup_allowlist`); daar is geen scherm voor | ✅ (nieuwe adressen: Claude) |
+| "Leaked password protection" aanzetten (Authentication → Passwords) en minimale wachtwoordlengte naar 10 | Gecontroleerd 10-11: staat nog uit, minimum is 6 tekens. Enige security-advieswaarschuwing die geen bewuste keuze is; vraagt een betaald Supabase-plan | Hylke |
+| ~~AI-sleutels (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) in Vercel~~ | Gedaan; gecontroleerd 9-11 via geslaagde AI-aanroepen in productie (Anthropic, OpenAI en Gemini) | ✅ |
 | ~~Eigen SMTP (Resend) in Supabase Auth~~ | Ingesteld op 9-11: `ProofLab <onderzoek@proof-lab.nl>` via smtp.resend.com, domein proof-lab.nl geverifieerd in Resend, 30 mails per uur | ✅ |
-| Vercel-project + domein (na merkcheck) | Publieke testpagina's en app online | Hylke |
+| ~~Vercel-project + domein~~ | Live op https://www.proof-lab.nl (proof-lab.nl stuurt door); productie gecontroleerd 10-11, geen runtimefouten in 48 uur | ✅ |
 | LinkedIn Advertising API-aanvraag | Doorlooptijd weken tot maanden | Hylke |
+| Supabase-toegangstoken intrekken dat in de chat is geplakt (supabase.com/dashboard/account/tokens) en de netwerkgeheimen-regel "Supabase access token" verwijderen | Gecontroleerd 10-11: het token werkt nog; een token dat in een chat stond, hoort ingetrokken | Hylke |
+| Oude branches verwijderen (15 × `claude/…`, alle gemerged) | Claude mag alleen de eigen werkbranch wijzigen; verwijderen via GitHub → Branches | Hylke |
+| Gebruikerstest met drie mensen (`docs/GEBRUIKERSTEST_3_GEBRUIKERS.md`) | Deelnemers werven, testdossier klaarzetten, sessies doen; aantekeningen naar Claude voor analyse | Hylke |
 | ~~Migraties `ai_interviews`, `experiment_catalog` en `canvas` toepassen~~ | Toegepast op project `prooflab` op 9-11; migratiegeschiedenis bijgewerkt. Supabase-adviezen: geen nieuwe waarschuwingen buiten de bewuste keuzes (tabellen zonder policies die alleen via functies werken, publieke functies achter de ingest-sleutel) | ✅ |
 
 ## Systeemreview 29 oktober: 20 verbeterpunten
