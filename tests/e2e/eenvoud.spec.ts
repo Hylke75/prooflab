@@ -74,3 +74,66 @@ test("waarom-uitleg, concept bewaren en ongedaan maken bij aannames", async ({ p
   await page.reload();
   await expect(page.getByRole("button", { name: new RegExp(statement.slice(0, 40)) })).toHaveCount(0);
 });
+
+test("voorgestelde aannames per stuk overnemen, aanpassen of weggooien; concept van de testkaart", async ({ page }) => {
+  await login(page);
+  const ideaUrl = await createIdeaViaIntake(page, {
+    idea: "Een abonnement voor kleine fysiotherapiepraktijken dat afspraken herinnert en no-shows opvolgt, voor € 49 per maand.",
+    decision: `Steken we € 20.000 in dit abonnement, ja of nee, vóór ${dutchDate(60)}?`,
+    uncertainty: "Of praktijken no-shows een groot genoeg probleem vinden.",
+    fill: { "Korte naam": `TEST voorstellen ${Date.now()}`, "Inzet (euro)": "20000", "Uiterlijke beslisdatum": isoDate(60), "Wat meet je?": "betalende praktijken", "Doelwaarde": "15", "Minimumbedrag per klant": "49" },
+    select: { "Type project": "new_product", "Opdrachtgever": "none" },
+  });
+
+  // De standaardset komt binnen als voorstellen; de risicokaart wijst ernaar.
+  await page.goto(`${ideaUrl}/assumptions`);
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: /Begin met de standaardset|Stel aannames voor/ }).click();
+  await expect(page.getByRole("heading", { name: "Risicokaart" })).toBeVisible();
+  await expect(page.getByText(/voorgestelde aannames wachten op je keuze/)).toBeVisible();
+  await page.getByRole("link", { name: /Neem over, pas aan of gooi weg/ }).click();
+  await page.waitForURL(/stap=opschrijven/);
+  const list = page.locator(".proposal-item");
+  await expect(list.first()).toBeVisible();
+  const start = await list.count();
+  expect(start).toBeGreaterThan(2);
+
+  // Overnemen: het voorstel verdwijnt uit de voorstellen en staat bij Je aannames.
+  const first = (await list.first().locator("p").innerText()).trim();
+  await list.first().getByRole("button", { name: "Overnemen" }).click();
+  await expect(list).toHaveCount(start - 1);
+  await expect(page.locator(".assumption-item", { hasText: first.slice(0, 30) })).toBeVisible();
+
+  // Aanpassen: eigen tekst opslaan en overnemen.
+  const eigen = `Praktijken met 3–10 therapeuten missen wekelijks minstens twee afspraken ${Date.now()}`;
+  await list.first().getByRole("button", { name: "Aanpassen" }).click();
+  await page.getByLabel("Aanname", { exact: true }).fill(eigen);
+  await page.getByRole("button", { name: "Opslaan en overnemen" }).click();
+  await expect(page.locator(".assumption-item", { hasText: eigen })).toBeVisible();
+  await expect(list).toHaveCount(start - 2);
+
+  // Weggooien met ongedaan maken; daarna de rest in één keer overnemen.
+  await list.first().getByRole("button", { name: "Weggooien" }).click();
+  await expect(page.getByText(/Voorstel wordt verwijderd over \d s/)).toBeVisible();
+  await page.getByRole("button", { name: "Ongedaan maken" }).click();
+  await page.getByRole("button", { name: "Alles overnemen" }).click();
+  await expect(list).toHaveCount(0);
+
+  // Concept van de testkaart: blijft staan na herladen, met de melding dat het is teruggezet.
+  await page.goto(`${ideaUrl}/experiments?nieuw=1`);
+  await page.waitForLoadState("networkidle");
+  const steps = page.getByRole("tablist", { name: "Stappen van de testkaart" });
+  await steps.getByRole("tab", { name: /Wat test je/ }).click();
+  const hypothese = `Minstens 30% van de benaderde praktijken vraagt een proefmaand aan ${Date.now()}`;
+  await page.getByLabel("Wij denken dat … (verplicht)", { exact: true }).fill(hypothese);
+  await expect(page.getByText(/Concept bewaard op dit apparaat/)).toBeVisible();
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByText(/is teruggezet/)).toBeVisible();
+  await steps.getByRole("tab", { name: /Wat test je/ }).click();
+  await expect(page.getByLabel("Wij denken dat … (verplicht)", { exact: true })).toHaveValue(hypothese);
+  await page.getByRole("button", { name: "Opnieuw beginnen" }).click();
+  await page.waitForLoadState("networkidle");
+  await steps.getByRole("tab", { name: /Wat test je/ }).click();
+  await expect(page.getByLabel("Wij denken dat … (verplicht)", { exact: true })).not.toHaveValue(hypothese);
+});

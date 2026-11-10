@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Why } from "@/components/ui/Why";
+import { AssumptionProposals } from "@/components/assumptions/AssumptionProposals";
 import { ideaTasks, taskAfter } from "@/lib/domain/tasks";
 import { TaskFooter, TaskHeader } from "@/components/tasks/TaskHeader";
 import { Icon } from "@/components/Icon";
@@ -22,7 +23,7 @@ import { ASSUMPTION_CATEGORIES, type AssumptionCategory, type AssumptionStatus }
 import { asMethodVersion, CURRENT_METHOD, METHODS, type MethodVersion } from "@/lib/domain/method";
 import { EVIDENCE_LEVELS, type EvidenceCaps } from "@/lib/domain/evidence";
 import { loadCalibration, loadIdeaCaps } from "@/lib/method-data";
-import { addAssumption, deleteAssumption, linkClaim, seedAssumptions, setImportance, setKind, setPrior, setSelectedForTest, unlinkClaim } from "./actions";
+import { addAssumption, confirmAllAssumptions, confirmAssumption, deleteAssumption, reviseAssumption, linkClaim, seedAssumptions, setImportance, setKind, setPrior, setSelectedForTest, unlinkClaim } from "./actions";
 import { assumptionKind, ASSUMPTION_KINDS } from "@/lib/domain/assumption-kind";
 import { DecisionRuleCard } from "@/components/decision/DecisionRule";
 import { loadDecisionRule } from "@/lib/decision-rule-data";
@@ -120,6 +121,9 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
     // Fase B4: kiezen kan pas als de kolom selected_for_test bestaat (migratie 20261110140000).
     supabase.from("assumptions").select("selected_for_test").eq("idea_id", id).limit(1),
   ]);
+  // Voorstel "ProofLab eenvoudiger": voorgestelde aannames (AI of standaardset) zijn voorstellen tot je ze overneemt.
+  const { data: originRows } = await supabase.from("assumptions").select("id, origin").eq("idea_id", id);
+  const originOf = new Map((originRows ?? []).map((r) => [r.id, r.origin as string]));
   const board: BoardAssumption[] = ranked.map((a) => ({
     ...a,
     category: a.category as AssumptionCategory,
@@ -152,6 +156,11 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
             ? "regel"
             : "kiezen";
   const taskKey = STAP_TASK[stap];
+  const proposals = board
+    .filter((a) => originOf.get(a.id) === "ai" || originOf.get(a.id) === "template")
+    .map((a) => ({ id: a.id, statement: a.statement, importance: a.importance, origin: originOf.get(a.id) as "ai" | "template" }));
+  // Zonder schrijfrecht (opdrachtgever) zijn er geen voorstellen om te kiezen: dan staat alles in de lijst.
+  const own = canWrite ? board.filter((a) => !proposals.some((p) => p.id === a.id)) : board;
   const header = (title: string, why: string) => (
     <TaskHeader ideaId={id} list={list} taskKey={taskKey} title={title} why={why} aiConnected={aiConfigured()} />
   );
@@ -184,13 +193,24 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
               )}
             </div>
           ) : (
-            <div className="card" role="region" aria-labelledby="aannames-lijst">
+            <>
+            {canWrite && (
+              <AssumptionProposals
+                items={proposals}
+                confirmActions={Object.fromEntries(proposals.map((a) => [a.id, confirmAssumption.bind(null, id, a.id)]))}
+                reviseActions={Object.fromEntries(proposals.map((a) => [a.id, reviseAssumption.bind(null, id, a.id)]))}
+                deleteActions={Object.fromEntries(proposals.map((a) => [a.id, deleteAssumption.bind(null, id, a.id)]))}
+                confirmAll={confirmAllAssumptions.bind(null, id)}
+              />
+            )}
+            {own.length > 0 && (
+            <div className="card mt-18" role="region" aria-labelledby="aannames-lijst">
               <div className="section-title">
-                <h2 className="as-h3" id="aannames-lijst">Je aannames ({board.length})</h2>
+                <h2 className="as-h3" id="aannames-lijst">Je aannames ({own.length})</h2>
                 <span className="pill gray">Op belang</span>
               </div>
               <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                {[...board]
+                {[...own]
                   .sort((a, b) => b.importance - a.importance || a.statement.localeCompare(b.statement, "nl"))
                   .map((a) => (
                     <li key={a.id} className="assumption-item" style={{ cursor: "default" }}>
@@ -201,6 +221,8 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
                   ))}
               </ul>
             </div>
+            )}
+            </>
           )}
       {board.length > 0 && missing.length > 0 && (
         <div className="note">
@@ -248,6 +270,15 @@ export default async function AssumptionsPage({ params, searchParams }: PageProp
       {stap === "kiezen" && (
         <>
           {header("Begin met je grootste risico", "Welke aanname haalt het hele idee onderuit als hij niet klopt? Kies er hooguit drie om nu te testen en wijs bij de belangrijkste een hoofdtest aan.")}
+          {canWrite && proposals.length > 0 && (
+            <p className="note" role="status">
+              <strong>{proposals.length === 1 ? "1 voorgestelde aanname wacht" : `${proposals.length} voorgestelde aannames wachten`} op je keuze.</strong> Ze staan al op de
+              risicokaart.{" "}
+              <Link className="text-link" href={`/app/ideas/${id}/assumptions?stap=opschrijven#voorstellen-titel`}>
+                Neem over, pas aan of gooi weg →
+              </Link>
+            </p>
+          )}
           {lock ? (
             // Golf B, punt 15: eerst de eigen voorspelling, dan de berekende kansen op de risicokaart.
         <>

@@ -212,7 +212,7 @@ export function CompetitorPanel({
             )}
             {canWrite && current && (
               <div className="mt-18" data-undo-item>
-                <UndoDeleteButton key={current.id} action={deleteActions[current.id]} label="Aanbieder verwijderen" what="Aanbieder" />
+                <UndoDeleteButton key={current.id} action={deleteActions[current.id]} label={currentIsProposal ? "Weggooien" : "Aanbieder verwijderen"} what={currentIsProposal ? "Voorstel" : "Aanbieder"} />
               </div>
             )}
       </Drawer>

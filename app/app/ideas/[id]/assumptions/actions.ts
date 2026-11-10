@@ -222,3 +222,30 @@ export async function redTeamAssumption(ideaId: string, assumptionId: string, _:
     return { error: aiErrorMessage(e, "Het zoeken naar tegenbewijs is mislukt. Probeer het later opnieuw of zoek handmatig.") };
   }
 }
+
+// Voorstel "ProofLab eenvoudiger" (Microsoft HAX G8/G9): voorgestelde aannames (AI of standaardset) neem je één voor
+// één over, pas je aan of gooi je weg. Overnemen maakt er een eigen aanname van (origin manual = door jou bevestigd).
+export async function confirmAssumption(ideaId: string, assumptionId: string) {
+  await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  await supabase.from("assumptions").update({ origin: "manual" }).eq("id", assumptionId).eq("idea_id", ideaId).in("origin", ["ai", "template"]);
+  refresh(ideaId);
+}
+
+export async function confirmAllAssumptions(ideaId: string) {
+  await requireWritableIdea(ideaId);
+  const supabase = await supabaseServer();
+  await supabase.from("assumptions").update({ origin: "manual" }).eq("idea_id", ideaId).in("origin", ["ai", "template"]);
+  refresh(ideaId);
+}
+
+export async function reviseAssumption(ideaId: string, assumptionId: string, _: ActionState, form: FormData): Promise<ActionState> {
+  await requireWritableIdea(ideaId);
+  const p = z.string().trim().min(10, "Schrijf de aanname als een zin van minstens tien tekens.").max(400).safeParse(form.get("statement"));
+  if (!p.success) return { error: p.error.issues[0].message };
+  const supabase = await supabaseServer();
+  const { error } = await supabase.from("assumptions").update({ statement: p.data, origin: "manual" }).eq("id", assumptionId).eq("idea_id", ideaId);
+  if (error) return { error: "Opslaan mislukt." };
+  refresh(ideaId);
+  return { error: null, ok: "Aangepast en overgenomen." };
+}
