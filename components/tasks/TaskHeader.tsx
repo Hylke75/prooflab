@@ -14,6 +14,7 @@ export function TaskHeader({
   why,
   aiConnected,
   aside,
+  steps = true,
 }: {
   ideaId: string;
   list: TaskList;
@@ -23,6 +24,8 @@ export function TaskHeader({
   aiConnected: boolean;
   // Klein element rechts van de titel, bijvoorbeeld een link naar naslag.
   aside?: ReactNode;
+  // false: de pagina heeft zelf al tabbladen die de taken zijn (Markt); dan geen tweede rij stappen.
+  steps?: boolean;
 }) {
   const pos = taskPosition(list, taskKey);
   if (!pos) return null;
@@ -32,14 +35,14 @@ export function TaskHeader({
       <div className="task-title-row">
         <div>
           <div className="eyebrow">
-            {pos.phase.label} · taak {pos.index} van {pos.total}
+            {pos.phase.label} · taak {pos.index} van {pos.total} · <span title="Geschatte tijd">{pos.task.time}</span>
           </div>
           <h1>{title}</h1>
           <p className="sub">{why}</p>
         </div>
         {aside}
       </div>
-      <TaskSteps base={base} tasks={pos.phase.tasks} current={taskKey} label={`Taken van ${pos.phase.label}`} />
+      {steps && <TaskSteps base={base} tasks={pos.phase.tasks} current={taskKey} label={`Taken van ${pos.phase.label}`} />}
       <RoleBlock task={pos.task} aiConnected={aiConnected} />
     </header>
   );

@@ -299,7 +299,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
   // Voorstel "ProofLab eenvoudiger": elk tabblad is een taak van Markt met de vaste taakkop.
   const list = ideaTasks(await loadProgress(id));
   const head = (key: "market-question" | "market-competitors" | "market-customers" | "market-sizing", title: string, why: string, aside?: React.ReactNode) => (
-    <TaskHeader ideaId={id} list={list} taskKey={key} title={title} why={why} aiConnected={aiConfigured()} aside={aside} />
+    <TaskHeader ideaId={id} list={list} taskKey={key} title={title} why={why} aiConnected={aiConfigured()} aside={aside} steps={false} />
   );
   const firstSource =
     canWrite && sources.length === 0 && claims.length === 0 ? (
@@ -773,14 +773,25 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
 
         {/* Bronnen */}
         <div key="sources">
-          <div className="section-title">
-            <div>
-              <h2>Alle bronnen bij elkaar.</h2>
-              <p className="sub">Per bron: herkomst, datum, het bewaarde fragment en welke bevindingen erop steunen.</p>
+          {canWrite && (
+            <div className="stack">
+              <div className="card" id="bron-toevoegen" style={{ scrollMarginTop: 100 }}>
+                <h3>Stap 1 · Bron toevoegen</h3>
+                <p className="sub" style={{ margin: "6px 0 12px" }}>URL, CSV-regel of rapportpassage: alleen het relevante fragment wordt bewaard.</p>
+                <AddSourceForm action={addSource.bind(null, id)} />
+              </div>
+              <div className="card" id="bevinding-toevoegen" style={{ scrollMarginTop: 100 }}>
+                <h3>Stap 2 · Wat zegt de bron? Leg een bevinding vast</h3>
+                <p className="sub" style={{ margin: "6px 0 12px" }}>ProofLab controleert of het citaat letterlijk in het fragment staat en bepaalt de status zelf.</p>
+                <AddClaimForm action={addClaim.bind(null, id)} excerpts={excerpts} questions={questions.map((q) => ({ id: q.id, position: q.position, question: q.question }))} />
+              </div>
             </div>
+          )}
+          <div className="section-title mt-24">
+            <h2 className="as-h3">Je bronnen ({sources.length})</h2>
           </div>
           <div className="card">
-            {sources.length === 0 && <p className="sub">Nog geen bronnen.</p>}
+            {sources.length === 0 && <p className="sub">Nog geen bronnen. Begin hierboven met stap 1.</p>}
             {sources.map((s) => {
               const used = claims.filter((c) => c.evidence.some((e) => e.source_id === s.id)).length;
               const sc = supportCounts(s.id);
@@ -835,6 +846,11 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
             })}
           </div>
           {canWrite && (
+            // Optioneel: een heel rapport of document importeren. Ingeklapt, zodat de twee basisstappen voorop staan.
+            <details className="card mt-18">
+              <summary className="text-link" style={{ cursor: "pointer", minHeight: 44, display: "flex", alignItems: "center" }}>
+                Optioneel: een heel rapport of document importeren (pdf, docx)
+              </summary>
             <ReportImport
               ideaId={id}
               supabaseUrl={env.supabaseUrl}
@@ -844,20 +860,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
               questions={questions.map((q) => ({ id: q.id, position: q.position, question: q.question }))}
               aiAvailable={aiConfigured()}
             />
-          )}
-          {canWrite && (
-            <div className="grid-2 mt-18">
-              <div className="card" id="bron-toevoegen" style={{ scrollMarginTop: 100 }}>
-                <h3>1. Bron toevoegen</h3>
-                <p className="sub" style={{ margin: "6px 0 12px" }}>URL, CSV-regel of rapportpassage: alleen het relevante fragment wordt bewaard.</p>
-                <AddSourceForm action={addSource.bind(null, id)} />
-              </div>
-              <div className="card">
-                <h3>2. Bevinding met citaat vastleggen</h3>
-                <p className="sub" style={{ margin: "6px 0 12px" }}>ProofLab controleert of het citaat letterlijk in het fragment staat en bepaalt de status zelf.</p>
-                <AddClaimForm action={addClaim.bind(null, id)} excerpts={excerpts} questions={questions.map((q) => ({ id: q.id, position: q.position, question: q.question }))} />
-              </div>
-            </div>
+            </details>
           )}
           {quality && (
             <div className="mt-18">

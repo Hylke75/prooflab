@@ -43,6 +43,8 @@ export type Task = {
   optional?: boolean;
   me: string;
   ai: string | null;
+  // Geschatte tijd voor deze taak, als korte tekst ("± 10 min"). Een schatting, geen belofte.
+  time: string;
 };
 
 export type Phase = { key: PhaseKey; number: number; label: string; tasks: Task[]; status: TaskStatus; summary: string };
@@ -118,6 +120,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
   const market: Task[] = [
     {
       key: "market-question",
+      time: "± 30 min",
       phase: "market",
       label: "Beantwoord je onderzoeksvraag met bronnen",
       status: step.market.state === "done" ? "done" : step.market.state === "running" ? "busy" : "todo",
@@ -128,6 +131,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
     },
     {
       key: "market-competitors",
+      time: "± 20 min",
       phase: "market",
       label: "Concurrenten en alternatieven",
       status: p.competitors > 0 && p.hasAlternatives ? "done" : p.competitors > 0 || p.hasAlternatives ? "busy" : "todo",
@@ -139,6 +143,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
     },
     {
       key: "market-customers",
+      time: "± 20 min",
       phase: "market",
       label: "Doelgroep en klantonderzoek",
       status: p.segments > 0 ? "done" : "todo",
@@ -150,6 +155,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
     },
     {
       key: "market-sizing",
+      time: "± 15 min",
       phase: "market",
       label: "Marktomvang",
       status: p.sizingEstablished ? "done" : "todo",
@@ -165,6 +171,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
   const assumptions: Task[] = [
     {
       key: "assumptions-write",
+      time: "± 10 min",
       phase: "assumptions",
       label: "Schrijf op wat waar moet zijn",
       status: d.assumptions > 0 ? "done" : "todo",
@@ -175,6 +182,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
     },
     {
       key: "assumptions-primary",
+      time: "± 5 min",
       phase: "assumptions",
       label: "Kies de belangrijkste en wijs een hoofdtest aan",
       status: d.criticalWithPrimaryTest > 0 ? "done" : d.assumptions === 0 ? "locked" : "todo",
@@ -187,6 +195,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
       ? [
           {
             key: "assumptions-rule" as const,
+            time: "± 5 min",
             phase: "assumptions" as const,
             label: "Leg vast wanneer je doorgaat",
             status: (d.decisionRule === "saved" ? "done" : d.criticalWithPrimaryTest === 0 ? "locked" : "todo") as TaskStatus,
@@ -202,6 +211,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
   const test: Task[] = [
     {
       key: "test-plan",
+      time: "± 15 min",
       phase: "test",
       label: "Maak een testkaart",
       status: pastPlan ? "done" : preparing ? "busy" : d.assumptions === 0 ? "locked" : "todo",
@@ -220,6 +230,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
     },
     {
       key: "test-run",
+      time: "dagen tot weken",
       phase: "test",
       label: "Laat de test lopen",
       status: ended.length > 0 && !running ? "done" : running ? "busy" : "locked",
@@ -236,6 +247,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
     },
     {
       key: "test-learning",
+      time: "± 10 min",
       phase: "test",
       label: "Leg de uitslag vast",
       status: cards > 0 ? "done" : ended.length > 0 ? "todo" : "locked",
@@ -249,6 +261,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
   const decide: Task[] = [
     {
       key: "decide-learned",
+      time: "± 10 min",
       phase: "decide",
       label: "Wat heb je geleerd?",
       status: p.learningCardsDraft > 0 ? "busy" : p.learningCardsApproved > 0 ? "done" : "locked",
@@ -264,6 +277,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
     },
     {
       key: "decide-check",
+      time: "± 10 min",
       phase: "decide",
       label: "Klopt het echt? (realiteitscheck)",
       status: checkDone ? "done" : checkStale ? "busy" : "todo",
@@ -274,6 +288,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
     },
     {
       key: "decide-decision",
+      time: "± 10 min",
       phase: "decide",
       label: "Neem je besluit",
       status: conclusive ? "done" : d.decisions > 0 ? "busy" : checkDone ? "todo" : "locked",
@@ -287,6 +302,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
   const report: Task[] = [
     {
       key: "report-read",
+      time: "± 10 min",
       phase: "report",
       label: "Lees het rapport na",
       status: p.reports > 0 ? "done" : d.decisions > 0 ? "todo" : "locked",
@@ -297,6 +313,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
     },
     {
       key: "report-share",
+      time: "± 2 min",
       phase: "report",
       label: "Deel het rapport",
       status: p.latestReportShared ? "done" : p.reports > 0 ? "todo" : "locked",
@@ -322,6 +339,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
   const first: Task | null = lock
     ? {
         key: "forecast",
+      time: "± 3 min",
         phase: lock === "decision" ? "decide" : lock === "experiment" ? "test" : "market",
         label: "Voorspel eerst wat je verwacht",
         status: "todo",

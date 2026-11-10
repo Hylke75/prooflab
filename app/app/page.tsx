@@ -6,11 +6,11 @@ import { SprintCard, UnplannedSprints, calendarDate } from "@/components/sprint/
 import { getWorkspace, type Workspace } from "@/lib/data";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadAssumptions, loadProgress } from "@/lib/progress";
-import { OpenNotesBadge } from "@/components/coach/OpenNotesBadge";
-import { nextAction, sprintStage, type IdeaProgress } from "@/lib/domain/coach";
+import { sprintStage, type IdeaProgress } from "@/lib/domain/coach";
 import { SPRINT_PHASES, sprintStatus, testDay, todayInNL } from "@/lib/domain/sprint";
 import { DECISIONS, type DecisionAction } from "@/lib/domain/labels";
-import { currentStepLabel, dossierStatus } from "@/lib/steps";
+import { currentStepLabel } from "@/lib/steps";
+import { ideaTasks } from "@/lib/domain/tasks";
 import { loadOutcomeReminders } from "@/lib/forecast-data";
 import { CreateWorkspace } from "./CreateWorkspace";
 
@@ -91,7 +91,12 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
     .flatMap((p, idx) => p.experiments.filter((e) => e.state === "live").map((e) => ({ ...e, idea: list[idx].title, day: testDay(e.startedAt, e.endsAt) })))
     .sort((a, b) => (a.endsAt ?? "").localeCompare(b.endsAt ?? ""));
   const awaiting = progresses.filter((p) => p.decisions > 0 && !p.latestDecisionConfirmed).length;
-  const actions = progresses.map((p, idx) => ({ ...nextAction(p), idea: list[idx].title })).slice(0, 3);
+  // Eén bron van voortgang: de volgende taak per idee uit de takenlijst (dezelfde als op Wat nu?).
+  const actions = progresses
+    .map((p, idx) => ({ t: ideaTasks(p).next, idea: list[idx] }))
+    .filter((a) => a.t && a.idea.status === "active")
+    .slice(0, 3)
+    .map(({ t, idea }) => ({ title: t!.label, detail: t!.why, href: `/app/ideas/${idea.id}${t!.path}`, idea: idea.title }));
   const sprintIdeas = list.map((i, idx) => ({ idea: i, p: progresses[idx] })).filter(({ idea }) => idea.status === "active");
   // Outcome follow-up: three months after the decision a check-in, six months after it the outcome.
   // Across all ideas of the organisation, also those decided long ago and no longer in this list.
@@ -172,35 +177,37 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
         <div className="ideas">
           {list.map((idea, idx) => {
             const p = progresses[idx];
-            // B1c: alleen stappen met echte waarnemingen of geverifieerde bronnen tellen.
-            const done = dossierStatus(p).stepsWithEvidence;
-            const next = nextAction(p);
-            const s = sprintStatus({ start: idea.sprint_start, weeks: idea.sprint_weeks, today, stage: sprintStage(p), testsStarted: p.experimentsLive + p.experimentsEnded > 0 });
+            // Voorstel "ProofLab eenvoudiger": de kaart leest dezelfde takenlijst als Wat nu? (lib/domain/tasks.ts): de fase
+            // waar je bent, hoeveel fasen klaar zijn en één knop naar de volgende taak.
+            const t = ideaTasks(p);
+            const phasesDone = t.phases.filter((ph) => ph.status === "done").length;
+            const current = t.phases.find((ph) => ph.key === t.current);
+            const href = t.next ? `/app/ideas/${idea.id}${t.next.path}` : `/app/ideas/${idea.id}`;
             return (
-              <Link key={idea.id} href={next.href} prefetch={false} className="card idea" style={{ textDecoration: "none" }} aria-label={`${idea.title}: ${next.title}`}>
+              <Link key={idea.id} href={href} prefetch={false} className="card idea" style={{ textDecoration: "none" }} aria-label={`${idea.title}: ${t.next ? `volgende taak ${t.next.label}` : "alles klaar"}`}>
                 <div className="idea-top">
                   <span className="idea-symbol" style={idx % 2 ? { background: "var(--color-warning-soft)", color: "var(--color-warning-text)" } : undefined}>
                     {SYMBOLS[idx % SYMBOLS.length]}
                   </span>
                   <span className="row" style={{ gap: 6 }}>
                     {idea.is_demo && <span className="pill orange">Demo</span>}
-                    <OpenNotesBadge ideaId={idea.id} />
-                    {s.planned && s.state === "running" && <span className={`pill ${s.behind ? "coral" : "gray"}`}>Week {s.week}/{s.weeks}{s.behind ? " · loopt achter" : ""}</span>}
-                    <span className={`pill ${idea.status === "active" ? "blue" : "gray"}`}>{ideaStatusLabel(idea.status, p)}</span>
+                    <span className={`pill ${idea.status === "active" ? "blue" : "gray"}`}>
+                      {idea.status !== "active" ? ideaStatusLabel(idea.status, p) : current ? `Fase ${current.number} van 5 · ${current.label}` : "Klaar"}
+                    </span>
                   </span>
                 </div>
                 <h3>{idea.title}</h3>
                 <p>{idea.description.length > 140 ? `${idea.description.slice(0, 137)}…` : idea.description}</p>
-                <div className="progress" role="img" aria-label={`${done} van 4 stappen met bewijs`}>
-                  <div style={{ width: `${(done / 4) * 100}%`, background: idx % 2 ? "var(--color-risk)" : undefined }} />
+                <div className="progress" role="img" aria-label={`${phasesDone} van 5 fasen klaar`}>
+                  <div style={{ width: `${Math.max(phasesDone, 0.3) * 20}%`, background: idx % 2 ? "var(--color-risk)" : undefined }} />
                 </div>
                 <div className="idea-foot">
                   <span>
                     {idea.clients?.name ? `${idea.clients.name} · ` : ""}
-                    {done} van 4 stappen met bewijs
+                    {t.next ? <>Volgende taak: <strong>{t.next.label}</strong></> : "Alle taken zijn klaar"}
                   </span>
                   <span>
-                    Verder <Icon name="arrow" size="sm" className="va-middle" />
+                    {t.next ? "Ga verder" : "Bekijk"} <Icon name="arrow" size="sm" className="va-middle" />
                   </span>
                 </div>
               </Link>
@@ -210,11 +217,12 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
       )}
 
       {sprintIdeas.length > 0 && (
-        <>
-          <div className="section-title" style={{ marginTop: 31 }}>
-            <h2>Sprintplanning</h2>
-            <span className="pill gray">Onderzoek · aannames · testen · besluit</span>
-          </div>
+        // Planning is naslag, geen taak: ingeklapt, zodat de ideeën en hun volgende taak bovenaan blijven.
+        <details className="mt-24">
+          <summary className="section-title" style={{ cursor: "pointer", marginTop: 0 }}>
+            <h2 style={{ display: "inline" }}>Sprintplanning</h2>
+            <span className="pill gray">Weken per idee</span>
+          </summary>
           {sprintIdeas.some(({ idea }) => idea.sprint_start) && (
             <div className="sprints">
               {sprintIdeas
@@ -225,13 +233,13 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
             </div>
           )}
           <UnplannedSprints ideas={sprintIdeas.filter(({ idea }) => !idea.sprint_start).map(({ idea }) => idea)} today={today} />
-        </>
+        </details>
       )}
 
       <div className="grid-2" style={{ marginTop: 20 }}>
         <div className="card">
           <div className="section-title">
-            <h3>Wat is nu slim om te doen?</h3>
+            <h3>Volgende taken</h3>
             <span className="pill blue">Aanbevolen</span>
           </div>
           {actions.length === 0 && <p className="sub">Maak eerst een idee aan.</p>}
