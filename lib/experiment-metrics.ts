@@ -152,13 +152,13 @@ type Exp = {
 };
 
 // Earlier ended tests of the same type in the same organisation, as far as this user can see them
-// (row level security): the measured n and successes on their approved Learning Cards.
+// (row level security): the measured n and successes on their approved leerkaarten.
 async function earlierTests(exp: Exp): Promise<{ n: number; successes: number }[]> {
   if (!exp.idea_id) return [];
   return earlierTestsOfType(exp.idea_id, exp.type, { excludeId: exp.id, before: exp.ended_at ?? undefined });
 }
 
-// Ook gebruikt door de Test Card (fase B1b): het benodigde aantal deelnemers volgt uit eerdere tests van dit type.
+// Ook gebruikt door de testkaart (fase B1b): het benodigde aantal deelnemers volgt uit eerdere tests van dit type.
 export async function earlierTestsOfType(
   ideaId: string,
   type: string,
@@ -185,7 +185,7 @@ export async function earlierTestsOfType(
     .filter((t) => Number.isInteger(t.n) && Number.isInteger(t.successes) && t.n > 0);
 }
 
-// Prior per testtype voor de Test Card; zonder schema of rechten valt hij terug op de vlakke prior.
+// Prior per testtype voor de testkaart; zonder schema of rechten valt hij terug op de vlakke prior.
 export async function priorsByType(ideaId: string, types: readonly string[]): Promise<Record<string, BetaPrior>> {
   const out: Record<string, BetaPrior> = {};
   await Promise.all(

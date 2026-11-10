@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { createIdeaViaIntake, dutchDate, isoDate } from "./intake";
 
 // Markt: klantonderzoek vanuit stap 1. Op het tabblad Klantonderzoek maak je een verkennende enquête en een online
-// interview (schriftelijk) bij een onderzoeksvraag, zonder Test Card. Daarna opent de editor; het onderzoek is
+// interview (schriftelijk) bij een onderzoeksvraag, zonder testkaart. Daarna opent de editor; het onderzoek is
 // zichtbaar als verkennend en staat in de lijst. Op 390px breed hoeft niet horizontaal gescrold te worden.
 // Vraagt de migratie 20261111090000_markt_klantonderzoek; zonder die migratie toont het tabblad een melding en
 // wordt het aanmaken overgeslagen.
@@ -59,12 +59,12 @@ test("Markt: verkennende enquête en online interview vanuit het tabblad Klanton
   await expect(page.getByRole("heading", { name: "Vraag het je doelgroep zelf." })).toBeVisible();
   test.skip(await page.getByText(/vraagt een database-update/).isVisible(), "Migratie 20261111090000_markt_klantonderzoek is nog niet toegepast");
 
-  // Verkennende enquête met het sjabloon: geen Test Card, wel de editor.
+  // Verkennende enquête met het sjabloon: geen testkaart, wel de editor.
   await newStudy(page, ideaUrl, "Nieuwe enquête", "Hoe schrijven makelaars woningteksten?", true);
   await expect(page.getByText("Verkennend", { exact: true })).toBeVisible();
   await expect(page.getByText("Geen: verkennend onderzoek beslist niets")).toBeVisible();
   await expect(page.getByRole("button", { name: "Vragen opslaan" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Analyseer en maak de Learning Card" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Analyseer en maak de leerkaart" })).toHaveCount(0);
 
   // Online interview: toestemming bovenaan, alleen open vragen.
   await newStudy(page, ideaUrl, "Nieuw online interview", "Interview: de laatste woningtekst", false);

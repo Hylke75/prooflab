@@ -148,8 +148,8 @@ describe("beslisblad: volgende stap met datum", () => {
   });
 
   it("valt terug op de coach en de sprint, en verzint geen datum", () => {
-    const sh = buildDecisionSheet(input({ decision: null, fallbackNext: "Doe de Reality Check" }, { decisions: 0, latestDecisionAction: null }));
-    expect(sh.nextStep).toEqual({ text: "Doe de Reality Check.", date: "2026-11-30", dateLabel: "einde van de sprint" });
+    const sh = buildDecisionSheet(input({ decision: null, fallbackNext: "Doe de realiteitscheck" }, { decisions: 0, latestDecisionAction: null }));
+    expect(sh.nextStep).toEqual({ text: "Doe de realiteitscheck.", date: "2026-11-30", dateLabel: "einde van de sprint" });
     const none = buildDecisionSheet(input({ decision: null, dates: { today: "2026-11-04", sprintEnd: "2026-10-01", decisionDeadline: null, outcomeDue: null } }, { decisions: 0, latestDecisionAction: null }));
     expect(none.nextStep.date).toBeNull();
     expect(none.nextStep.dateLabel).toBe("Nog geen datum vastgelegd");
@@ -160,7 +160,7 @@ describe("beslisblad: oudere rapporten", () => {
   const legacy: LegacySnapshot = {
     generatedAt: "2026-11-03T10:00:00.000Z",
     label: "Onderbouwd marktbeeld",
-    labelMissing: ["een afgerond gedragsexperiment met goedgekeurde Learning Card"],
+    labelMissing: ["een afgerond gedragsexperiment met goedgekeurde leerkaart"],
     questions: [{ position: 1, question: "Hoe plannen eventbureaus nu?", status: "open" }],
     claims: [{ statement: "Er zijn 4.200 eventbureaus in Nederland.", statusKey: "verified", notes: [1], contradicted: false }],
     counts: { claims: 1, verified: 1 },
@@ -214,7 +214,7 @@ describe("rapport: bereikbare jaaromzet", () => {
   });
 });
 
-describe("Reality Check: regio onbekend is geen andere regio", () => {
+describe("Realiteitscheck: regio onbekend is geen andere regio", () => {
   const facts: DossierFacts = {
     ideaAgeDays: 3,
     ideaRegion: "Nederland",

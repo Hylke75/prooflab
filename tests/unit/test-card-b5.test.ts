@@ -108,7 +108,7 @@ const pricing: TestCardInput = {
   guide_questions: 0,
 };
 
-describe("Test Card met vijf zichtbare velden (B5)", () => {
+describe("Testkaart met vijf zichtbare velden (B5)", () => {
   it("is met de standaarden op te slaan", () => {
     expect(validateTestCard(pricing)).toEqual({});
   });
@@ -126,7 +126,7 @@ describe("Test Card met vijf zichtbare velden (B5)", () => {
   });
 });
 
-describe("go-regel (B5)", () => {
+describe("beslisregel (B5)", () => {
   it("blokkeert alleen een hoofdtest zonder vastgelegde regel", () => {
     expect(goRuleBlock({ isPrimary: true, rule: "missing" })).toBe(GO_RULE_MISSING);
     expect(goRuleBlock({ isPrimary: true, rule: "saved" })).toBeNull();
@@ -147,7 +147,7 @@ describe("go-regel (B5)", () => {
   });
 });
 
-describe("Learning Card-voorstel (B5)", () => {
+describe("Leerkaart-voorstel (B5)", () => {
   const input: LearningInput = {
     assumption: "Makelaars betalen € 249 per maand",
     verdict: "pass",
@@ -171,7 +171,7 @@ describe("Learning Card-voorstel (B5)", () => {
     expect(p.we_learned).toContain("wordt gesteund");
     expect(p.we_learned).toContain("22 van 160 (13,8%)");
     expect(p.we_learned).toContain("succesdrempel was 8%");
-    expect(p.therefore).toContain("go-regel");
+    expect(p.therefore).toContain("beslisregel");
     expect(ruleBasedLearning({ ...input, verdict: "fail" }).we_learned).toContain("niet gesteund");
     expect(ruleBasedLearning({ ...input, verdict: "inconclusive" }).we_learned).toMatch(/^Onbeslist/);
     expect(ruleBasedLearning({ ...input, isPrimary: false }).therefore).toContain("hoofdtest");

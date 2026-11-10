@@ -57,7 +57,11 @@ describe("menu (fase 3)", () => {
   it("koppelt tabbladen en subpagina's aan hun stap", () => {
     expect(stepForPath("/research")).toBe("market");
     expect(stepForPath("/integrations")).toBe("market");
-    expect(stepForPath("/method")).toBe("assumptions");
+    // Naslag (Hulp en methode) hoort bij geen stap.
+    expect(stepForPath("/method")).toBeNull();
+    expect(stepForPath("/hulp")).toBeNull();
+    expect(stepForPath("/experiments/catalogus")).toBeNull();
+    expect(stepForPath("/experiments/abc")).toBe("test");
     expect(stepForPath("/experiments/abc")).toBe("test");
     expect(stepForPath("/evidence")).toBe("decide");
     expect(stepForPath("/outcome")).toBe("decide");

@@ -1,6 +1,6 @@
 // Fase B0, punt 3: de maatstaf past bij de aanname. Een aanname over prijs of betalen toets je met geld of een
 // toezegging, niet met een demo-aanvraag of een herkend probleem. Een technische aanname toets je met een
-// technische proef, niet met klanten. Pure functies: scherm (Test Card), server (goedkeuren) en tests gebruiken
+// technische proef, niet met klanten. Pure functies: scherm (testkaart), server (goedkeuren) en tests gebruiken
 // dezelfde regels.
 //
 // Bewust zonder runtime-imports, zodat ook de e2e-tests deze module kunnen gebruiken.

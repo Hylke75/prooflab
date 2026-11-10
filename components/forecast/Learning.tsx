@@ -94,7 +94,7 @@ export function SurveyAgreement({ view }: { view: LearningView }) {
         <span className="pill gray">{a.pairs} {a.pairs === 1 ? "aanname" : "aannames"}</span>
       </div>
       <p className="sub">
-        Klopte de kernvraag van een enquête met wat een landingpage- of prijstest op dezelfde aanname liet zien? Alleen goedgekeurde Learning Cards met een
+        Klopte de kernvraag van een enquête met wat een landingpage- of prijstest op dezelfde aanname liet zien? Alleen goedgekeurde leerkaarten met een
         duidelijk oordeel tellen.
       </p>
       {a.pairs === 0 ? (

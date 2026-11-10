@@ -52,7 +52,7 @@ export function DecisionSelector({
             <span className={`pill ${forecastStep.status === "done" ? "green" : forecastStep.status === "open" ? "orange" : "gray"}`}>
               {forecastStep.status === "done" ? "✓ klaar" : forecastStep.status === "open" ? "open" : "volgt bij het besluit"}
             </span>
-            {forecastStep.status === "later" && <span className="tiny">Je voorspelt zodra het besluitmoment open is (na de Reality Check); nu hoeft er niets.</span>}
+            {forecastStep.status === "later" && <span className="tiny">Je voorspelt zodra het besluitmoment open is (na de realiteitscheck); nu hoeft er niets.</span>}
             {forecastStep.missing.length > 0 && (
               <ul>
                 {forecastStep.missing.map((m) => (
@@ -86,7 +86,7 @@ export function DecisionSelector({
             <span className="radio" />
             <span>
               <strong>{DECISIONS[k].label}</strong>
-              <small>{advised === k ? `Advies van de Reality Check. ${DECISIONS[k].hint}` : DECISIONS[k].hint}</small>
+              <small>{advised === k ? `Advies van de realiteitscheck. ${DECISIONS[k].hint}` : DECISIONS[k].hint}</small>
             </span>
           </button>
         ))}

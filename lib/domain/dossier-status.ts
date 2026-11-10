@@ -6,9 +6,9 @@
 // - Markt is "klaar" als de beslissende onderzoeksvraag is beantwoord met minstens één geverifieerde bevinding.
 //   Tot fase B2 een vraag als beslissend markeert, is dat de eerste vraag (laagste positie). Anders: "Verkenning".
 // - Aannames zijn "klaar" als er minstens één kritieke aanname (belang ≥ 4) met een aangewezen hoofdtest is én de
-//   beslisregel (go-regel) is vastgelegd (gebruikerstest A6). Kent de database de beslisregel nog niet ("unknown"),
+//   beslisregel (beslisregel) is vastgelegd (gebruikerstest A6). Kent de database de beslisregel nog niet ("unknown"),
 //   dan telt alleen de hoofdtest.
-// - Testen is "klaar" als er een afgeronde test is met een uitslag: een Learning Card met geslaagd of niet geslaagd.
+// - Testen is "klaar" als er een afgeronde test is met een uitslag: een leerkaart met geslaagd of niet geslaagd.
 //   Onbeslist telt niet. "Loopt" als er een test live of gepauzeerd is of nog op een uitslag wacht.
 // - Besluit is "klaar" als het laatste besluit definitief is: doorgaan of stoppen. Na "verder testen", "verlengde
 //   testfase" of "bijsturen" is Testen weer de huidige stap; na "pauzeren" staat het dossier op Besluit · gepauzeerd.
@@ -29,7 +29,7 @@ export type DossierInput = {
   experiments: number;
   experimentsLive: number;
   experimentsEnded: number;
-  testsWithVerdict: number; // afgeronde tests met een Learning Card met uitslag geslaagd of niet geslaagd
+  testsWithVerdict: number; // afgeronde tests met een leerkaart met uitslag geslaagd of niet geslaagd
   realTestObservations: number; // niet-synthetische waarnemingen uit tests
   decisions: number;
   latestDecisionAction: string | null; // actie van het laatste besluit (decisions.action), null zonder besluit
@@ -53,7 +53,7 @@ const OPEN_DECISION_LABELS: Record<string, string> = {
   pause: "Gepauzeerd",
 };
 
-// Aantal afgeronde tests (ended, analyzed, decided) met een Learning Card met uitslag geslaagd of niet geslaagd.
+// Aantal afgeronde tests (ended, analyzed, decided) met een leerkaart met uitslag geslaagd of niet geslaagd.
 export function testsWithVerdict(experiments: { id: string; state: string }[], cards: { experiment_id: string; verdict: string }[]): number {
   return experiments.filter(
     (e) => ["ended", "analyzed", "decided"].includes(e.state) && cards.some((c) => c.experiment_id === e.id && (c.verdict === "pass" || c.verdict === "fail")),

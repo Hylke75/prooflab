@@ -7,7 +7,7 @@ const statuses = (p: ReturnType<typeof testProgress>) => p.steps.map((s) => s.st
 
 describe("voortgang van een test", () => {
   it("heeft zes stappen over het hele testproces", () => {
-    expect(TEST_PROGRESS_STEPS.map((s) => s.label)).toEqual(["Test Card invullen", "Ter review", "Goedgekeurd", "Loopt (meten)", "Afgerond", "Learning Card"]);
+    expect(TEST_PROGRESS_STEPS.map((s) => s.label)).toEqual(["Testkaart invullen", "Ter review", "Goedgekeurd", "Loopt (meten)", "Afgerond", "Leerkaart"]);
     expect(testProgress({ state: "draft" }).steps.map((s) => s.number)).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
@@ -60,7 +60,7 @@ describe("voortgang van een test", () => {
   });
 });
 
-describe("tabs van de Test Card-builder", () => {
+describe("tabs van de testkaart-builder", () => {
   const keys = (type: string, manualPlaybook = false) => testCardTabs(type, { manualPlaybook }).map((t) => t.label);
   it("toont per testtype alleen tabs met inhoud", () => {
     const start = ["Testtype", "Wat test je", "Wanneer geslaagd"];

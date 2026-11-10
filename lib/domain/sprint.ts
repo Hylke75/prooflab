@@ -6,9 +6,9 @@ export type SprintPhase = "research" | "assumptions" | "test" | "decide";
 
 export const SPRINT_PHASES: Record<SprintPhase, { label: string; detail: string; order: number }> = {
   research: { label: "Onderzoek", detail: "Idee-brief bevestigd, eerste marktbeeld met bronnen", order: 1 },
-  assumptions: { label: "Aannames + testontwerp", detail: "Top 3 risicovolle aannames, Test Card goedgekeurd", order: 2 },
+  assumptions: { label: "Aannames + testontwerp", detail: "Top 3 risicovolle aannames, testkaart goedgekeurd", order: 2 },
   test: { label: "Testen", detail: "Tests live, werving loopt, nog geen uitspraak", order: 3 },
-  decide: { label: "Besluit + rapport", detail: "Learning Cards, Reality Check, besluit en rapport", order: 4 },
+  decide: { label: "Besluit + rapport", detail: "Leerkaarten, realiteitscheck, besluit en rapport", order: 4 },
 };
 
 export const SPRINT_LENGTHS = [4, 5, 6] as const;

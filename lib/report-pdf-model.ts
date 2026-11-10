@@ -206,7 +206,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
         t: "kpis",
         items: [
           { label: "Bevindingen met bron", value: String(r.counts.claims), note: claimCountsNote(r.counts), tone: "blue" },
-          { label: "Experimenten", value: String(r.experiments.length).padStart(2, "0"), note: `${r.learningCards.length} met goedgekeurde Learning Card`, tone: "green" },
+          { label: "Experimenten", value: String(r.experiments.length).padStart(2, "0"), note: `${r.learningCards.length} met goedgekeurde leerkaart`, tone: "green" },
           // B6: geen "€ 0" als de marktomvang niet is vastgesteld.
           { label: "Bereikbare jaaromzet (realistisch)", value: revenue.value, note: revenue.note, tone: "coral" },
         ],
@@ -372,7 +372,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
     const cl = c as { level?: unknown; title?: string | null };
     exps.push({
       t: "note",
-      title: `Learning Card${cl.title ? `: ${cl.title}` : ""}${"level" in cl ? ` · ${outcomeWithLevel(VERDICT[c.verdict] ?? "onbeslist", asEvidenceLevel(cl.level))}` : ""}`,
+      title: `Leerkaart${cl.title ? `: ${cl.title}` : ""}${"level" in cl ? ` · ${outcomeWithLevel(VERDICT[c.verdict] ?? "onbeslist", asEvidenceLevel(cl.level))}` : ""}`,
       text: `We dachten: ${c.believed} We zagen: ${c.observed} Daaruit leren we: ${c.learned} Daarom: ${c.therefore} (betrouwbaarheid: ${RELIABILITY[c.reliability] ?? c.reliability})`,
     });
   }
@@ -394,12 +394,12 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
     ...r.experiments.filter((e) => e.selfReported).map((e) => `${e.title} is een enquête: zelfrapportage, geen gedrag. Antwoorden via een open link zijn niet te controleren.`),
     ...r.experiments.filter((e) => e.manualEntry).map((e) => `${e.title}: resultaten handmatig ingevoerd door het onderzoeksteam, niet door ProofLab waargenomen.`),
   ];
-  const reality: Block[] = [{ t: "p", small: true, muted: true, text: "De Reality Check zoekt vóór elk besluit bewust naar tegenbewijs, zwakke data en conclusies die het bewijs niet draagt." }];
+  const reality: Block[] = [{ t: "p", small: true, muted: true, text: "De realiteitscheck zoekt vóór elk besluit bewust naar tegenbewijs, zwakke data en conclusies die het bewijs niet draagt." }];
   if (r.realityCheck) {
     reality.push({ t: "p", text: `Uitgevoerd ${nlDate(r.realityCheck.at)}${r.realityCheck.aiUsed ? ", aangevuld met kritische vragen van AI" : ""}. Advies: ${r.realityCheck.advice}. ${r.realityCheck.reason}` });
     if (r.realityCheck.findings.length) reality.push({ t: "list", items: r.realityCheck.findings.map((f) => `${f.title}${f.source === "ai" ? " (AI-vraag)" : ""}: ${f.detail}`) });
   } else {
-    reality.push({ t: "p", text: "Er is nog geen Reality Check uitgevoerd.", muted: true });
+    reality.push({ t: "p", text: "Er is nog geen realiteitscheck uitgevoerd.", muted: true });
   }
   reality.push({ t: "h", text: "Tegenbewijs" });
   reality.push(counter.length ? { t: "list", items: counter } : { t: "p", text: "Geen tegenbewijs vastgelegd. Dat betekent niet dat het er niet is.", muted: true });
@@ -443,7 +443,7 @@ export function buildReportPdfModel(r: ReportSnapshot, meta: PdfMeta): ReportPdf
   const advice: string[] = [];
   if (r.decision?.nextStep) advice.push(`Volgende stap: ${endSentence(r.decision.nextStep)}`);
   for (const c of r.learningCards) if (c.therefore) advice.push(c.therefore);
-  if (r.realityCheck && !r.decision) advice.push(`Advies uit de Reality Check: ${r.realityCheck.advice}. ${r.realityCheck.reason}`);
+  if (r.realityCheck && !r.decision) advice.push(`Advies uit de realiteitscheck: ${r.realityCheck.advice}. ${r.realityCheck.reason}`);
   if (r.labelMissing.length) advice.push(`Om het bewijs te versterken: ${endSentence(r.labelMissing.join("; "))}`);
   if (r.prediction?.outcome.statement) advice.push(`Toets over zes maanden of het idee slaagde: ${endSentence(r.prediction.outcome.statement)}`);
   chapters.push({

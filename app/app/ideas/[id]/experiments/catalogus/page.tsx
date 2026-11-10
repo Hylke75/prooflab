@@ -12,7 +12,7 @@ import { MANUAL_SCHEMA_MISSING } from "@/lib/domain/manual-results";
 export const metadata: Metadata = { title: "Experimentencatalogus" };
 
 // Experimentencatalogus onder stap 3 Testen: alle methodes met zoeken, filters en een detailpaneel. "Gebruik voor deze
-// aanname" opent de Test Card met het sjabloon van de methode (ingebouwd testtype of handmatig sjabloon).
+// aanname" opent de testkaart met het sjabloon van de methode (ingebouwd testtype of handmatig sjabloon).
 export default async function CatalogPage({ params, searchParams }: PageProps<"/app/ideas/[id]/experiments/catalogus">) {
   const { id } = await params;
   const sp = await searchParams;
@@ -31,7 +31,7 @@ export default async function CatalogPage({ params, searchParams }: PageProps<"/
   const initialFilter = fromAssumption && !filter.lens && !filter.query && typeof sp.open !== "string" ? { ...filter, lens: KIND_LENS[fromAssumption.kind] } : filter;
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, "Testen", "Catalogus"]} coach="experiments" ideaId={id} section="/experiments">
+    <PageFrame crumbs={["Werkruimte", idea.title, "Hulp en methode", "Testmethodes"]} coach="experiments" ideaId={id} section="/experiments/catalogus">
       <div className="section-row">
         <div>
           <div className="eyebrow">Stap 3 van 4 · Testen</div>

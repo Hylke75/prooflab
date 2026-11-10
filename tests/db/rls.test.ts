@@ -292,7 +292,7 @@ d("row level security and integrity rules", () => {
     expect(n).toBe(0);
   });
 
-  it("bases decisions on the latest Reality Check and blocks continuing past blockers", async () => {
+  it("bases decisions on the latest realiteitscheck and blocks continuing past blockers", async () => {
     const ids = await as(alice, async (c) => {
       const old = (await c.query("insert into public.reality_checks (idea_id, findings, advice, advice_reason, created_at) values ($1, '[]', 'continue', 'oud', now() - interval '1 day') returning id", [A.idea])).rows[0].id;
       const blocked = (await c.query(`insert into public.reality_checks (idea_id, findings, advice, advice_reason) values ($1, '{"findings":[{"code":"missing_consent","severity":"blocker"}],"investorQuestions":[]}', 'pause', 'blokkade') returning id`, [A.idea])).rows[0].id;
@@ -322,7 +322,7 @@ d("row level security and integrity rules", () => {
     ).rejects.toThrow(/IDEA_MISMATCH/);
   });
 
-  it("makes approved Learning Cards, reports and AI budgets tamper-proof", async () => {
+  it("makes approved leerkaarten, reports and AI budgets tamper-proof", async () => {
     const x = await newExperiment(alice, A.idea);
     const card = await as(alice, async (c) =>
       (await c.query(

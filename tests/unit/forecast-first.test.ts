@@ -47,7 +47,7 @@ describe("eerst voorspellen", () => {
   it("vergrendelt zolang de gebruiker het open moment nog niet heeft voorspeld", () => {
     expect(forecastFirstLock(progress({}))).toBe("experiment");
     expect(forecastFirstLock(progress({ ownMoments: ["experiment"] }))).toBeNull();
-    // Bij het besluit (Reality Check gedaan) gaat het om het besluitmoment.
+    // Bij het besluit (realiteitscheck gedaan) gaat het om het besluitmoment.
     expect(forecastFirstLock(progress({}, { latestRealityCheckAt: "2026-11-01T10:00:00Z" }))).toBe("decision");
   });
 

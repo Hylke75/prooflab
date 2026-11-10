@@ -201,7 +201,7 @@ export function SurveyEditor({
         ) : explore ? (
           <>Een <strong>kernvraag</strong> is optioneel: dan zie je hoeveel mensen een concrete handeling noemen. Er hangt geen drempel of oordeel aan; dit onderzoek is verkennend.</>
         ) : (
-          <>Kies één <strong>kernvraag</strong> (een keuzevraag die iedereen krijgt) en vink de antwoorden aan die als steun voor de aanname tellen. Dat wordt de vooraf vastgelegde meting in de Test Card.</>
+          <>Kies één <strong>kernvraag</strong> (een keuzevraag die iedereen krijgt) en vink de antwoorden aan die als steun voor de aanname tellen. Dat wordt de vooraf vastgelegde meting in de testkaart.</>
         )}
       </p>
       {explore && !interview && c.key_question && (
@@ -256,7 +256,7 @@ export function SurveyEditor({
             <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>{errors.slice(0, 8).map((e) => <li key={e}>{e}</li>)}</ul>
           </div>
         ) : (
-          <div className="form-ok">{explore ? "Compleet. Na goedkeuring ligt het onderzoek vast." : "De enquête is compleet. Na goedkeuring van de Test Card ligt hij vast."}</div>
+          <div className="form-ok">{explore ? "Compleet. Na goedkeuring ligt het onderzoek vast." : "De enquête is compleet. Na goedkeuring van de testkaart ligt hij vast."}</div>
         )}
       </div>
     </div>

@@ -136,7 +136,7 @@ export const loadAssumptionInputs = cache(async (ideaId: string) => {
     loadIdeaCaps(ideaId),
     ideaMethodVersion(ideaId),
     // Fase B0, punt 4: uitkomst en n per test, om onbesliste tests en tests onder de steekproef niet mee te tellen.
-    // Experimenten, hypotheses, Learning Cards en observaties (zonder citaat) zijn ook voor opdrachtgevers leesbaar.
+    // Experimenten, hypotheses, leerkaarten en observaties (zonder citaat) zijn ook voor opdrachtgevers leesbaar.
     supabase.from("experiments").select("id, title, type, state, hypotheses(assumption_id, min_sample)").eq("idea_id", ideaId),
     supabase.from("learning_cards").select("experiment_id, status, verdict, metrics").eq("idea_id", ideaId),
     // Fase 1 · punt 3: thema-citaten tellen niet als gecodeerd gesprek (en dus niet in n of als ontdekkingsbewijs).
@@ -447,7 +447,7 @@ export const loadProgress = cache(async (ideaId: string): Promise<IdeaProgress> 
   const assumptions = rankAssumptions(rawAssumptions);
   const cardList = cards.data ?? [];
   const approvedCards = cardList.filter((c) => c.status === "approved");
-  // Verkennend klantonderzoek vanuit Markt telt niet als test: het krijgt geen Learning Card en beslist niets.
+  // Verkennend klantonderzoek vanuit Markt telt niet als test: het krijgt geen leerkaart en beslist niets.
   const expList = (experiments.data ?? []).filter((e) => !isExploratory(e.hypotheses)).map((e) => ({
     id: e.id,
     title: e.title,

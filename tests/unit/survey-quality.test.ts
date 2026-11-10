@@ -199,13 +199,13 @@ describe("sample-size planner", () => {
     expect(answersToClear(22, 25, 20)).toBeNull(); // between the fail and success thresholds
   });
 
-  it("applies the Test Card minimum and turns answers into invitations and open-link visitors", () => {
+  it("applies the testkaart minimum and turns answers into invitations and open-link visitors", () => {
     const p = planSurveySample({ successPct: 25, expectedPct: 60, minSample: 50 });
     expect(p.statistical).toBeLessThan(50);
     expect(p.needed).toBe(50);
     expect(p.invitations).toBe(Math.ceil(50 / (0.15 * 0.9)));
     expect(p.openVisitors).toBe(Math.ceil(50 / (0.3 * 0.9)));
-    expect(planSentence(p, 25)).toContain("de Test Card vraagt minimaal 50");
+    expect(planSentence(p, 25)).toContain("de testkaart vraagt minimaal 50");
     const custom = planSurveySample({ successPct: 25, expectedPct: 40, minSample: 10, inviteResponsePct: 50, usablePct: 100 });
     expect(custom.invitations).toBe(custom.needed! * 2);
   });

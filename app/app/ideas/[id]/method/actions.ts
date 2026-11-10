@@ -9,7 +9,7 @@ import type { FormState } from "@/components/ui/ActionForm";
 import type { Json } from "@/lib/database.types";
 
 // Overstappen naar de nieuwste methodeversie na bevestiging. Het overzicht wordt op de server opnieuw berekend en met
-// de overstap in het auditspoor bewaard. Goedgekeurde Learning Cards blijven ongewijzigd.
+// de overstap in het auditspoor bewaard. Goedgekeurde leerkaarten blijven ongewijzigd.
 export async function switchMethod(ideaId: string, _: FormState, form: FormData): Promise<FormState> {
   const { idea } = await requireWritableIdea(ideaId);
   if (form.get("confirm") !== "on") return { error: "Bevestig dat je het overzicht hebt bekeken." };
@@ -22,6 +22,6 @@ export async function switchMethod(ideaId: string, _: FormState, form: FormData)
   revalidatePath(`/app/ideas/${ideaId}`, "layout");
   return {
     error: null,
-    ok: `Dit dossier rekent nu met methode ${CURRENT_METHOD}. Bestaande rapportversies en goedgekeurde Learning Cards blijven zoals ze waren; maak een nieuwe rapportversie om de nieuwe uitkomsten vast te leggen.`,
+    ok: `Dit dossier rekent nu met methode ${CURRENT_METHOD}. Bestaande rapportversies en goedgekeurde leerkaarten blijven zoals ze waren; maak een nieuwe rapportversie om de nieuwe uitkomsten vast te leggen.`,
   };
 }

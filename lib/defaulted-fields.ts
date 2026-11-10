@@ -2,7 +2,7 @@ import "server-only";
 import { missingColumn } from "@/lib/research-questions-data";
 
 // Fase 1 · punt 1: welke velden ProofLab standaard invulde (kolom defaulted_fields op hypotheses, assumptions en
-// interviews). Dit is alleen herkomst voor het auditspoor en de Test Card; geen berekening leest het.
+// interviews). Dit is alleen herkomst voor het auditspoor en de testkaart; geen berekening leest het.
 //
 // Zolang de migratie 20261114090000_fase1_weergave.sql niet is toegepast, bestaat de kolom niet: dan schrijft de app
 // hetzelfde nog een keer zonder de lijst (de waarden zelf worden altijd bewaard).

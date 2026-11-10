@@ -101,7 +101,7 @@ export default async function MethodPage({ params }: PageProps<"/app/ideas/[id]/
               <div style={{ overflowX: "auto" }}>
                 <table className="table">
                   <caption className="sr-only">Uitkomst per test onder de oude en de nieuwe methode</caption>
-                  <thead><tr><th scope="col">Test</th><th scope="col">Resultaat</th><th scope="col">{version}</th><th scope="col">{CURRENT_METHOD}</th><th scope="col">Learning Card</th></tr></thead>
+                  <thead><tr><th scope="col">Test</th><th scope="col">Resultaat</th><th scope="col">{version}</th><th scope="col">{CURRENT_METHOD}</th><th scope="col">Leerkaart</th></tr></thead>
                   <tbody>
                     {preview.tests.map((t) => (
                       <tr key={t.id}>
@@ -119,7 +119,7 @@ export default async function MethodPage({ params }: PageProps<"/app/ideas/[id]/
               </div>
             )}
             <p className="explain">
-              Goedgekeurde Learning Cards worden nooit overschreven: hun oordeel blijft staan en de uitkomst onder {CURRENT_METHOD} verschijnt ernaast. Bestaande
+              Goedgekeurde leerkaarten worden nooit overschreven: hun oordeel blijft staan en de uitkomst onder {CURRENT_METHOD} verschijnt ernaast. Bestaande
               rapportversies blijven zoals ze zijn; een nieuwe rapportversie vermeldt de nieuwe methode.
             </p>
           </div>

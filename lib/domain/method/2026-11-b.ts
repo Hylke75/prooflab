@@ -1,6 +1,6 @@
 // Methode 2026-11-b (6 november 2026, docs/ProofLab_Voorspelkracht_v1.md hoofdstuk 9):
-// - Oordeel per test volgens de beslisregel op de Test Card: de aantalregel voor sterke handelingen, anders de
-//   kansregel (P(p > drempel) ≥ 0,80 geslaagd, P(p > faaldrempel) ≤ 0,20 niet geslaagd, Beta(1,1)). Test Cards
+// - Oordeel per test volgens de beslisregel op de testkaart: de aantalregel voor sterke handelingen, anders de
+//   kansregel (P(p > drempel) ≥ 0,80 geslaagd, P(p > faaldrempel) ≤ 0,20 niet geslaagd, Beta(1,1)). Testkaarten
 //   zonder vastgelegde regel (van vóór deze methode) rekenen met de kansregel. "Sterk bewezen" als ook de
 //   Wilson-ondergrens boven de drempel ligt.
 // - Kans per aanname: één factor per bron (sterkste ondersteunende signaal), tegenbewijs per signaal, plafond per

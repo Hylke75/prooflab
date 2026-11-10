@@ -268,7 +268,7 @@ export function conditionCandidates(c: SurveyConfig, qid: string): SurveyQuestio
 }
 
 // ---------------------------------------------------------------------------
-// Test Card metric from the key question
+// testkaart metric from the key question
 // ---------------------------------------------------------------------------
 
 const quoteList = (labels: string[]) => {

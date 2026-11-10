@@ -71,7 +71,7 @@ export async function createStudy(ideaId: string, _: StudyState, form: FormData)
     config = onlineInterviewConfig(ctx);
     origin = "leidraad";
   } else if (v.start === "ai") {
-    // Hetzelfde AI-voorstel als bij de Test Card, met de onderzoeksvraag als onderwerp. Zonder AI: het sjabloon.
+    // Hetzelfde AI-voorstel als bij de testkaart, met de onderzoeksvraag als onderwerp. Zonder AI: het sjabloon.
     const res = await coachSurveyDraft(idea, { subject: `Onderzoeksvraag: ${q.question} Doel: ${v.goal}`, audience: v.audience, researcher });
     config = { ...asExploratory(res.draft.config), title: v.title };
     draftId = res.draftId;
@@ -153,7 +153,7 @@ export async function saveStudyConfig(ideaId: string, expId: string, input: { co
 export type StudyDraftState = { error: string | null; draft: DraftResult | null; draftId?: string | null };
 
 // "Laat de coach een eerste opzet maken" in de editor van een verkennende enquête: hetzelfde voorstel als bij de
-// Test Card, met de onderzoeksvraag en het doel als onderwerp. Er wordt niets opgeslagen tot de consultant opslaat.
+// testkaart, met de onderzoeksvraag en het doel als onderwerp. Er wordt niets opgeslagen tot de consultant opslaat.
 export async function draftStudyWithCoach(ideaId: string, expId: string): Promise<StudyDraftState> {
   const { idea } = await requireWritableIdea(ideaId);
   const exp = await loadStudy(ideaId, expId);

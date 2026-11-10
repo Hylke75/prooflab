@@ -4,7 +4,7 @@ import { useId, useState } from "react";
 import { CopyButton } from "@/components/survey/CopyButton";
 import { contentCodeProblem, testLink } from "@/lib/domain/test-page-generator";
 
-// Fase 2 · punt 4: linkbouwer. Per kanaal van de Test Card een kant-en-klare link met utm_source, optioneel met een
+// Fase 2 · punt 4: linkbouwer. Per kanaal van de testkaart een kant-en-klare link met utm_source, optioneel met een
 // berichtcode (utm_content) om per bericht of advertentie te meten. Kopiëren met één klik.
 export function ChannelLinkBuilder({ publicUrl, channels, live }: { publicUrl: string; channels: { key: string; label: string }[]; live: boolean }) {
   const [content, setContent] = useState("");

@@ -1,4 +1,4 @@
-// Reality Check: a mandatory, rule-based review before every decision and report. It looks for
+// realiteitscheck: a mandatory, rule-based review before every decision and report. It looks for
 // the pitfalls of experimentation and for conclusions the evidence does not carry. AI can add
 // critical questions on top, but these rules always run and cannot be switched off.
 
@@ -107,7 +107,7 @@ export function runRealityCheck(f: DossierFacts): RealityCheckResult {
   const approvedCards = f.learningCards.filter((c) => c.status === "approved");
   if (approvedCards.length > 0 && f.decisionsAfterLastLearning === 0) {
     add("failure_to_learn", "info", "Geleerd, nog niet besloten",
-      "Er is een goedgekeurde Learning Card zonder vervolgbesluit. Leren zonder bijsturen is de valkuil 'niet aanpassen'.");
+      "Er is een goedgekeurde leerkaart zonder vervolgbesluit. Leren zonder bijsturen is de valkuil 'niet aanpassen'.");
   }
   if (!f.clientDeciderInvited) {
     add("outsourced_testing", "warning", "Opdrachtgever niet betrokken",

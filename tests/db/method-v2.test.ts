@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Client } from "pg";
 import { randomUUID } from "node:crypto";
 
-// Methode 2026-11-b (supabase/migrations/20261106110000_method_v2.sql): de beslisregel op de Test Card wordt
+// Methode 2026-11-b (supabase/migrations/20261106110000_method_v2.sql): de beslisregel op de testkaart wordt
 // na goedkeuring mee vergrendeld. Draait tegen een wegwerp-Postgres (scripts/test-db.sh); overgeslagen zonder
 // TEST_DATABASE_URL.
 const url = process.env.TEST_DATABASE_URL;

@@ -1,5 +1,5 @@
 // Methode 2026-11-c (7 november 2026, docs/ProofLab_Voorspelkracht_v1.md hoofdstuk 10): bouwt voort op 2026-11-b.
-// - Oordeel per test: zoals 2026-11-b (kansregel of aantalregel op de Test Card).
+// - Oordeel per test: zoals 2026-11-b (kansregel of aantalregel op de testkaart).
 // - Kans per aanname: zoals 2026-11-b (één factor per bron, plafond per bewijsniveau), met de aanvullingen uit
 //   golf A (lib/domain/evidence.ts assumptionProbabilityV3): afnemende factor binnen dezelfde wervingsgroep en
 //   alleen beoordeelde AI-codering; uit golf C: een indirecte bevinding (claims.relevance) telt met halve sterkte.

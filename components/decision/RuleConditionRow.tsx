@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { DEVIATION_MIN_CHARS } from "@/lib/domain/decision-rule";
 
-// Gebruikerstest B1: één aanname als voorwaarde van de go-regel, met een vinkje. Haal je een kritieke aanname (gekozen
+// Gebruikerstest B1: één aanname als voorwaarde van de beslisregel, met een vinkje. Haal je een kritieke aanname (gekozen
 // om nu te testen, belang 5) eruit, dan verschijnt een verplicht veld voor de motivering (minstens 15 tekens). De server
 // controleert hetzelfde (excludedCriticalCheck). De aanname van de hoofdtest blijft altijd in de regel.
 export function RuleConditionRow({

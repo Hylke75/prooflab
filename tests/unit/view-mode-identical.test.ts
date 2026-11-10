@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fakeSupabase, type FakeDb } from "./helpers/fake-supabase";
 
 // Fase 1 · punt 1: de stand (Snel of Grondig) is alleen weergave. Dezelfde dossierdata met alleen een andere
-// detail_level moet bit voor bit dezelfde uitkomsten geven: het dossier (rapport en Reality Check), de kansen en het
+// detail_level moet bit voor bit dezelfde uitkomsten geven: het dossier (rapport en realiteitscheck), de kansen en het
 // bewijsregister per aanname, de dossierstand (coach, statussen) en de Stand van het bewijs.
 // Zie ook tests/unit/view-mode-isolation.test.ts: de rekenmodules lezen de stand niet eens.
 

@@ -1,5 +1,5 @@
 // Methode 2026-11-d (4 november 2026, docs/ProofLab_Voorspelkracht_v1.md hoofdstuk 13): bouwt voort op 2026-11-c.
-// - Oordeel per test en status van een aanname: zoals 2026-11-c (beslisregel op de Test Card, alleen de hoofdtest beslist).
+// - Oordeel per test en status van een aanname: zoals 2026-11-c (beslisregel op de testkaart, alleen de hoofdtest beslist).
 // - Kans per aanname: zoals 2026-11-c, maar ook tegenbewijs telt per bron één keer (alleen het sterkste
 //   tegensignaal per bron), net als ondersteunend bewijs (lib/domain/evidence.ts assumptionProbabilityV4).
 //   Vijf bezwaren van één geïnterviewde verlagen de kans dus één keer; bezwaren van verschillende geïnterviewden

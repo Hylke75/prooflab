@@ -77,10 +77,10 @@ describe("Stand van het bewijs: het beslisscherm", () => {
     );
     expect(s.critical).toEqual({ total: 3, tested: 1 });
     expect(s.assumptions.map((a) => a.primary?.status)).toEqual(["Geslaagd · niveau: kleine handeling", "Onbeslist · niveau: probleem in eigen gedrag", "loopt"]);
-    // Een concept-Learning Card telt (nog) niet als getest.
+    // Een concept-leerkaart telt (nog) niet als getest.
     expect(primaryStatus({ primaryExperimentId: "t9" }, [{ experimentId: "t9", state: "ended", verdict: "fail", cardStatus: "draft", type: "landing" }], "idee")).toMatchObject({
       tested: false,
-      status: "Niet geslaagd · niveau: kleine handeling (Learning Card nog niet goedgekeurd)",
+      status: "Niet geslaagd · niveau: kleine handeling (leerkaart nog niet goedgekeurd)",
     });
     expect(primaryStatus({ primaryExperimentId: null }, tests, "idee")).toBeNull();
   });

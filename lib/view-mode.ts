@@ -50,7 +50,7 @@ export function explainShowsText(level: DetailLevel, isFirstOnPage: boolean): bo
   return level === "thorough" || isFirstOnPage;
 }
 
-// Velden die ProofLab standaard kan invullen, per tabel, met het label voor het auditspoor en de Test Card.
+// Velden die ProofLab standaard kan invullen, per tabel, met het label voor het auditspoor en de testkaart.
 // De app zet alleen deze namen in defaulted_fields; onbekende namen vallen weg.
 export const DEFAULTABLE_FIELDS = {
   hypotheses: {

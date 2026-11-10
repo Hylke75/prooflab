@@ -9,9 +9,9 @@
 export type TestOutcome = {
   experimentId: string;
   title?: string | null;
-  // De uitkomst van de Learning Card (goedgekeurd, anders het concept); null of "running" zolang er geen is.
+  // De uitkomst van de leerkaart (goedgekeurd, anders het concept); null of "running" zolang er geen is.
   verdict: "pass" | "fail" | "inconclusive" | "running" | null;
-  // Het aantal deelnemers: van de Learning Card, of bij een lopende interviewtest de gecodeerde interviews.
+  // Het aantal deelnemers: van de leerkaart, of bij een lopende interviewtest de gecodeerde interviews.
   // null = onbekend (geen steekproefregel).
   n: number | null;
   minSample: number | null;
@@ -61,7 +61,7 @@ export function experimentFromSourceKey(key: string | null | undefined): string 
 // Een test die al loopt of klaar is (concepten en goedgekeurde, nog niet gestarte tests tellen nergens mee).
 export const isStarted = (state: string) => !["draft", "ready_for_review", "approved"].includes(state);
 
-// Fase 1, punt 2 (Stand van het bewijs): ook het testtype, of de Learning Card goedgekeurd is, het vastgelegde bewijsniveau
+// Fase 1, punt 2 (Stand van het bewijs): ook het testtype, of de leerkaart goedgekeurd is, het vastgelegde bewijsniveau
 // en het aantal geslaagde deelnemers (metrics.successes). Alleen voor weergave; uitsluiting en kans gebruiken ze niet.
 export type TestOutcomeRow = TestOutcome & {
   assumptionId: string | null;
@@ -73,7 +73,7 @@ export type TestOutcomeRow = TestOutcome & {
 };
 
 // De uitkomst en het aantal deelnemers per test, uit gegevens die consultant en opdrachtgever allebei mogen lezen:
-// - met Learning Card (goedgekeurd, anders het concept): het oordeel en n van die kaart;
+// - met leerkaart (goedgekeurd, anders het concept): het oordeel en n van die kaart;
 // - interviewtest zonder kaart: het aantal verschillende interviews met gecodeerde, niet-synthetische uitspraken;
 // - andere tests zonder kaart: n onbekend (hun meting wordt pas met de kaart een waarneming), dus geen uitsluiting.
 export function testOutcomesFrom(

@@ -65,7 +65,7 @@ async function observe(c: Client, idea: string, a: string, kind: string, relatio
   await c.query("insert into public.assumption_observations (assumption_id, observation_id, idea_id, relation) values ($1, $2, $3, $4)", [a, o, idea, relation]);
 }
 
-// An experiment of a type on an assumption, with an approved Learning Card carrying the verdict.
+// An experiment of a type on an assumption, with an approved leerkaart carrying the verdict.
 async function tested(c: Client, idea: string, a: string, type: string, verdict: string) {
   const h = (
     await c.query(

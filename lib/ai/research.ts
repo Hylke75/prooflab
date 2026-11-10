@@ -468,7 +468,7 @@ thema's over de interviewer zelf. Liever weinig sterke thema's dan veel vage.`,
 }
 
 // ---------------------------------------------------------------------------
-// 6. Reality Check: critical questions on top of the rule-based checks
+// 6. Realiteitscheck: critical questions on top of the rule-based checks
 // ---------------------------------------------------------------------------
 
 const ChallengeSchema = z.object({

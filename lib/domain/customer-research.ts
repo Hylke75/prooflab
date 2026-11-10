@@ -41,8 +41,8 @@ export function isExploratory(h: HypLike | null | undefined): boolean {
   return h.exploratory === true || h.success_threshold_pct == null || h.assumption_id == null;
 }
 
-// De hypothese als beslissende Test Card (met drempel en aanname), of null bij een verkennend onderzoek. Alle code
-// die een oordeel, kans of Learning Card berekent, gebruikt dit: verkennend onderzoek valt daar dan buiten, zoals
+// De hypothese als beslissende testkaart (met drempel en aanname), of null bij een verkennend onderzoek. Alle code
+// die een oordeel, kans of leerkaart berekent, gebruikt dit: verkennend onderzoek valt daar dan buiten, zoals
 // een experiment zonder hypothese. Voor hoofdtests en tests uit stap 3 verandert er niets.
 export function decisive<T extends HypLike>(h: T | null | undefined): (T & { success_threshold_pct: number; assumption_id: string }) | null {
   if (!h || isExploratory(h)) return null;

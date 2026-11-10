@@ -65,3 +65,8 @@
 .tc-step-nav{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-top:22px;padding-top:16px;border-top:1px solid var(--color-border)}
 .tc-tabs{flex-wrap:wrap}
 @media(max-width:560px){.tc-step-nav .btn{width:100%;justify-content:center}.tc-step-nav>span:empty{display:none}}
+
+/* Sidebar: kleine link naar Hulp en methode (naslag, geen stap) */
+.help-link-side{display:flex;align-items:center;gap:8px;min-height:44px;padding:8px 14px;margin-top:6px;border-radius:var(--radius-pill);font-size:14px;color:var(--color-text-muted);text-decoration:none}
+.help-link-side:hover{color:var(--color-primary);background:var(--color-surface-muted)}
+.help-link-side.active{color:var(--color-primary);font-weight:600;background:var(--color-surface-soft)}

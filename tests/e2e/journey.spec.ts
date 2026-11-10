@@ -108,7 +108,7 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.getByRole("button", { name: /Begin met de standaardset|Stel aannames voor/ }).click();
   await expect(page.getByRole("heading", { name: "Risicokaart" })).toBeVisible();
 
-  // 4. Landing page experiment: het testplan is een eigen taakscherm in stappen.
+  // 4. Landing page experiment: de testkaart is een eigen taakscherm in stappen.
   await page.goto(`${ideaUrl}/experiments?nieuw=1`);
   // B0 punt 3: een landingpage met demo-aanvragen past niet bij een prijs- of technische aanname (dan is goedkeuren
   // geblokkeerd). Kies daarom expliciet een markt- of gedragsaanname.
@@ -117,7 +117,7 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   expect(fitting, "een markt- of gedragsaanname").toBeTruthy();
   await page.getByLabel("Aanname die je toetst", { exact: true }).selectOption({ label: fitting! });
   await page.getByRole("radio", { name: /Landingpage-test/ }).click();
-  const steps = page.getByRole("tablist", { name: "Stappen van het testplan" });
+  const steps = page.getByRole("tablist", { name: "Stappen van de testkaart" });
   // Kop en ondertitel staan bij stap Testpagina; drempels en werving bij Wanneer geslaagd.
   await steps.getByRole("tab", { name: /Testpagina/ }).click();
   await page.getByLabel("Kop (verplicht)", { exact: true }).fill("Vind de perfecte eventlocatie in minuten.");
@@ -133,13 +133,13 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
   await page.locator("#tc-details").click();
   await page.getByRole("radio", { name: "Koud", exact: true }).check();
   await steps.getByRole("tab", { name: /Voorbeeld/ }).click();
-  await page.getByRole("button", { name: /Test Card opslaan als concept/ }).click();
+  await page.getByRole("button", { name: /Testkaart opslaan als concept/ }).click();
   // Fase B1a: na opslaan terug op het bord met een bevestiging; daarvandaan naar het concept.
   await page.waitForURL(/\/experiments\?opgeslagen=/);
-  await expect(page.getByText("Test Card opgeslagen als concept.")).toBeVisible();
-  // Fase B5: de eerste hoofdtest krijgt een voorgestelde go-regel; zonder vastgelegde regel start hij niet.
-  await page.getByRole("button", { name: "Leg deze go-regel vast" }).click();
-  await expect(page.getByText("Go-regel vastgelegd.")).toBeVisible();
+  await expect(page.getByText("Testkaart opgeslagen als concept.")).toBeVisible();
+  // Fase B5: de eerste hoofdtest krijgt een voorgestelde beslisregel; zonder vastgelegde regel start hij niet.
+  await page.getByRole("button", { name: "Leg deze beslisregel vast" }).click();
+  await expect(page.getByText("Beslisregel vastgelegd.")).toBeVisible();
   await page.getByRole("link", { name: "Open het concept →" }).click();
   await page.waitForURL(/\/experiments\/[0-9a-f-]{36}/);
   await page.getByRole("button", { name: "Ter review aanbieden" }).click();
@@ -168,16 +168,16 @@ test("idee → onderzoek → risico → test → bewijs → besluit → rapport"
 
   // 6. End, analyse, learn, decide
   await page.getByRole("button", { name: "Rond af" }).click();
-  await page.getByRole("button", { name: "Analyseer en maak de Learning Card" }).click();
+  await page.getByRole("button", { name: "Analyseer en maak de leerkaart" }).click();
   await page.waitForURL(/\/evidence/);
   // Fase B5: "Daaruit leren we" en "Daarom gaan we" staan er als voorstel; met goedkeuren bevestig je ze.
   await expect(page.getByText(/een voorstel/).first()).toBeVisible();
   await expect(page.locator("textarea[name=we_learned]").first()).not.toHaveValue("");
   await page.getByRole("button", { name: "Keur goed: werk de aanname bij" }).click();
-  // Besluit is drie taken op eigen schermen: na de Learning Card volgt "Klopt het echt?".
+  // Besluit is drie taken op eigen schermen: na de leerkaart volgt "Klopt het echt?".
   await page.getByRole("link", { name: /Verder: Klopt het echt/ }).click();
   await page.waitForURL(/stap=check/);
-  await page.getByRole("button", { name: "Voer de Reality Check uit" }).click();
+  await page.getByRole("button", { name: "Voer de realiteitscheck uit" }).click();
   await expect(page.getByText(/Advies:/)).toBeVisible();
   // The decision needs a base rate and the consultant's own forecast at the decision moment.
   await page.goto(`${ideaUrl}/outcome`);

@@ -121,7 +121,7 @@ export function sniffEvidence(bytes: Uint8Array, claimed: string): EvidenceMime 
 }
 
 // Het oordeel over handmatige resultaten: precies de beslisregel van de methodeversie, met de vergrendelde drempels
-// van de Test Card en pas na de eindconditie (zelfde aanroep als experimentMetrics). Voor tests en uitleg.
+// van de testkaart en pas na de eindconditie (zelfde aanroep als experimentMetrics). Voor tests en uitleg.
 export function manualOutcome(
   h: HypothesisRule & { success_threshold_pct: number; fail_threshold_pct: number | null; min_sample: number },
   rows: Pick<ManualResultRow, "units" | "successes" | "withdrawn_at" | "evidence_path">[],
@@ -139,7 +139,7 @@ export function manualOutcome(
   return { n: t.n, successes: t.successes, verdict };
 }
 
-// De samenvatting van de systeemwaarneming bij de Learning Card: altijd met "handmatig ingevoerd" en de methode.
+// De samenvatting van de systeemwaarneming bij de leerkaart: altijd met "handmatig ingevoerd" en de methode.
 export function manualSummary(i: { methodName: string; unitMany: string; n: number; successes: number; metricLabel: string; interval: string; entries: number }): string {
   return `Handmatig ingevoerd (${i.methodName}): ${i.successes} van ${i.n} ${i.unitMany}: ${i.metricLabel.toLowerCase()} (${i.interval}); ${i.entries} ${i.entries === 1 ? "regel" : "regels"} met notitie.`.slice(0, 400);
 }

@@ -47,11 +47,11 @@ export async function updateLearningCard(ideaId: string, cardId: string, _: Acti
   const p = CardSchema.safeParse(Object.fromEntries(form));
   if (!p.success) {
     const fieldErrors = fieldErrorsFrom(p.error.issues);
-    return { error: savedNothing("De Learning Card", fieldErrors), fieldErrors };
+    return { error: savedNothing("De leerkaart", fieldErrors), fieldErrors };
   }
   const supabase = await supabaseServer();
   const { error } = await supabase.from("learning_cards").update(p.data).eq("id", cardId).eq("idea_id", ideaId).eq("status", "draft");
-  if (error) return { error: "De Learning Card is niet opgeslagen. Probeer het opnieuw." };
+  if (error) return { error: "De leerkaart is niet opgeslagen. Probeer het opnieuw." };
   refresh(ideaId);
   return { error: null, ok: "Learning Card opgeslagen." };
 }
@@ -61,7 +61,7 @@ export async function approveLearningCard(ideaId: string, cardId: string, _: Act
   await requireWritableIdea(ideaId);
   const supabase = await supabaseServer();
   const { data: card } = await supabase.from("learning_cards").select("*, experiments(id, state, hypotheses(assumption_id))").eq("id", cardId).eq("idea_id", ideaId).single();
-  if (!card || card.status !== "draft") return { error: "Deze Learning Card is al goedgekeurd." };
+  if (!card || card.status !== "draft") return { error: "Deze leerkaart is al goedgekeurd." };
   // Approver and time are stamped by the database; the guard makes a second approval impossible.
   const { data: approved, error } = await supabase
     .from("learning_cards")
@@ -123,13 +123,13 @@ export async function runCheck(ideaId: string, _: ActionState): Promise<ActionSt
     advice_reason: result.adviceReason,
     ai_used: aiUsed,
   });
-  if (error) return { error: "De Reality Check kon niet worden opgeslagen." };
+  if (error) return { error: "De realiteitscheck kon niet worden opgeslagen." };
   refresh(ideaId);
   return {
     error: null,
     ok: proposed
-      ? `Reality Check uitgevoerd. ${proposed} genoemd${proposed === 1 ? " alternatief staat" : "e alternatieven staan"} als voorstel bij Concurrenten; neem ${proposed === 1 ? "het" : "ze"} over met een website of bron.`
-      : "Reality Check uitgevoerd.",
+      ? `Realiteitscheck uitgevoerd. ${proposed} genoemd${proposed === 1 ? " alternatief staat" : "e alternatieven staan"} als voorstel bij Concurrenten; neem ${proposed === 1 ? "het" : "ze"} over met een website of bron.`
+      : "Realiteitscheck uitgevoerd.",
   };
 }
 
@@ -162,7 +162,7 @@ export async function addPremortem(ideaId: string, _: ActionState, form: FormDat
   const { error } = await withDefaultedFallback((w) => supabase.from("assumptions").insert(rows.map((r) => withFields(r, assumptionDefaults(r), w))));
   if (error) return { error: "De pre-mortem kon niet worden opgeslagen." };
   refresh(ideaId);
-  return { error: null, ok: `${reasons.length} reden(en) staan nu als aanname op de risicokaart. Voer de Reality Check opnieuw uit.` };
+  return { error: null, ok: `${reasons.length} reden(en) staan nu als aanname op de risicokaart. Voer de realiteitscheck opnieuw uit.` };
 }
 
 const DecisionSchema = z.object({
@@ -182,11 +182,11 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   }
   const supabase = await supabaseServer();
   const { data: check } = await supabase.from("reality_checks").select("id, created_at, findings").eq("idea_id", ideaId).order("created_at", { ascending: false }).limit(1).maybeSingle();
-  if (!check) return { error: "Doe eerst de Reality Check. Een besluit zonder tegenspraak is niet toegestaan." };
+  if (!check) return { error: "Doe eerst de realiteitscheck. Een besluit zonder tegenspraak is niet toegestaan." };
   const { data: lastCard } = await supabase.from("learning_cards").select("approved_at").eq("idea_id", ideaId).eq("status", "approved").order("approved_at", { ascending: false }).limit(1).maybeSingle();
-  if (lastCard?.approved_at && lastCard.approved_at > check.created_at) return { error: "Er is nieuw bewijs sinds de laatste Reality Check. Voer de check opnieuw uit." };
+  if (lastCard?.approved_at && lastCard.approved_at > check.created_at) return { error: "Er is nieuw bewijs sinds de laatste realiteitscheck. Voer de check opnieuw uit." };
   const blockers = ((check.findings as { findings?: Finding[] })?.findings ?? []).filter((f) => f.severity === "blocker");
-  if (blockers.length && p.data.action === "continue") return { error: "Er zijn blokkerende punten in de Reality Check. 'Doorgaan' kan pas als die zijn opgelost." };
+  if (blockers.length && p.data.action === "continue") return { error: "Er zijn blokkerende punten in de realiteitscheck. 'Doorgaan' kan pas als die zijn opgelost." };
   // Prediction loop: a decision is measured against the outcome six months later, so the outcome must be
   // defined and the decider gives their own forecast while the decision moment is open.
   const progress = await loadProgress(ideaId);
@@ -232,9 +232,9 @@ export async function saveDecision(ideaId: string, _: ActionState, form: FormDat
   });
   if (error) {
     // The database enforces the same rules; show its reason when it refuses.
-    if (error.message.includes("DECISION_STALE")) return { error: "Er is nieuw bewijs sinds de laatste Reality Check. Voer de check opnieuw uit." };
-    if (error.message.includes("DECISION_BLOCKED")) return { error: "Er zijn blokkerende punten in de Reality Check. 'Doorgaan' kan pas als die zijn opgelost." };
-    if (error.message.includes("DECISION_CHECK")) return { error: "Voer de Reality Check opnieuw uit voordat je besluit." };
+    if (error.message.includes("DECISION_STALE")) return { error: "Er is nieuw bewijs sinds de laatste realiteitscheck. Voer de check opnieuw uit." };
+    if (error.message.includes("DECISION_BLOCKED")) return { error: "Er zijn blokkerende punten in de realiteitscheck. 'Doorgaan' kan pas als die zijn opgelost." };
+    if (error.message.includes("DECISION_CHECK")) return { error: "Voer de realiteitscheck opnieuw uit voordat je besluit." };
     if (error.message.includes("EXTEND_ACTIVE")) return { error: "De verlengde testfase loopt nog. Het definitieve besluit volgt daarna." };
     if (error.message.includes("EXTEND_ONCE")) return { error: "Dit dossier heeft al een verlengde testfase gehad." };
     if (error.message.includes("EXTEND_AFTER_FINAL")) return { error: "Na een definitief besluit is er geen verlengde testfase meer." };

@@ -141,7 +141,7 @@ export function DataRequest({ hashReady, saltVersions }: { hashReady: boolean; s
                 <p className="sub" style={{ fontSize: 13 }}>
                   Anonimiseert {result.survey_invitations.length} uitnodiging(en), wist {result.survey_invitations.filter((i) => i.response).length} enquêteantwoord(en)
                   en maakt {result.test_submissions.length} aanmelding(en) leeg. Dit kan niet ongedaan worden gemaakt. Verwijderde antwoorden tellen daarna niet meer mee in de
-                  resultaten van de enquête; eerder vastgelegde Learning Cards en rapporten worden niet aangepast.
+                  resultaten van de enquête; eerder vastgelegde leerkaarten en rapporten worden niet aangepast.
                 </p>
                 <label className="check-row">
                   <input type="checkbox" checked={suppress && hashReady} disabled={!hashReady} onChange={(e) => setSuppress(e.target.checked)} />

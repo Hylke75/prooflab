@@ -124,7 +124,7 @@ describe("bewijsladder van het dossier telt per persoon", () => {
   });
 });
 
-describe("Reality Check telt per persoon", () => {
+describe("Realiteitscheck telt per persoon", () => {
   const facts: DossierFacts = {
     ideaAgeDays: 5,
     ideaRegion: "Nederland",

@@ -542,7 +542,7 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                     <div><strong>{c.title}</strong><span>{c.detail}</span></div>
                   </div>
                 ))}
-                <div className="note">Deze punten zijn kritische vragen van de AI, geen bewijs. Neem ze mee in de Reality Check.</div>
+                <div className="note">Deze punten zijn kritische vragen van de AI, geen bewijs. Neem ze mee in de realiteitscheck.</div>
               </div>
               </Detail>
             )}

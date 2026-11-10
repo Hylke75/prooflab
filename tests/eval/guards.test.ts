@@ -69,7 +69,7 @@ describe("30 fixed practice cases (deterministic guards)", () => {
 
   it("case #14: an injected instruction can only become a quoted claim, never a verified fact", () => {
     // The injected sentence is literally in the page, so it passes the quote check, but a single
-    // secondary source can never reach 'verified'; the Reality Check and reviewers see it as an estimate.
+    // secondary source can never reach 'verified'; the realiteitscheck and reviewers see it as an estimate.
     const c = CASES.find((x) => x.id === 14)!;
     const ex = c.excerpts![0];
     const s = computeClaimStatus(

@@ -1,10 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createIdeaViaIntake, dutchDate, isoDate } from "./intake";
 
-// Fase B1: de Test Card van een prijs-/aanbodtest. Opslaan geeft altijd een zichtbaar resultaat of een duidelijke
+// Fase B1: de testkaart van een prijs-/aanbodtest. Opslaan geeft altijd een zichtbaar resultaat of een duidelijke
 // fout, en de drempels liggen vast vóórdat ProofLab het aantal deelnemers uitrekent.
 // Fase B5: vijf zichtbare velden, de rest vooringevuld onder Details, en een hoofdtest start pas met een vastgelegde
-// go-regel. Feedback eigenaar: tabs in plaats van twee kolommen (Test Card · Testpagina · Voorbeeld, met de prijs uit
+// beslisregel. Feedback eigenaar: tabs in plaats van twee kolommen (testkaart · Testpagina · Voorbeeld, met de prijs uit
 // de intake op Testpagina) en een voortgangsbalk over het hele testproces met "Je bent hier" en de volgende stap.
 
 const email = process.env.E2E_EMAIL ?? "";
@@ -39,7 +39,7 @@ async function createIdea(page: Page): Promise<string> {
   });
 }
 
-test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-regel starten", async ({ page }) => {
+test("B1/B5: korte testkaart van een prijstest opslaan, goedkeuren en met beslisregel starten", async ({ page }) => {
   await login(page);
   const ideaUrl = await createIdea(page);
 
@@ -52,15 +52,15 @@ test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-reg
   await page.getByRole("button", { name: /Begin met de standaardset|Stel aannames voor/ }).click();
   await expect(page.getByRole("heading", { name: "Risicokaart" })).toBeVisible();
 
-  // Testen: eerst het overzicht met één knop; het testplan is een eigen taakscherm.
+  // Testen: eerst het overzicht met één knop; de testkaart is een eigen taakscherm.
   await page.goto(`${ideaUrl}/experiments`);
-  await expect(page.getByRole("form", { name: "Testplan" })).toHaveCount(0);
+  await expect(page.getByRole("form", { name: "Testkaart" })).toHaveCount(0);
   await page.getByRole("link", { name: "Zet een nieuwe test op" }).click();
   await page.waitForURL(/nieuw=1/);
   await expect(page.locator(".task-head .eyebrow")).toContainText("Testen · taak 1 van 3");
   await expect(page.locator(".role-block")).toContainText("Wat jij doet");
   // Stap 1 van 5: testtype. Een prijsaanname, zodat de prijstest ook kan worden goedgekeurd (B0 punt 3).
-  const steps = page.getByRole("tablist", { name: "Stappen van het testplan" });
+  const steps = page.getByRole("tablist", { name: "Stappen van de testkaart" });
   const statements = await page.locator("#as-select option").allTextContents();
   const price = statements.find((s) => /prijs|betalen/i.test(s));
   expect(price, "een prijsaanname").toBeTruthy();
@@ -69,7 +69,7 @@ test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-reg
   await expect(steps.getByRole("tab")).toHaveCount(5);
   await expect(steps.getByRole("tab")).toContainText(["1. Testtype", "2. Wat test je", "3. Wanneer geslaagd", "4. Testpagina", "5. Voorbeeld"]);
   await expect(page.locator("#tc-steps")).toContainText("Stap 1 van 5: Testtype");
-  const card = page.getByRole("form", { name: "Testplan" });
+  const card = page.getByRole("form", { name: "Testkaart" });
   await expect(card).toBeHidden();
   await page.getByRole("button", { name: /Volgende: Wat test je/ }).click();
   await expect(page.locator("#tc-steps")).toContainText("Stap 2 van 5: Wat test je");
@@ -77,7 +77,7 @@ test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-reg
   // Stap 2: drie vragen. Opslaan staat pas op de laatste stap.
   for (const label of ["Naam van het experiment (verplicht)", "Wij denken dat … (verplicht)", "Bij wie? (verplicht)"]) await expect(card.getByLabel(label, { exact: true })).toBeVisible();
   await expect(card.locator("input:visible:not([type=hidden]):not([type=radio]), textarea:visible, select:visible")).toHaveCount(3);
-  await expect(card.getByRole("button", { name: "Test Card opslaan als concept" })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "Testkaart opslaan als concept" })).toHaveCount(0);
   await card.getByLabel("Wij denken dat … (verplicht)", { exact: true }).fill("Zelfstandige NVM-makelaars kiezen op de testpagina een abonnement van € 249 per maand.");
 
   // Stap 3: wanneer is de test geslaagd. B1b: zonder vastgelegde drempels wordt niets uitgerekend.
@@ -114,7 +114,7 @@ test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-reg
 
   // B1a: één opslagknop op de laatste stap; opslaan zonder vastgelegde drempels stuurt geen verzoek maar springt naar
   // de stap met het ontbrekende punt.
-  const save = card.getByRole("button", { name: "Test Card opslaan als concept" });
+  const save = card.getByRole("button", { name: "Testkaart opslaan als concept" });
   await expect(save).toHaveCount(1);
   await expect(save).toBeEnabled();
   let posts = 0;
@@ -164,23 +164,23 @@ test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-reg
   await steps.getByRole("tab", { name: /Voorbeeld/ }).click();
   await save.click();
   await page.waitForURL(/\/experiments\?opgeslagen=[0-9a-f-]{36}/);
-  await expect(page.getByText("Test Card opgeslagen als concept.")).toBeVisible();
+  await expect(page.getByText("Testkaart opgeslagen als concept.")).toBeVisible();
   const board = page.locator("#bord");
   await expect(board.locator(".assumption-item.just-saved")).toContainText("Prijs");
-  // B5: bij de eerste Test Card stelt ProofLab de go-regel van het dossier voor.
+  // B5: bij de eerste testkaart stelt ProofLab de beslisregel van het dossier voor.
   await expect(page.locator("#go-regel")).toContainText(/Doorgaan als de hoofdtest ".+" slaagt en de aanname ".+" minstens 70% kans haalt\./);
   await page.reload();
   await expect(board.locator(".assumption-item", { hasText: "Prijs" })).toHaveCount(1);
   await page.getByRole("link", { name: "Open het concept →" }).click();
   await page.waitForURL(/\/experiments\/[0-9a-f-]{36}/);
   await expect(page.getByText(/ongeveer \d+ deelnemers nodig/)).toBeVisible();
-  // De prijs uit de intake staat op de testpagina en de deadline op de Test Card.
+  // De prijs uit de intake staat op de testpagina en de deadline op de testkaart.
   await expect(page.getByText(/Deadline/).first()).toBeVisible();
 
-  // De voortgangsbalk volgt de test: Test Card invullen → Ter review → Goedgekeurd → Loopt, met de volgende stap.
+  // De voortgangsbalk volgt de test: Testkaart invullen → Ter review → Goedgekeurd → Loopt, met de volgende stap.
   const procStep = page.locator("#testproces li[aria-current=step]");
-  await expect(procStep).toContainText("Test Card invullen");
-  await expect(page.locator("#testproces")).toContainText("Volgende stap: controleer de Test Card en bied hem ter review aan.");
+  await expect(procStep).toContainText("Testkaart invullen");
+  await expect(page.locator("#testproces")).toContainText("Volgende stap: controleer de testkaart en bied hem ter review aan.");
   await expect(page.getByRole("link", { name: /Naar ter review aanbieden/ })).toHaveAttribute("href", "#ter-review");
   await page.getByRole("button", { name: "Ter review aanbieden" }).click();
   await expect(procStep).toContainText("Ter review");
@@ -189,12 +189,12 @@ test("B1/B5: korte Test Card van een prijstest opslaan, goedkeuren en met go-reg
   for (const box of await page.locator("input[type=checkbox][name^=check_], input[type=checkbox][name=confirm_self_approval]").all()) await box.check();
   await page.getByRole("button", { name: "Akkoord: keur goed en vergrendel" }).click();
 
-  // B5: zonder vastgelegde go-regel start een hoofdtest niet; de reden staat bij de knop.
+  // B5: zonder vastgelegde beslisregel start een hoofdtest niet; de reden staat bij de knop.
   const start = page.getByRole("button", { name: "Publiceer en start de meting" });
   await expect(start).toBeVisible({ timeout: 20_000 });
   await expect(start).toBeDisabled();
-  await expect(page.locator("#go-rule-block")).toContainText("Leg eerst de go-regel van het dossier vast.");
-  await page.getByRole("button", { name: "Leg deze go-regel vast" }).click();
+  await expect(page.locator("#go-rule-block")).toContainText("Leg eerst de beslisregel van het dossier vast.");
+  await page.getByRole("button", { name: "Leg deze beslisregel vast" }).click();
   // Het voorstel maakt plaats voor de vastgelegde regel (achteraf: er was al een test goedgekeurd).
   await expect(page.locator("#go-regel")).toHaveCount(0);
   await expect(page.locator("#go-rule-row")).toContainText(/Doorgaan als .* de hoofdtest .* slaagt/);

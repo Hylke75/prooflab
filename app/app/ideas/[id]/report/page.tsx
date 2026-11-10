@@ -217,7 +217,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           <h2 className="as-h3">{canWrite ? "Nog geen rapport" : "Nog geen gedeeld rapport"}</h2>
           <p>
             {canWrite
-              ? "Een rapport bundelt beslisvraag, bevindingen met bronnen, marktomvang, experimenten, de Reality Check en het besluit in één document voor de opdrachtgever."
+              ? "Een rapport bundelt beslisvraag, bevindingen met bronnen, marktomvang, experimenten, de realiteitscheck en het besluit in één document voor de opdrachtgever."
               : "Zodra het onderzoeksteam een rapportversie met u deelt, leest u die hier."}
           </p>
         </div>
@@ -266,7 +266,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
               <div style={{ background: "var(--color-success-soft)", padding: 16, borderRadius: "var(--radius-inner)" }}>
                 <div className="tiny">Experimenten</div>
                 <div className="report-number">{String(r.experiments.length).padStart(2, "0")}</div>
-                <div className="tiny">{r.learningCards.length} met goedgekeurde Learning Card</div>
+                <div className="tiny">{r.learningCards.length} met goedgekeurde leerkaart</div>
               </div>
               <div style={{ background: "var(--color-warning-soft)", padding: 16, borderRadius: "var(--radius-inner)" }}>
                 <div className="tiny">Bereikbare jaaromzet (realistisch)</div>
@@ -404,7 +404,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             <span className="eyebrow">07 / Experimenten en resultaten</span>
             <h3>Van mening naar meetbaar gedrag</h3>
             <p className="explain">
-              Een Learning Card legt per test vast wat we verwachtten, wat we zagen, wat we daaruit leren en wat we daarom doen. Het 95%-interval is de
+              Een leerkaart legt per test vast wat we verwachtten, wat we zagen, wat we daaruit leren en wat we daarom doen. Het 95%-interval is de
               bandbreedte waarbinnen de werkelijke waarde vrijwel zeker ligt; bij kleine aantallen is die breed.
             </p>
             <div className="mt-12" style={{ breakInside: "avoid" }}>
@@ -481,7 +481,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
             ))}
             {r.learningCards.map((c, i) => (
               <div key={i} className="note">
-                <strong><Term k="learning-card">Learning Card</Term>{"title" in c && c.title ? `: ${c.title}` : ""}.</strong>{" "}
+                <strong><Term k="learning-card">Leerkaart</Term>{"title" in c && c.title ? `: ${c.title}` : ""}.</strong>{" "}
                 {"level" in c ? <span className="pill gray">{outcomeWithLevel(c.verdict === "pass" ? "geslaagd" : c.verdict === "fail" ? "niet geslaagd" : "onbeslist", asEvidenceLevel(c.level))}</span> : null} We dachten: {c.believed} We zagen: {c.observed} Daaruit leren we: {c.learned} Daarom: {c.therefore} (betrouwbaarheid: {{ low: "laag", medium: "middel", high: "hoog" }[c.reliability as "low"]})
               </div>
             ))}
@@ -518,7 +518,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
           <section className="report-section">
             <span className="eyebrow">08 / Reality check: tegenargumenten en beperkingen</span>
             <h3>Wat dit onderzoek níét bewijst</h3>
-            <p className="explain">De <Term k="reality-check">Reality Check</Term> zoekt vóór elk besluit bewust naar <Term k="tegenbewijs">tegenbewijs</Term>, zwakke data en conclusies die het bewijs niet draagt.</p>
+            <p className="explain">De <Term k="reality-check">realiteitscheck</Term> zoekt vóór elk besluit bewust naar <Term k="tegenbewijs">tegenbewijs</Term>, zwakke data en conclusies die het bewijs niet draagt.</p>
             {r.realityCheck ? (
               <>
                 <p>Uitgevoerd {date(r.realityCheck.at)}{r.realityCheck.aiUsed ? ", aangevuld met kritische vragen van AI" : ""}. Advies: {r.realityCheck.advice}. {r.realityCheck.reason}</p>
@@ -527,7 +527,7 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
                 </ul>
               </>
             ) : (
-              <p>Er is nog geen Reality Check uitgevoerd.</p>
+              <p>Er is nog geen realiteitscheck uitgevoerd.</p>
             )}
           </section>
 

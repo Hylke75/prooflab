@@ -77,7 +77,7 @@ export function AiInterviewPanel(p: Props) {
         <span className={`pill ${statusPill.pill}`}>{statusPill.label}</span>
       </div>
       <p className="sub">
-        Respondenten voeren via een publieke link een chatgesprek met een AI-interviewer. De AI stelt de goedgekeurde vragen van deze Test Card en vraagt
+        Respondenten voeren via een publieke link een chatgesprek met een AI-interviewer. De AI stelt de goedgekeurde vragen van deze testkaart en vraagt
         hooguit twee keer door per onderwerp; elke doorvraag wordt vóór verzenden gecontroleerd op sturing. {AI_EVIDENCE_NOTE}
       </p>
 
@@ -101,7 +101,7 @@ export function AiInterviewPanel(p: Props) {
           )}
 
           <div className="mt-18">
-            <div className="eyebrow">Leidraad (de interviewvragen van de Test Card)</div>
+            <div className="eyebrow">Leidraad (de interviewvragen van de testkaart)</div>
             <ol style={{ margin: "6px 0 0 18px", fontSize: 14, lineHeight: 1.8 }}>
               {(settings?.guide.length ? settings.guide : p.guide).map((q, i) => <li key={`${i}-${q}`}>{q}</li>)}
             </ol>
@@ -109,11 +109,11 @@ export function AiInterviewPanel(p: Props) {
               <p className="tiny mt-8">Leidraadcontrole voor de AI-interviewer: geslaagd (geen hypothetische, sturende of verkopende vragen, geen bijzondere persoonsgegevens).</p>
             ) : (
               <div className="form-error mt-8" role="status" id="ai-guide-block">
-                <p style={{ margin: 0 }}>Leidraadcontrole niet geslaagd: de AI-interviewer kan zo niet worden goedgekeurd. Maak een nieuwe Test Card met aangepaste vragen.</p>
+                <p style={{ margin: 0 }}>Leidraadcontrole niet geslaagd: de AI-interviewer kan zo niet worden goedgekeurd. Maak een nieuwe testkaart met aangepaste vragen.</p>
                 <ul style={{ margin: "6px 0 0 18px", padding: 0, fontWeight: 400 }}>{check.problems.map((x) => <li key={x}>{x}</li>)}</ul>
               </div>
             )}
-            {guideChanged && <div className="note">De interviewvragen van de Test Card zijn veranderd sinds de opzet werd opgeslagen. {approved ? "Het gesprek is daarom niet beschikbaar; trek de goedkeuring in en keur opnieuw goed." : "Sla de opzet opnieuw op."}</div>}
+            {guideChanged && <div className="note">De interviewvragen van de testkaart zijn veranderd sinds de opzet werd opgeslagen. {approved ? "Het gesprek is daarom niet beschikbaar; trek de goedkeuring in en keur opnieuw goed." : "Sla de opzet opnieuw op."}</div>}
           </div>
 
           {!approved && <ConfigForm {...p} />}
@@ -121,7 +121,7 @@ export function AiInterviewPanel(p: Props) {
           {config && !approved && (
             <div className="mt-18" id="ai-goedkeuren">
               <h3>Leidraad goedkeuren</h3>
-              {!testReady && <p className="sub" id="ai-test-first">Keur eerst de Test Card goed. Daarna keur je hier de leidraad voor de AI-interviewer goed.</p>}
+              {!testReady && <p className="sub" id="ai-test-first">Keur eerst de testkaart goed. Daarna keur je hier de leidraad voor de AI-interviewer goed.</p>}
               <ActionForm
                 action={approveAiInterview.bind(null, p.ideaId, p.expId)}
                 submitLabel="Keur goed en vergrendel"

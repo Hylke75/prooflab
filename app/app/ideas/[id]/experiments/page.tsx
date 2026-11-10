@@ -45,7 +45,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
   // Fase 1 · punt 1: in Snel één test per aanname op het bord (de hoofdtest, anders de nieuwste); de rest in Grondig.
   const quick = (await getViewMode(id)) === "quick";
   const ws = await getWorkspace();
-  // Fase 2 · punt 4: kan de Test Card een betaalstap krijgen (Mollie ingesteld voor deze werkruimte)?
+  // Fase 2 · punt 4: kan de testkaart een betaalstap krijgen (Mollie ingesteld voor deze werkruimte)?
   const deposit = canWrite ? await depositAvailability(idea.org_id) : { available: false, reason: null, mode: null };
   const supabase = await supabaseServer();
   // Ordered by information value (research 3.9): the default suggestion is the test that can change the decision most per euro and week.
@@ -87,7 +87,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
   const rec = selected
     ? recommend({ category: selected.category as AssumptionCategory, evidence: selected.evidence, hasDiscoveryEvidence: interviewObs > 0 })
     : null;
-  // B5: de go-regel van het dossier. Zonder regel (null) stelt ProofLab hem voor bij de eerste hoofdtest;
+  // B5: de beslisregel van het dossier. Zonder regel (null) stelt ProofLab hem voor bij de eerste hoofdtest;
   // undefined = de database kent de tabel nog niet.
   const rule = await loadDecisionRule(id);
   const savedAssumption = saved ? assumptions.find((a) => a.id === saved.hypotheses?.assumption_id) : undefined;
@@ -95,7 +95,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
     saved && savedAssumption && canWrite
       ? proposeGoRule({ rule, assumption: savedAssumption, experiment: saved, isPrimary: savedAssumption.primaryExperimentId === saved.id, assumptions })
       : null;
-  // B5: wat de intake al weet, om de Test Card vooraf in te vullen (prijs, beschrijving). Een expliciet prijsveld
+  // B5: wat de intake al weet, om de testkaart vooraf in te vullen (prijs, beschrijving). Een expliciet prijsveld
   // (price_eur/price_period) telt als het dossier dat heeft; anders zoekt ProofLab de prijs in de intaketeksten.
   // Experimentencatalogus: "Gebruik voor deze aanname" komt hier binnen met ?methode=<id>. Bureauonderzoek is geen test.
   const catalogPick = (() => {
@@ -113,7 +113,7 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
   };
 
   // Voorstel "ProofLab eenvoudiger": deze pagina toont je tests en wat je eerst test, met één knop voor een nieuwe test.
-  // Het testplan zelf is een eigen taakscherm (?nieuw=1, of via een aanname, methode of testtype in het adres).
+  // De testkaart zelf is een eigen taakscherm (?nieuw=1, of via een aanname, methode of testtype in het adres).
   const building = !!(sp.nieuw || wanted || catalogPick || wantedType);
   const list = ideaTasks(await loadProgress(id));
   const testTasks = list.phases.find((ph) => ph.key === "test")!.tasks;
@@ -126,10 +126,10 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
   const newHref = (assumptionId?: string) => `/app/ideas/${id}/experiments?nieuw=1${assumptionId ? `&assumption=${assumptionId}` : ""}#nieuwe-test`;
 
   return (
-    <PageFrame crumbs={["Werkruimte", idea.title, building ? "Nieuw testplan" : "Testen"]} coach="experiments" ideaId={id} section="/experiments">
+    <PageFrame crumbs={["Werkruimte", idea.title, building ? "Nieuwe testkaart" : "Testen"]} coach="experiments" ideaId={id} section="/experiments">
       <div className="task-page">
       {building ? (
-        <TaskHeader ideaId={id} list={list} taskKey="test-plan" title="Maak een testplan" why="Kies wat je test en bij wie, en leg vooraf vast wanneer de test geslaagd is. Je gaat stap voor stap; opslaan doe je aan het eind." aiConnected={aiConfigured()} aside={catalogLink} />
+        <TaskHeader ideaId={id} list={list} taskKey="test-plan" title="Maak een testkaart" why="Kies wat je test en bij wie, en leg vooraf vast wanneer de test geslaagd is. Je gaat stap voor stap; opslaan doe je aan het eind." aiConnected={aiConfigured()} aside={catalogLink} />
       ) : (
         <TaskHeader ideaId={id} list={list} taskKey={here.key} title="Niet raden. Testen." why="Kies een kleine proef waarmee je snel echt gedrag kunt observeren. Hieronder staan je tests en wat je het beste eerst test." aiConnected={aiConfigured()} />
       )}
@@ -139,14 +139,14 @@ export default async function ExperimentsPage({ params, searchParams }: PageProp
 
       {saved && (
         <div className="form-ok" role="status" style={{ marginBottom: 16 }}>
-          <strong>Test Card opgeslagen als concept.</strong> &quot;{saved.title}&quot; staat op het bord onder Voorbereiden.{" "}
+          <strong>Testkaart opgeslagen als concept.</strong> &quot;{saved.title}&quot; staat op het bord onder Voorbereiden.{" "}
           <Link className="text-link" href={`/app/ideas/${id}/experiments/${saved.id}`}>Open het concept →</Link>
         </div>
       )}
       {!building && goProposal && <GoRuleProposalCard ideaId={id} proposal={goProposal} compact={quick} />}
       {saved && rule && rule.primaryExperimentId === saved.id && (
         <p className="form-ok" role="status" id="go-regel-vast">
-          <strong>Go-regel vastgelegd.</strong> {describeRule(rule, saved.title)}
+          <strong>Beslisregel vastgelegd.</strong> {describeRule(rule, saved.title)}
         </p>
       )}
       {!building && canWrite && selected && rec && (

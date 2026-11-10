@@ -238,7 +238,7 @@ d("golf B: besluit en voorspelling", () => {
       const client = await user(`klant-${randomUUID()}@example.com`);
       await as(alice, (c) => c.query("insert into public.idea_members (idea_id, email, role) values ($1, $2, 'client_decider')", [idea, client.email]));
       await as(client, (c) => c.query("select public.claim_invitations()"));
-      // Een mislukte test met een goedgekeurde Learning Card.
+      // Een mislukte test met een goedgekeurde leerkaart.
       await as(alice, async (c) => {
         const a = (await c.query("insert into public.assumptions (idea_id, statement, category, importance) values ($1, 'Eventmanagers betalen', 'desirability', 5) returning id", [idea])).rows[0].id;
         const h = (

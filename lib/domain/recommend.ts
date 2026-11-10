@@ -456,7 +456,7 @@ export function splitBySelection<T extends { selectedForTest?: boolean }>(ranked
   return { now: ranked.filter((a) => a.selectedForTest), later: ranked.filter((a) => !a.selectedForTest) };
 }
 
-// Default templates for each experiment type, filled into the Test Card.
+// Default templates for each experiment type, filled into the testkaart.
 export function testCardDefaults(type: ExperimentType, statement: string, audience: string) {
   if (type === "interview") {
     return {

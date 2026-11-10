@@ -31,7 +31,7 @@ export function dossierLabel(i: LabelInput): { label: DossierLabel; missing: str
   if (passes.length === 0) {
     return {
       label: "Onderbouwd marktbeeld",
-      missing: [i.behaviourCards.length ? "een geslaagd gedragsexperiment (de afgeronde tests haalden de drempel niet)" : "een afgerond gedragsexperiment met goedgekeurde Learning Card"],
+      missing: [i.behaviourCards.length ? "een geslaagd gedragsexperiment (de afgeronde tests haalden de drempel niet)" : "een afgerond gedragsexperiment met goedgekeurde leerkaart"],
     };
   }
   const distinct = new Set(passes.map((c) => `${c.endedOn?.slice(0, 7)}|${[...c.channels].sort().join(",")}`));

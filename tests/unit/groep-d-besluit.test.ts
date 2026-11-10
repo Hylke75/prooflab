@@ -6,7 +6,7 @@ import { buildReportPdfModel, claimCountsNote, claimStatusText, type Block } fro
 import { strongestEvidence } from "@/lib/report-sheet";
 import { audienceExample } from "@/lib/research-questions";
 
-// Gebruikerstest groep D: Reality Check en besluit (D9–D13).
+// Gebruikerstest groep D: Realiteitscheck en besluit (D9–D13).
 
 const facts = (over: Partial<DossierFacts> = {}): DossierFacts => ({
   ideaAgeDays: 3,
@@ -25,7 +25,7 @@ const facts = (over: Partial<DossierFacts> = {}): DossierFacts => ({
   ...over,
 });
 
-describe("D9: Reality Check noemt de echte brontypes", () => {
+describe("D9: Realiteitscheck noemt de echte brontypes", () => {
   it("noemt de soorten gecontroleerde bronnen die er zijn", () => {
     const r = runRealityCheck(facts({ claims: [{ status: "estimate", section: "market", sourceTypes: ["company_page"] }, { status: "estimate", section: "market", sourceTypes: ["forum", "company_page"] }] }));
     const f = r.findings.find((x) => x.code === "no_independent_source")!;
@@ -67,8 +67,8 @@ describe("D11: voorbeelden met de eigen doelgroep", () => {
 
 // D12 (stappen vóór het besluit) staat in tests/unit/forecast.test.ts, met de volledige voortgangsfixture.
 
-describe("D13: weerlegde bevindingen in Reality Check en rapport", () => {
-  it("de Reality Check telt weerlegd met het juiste meervoud", () => {
+describe("D13: weerlegde bevindingen in realiteitscheck en rapport", () => {
+  it("de realiteitscheck telt weerlegd met het juiste meervoud", () => {
     const one = runRealityCheck(facts({ claims: [{ status: "refuted", section: "market", sourceTypes: ["official_statistic"] }] }));
     expect(one.findings.find((f) => f.code === "refuted_claims")?.title).toBe("1 bevinding weerlegd door gecontroleerde bronnen");
     const two = runRealityCheck(

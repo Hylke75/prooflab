@@ -131,7 +131,7 @@ export function CompetitorPanel({
       {canWrite && proposals.length > 0 && (
         <div className="card mt-18" aria-labelledby="proposals-title">
           <div className="section-title" style={{ marginBottom: 6 }}>
-            <h3 id="proposals-title">Voorstellen uit de Reality Check</h3>
+            <h3 id="proposals-title">Voorstellen uit de realiteitscheck</h3>
             <span className="pill orange">{PROPOSAL_LABEL}</span>
           </div>
           <p className="sub">

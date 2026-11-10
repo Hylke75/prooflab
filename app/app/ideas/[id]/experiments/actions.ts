@@ -99,7 +99,7 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
   if (!p.success) {
     const issue = p.error.issues[0];
     const field = String(issue.path[0] ?? "");
-    return { error: "De Test Card is nog niet opgeslagen: controleer het gemarkeerde veld.", fieldErrors: { [field || "title"]: issue.message } };
+    return { error: "De testkaart is nog niet opgeslagen: controleer het gemarkeerde veld.", fieldErrors: { [field || "title"]: issue.message } };
   }
   const v = p.data;
   const fieldErrors: Record<string, string> = {};
@@ -113,7 +113,7 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
   const builtinMethod = method && method.runs.kind === "builtin" && method.runs.type === v.type ? method : null;
   let survey: z.infer<typeof SurveyConfigSchema> | null = null;
   if (v.type === "survey") {
-    // The key question and its success options are the pre-registered metric: the Test Card follows them.
+    // The key question and its success options are the pre-registered metric: the testkaart follows them.
     const json = parseSurveyJson(raw.survey_config);
     const errors = surveyErrors(json);
     if (errors.length) fieldErrors.survey = `Enquête: ${errors[0]}`;
@@ -242,7 +242,7 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
     // Fase 2 · punt 4: optionele betaalstap, alleen als Mollie voor deze werkruimte is ingesteld (de server controleert het zelf).
     if (raw.deposit_enabled === "on") {
       const amount = Math.round(Number(String(raw.deposit_amount ?? "").replace(",", ".")) * 100) / 100;
-      if (!(amount >= 1 && amount <= 500)) return { error: "De Test Card is nog niet opgeslagen: kies een aanbetaling tussen € 1 en € 500." };
+      if (!(amount >= 1 && amount <= 500)) return { error: "De testkaart is nog niet opgeslagen: kies een aanbetaling tussen € 1 en € 500." };
       const availability = await depositAvailability(ws.org?.id);
       if (!availability.available) return { error: availability.reason ?? "Mollie niet ingesteld: de betaalstap is niet beschikbaar." };
       landing.deposit = { enabled: true, amount_eur: amount };
@@ -255,7 +255,7 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
   }
 
   // Fase 1 · punt 1: welke velden nog precies de standaardwaarde van ProofLab hebben (in Snel ingeklapt onder Details).
-  // Herkomst voor het auditspoor en de Test Card; de waarden zelf en de berekening veranderen er niet door.
+  // Herkomst voor het auditspoor en de testkaart; de waarden zelf en de berekening veranderen er niet door.
   const defaulted = cleanDefaultedFields(
     "hypotheses",
     defaultedTestCardFields({
@@ -296,7 +296,7 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
   };
   const { data: h, error: hErr } = await withDefaultedFallback((w) => supabase.from("hypotheses").insert(withFields(hypothesis, defaulted, w)).select("id").single());
   if (hErr && successMetric !== "signup" && schemaMissing(hErr)) return { error: "Betaling, toezegging of afspraak als succesmaat vraagt een database-update (migratie 20261116090000_fase2_testen). Kies tot die tijd aanmelding." };
-  if (hErr || !h) return { error: `De Test Card kon niet worden opgeslagen (hypothese: ${hErr?.message ?? "onbekende fout"}). Probeer het opnieuw.` };
+  if (hErr || !h) return { error: `De testkaart kon niet worden opgeslagen (hypothese: ${hErr?.message ?? "onbekende fout"}). Probeer het opnieuw.` };
   const { data: exp, error } = await supabase
     .from("experiments")
     .insert({
@@ -319,7 +319,7 @@ export async function createExperiment(ideaId: string, _: ActionState, form: For
       await supabase.from("hypotheses").delete().eq("id", h.id).is("locked_at", null);
       return { error: MANUAL_SCHEMA_MISSING };
     }
-    return { error: `De Test Card kon niet worden opgeslagen (experiment: ${error?.message ?? "onbekende fout"}). Probeer het opnieuw.` };
+    return { error: `De testkaart kon niet worden opgeslagen (experiment: ${error?.message ?? "onbekende fout"}). Probeer het opnieuw.` };
   }
   await supabase.from("assumptions").update({ status: "testing" }).eq("id", v.assumption_id).eq("idea_id", ideaId).eq("status", "untested");
   // Hoofdtest (golf A, punt 11): vooraf aanwijzen. Kan het niet (de huidige hoofdtest ligt al vast), dan blijft
@@ -351,7 +351,7 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
     .single();
   if (!exp || !TRANSITIONS[exp.state]?.includes(to)) return { error: "Deze stap is nu niet mogelijk." };
   if (to === "approved" || to === "ready_for_review") {
-    // B0 punt 3: een Test Card waarvan de maatstaf niet bij de aanname past, kan niet worden goedgekeurd.
+    // B0 punt 3: een testkaart waarvan de maatstaf niet bij de aanname past, kan niet worden goedgekeurd.
     const h = exp.hypotheses;
     if (h?.assumptions) {
       const fit = metricFitsAssumption(assumptionKind(h.assumptions), { type: exp.type, metric_label: h.metric_label, metric_numerator: h.metric_numerator, decision_rule: h.decision_rule, success_metric: (h as { success_metric?: string | null }).success_metric });
@@ -361,9 +361,9 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
     const blocked = h ? thresholdBlock(h) : null;
     if (blocked) return { error: blocked };
   }
-  // B5: een hoofdtest start pas als de go-regel van het dossier is vastgelegd (zelfde regel als op het scherm).
+  // B5: een hoofdtest start pas als de beslisregel van het dossier is vastgelegd (zelfde regel als op het scherm).
   if (to === "live" && exp.state === "approved") {
-    // Verkennend klantonderzoek (zonder aanname) is nooit een hoofdtest: de go-regel blokkeert het niet.
+    // Verkennend klantonderzoek (zonder aanname) is nooit een hoofdtest: de beslisregel blokkeert het niet.
     const assumptionId = exp.hypotheses?.assumption_id ?? null;
     const { data: a } = assumptionId
       ? await supabase.from("assumptions").select("primary_experiment_id").eq("id", assumptionId).maybeSingle()
@@ -413,13 +413,13 @@ export async function transitionExperiment(ideaId: string, expId: string, to: st
   revalidatePath(`/app/ideas/${ideaId}/experiments/${expId}`);
   revalidatePath(`/app/ideas/${ideaId}/experiments`);
   const msg: Record<string, string> = {
-    ready_for_review: "Klaar voor review. Controleer de Test Card en keur goed.",
+    ready_for_review: "Klaar voor review. Controleer de testkaart en keur goed.",
     approved: "Goedgekeurd. De hypothese en drempels zijn nu vergrendeld, net als de beslisregel van het dossier (als die er is).",
     live: "De test is live. Metingen lopen; een uitspraak volgt na de eindconditie.",
     paused: "Gepauzeerd. Bezoeken worden nu niet geteld.",
     ended: endReason
       ? "Afgerond onder de minimale steekproef. De reden is vastgelegd; de uitkomst telt niet mee in kans en rangorde."
-      : "Afgerond. Maak nu de Learning Card.",
+      : "Afgerond. Maak nu de leerkaart.",
     draft: "Terug naar concept.",
   };
   return { error: null, ok: msg[to] ?? "Bijgewerkt." };
@@ -445,7 +445,7 @@ export async function setPrimaryTest(ideaId: string, expId: string, _: ActionSta
   return { error: null, ok: "Dit is nu de hoofdtest van de aanname. De andere tests van deze aanname zijn verkennend." };
 }
 
-// Fase B5: het voorgestelde go-regel met één klik vastleggen. De server stelt het voorstel opnieuw op uit de database
+// Fase B5: de voorgestelde beslisregel met één klik vastleggen. De server stelt het voorstel opnieuw op uit de database
 // (niet uit het formulier) en legt het vast via save_decision_rule, dat ook de vergrendeling bewaakt.
 export async function adoptProposedGoRule(ideaId: string, expId: string, _: ActionState, form?: FormData): Promise<ActionState> {
   await requireWritableIdea(ideaId);
@@ -467,7 +467,7 @@ export async function adoptProposedGoRule(ideaId: string, expId: string, _: Acti
     isPrimary: a.primary_experiment_id === expId,
     assumptions: (all ?? []).map((x) => ({ id: x.id, statement: x.statement, importance: x.importance, selectedForTest: x.selected_for_test === true })),
   });
-  if (!proposal) return { error: "Alleen bij een hoofdtest stelt ProofLab de go-regel voor. Wijs deze test eerst aan als hoofdtest." };
+  if (!proposal) return { error: "Alleen bij een hoofdtest stelt ProofLab de beslisregel voor. Wijs deze test eerst aan als hoofdtest." };
   // Gebruikerstest B1: het voorstel wordt op de server opnieuw opgesteld; uit het formulier komt alleen welke kritieke
   // aannames zijn uitgevinkt (met motivering). De aanname van de hoofdtest blijft altijd in de regel. Een oud formulier
   // zonder vinkjes neemt het hele voorstel over.
@@ -488,7 +488,7 @@ export async function adoptProposedGoRule(ideaId: string, expId: string, _: Acti
   });
   if (error) {
     if (error.message.includes("DECISION_RULE_LOCKED")) return { error: "De beslisregel ligt al vast." };
-    return { error: "De go-regel kon niet worden vastgelegd. Probeer het opnieuw of leg hem vast op de aannamepagina." };
+    return { error: "De beslisregel kon niet worden vastgelegd. Probeer het opnieuw of leg hem vast op de aannamepagina." };
   }
   refresh(ideaId);
   if (data === "locked_late") return { error: null, ok: "Go-regel vastgelegd. Er was al een test goedgekeurd: de regel ligt meteen vast en staat als 'achteraf vastgelegd' in het rapport." };
@@ -711,7 +711,7 @@ export async function analyzeInterviewWithAi(ideaId: string, expId: string, inte
 }
 
 // ---------------------------------------------------------------------------
-// Analysis → Learning Card (draft)
+// Analysis → leerkaart (draft)
 // ---------------------------------------------------------------------------
 
 export async function createLearningCard(ideaId: string, expId: string, _: ActionState): Promise<ActionState> {
@@ -720,10 +720,10 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
   const { data: exp } = await supabase.from("experiments").select("*, hypotheses(*, assumptions(category, statement))").eq("id", expId).eq("idea_id", ideaId).single();
   if (!exp || !exp.hypotheses) return { error: "Experiment niet gevonden." };
   if (exp.state !== "ended") return { error: "Rond het experiment eerst af." };
-  // Verkennend klantonderzoek heeft geen drempel en dus geen uitspraak: geen Learning Card. De open antwoorden gaan
+  // Verkennend klantonderzoek heeft geen drempel en dus geen uitspraak: geen leerkaart. De open antwoorden gaan
   // als klantsignaal naar Markt.
   const h = decisive(exp.hypotheses);
-  if (!h) return { error: "Een verkennend onderzoek beslist niets en krijgt geen Learning Card. Neem de open antwoorden op als klantsignalen." };
+  if (!h) return { error: "Een verkennend onderzoek beslist niets en krijgt geen leerkaart. Neem de open antwoorden op als klantsignalen." };
   const m = await experimentMetrics(exp, h);
   const v = m.verdict;
   // B0 punt 6: afgerond onder de minimale steekproef (met reden): de uitkomst telt niet mee in kans en rangorde.
@@ -749,7 +749,7 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
   const follow = rec.options.find((o) => o.type === exp.type)?.followUp ?? "";
 
   const { data: cards } = await supabase.from("learning_cards").select("id, status").eq("experiment_id", expId);
-  if ((cards ?? []).some((c) => c.status === "approved")) return { error: "Dit experiment heeft al een goedgekeurde Learning Card." };
+  if ((cards ?? []).some((c) => c.status === "approved")) return { error: "Dit experiment heeft al een goedgekeurde leerkaart." };
   const draft = (cards ?? []).find((c) => c.status === "draft");
 
   const s = m.survey;
@@ -892,7 +892,7 @@ export async function createLearningCard(ideaId: string, expId: string, _: Actio
   // generating again replaces the concept with a fresh one computed from the raw data.
   if (draft) await supabase.from("learning_cards").delete().eq("id", draft.id).eq("status", "draft");
   const { error } = await supabase.from("learning_cards").insert({ ...card, experiment_id: expId, idea_id: ideaId, version: 1 });
-  if (error) return { error: "De Learning Card kon niet worden gemaakt." };
+  if (error) return { error: "De leerkaart kon niet worden gemaakt." };
   refresh(ideaId);
   redirect(`/app/ideas/${ideaId}/evidence?stap=geleerd`);
 }

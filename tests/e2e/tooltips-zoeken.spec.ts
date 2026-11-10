@@ -56,14 +56,14 @@ test("Tooltips bij vaktermen: hover, toetsenbord, Escape; labels blijven gelijk"
   await page.mouse.move(0, 0);
   await expect(tip).toHaveCount(0);
 
-  // Test Card: toetsenbord (focus) opent, Escape sluit; het label van het veld verandert niet.
+  // testkaart: toetsenbord (focus) opent, Escape sluit; het label van het veld verandert niet.
   await page.goto(`${ideaUrl}/experiments?nieuw=1`);
   await page.waitForLoadState("networkidle");
   await page.getByRole("radio", { name: /Prijs-\/aanbodtest/ }).click();
-  await page.getByRole("tablist", { name: "Stappen van het testplan" }).getByRole("tab", { name: /Wanneer geslaagd/ }).click();
-  const card = page.getByRole("form", { name: "Testplan" });
+  await page.getByRole("tablist", { name: "Stappen van de testkaart" }).getByRole("tab", { name: /Wanneer geslaagd/ }).click();
+  const card = page.getByRole("form", { name: "Testkaart" });
   await expect(card.getByLabel("Het klopt als ≥ (%) (verplicht)", { exact: true })).toBeVisible();
-  // Sinds fase B5 staat de wervingsgroep vooringevuld onder het ingeklapte deel Details van de Test Card.
+  // Sinds fase B5 staat de wervingsgroep vooringevuld onder het ingeklapte deel Details van de testkaart.
   await card.locator("summary#tc-details").click();
   const recruit = card.getByRole("button", { name: "Wervingsgroep", exact: true });
   await expect(recruit).toBeVisible();
@@ -72,7 +72,7 @@ test("Tooltips bij vaktermen: hover, toetsenbord, Escape; labels blijven gelijk"
   await expect(recruit).toHaveAttribute("aria-describedby", /.+/);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("tooltip")).toHaveCount(0);
-  // Escape sloot alleen de tooltip: de pagina staat nog op de Test Card.
+  // Escape sloot alleen de tooltip: de pagina staat nog op de testkaart.
   expect(page.url()).toContain("/experiments");
 
   // Een klik op de term in een label zet de cursor niet in het veld (geen labelactivatie).

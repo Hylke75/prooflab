@@ -1,4 +1,4 @@
-// Gebruikerstest D6: alternatieven die de Reality Check (AI) noemt, zijn voorstellen (competitors.origin = 'proposal'),
+// Gebruikerstest D6: alternatieven die de realiteitscheck (AI) noemt, zijn voorstellen (competitors.origin = 'proposal'),
 // geen gevonden aanbieders. Een voorstel heeft nog geen bron: het telt nergens mee (concurrentiekaart, Reality
 // Check-regel, rapport, dossierstatus) en opdrachtgevers zien het niet (ook afgedwongen in de database). Overnemen kan
 // alleen met een website of een gekoppelde bevinding; daarna is het een gewone aanbieder (origin 'manual').

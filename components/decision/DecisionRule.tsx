@@ -148,7 +148,7 @@ export function RuleCheckCard({ rule, evaluation }: { rule: DecisionRule; evalua
           <span>Hoofdtest: {evaluation.primary.title}</span>
           <strong style={{ textAlign: "right" }}>
             <span className={`pill ${evaluation.primary.met ? "green" : "coral"}`}>{evaluation.primary.met ? "✓ geslaagd" : "✗ niet geslaagd"}</span>{" "}
-            {evaluation.primary.verdict == null ? "nog geen goedgekeurde Learning Card" : evaluation.primary.verdict === "fail" ? "niet geslaagd" : evaluation.primary.verdict === "inconclusive" ? "onbeslist" : ""}
+            {evaluation.primary.verdict == null ? "nog geen goedgekeurde leerkaart" : evaluation.primary.verdict === "fail" ? "niet geslaagd" : evaluation.primary.verdict === "inconclusive" ? "onbeslist" : ""}
           </strong>
         </div>
       )}

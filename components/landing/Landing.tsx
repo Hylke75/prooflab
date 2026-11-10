@@ -110,7 +110,7 @@ const STEPS = [
     key: "Testen",
     when: "Week 3–4",
     title: "Meet gedrag, geen meningen.",
-    body: "Een landingpagina, interviews of een prijstest. De Test Card legt vooraf hypothese, steekproef en succes- en faaldrempel vast. Na goedkeuring liggen die drempels vast.",
+    body: "Een landingpagina, interviews of een prijstest. De testkaart legt vooraf hypothese, steekproef en succes- en faaldrempel vast. Na goedkeuring liggen die drempels vast.",
   },
   {
     key: "Besluiten",
@@ -447,7 +447,7 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
                 <ul className="lp-method-list">
                   <li>Overstappen naar een nieuwe versie toont eerst per aanname de kans oud en nieuw.</li>
                   <li>Elke overstap komt in het auditspoor; terug kan niet.</li>
-                  <li>Goedgekeurde Learning Cards veranderen nooit.</li>
+                  <li>Goedgekeurde leerkaarten veranderen nooit.</li>
                 </ul>
               </article>
               {/* Kansregel */}

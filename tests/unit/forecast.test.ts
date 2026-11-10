@@ -139,7 +139,7 @@ describe("forecast moments", () => {
     expect(openMoment({ ...base, marketDone: true })).toBe("research");
     expect(openMoment({ ...base, marketDone: true, experimentEnded: true })).toBe("experiment");
     expect(openMoment({ ...base, marketDone: true, experimentEnded: true, realityCheckDone: true })).toBe("decision");
-    // A Reality Check without a finished test still means the decision is near.
+    // A realiteitscheck without a finished test still means the decision is near.
     expect(openMoment({ ...base, realityCheckDone: true })).toBe("decision");
   });
 
@@ -227,7 +227,7 @@ describe("decision gate", () => {
   });
 
   it("geeft geen vinkje als er nooit voorspeld is omdat het besluitmoment nog niet open is", () => {
-    // Geen Reality Check: het besluitmoment is niet open, er hoeft nu niets, maar er is ook niets gedaan.
+    // Geen realiteitscheck: het besluitmoment is niet open, er hoeft nu niets, maar er is ook niets gedaan.
     expect(decisionSteps(progress({}, { latestRealityCheckAt: null }))).toEqual({ done: true, status: "later", missing: [] });
     // Besluitmoment al gesloten zonder eigen voorspelling: evenmin "klaar".
     expect(decisionSteps(progress({ outcomeDue: "2027-02-01", today: "2026-12-01" }))?.status).toBe("later");

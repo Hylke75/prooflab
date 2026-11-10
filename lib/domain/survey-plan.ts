@@ -51,7 +51,7 @@ export type PlanRow = { expectedPct: number; n: number | null; invitations: numb
 export type SurveyPlan = {
   expectedPct: number;
   side: "above" | "below" | null;
-  // Complete answers needed: the larger of the statistical need and the Test Card's minimum sample.
+  // Complete answers needed: the larger of the statistical need and the testkaart's minimum sample.
   needed: number | null;
   statistical: number | null;
   invitations: number | null;
@@ -107,6 +107,6 @@ export function planSentence(plan: SurveyPlan, successPct: number): string {
       : `Bij ${nl(plan.expectedPct)}% zijn meer dan ${nl(PLAN_MAX_N)} antwoorden nodig: zo dicht bij de drempel is een enquête geen bruikbare toets.`;
   }
   const dir = plan.side === "above" ? "boven de succesdrempel" : "onder de drempel";
-  const minNote = plan.statistical != null && plan.statistical < plan.needed ? ` (statistisch zijn er ${nl(plan.statistical)} nodig; de Test Card vraagt minimaal ${nl(plan.needed)})` : "";
+  const minNote = plan.statistical != null && plan.statistical < plan.needed ? ` (statistisch zijn er ${nl(plan.statistical)} nodig; de testkaart vraagt minimaal ${nl(plan.needed)})` : "";
   return `Als ${nl(plan.expectedPct)}% van de respondenten een succesantwoord kiest, heb je ongeveer ${nl(plan.needed)} volledige, geloofwaardige antwoorden uit de doelgroep nodig${minNote} voordat het hele 95%-interval ${dir} ligt. Bij ${nl(plan.assumptions.inviteResponsePct)}% respons en ${nl(plan.assumptions.usablePct)}% bruikbare antwoorden betekent dat ongeveer ${nl(plan.invitations!)} persoonlijke uitnodigingen, of ${nl(plan.openVisitors!)} bezoekers via een open link als ${nl(plan.assumptions.openCompletionPct)}% de enquête afrondt.`;
 }

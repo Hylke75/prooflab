@@ -164,7 +164,7 @@ describe("getDossierStatus: testen pas klaar met een uitslag (B1)", () => {
     expect(step({ experiments: 1, experimentsEnded: 1, testsWithVerdict: 1 }, "test")).toMatchObject({ state: "done", statusLabel: "Klaar" });
   });
 
-  it("telt alleen afgeronde tests met een Learning Card met pass of fail", () => {
+  it("telt alleen afgeronde tests met een leerkaart met pass of fail", () => {
     const exps = [
       { id: "a", state: "analyzed" },
       { id: "b", state: "decided" },

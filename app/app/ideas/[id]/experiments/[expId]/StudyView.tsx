@@ -55,7 +55,7 @@ const NEW_NOTE: Record<string, string> = {
 };
 
 // Een verkennend onderzoek vanuit Markt: een enquête of een online interview (schriftelijk) zonder drempels. Geen
-// oordeel, geen Learning Card, geen hoofdtest; wel de editor, goedkeuren, verspreiden en de antwoorden.
+// oordeel, geen leerkaart, geen hoofdtest; wel de editor, goedkeuren, verspreiden en de antwoorden.
 export async function StudyView({
   ideaId,
   idea,

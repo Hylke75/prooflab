@@ -3,7 +3,7 @@
 // docs/ProofLab_Voorspelkracht_v1.md 7.4 ("apart gelabeld en gescoord").
 //
 // Opzet van het gesprek:
-//  - De leidraad is de goedgekeurde lijst interviewvragen van de Test Card. Die vragen stelt ProofLab letterlijk; het
+//  - De leidraad is de goedgekeurde lijst interviewvragen van de testkaart. Die vragen stelt ProofLab letterlijk; het
 //    model bedenkt alleen doorvragen (maximaal twee per onderwerp).
 //  - Elke voorgestelde doorvraag gaat vóór verzenden door een tweede controle: de vaste regels hieronder
 //    (checkProposedQuestion, dezelfde regels als de leidraadcontrole in interview-audit.ts) en, als die beschikbaar is,

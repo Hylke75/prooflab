@@ -1,4 +1,4 @@
-// Stappen van het testplan (de Test Card-builder). Eerst tabs in plaats van twee kolommen (feedback eigenaar); sinds
+// Stappen van de testkaart (de testkaart-builder). Eerst tabs in plaats van twee kolommen (feedback eigenaar); sinds
 // het voorstel "ProofLab eenvoudiger" genummerde stappen die je één voor één doorloopt: Testtype → Wat test je →
 // Wanneer geslaagd → (testpagina, gespreksleidraad, vragenlijst of draaiboek) → Voorbeeld. Per testtype alleen de
 // stappen die iets te doen of te zien hebben; geen lege stappen. Elk veld met een validatiefout hoort bij precies één tab, zodat
@@ -18,7 +18,7 @@ export const TEST_CARD_TAB_LABELS: Record<TestCardTabKey, string> = {
   preview: "Voorbeeld",
 };
 
-// Velden (sleutels van FieldErrors, zie test-card.ts) die niet op de tab "Test Card" staan.
+// Velden (sleutels van FieldErrors, zie test-card.ts) die niet op de tab "Testkaart" staan.
 const FIELD_TAB: Record<string, TestCardTabKey> = {
   headline: "page",
   price_points: "page",
@@ -29,7 +29,7 @@ const FIELD_TAB: Record<string, TestCardTabKey> = {
 };
 
 // manualPlaybook: er is een draaiboek uit de catalogus (handmatig sjabloon). Zonder draaiboek heeft een handmatige
-// test niets naast de Test Card.
+// test niets naast de testkaart.
 export function testCardTabs(type: string, opts: { manualPlaybook?: boolean } = {}): TestCardTab[] {
   const extra: TestCardTabKey[] =
     type === "landing" || type === "pricing"
@@ -45,7 +45,7 @@ export function testCardTabs(type: string, opts: { manualPlaybook?: boolean } = 
   return keys.map((key) => ({ key, label: TEST_CARD_TAB_LABELS[key] }));
 }
 
-// Velden van stap "Wat test je". Alle andere velden van de Test Card staan bij "Wanneer geslaagd" (drempels, steekproef,
+// Velden van stap "Wat test je". Alle andere velden van de testkaart staan bij "Wanneer geslaagd" (drempels, steekproef,
 // deadline en de vooringevulde Details).
 const CARD_FIELDS = new Set(["title", "we_believe", "target_group"]);
 
@@ -67,7 +67,7 @@ export function errorsPerTab(fields: string[], tabs: TestCardTab[]): Partial<Rec
   return out;
 }
 
-// Velden die niet op de tab "Test Card" staan (ongeacht het type): die horen ook niet onder "Details".
+// Velden die niet op de tab "Testkaart" staan (ongeacht het type): die horen ook niet onder "Details".
 export function isOtherTabField(field: string): boolean {
   return field in FIELD_TAB;
 }

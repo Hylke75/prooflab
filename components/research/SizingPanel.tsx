@@ -316,9 +316,9 @@ export function SizingPanel({
           )}
           <div className="divider" />
           <div className="kpi-row" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>
-            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="tam">TAM</Term> (aantal)</p><strong className="num">{result.countsKnown.tam ? int(result.tamCount) : "onbekend"}</strong></div>
-            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="sam">SAM</Term> (aantal)</p><strong className="num">{result.countsKnown.sam ? int(result.samCount) : "onbekend"}</strong></div>
-            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}><Term k="som">SOM</Term> (klanten)</p><strong className="num">{result.countsKnown.som ? int(result.somCount) : "onbekend"}</strong></div>
+            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}>Totale markt (<Term k="tam">TAM</Term>, aantal)</p><strong className="num">{result.countsKnown.tam ? int(result.tamCount) : "onbekend"}</strong></div>
+            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}>Bedienbare markt (<Term k="sam">SAM</Term>, aantal)</p><strong className="num">{result.countsKnown.sam ? int(result.samCount) : "onbekend"}</strong></div>
+            <div><p style={{ color: "var(--color-on-dark-muted)", fontSize: 13 }}>Haalbare klanten (<Term k="som">SOM</Term>)</p><strong className="num">{result.countsKnown.som ? int(result.somCount) : "onbekend"}</strong></div>
           </div>
           <p style={{ color: "var(--color-on-dark-muted)", fontSize: 14, marginTop: 16 }}>Formule</p>
           <div className="calc-formula">{result.formula} = {notEstablished ? "niet vastgesteld" : eur(result.somRevenue)}</div>
@@ -368,11 +368,11 @@ export function SizingPanel({
                 </thead>
                 <tbody>
                   <tr>
-                    <th scope="row" style={{ fontWeight: 700, textAlign: "left" }}>SOM (aantal klanten)</th>
+                    <th scope="row" style={{ fontWeight: 700, textAlign: "left" }}>Haalbare klanten (SOM)</th>
                     <td className="num">{int(sim.somCount.p10)}</td><td className="num">{int(sim.somCount.p50)}</td><td className="num">{int(sim.somCount.p90)}</td>
                   </tr>
                   <tr>
-                    <th scope="row" style={{ fontWeight: 700, textAlign: "left" }}>SOM-omzet (€ per jaar)</th>
+                    <th scope="row" style={{ fontWeight: 700, textAlign: "left" }}>Haalbare omzet (SOM, € per jaar)</th>
                     <td className="num">{eur(sim.somRevenue.p10)}</td><td className="num">{eur(sim.somRevenue.p50)}</td><td className="num">{eur(sim.somRevenue.p90)}</td>
                   </tr>
                 </tbody>
@@ -389,7 +389,7 @@ export function SizingPanel({
                 </p>
               </div>
               <div className="live-stat">
-                <span className="tiny">Kans dat de SOM-omzet de drempel haalt</span>
+                <span className="tiny">Kans dat de haalbare omzet (SOM) de drempel haalt</span>
                 <strong className="num">{sim.pAboveThreshold == null ? "onbekend" : `${Math.round(sim.pAboveThreshold * 100)}%`}</strong>
                 <span className="tiny">
                   {sim.pAboveThreshold == null

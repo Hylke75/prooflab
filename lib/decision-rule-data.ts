@@ -23,7 +23,7 @@ export const loadDecisionRule = cache(async (ideaId: string): Promise<DecisionRu
 });
 
 // De invoer voor de toets: de kans per aanname zoals ProofLab die nu berekent, en per test het oordeel van de laatste
-// goedgekeurde Learning Card (zonder goedgekeurde kaart: nog geen oordeel).
+// goedgekeurde leerkaart (zonder goedgekeurde kaart: nog geen oordeel).
 export const loadRuleInputs = cache(async (ideaId: string): Promise<{ assumptions: RuleAssumption[]; experiments: RuleExperiment[] }> => {
   const supabase = await supabaseServer();
   const [assumptions, experiments, cards] = await Promise.all([

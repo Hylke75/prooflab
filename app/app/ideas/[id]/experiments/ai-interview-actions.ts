@@ -77,7 +77,7 @@ export async function saveAiInterviewConfig(ideaId: string, expId: string, _: Fo
   const { screener, errors } = screenerFrom(form);
   Object.assign(fieldErrors, errors);
   const guide = guideOf(exp.config);
-  if (guide.length < LIMITS.guide.min) return { error: `De Test Card heeft minder dan ${LIMITS.guide.min} interviewvragen. Maak een Test Card met een leidraad.` };
+  if (guide.length < LIMITS.guide.min) return { error: `De testkaart heeft minder dan ${LIMITS.guide.min} interviewvragen. Maak een testkaart met een leidraad.` };
   if (!p.success || Object.keys(fieldErrors).length) return { error: "De opzet is niet opgeslagen. Verbeter de velden hieronder.", fieldErrors };
   const row = {
     guide: guide.slice(0, LIMITS.guide.max) as unknown as Json,
@@ -107,7 +107,7 @@ export async function approveAiInterview(ideaId: string, expId: string, _: FormS
   const { idea } = await requireWritableIdea(ideaId);
   const exp = await interviewTest(ideaId, expId);
   if (!exp) return { error: "Interviewtest niet gevonden." };
-  if (!["approved", "live", "paused"].includes(exp.state)) return { error: "Keur eerst de Test Card goed; daarna keur je de leidraad voor de AI-interviewer goed." };
+  if (!["approved", "live", "paused"].includes(exp.state)) return { error: "Keur eerst de testkaart goed; daarna keur je de leidraad voor de AI-interviewer goed." };
   const missing = ["check_guide", "check_disclosure"].filter((k) => form.get(k) !== "on");
   if (missing.length) return { error: "Bevestig beide punten om goed te keuren.", fieldErrors: Object.fromEntries(missing.map((k) => [k, "Bevestig dit punt."])) };
   const supabase = await supabaseServer();
@@ -116,12 +116,12 @@ export async function approveAiInterview(ideaId: string, expId: string, _: FormS
   const guide = guideOf({ guide: c.guide });
   // De leidraadcontrole moet slagen: geen hypothetische, sturende of verkopende vragen en geen bijzondere gegevens.
   const check = checkGuide(guide, [idea.title, String((exp.config as { product_name?: unknown } | null)?.product_name ?? "")]);
-  if (!check.ok) return { error: `Goedkeuren kan niet: ${check.problems.join(" ")} Pas de leidraad aan via een nieuwe Test Card.` };
+  if (!check.ok) return { error: `Goedkeuren kan niet: ${check.problems.join(" ")} Pas de leidraad aan via een nieuwe testkaart.` };
   if (JSON.stringify(guide) !== JSON.stringify(guideOf(exp.config))) {
-    // De Test Card is sinds het opslaan veranderd: neem de huidige leidraad over en laat opnieuw controleren.
+    // De testkaart is sinds het opslaan veranderd: neem de huidige leidraad over en laat opnieuw controleren.
     await supabase.from("ai_interview_configs").update({ guide: guideOf(exp.config) as unknown as Json }).eq("id", c.id);
     refresh(ideaId);
-    return { error: "De interviewvragen van de Test Card zijn veranderd. De leidraad is bijgewerkt; controleer hem en keur opnieuw goed." };
+    return { error: "De interviewvragen van de testkaart zijn veranderd. De leidraad is bijgewerkt; controleer hem en keur opnieuw goed." };
   }
   const { error } = await supabase.from("ai_interview_configs").update({ status: "approved" }).eq("id", c.id);
   if (error) return { error: dbError(error, "Goedkeuren is niet gelukt. Probeer het opnieuw.") };

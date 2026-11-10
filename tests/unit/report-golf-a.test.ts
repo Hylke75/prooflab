@@ -113,7 +113,7 @@ describe("rapport: kansen (punt 3)", () => {
 });
 
 describe("rapport: bewijsniveau naast de uitkomst (punt 14)", () => {
-  it("toont het niveau bij de test en op de Learning Card", () => {
+  it("toont het niveau bij de test en op de leerkaart", () => {
     const base = fixture();
     const out = all(
       fixture({
@@ -122,7 +122,7 @@ describe("rapport: bewijsniveau naast de uitkomst (punt 14)", () => {
       }),
     );
     expect(out).toContain("Oordeel: Geslaagd · niveau: mening");
-    expect(out).toContain("Learning Card: Enquête · Geslaagd · niveau: mening");
+    expect(out).toContain("Leerkaart: Enquête · Geslaagd · niveau: mening");
   });
 });
 

@@ -37,7 +37,7 @@ export function canDesignatePrimary(test: { state: string }, currentPrimary: { s
   return { ok: true, reason: null };
 }
 
-// Status van een aanname uit de goedgekeurde Learning Cards. Tot en met methode 2026-11-b tellen alle tests mee;
+// Status van een aanname uit de goedgekeurde leerkaarten. Tot en met methode 2026-11-b tellen alle tests mee;
 // vanaf 2026-11-c (primaryDecides) alleen de hoofdtest. Zonder goedgekeurde hoofdtest blijft de aanname "wordt
 // getest": verkennende tests geven richting, maar beslissen niet.
 export function assumptionStatusFromCards(

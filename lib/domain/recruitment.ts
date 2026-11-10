@@ -22,12 +22,12 @@ export const RECRUITMENT_GROUPS = {
 export type RecruitmentGroup = keyof typeof RECRUITMENT_GROUPS;
 export const RECRUITMENT_KEYS = Object.keys(RECRUITMENT_GROUPS) as [RecruitmentGroup, ...RecruitmentGroup[]];
 
-// Testtypes waarbij de wervingsgroep op de Test Card verplicht is. Bij interviews legt de consultant per gesprek
+// Testtypes waarbij de wervingsgroep op de testkaart verplicht is. Bij interviews legt de consultant per gesprek
 // vast of het een bekende is (eigen netwerk) en anders de groep.
 // Experimentencatalogus: ook bij een handmatig sjabloon, want herhaling binnen één groep telt afnemend mee.
 export const RECRUITMENT_REQUIRED_TYPES = ["survey", "landing", "pricing", "manual"] as const;
 
-// Ontbreekt een verplichte wervingsgroep op de Test Card?
+// Ontbreekt een verplichte wervingsgroep op de testkaart?
 export function recruitmentMissing(type: string, group: unknown): boolean {
   return (RECRUITMENT_REQUIRED_TYPES as readonly string[]).includes(type) && asRecruitmentGroup(group) == null;
 }

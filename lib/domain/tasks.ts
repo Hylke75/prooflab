@@ -105,7 +105,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
   const preparing = exps.find((e) => PREPARING.includes(e.state));
   const running = exps.find((e) => RUNNING.includes(e.state));
   const ended = exps.filter((e) => ENDED.includes(e.state));
-  // Na "verder testen", "bijsturen" of een verlengde testfase hoort er een nieuwe test bij: het testplan staat dan weer
+  // Na "verder testen", "bijsturen" of een verlengde testfase hoort er een nieuwe test bij: de testkaart staat dan weer
   // open zolang er geen nieuwe test is.
   const newSince = exps.some((e) => !!e.startedAt && !!p.latestDecisionAt && e.startedAt > p.latestDecisionAt);
   const backToTest = ["test_more", "extend", "adjust"].includes(d.latestDecisionAction ?? "") && !running && !preparing && !newSince;
@@ -203,14 +203,14 @@ export function ideaTasks(p: IdeaProgress): TaskList {
     {
       key: "test-plan",
       phase: "test",
-      label: "Maak een testplan",
+      label: "Maak een testkaart",
       status: pastPlan ? "done" : preparing ? "busy" : d.assumptions === 0 ? "locked" : "todo",
       why: pastPlan
-        ? "Er is een goedgekeurd testplan."
+        ? "Er is een goedgekeurde testkaart."
         : backToTest
           ? "Je besloot verder te testen of bij te sturen: zet de volgende test op."
           : preparing
-            ? `Het testplan "${preparing.title}" is nog niet goedgekeurd.`
+            ? `De testkaart "${preparing.title}" is nog niet goedgekeurd.`
             : d.assumptions === 0
               ? "Schrijf eerst je aannames op."
               : "Kies een test bij je belangrijkste aanname.",
@@ -229,7 +229,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
           : `"${running.title}" loopt; meet tot de afgesproken eindconditie.`
         : ended.length > 0
           ? `${ended.length} ${ended.length === 1 ? "test" : "tests"} afgerond.`
-          : "Er is eerst een goedgekeurd testplan nodig.",
+          : "Er is eerst een goedgekeurde testkaart nodig.",
       path: running ? `/experiments/${running.id}` : ended[0] ? `/experiments/${ended[0].id}` : "/experiments",
       me: "Deelnemers werven en de test starten, pauzeren en afronden.",
       ai: "AI-gemodereerde interviews afnemen. Alleen de letterlijke antwoorden van mensen tellen als bewijs.",
@@ -239,7 +239,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
       phase: "test",
       label: "Leg de uitslag vast",
       status: cards > 0 ? "done" : ended.length > 0 ? "todo" : "locked",
-      why: cards > 0 ? "Er is een Learning Card." : ended.length > 0 ? "Maak de Learning Card bij de afgeronde test." : "Er is eerst een afgeronde test nodig.",
+      why: cards > 0 ? "Er is een leerkaart." : ended.length > 0 ? "Maak de leerkaart bij de afgeronde test." : "Er is eerst een afgeronde test nodig.",
       path: ended[0] ? `/experiments/${ended[0].id}#learning-card` : "/experiments",
       me: "De uitslag bekijken en vastleggen wat je ervan leert.",
       ai: null,
@@ -256,8 +256,8 @@ export function ideaTasks(p: IdeaProgress): TaskList {
         p.learningCardsDraft > 0
           ? `${p.learningCardsDraft} Learning ${p.learningCardsDraft === 1 ? "Card wacht" : "Cards wachten"} op je controle.`
           : p.learningCardsApproved > 0
-            ? "Alle Learning Cards zijn gecontroleerd."
-            : "Er is eerst een Learning Card nodig (bij een afgeronde test).",
+            ? "Alle leerkaarten zijn gecontroleerd."
+            : "Er is eerst een leerkaart nodig (bij een afgeronde test).",
       path: "/evidence?stap=geleerd",
       me: "Het voorstel controleren, aanpassen en goedkeuren.",
       ai: "Een eerste tekst voorstellen op basis van de gemeten uitslag. Zonder AI maakt ProofLab het voorstel met vaste regels.",
@@ -265,9 +265,9 @@ export function ideaTasks(p: IdeaProgress): TaskList {
     {
       key: "decide-check",
       phase: "decide",
-      label: "Klopt het echt? (Reality Check)",
+      label: "Klopt het echt? (realiteitscheck)",
       status: checkDone ? "done" : checkStale ? "busy" : "todo",
-      why: checkDone ? "De Reality Check is uitgevoerd op het laatste bewijs." : checkStale ? "Er is nieuw bewijs sinds de laatste check. Voer hem opnieuw uit." : "Zoek naar valkuilen voordat je besluit.",
+      why: checkDone ? "De realiteitscheck is uitgevoerd op het laatste bewijs." : checkStale ? "Er is nieuw bewijs sinds de laatste check. Voer hem opnieuw uit." : "Zoek naar valkuilen voordat je besluit.",
       path: "/evidence?stap=check",
       me: "Een pre-mortem doen: waarom zou dit over zes maanden mislukt zijn?",
       ai: "Kritische vragen stellen over je bewijs. De vaste controles werken ook zonder AI.",
@@ -277,7 +277,7 @@ export function ideaTasks(p: IdeaProgress): TaskList {
       phase: "decide",
       label: "Neem je besluit",
       status: conclusive ? "done" : d.decisions > 0 ? "busy" : checkDone ? "todo" : "locked",
-      why: conclusive ? step.decide.why : d.decisions > 0 ? step.decide.why : checkDone ? "Kies doorgaan, bijsturen, verder testen, pauzeren of stoppen." : "Voer eerst de Reality Check uit.",
+      why: conclusive ? step.decide.why : d.decisions > 0 ? step.decide.why : checkDone ? "Kies doorgaan, bijsturen, verder testen, pauzeren of stoppen." : "Voer eerst de realiteitscheck uit.",
       path: "/evidence?stap=besluit",
       me: "Het besluit nemen en onderbouwen. ProofLab adviseert, maar beslist nooit.",
       ai: null,

@@ -182,7 +182,7 @@ describe("coach rules", () => {
     expect(codes(facts({ interviews: [i(true), i(false), i(false), i(true)] }))).not.toContain("acquaintances_majority");
   });
 
-  it("asks to approve a waiting Learning Card and to redo a stale Reality Check", () => {
+  it("asks to approve a waiting leerkaart and to redo a stale realiteitscheck", () => {
     expect(codes(facts({ learningCards: [{ id: "l1", status: "draft", approvedAt: null }] }))).toContain("learning_card_waiting");
     const rc = { id: "rc1", createdAt: iso(-3) };
     expect(codes(facts({ realityCheck: rc, learningCards: [{ id: "l1", status: "approved", approvedAt: iso(-1) }] }))).toContain("reality_check_stale:rc1");

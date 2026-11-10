@@ -59,7 +59,7 @@ export const CASES: EvalCase[] = [
   { id: 22, title: "Duidelijk niet geslaagd", kind: "stats", stats: { successes: 1, n: 150, success: 15, fail: 5, minSample: 80, ended: true, expected: "fail" } },
   { id: 23, title: "Belangstelling zonder betaalbereidheid", kind: "stats", stats: { successes: 3, n: 160, success: 8, fail: 2, minSample: 150, ended: true, expected: "inconclusive" } },
 
-  // --- Reality Check on dossier patterns ---
+  // --- realiteitscheck on dossier patterns ---
   { id: 24, title: "Alleen bekenden geïnterviewd", kind: "reality", reality: { patch: { interviews: [1, 2, 3, 4, 5].map((i) => ({ dmuRole: "user", isAcquaintance: i < 5, consent: true })) }, expectCodes: ["friendly_sample"] } },
   { id: 25, title: "B2B zonder budgethouder", kind: "reality", reality: { patch: { isB2B: true, interviews: [{ dmuRole: "user", isAcquaintance: false, consent: true }] }, expectCodes: ["no_budget_holder"] } },
   { id: 26, title: "Klikken gemeten, betaling geclaimd", kind: "reality", reality: { patch: { experiments: [{ type: "landing", state: "ended", assumptionCategory: "viability", verdict: "pass", n: 100, minSample: 80, endedEarly: false, channels: ["linkedin"] }] }, expectCodes: ["clicks_claimed_as_payment"] } },
