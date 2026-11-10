@@ -92,3 +92,4 @@ blok in dezelfde visuele taal.
 | 83 | Markt › Bronnen | Bron toevoegen en bevinding naast elkaar (twee kolommen), lijst eerst, import open | Stap 1 · Bron toevoegen en Stap 2 · Bevinding onder elkaar bovenaan, daarna "Je bronnen (n)", rapport importeren ingeklapt | Principe 4 (één kolom, vaste volgorde) |
 | 84 | Marktpotentieel | Per factor zes velden zichtbaar | Bandbreedte, jaar en regio ingeklapt per factor ("Meer over deze factor"), open als er iets staat | Principe 5 |
 | 85 | Testkaart, laatste stap | Alleen opslaan | "Controleer je antwoorden": testtype, aanname, naam, hypothese, doelgroep, geslaagd als, aantal, deadline, elk met "Wijzigen" | Principe 3 (GOV.UK check answers) |
+| 86 | Overzicht: volgorde | Hero → drie KPI-kaarten → Mijn ideeën | Hero → Mijn ideeën (met volgende taak) → KPI-kaarten; "Kritieke aannames" heet "Belangrijkste aannames" | Op 390 px stonden de ideeën pas na 2,5 schermen; de volgende taak is het belangrijkste op het overzicht |

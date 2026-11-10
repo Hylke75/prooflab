@@ -1158,18 +1158,22 @@ export function ExperimentBuilder({
                     ],
                     ["Aantal " + unit.many, card.min_sample, "criteria"],
                     ["Deadline", card.max_duration_days ? new Date(deadlineFromDays(Number(card.max_duration_days), today)).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" }) : "", "criteria"],
-                  ] as [string, string, TestCardTabKey][]
-                ).map(([label, value, step]) => (
+                  ] as [string, unknown, TestCardTabKey][]
+                ).map(([label, raw, step]) => {
+                  // Sommige antwoorden zijn getallen (aantal deelnemers): altijd als tekst tonen.
+                  const value = raw == null ? "" : String(raw).trim();
+                  return (
                   <div key={label} className="check-row-item">
                     <dt>{label}</dt>
-                    <dd>{value?.trim() ? value : <span className="muted-text">Nog niet ingevuld</span>}</dd>
+                    <dd>{value ? value : <span className="muted-text">Nog niet ingevuld</span>}</dd>
                     <dd>
                       <button type="button" className="text-link" onClick={() => goStep(tabs.findIndex((t) => t.key === step))} aria-label={`Wijzigen: ${label}`}>
                         Wijzigen
                       </button>
                     </dd>
                   </div>
-                ))}
+                  );
+                })}
               </dl>
             </section>
           )}

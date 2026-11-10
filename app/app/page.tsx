@@ -130,35 +130,6 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
         );
       })}
 
-      <div className="grid-3" style={{ marginBottom: 31 }}>
-        <div className="card tight">
-          <div className="tiny">Kritieke aannames met sterk bewijs</div>
-          <div className="mini-kpi num">
-            {strong.length}
-            <span className="tiny" style={{ fontSize: 13, letterSpacing: 0, marginLeft: 6 }}>van {critical.length}</span>
-          </div>
-          <span className={`pill ${critical.length && strong.length === critical.length ? "green" : critical.length ? "orange" : "gray"}`}>
-            {critical.length === 0 ? "Nog geen kritieke aannames" : strong.length === critical.length ? "Allemaal onderbouwd met gedrag" : `${critical.length - strong.length} nog zonder sterk bewijs`}
-          </span>
-        </div>
-        <div className="card tight">
-          <div className="tiny">Lopende tests</div>
-          <div className="mini-kpi num">{liveTests.length}</div>
-          {liveTests[0] ? (
-            <span className="pill green" title={`${liveTests[0].idea}: ${liveTests[0].title}`}>
-              {liveTests[0].day ? `Dag ${liveTests[0].day.day} van ${liveTests[0].day.of}` : "Loopt"} · {liveTests[0].title.length > 26 ? `${liveTests[0].title.slice(0, 25)}…` : liveTests[0].title}
-            </span>
-          ) : (
-            <span className="pill gray">Nog geen test live</span>
-          )}
-        </div>
-        <div className="card tight">
-          <div className="tiny">Besluiten die wachten op bevestiging</div>
-          <div className="mini-kpi num">{awaiting}</div>
-          <span className={`pill ${awaiting ? "orange" : "green"}`}>{awaiting ? "Opdrachtgever moet bevestigen" : "Niets openstaand"}</span>
-        </div>
-      </div>
-
       <div className="section-title">
         <h2>Mijn ideeën</h2>
         <Link className="text-link" href="/app/ideas/new">
@@ -215,6 +186,36 @@ async function ConsultantHome({ list, progresses }: { list: IdeaRow[]; progresse
           })}
         </div>
       )}
+
+      {/* Voorstel "ProofLab eenvoudiger": eerst je ideeën en hun volgende taak, daarna de cijfers. */}
+      <div className="grid-3 mt-24" style={{ marginBottom: 31 }}>
+        <div className="card tight">
+          <div className="tiny">Belangrijkste aannames met sterk bewijs</div>
+          <div className="mini-kpi num">
+            {strong.length}
+            <span className="tiny" style={{ fontSize: 13, letterSpacing: 0, marginLeft: 6 }}>van {critical.length}</span>
+          </div>
+          <span className={`pill ${critical.length && strong.length === critical.length ? "green" : critical.length ? "orange" : "gray"}`}>
+            {critical.length === 0 ? "Nog geen kritieke aannames" : strong.length === critical.length ? "Allemaal onderbouwd met gedrag" : `${critical.length - strong.length} nog zonder sterk bewijs`}
+          </span>
+        </div>
+        <div className="card tight">
+          <div className="tiny">Lopende tests</div>
+          <div className="mini-kpi num">{liveTests.length}</div>
+          {liveTests[0] ? (
+            <span className="pill green" title={`${liveTests[0].idea}: ${liveTests[0].title}`}>
+              {liveTests[0].day ? `Dag ${liveTests[0].day.day} van ${liveTests[0].day.of}` : "Loopt"} · {liveTests[0].title.length > 26 ? `${liveTests[0].title.slice(0, 25)}…` : liveTests[0].title}
+            </span>
+          ) : (
+            <span className="pill gray">Nog geen test live</span>
+          )}
+        </div>
+        <div className="card tight">
+          <div className="tiny">Besluiten die wachten op bevestiging</div>
+          <div className="mini-kpi num">{awaiting}</div>
+          <span className={`pill ${awaiting ? "orange" : "green"}`}>{awaiting ? "Opdrachtgever moet bevestigen" : "Niets openstaand"}</span>
+        </div>
+      </div>
 
       {sprintIdeas.length > 0 && (
         // Planning is naslag, geen taak: ingeklapt, zodat de ideeën en hun volgende taak bovenaan blijven.
