@@ -4,7 +4,7 @@
 // of alle mislukte tests en de afwijking erin staan.
 
 export type AgainstInput = {
-  // Per test het oordeel van de laatste goedgekeurde Learning Card (null = nog geen goedgekeurde kaart).
+  // Per test het oordeel van de laatste goedgekeurde leerkaart (null = nog geen goedgekeurde kaart).
   tests: { id: string; title: string; verdict: "pass" | "fail" | "inconclusive" | null }[];
   // Bevindingen met een letterlijk gecontroleerde bron die de bewering tegenspreekt.
   contradictedClaims: { id: string; statement: string }[];

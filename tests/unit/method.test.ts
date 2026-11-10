@@ -20,7 +20,7 @@ describe("methodeversies", () => {
     expect(methodOf(null).version).toBe("2026-11-a");
   });
 
-  it("2026-11-a rekent precies als voorheen, ook met een beslisregel op de Test Card", () => {
+  it("2026-11-a rekent precies als voorheen, ook met een beslisregel op de testkaart", () => {
     const a = METHODS["2026-11-a"];
     const list = [obs("survey_answer", "e1"), obs("survey_answer", "e1"), obs("demo_request", "e2")];
     expect(a.probability([], list, 0.5, {}, DEFAULT_CAPS)).toEqual(assumptionProbability([], list, 0.5, {}));

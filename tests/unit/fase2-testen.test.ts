@@ -403,7 +403,7 @@ describe("beslisregel met betalingen", () => {
     // Geen uitspraak vóór de eindconditie.
     expect(verdictV2({ ...base, endConditionReached: false, rule: "probability", successes: 15, n: 100 }).kind).toBe("running");
   });
-  it("de Test Card staat een vast aantal toe bij betaling, toezegging en afspraak, niet bij aanmelding", () => {
+  it("de testkaart staat een vast aantal toe bij betaling, toezegging en afspraak, niet bij aanmelding", () => {
     expect(absoluteRuleAllowed("landing", "payment")).toBe(true);
     expect(absoluteRuleAllowed("pricing", "commitment")).toBe(true);
     expect(absoluteRuleAllowed("landing", "booking")).toBe(true);
@@ -437,7 +437,7 @@ describe("beslisregel met betalingen", () => {
 // Generator, linkbouwer, privacy, toezeggingen, coach
 // ---------------------------------------------------------------------------
 
-describe("testpagina uit de Test Card", () => {
+describe("testpagina uit de testkaart", () => {
   it("vult kop, ondertitel, aanbod en knoptekst uit hypothese, doelgroep en intake", () => {
     const g = pageFromTestCard({
       type: "landing",

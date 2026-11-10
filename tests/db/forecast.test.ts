@@ -99,7 +99,7 @@ d("forecasting and outcome loop", () => {
 
   it("starts the six-month clock once at the decision, also after forecasts exist", async () => {
     const idea = await newIdea(alice, org);
-    // The decision moment is open once a Reality Check exists.
+    // The decision moment is open once a realiteitscheck exists.
     await as(alice, (c) => c.query("insert into public.reality_checks (idea_id, findings, advice, advice_reason) values ($1, '[]', 'test_more', 'Nog te weinig bewijs')", [idea]));
     await expect(as(alice, (c) => forecast(c, idea, "intake", "consultant", alice.id, 0.4))).rejects.toThrow(/FORECAST_MOMENT/);
     await as(alice, (c) => forecast(c, idea, "decision", "consultant", alice.id, 0.4));

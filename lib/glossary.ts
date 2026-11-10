@@ -28,16 +28,16 @@ export const GLOSSARY = {
   hoofdtest: {
     term: "Hoofdtest",
     uitleg:
-      "De ene test die je vooraf per aanname aanwijst; alleen die beslist over de status van de aanname en telt in de go-regel. Na goedkeuring ligt de keuze vast, zodat niemand achteraf de test kiest die toevallig slaagde.",
+      "De ene test die je vooraf per aanname aanwijst; alleen die beslist over de status van de aanname en telt in de beslisregel. Na goedkeuring ligt de keuze vast, zodat niemand achteraf de test kiest die toevallig slaagde.",
   },
   "verkennende-test": {
     term: "Verkennende test",
     uitleg: "Elke andere test bij een aanname dan de hoofdtest. Hij geeft richting, maar beslist niet over de aanname of het besluit.",
   },
   "test-card": {
-    term: "Test Card",
+    term: "Testkaart",
     uitleg:
-      "Het testplan dat je vóór de start vastlegt: wat je denkt, bij wie, hoe je het toetst, wat je meet en wanneer het klopt. Na goedkeuring is het vergrendeld; wijzigen kan alleen met een nieuwe versie en een motivering.",
+      "Het testplan dat je vóór de start vastlegt: wat je denkt, bij wie, hoe je het toetst, wat je meet en wanneer het klopt (vakterm: Test Card). Na goedkeuring is het vergrendeld; wijzigen kan alleen met een nieuwe versie en een motivering.",
   },
   beslisregel: {
     term: "Beslisregel van een test",
@@ -95,19 +95,19 @@ export const GLOSSARY = {
       "Hoe vaak vergelijkbare ideeën uit een referentiegroep hun doel haalden. Het is het startpunt van elke voorspelling; zonder gedragsbewijs blijven goede voorspellers er dicht bij.",
   },
   "reality-check": {
-    term: "Reality Check",
+    term: "Realiteitscheck",
     uitleg:
-      "Een verplichte controle op vaste regels vóór elk besluit en rapport. Hij zoekt valkuilen, zwakke data en conclusies die het bewijs niet draagt; AI mag kritische vragen toevoegen, maar de regels draaien altijd.",
+      "Een verplichte controle op vaste regels vóór elk besluit en rapport. Hij zoekt valkuilen, zwakke data en conclusies die het bewijs niet draagt; AI mag kritische vragen toevoegen, maar de regels draaien altijd (vakterm: Reality Check).",
   },
   "learning-card": {
-    term: "Learning Card",
+    term: "Leerkaart",
     uitleg:
-      "Het verslag van een afgeronde test: wat we verwachtten, wat de ruwe, ontdubbelde metingen lieten zien, de beperkingen en wat het betekent. Pas na goedkeuring telt de uitkomst mee voor de aanname.",
+      "Het verslag van een afgeronde test: wat we verwachtten, wat de ruwe, ontdubbelde metingen lieten zien, de beperkingen en wat het betekent. Pas na goedkeuring telt de uitkomst mee voor de aanname (vakterm: Learning Card).",
   },
   "go-regel": {
-    term: "Go-regel",
+    term: "Beslisregel van het dossier",
     uitleg:
-      "De beslisregel van het dossier, vooraf vastgelegd: doorgaan als de gekozen aannames hun minimale kans halen en de hoofdtest slaagt. Wie bij het besluit afwijkt, motiveert dat; die motivering staat in het rapport.",
+      "De beslisregel van het dossier, vooraf vastgelegd: doorgaan als de gekozen aannames hun minimale kans halen en de hoofdtest slaagt. Wie bij het besluit afwijkt, motiveert dat; die motivering staat in het rapport (vakterm: go-regel).",
   },
   wervingsgroep: {
     term: "Wervingsgroep",

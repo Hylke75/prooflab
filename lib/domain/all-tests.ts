@@ -12,7 +12,7 @@ export type AllTestsInput = {
   assumptionId: string | null;
   assumption: string | null;
   role: TestRole;
-  locked: boolean; // de Test Card is ooit goedgekeurd (vergrendeld)
+  locked: boolean; // de testkaart is ooit goedgekeurd (vergrendeld)
   endedEarly: boolean;
   label: string | null; // uitkomst volgens de beslisregel ("geslaagd", "niet geslaagd", …)
   level: EvidenceLevel | null;
@@ -47,7 +47,7 @@ const STATE_TEXT: Record<string, string> = {
   ready_for_review: "na goedkeuring teruggezet, ter review",
 };
 
-// Telt mee als "vooraf vastgelegd": de Test Card is vergrendeld, of de test is goedgekeurd of verder.
+// Telt mee als "vooraf vastgelegd": de testkaart is vergrendeld, of de test is goedgekeurd of verder.
 export function isRegistered(t: { state: string; locked: boolean }): boolean {
   return t.locked || !["draft", "ready_for_review"].includes(t.state);
 }

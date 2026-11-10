@@ -88,14 +88,14 @@ describe("ideaTasks", () => {
     expect(list.next?.path).toBe("/experiments/e1");
   });
 
-  it("een concepttest maakt het testplan 'bezig' en linkt naar dat concept", () => {
+  it("een concepttest maakt de testkaart 'bezig' en linkt naar dat concept", () => {
     const p = progress({ assumptions: 1, experiments: [exp("e2", "draft")] }, { assumptions: 1, experiments: 1 });
     const plan = ideaTasks(p).phases[2].tasks[0];
     expect(plan.status).toBe("busy");
     expect(plan.path).toBe("/experiments/e2");
   });
 
-  it("Besluit: eerst Learning Card, dan Reality Check, dan besluit", () => {
+  it("Besluit: eerst leerkaart, dan realiteitscheck, dan besluit", () => {
     const ended = { assumptions: 1, experiments: [exp("e1", "ended")], experimentsEnded: 1 };
     const d = { assumptions: 1, experiments: 1, experimentsEnded: 1, criticalWithPrimaryTest: 1, decisionRule: "saved" as const };
     expect(status(progress({ ...ended, learningCardsDraft: 1 }, d), "decide-learned")).toBe("busy");
@@ -106,7 +106,7 @@ describe("ideaTasks", () => {
     expect(ideaTasks(checked).next?.key).toBe("decide-decision");
   });
 
-  it("nieuw bewijs na de Reality Check maakt de check weer 'bezig'", () => {
+  it("nieuw bewijs na de realiteitscheck maakt de check weer 'bezig'", () => {
     const p = progress({ learningCardsApproved: 1, latestCardApprovedAt: "2026-11-05", latestRealityCheckAt: "2026-11-02" });
     expect(status(p, "decide-check")).toBe("busy");
   });
@@ -145,7 +145,7 @@ describe("ideaTasks", () => {
 });
 
 describe("ideaTasks na verder testen", () => {
-  it("na 'verder testen' zonder nieuwe test: terug naar Testen, testplan staat weer open", () => {
+  it("na 'verder testen' zonder nieuwe test: terug naar Testen, testkaart staat weer open", () => {
     const p = progress(
       { assumptions: 1, experiments: [exp("e1", "decided")], experimentsEnded: 1, learningCardsApproved: 1, latestRealityCheckAt: "2026-11-02", decisions: 1, latestDecisionAt: "2026-11-03", latestDecisionAction: "test_more", reports: 1 },
       { assumptions: 1, experiments: 1, experimentsEnded: 1, criticalWithPrimaryTest: 1, decisionRule: "saved", testsWithVerdict: 1, decisions: 1, latestDecisionAction: "test_more" },
@@ -156,7 +156,7 @@ describe("ideaTasks na verder testen", () => {
     expect(list.next?.why).toMatch(/volgende test/);
   });
 
-  it("met een nieuwe test na het besluit telt het testplan weer als klaar", () => {
+  it("met een nieuwe test na het besluit telt de testkaart weer als klaar", () => {
     const e2 = { ...exp("e2", "ended"), startedAt: "2026-11-05" };
     const p = progress(
       { assumptions: 1, experiments: [exp("e1", "decided"), e2], experimentsEnded: 2, learningCardsApproved: 1, decisions: 1, latestDecisionAt: "2026-11-03", latestDecisionAction: "test_more" },

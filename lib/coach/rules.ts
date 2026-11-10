@@ -343,8 +343,8 @@ export const RULES: Record<string, Rule> = {
     return {
       code: "learning_card_waiting",
       kind: "question",
-      title: drafts.length === 1 ? "Een Learning Card wacht op goedkeuring" : `${drafts.length} Learning Cards wachten op goedkeuring`,
-      body: "Klopt wat we verwachtten, wat we zagen en wat we daarom doen? Pas na goedkeuring telt de les mee in de Reality Check en het rapport.",
+      title: drafts.length === 1 ? "Een leerkaart wacht op goedkeuring" : `${drafts.length} leerkaarten wachten op goedkeuring`,
+      body: "Klopt wat we verwachtten, wat we zagen en wat we daarom doen? Pas na goedkeuring telt de les mee in de realiteitscheck en het rapport.",
       href: `${base}/evidence`,
       audience: "consultant",
     };
@@ -360,7 +360,7 @@ export const RULES: Record<string, Rule> = {
     return {
       code: `reality_check_stale:${f.realityCheck.id}`,
       kind: "warning",
-      title: "De Reality Check is verouderd",
+      title: "De realiteitscheck is verouderd",
       body: "Er is nieuw bewijs binnengekomen na de laatste check. Doe hem opnieuw vóór het besluit, zodat tegenbewijs en valkuilen op het actuele dossier zijn getoetst.",
       href: `${base}/evidence`,
       audience: "consultant",
@@ -375,7 +375,7 @@ export const RULES: Record<string, Rule> = {
       code: `decision_deadline:${f.decisionDeadline.slice(0, 10)}`,
       kind: "warning",
       title: left < 0 ? "De besluitdatum is verstreken" : left === 0 ? "Vandaag is de besluitdatum" : `Besluitdatum over ${plural(left, "dag", "dagen")}`,
-      body: "Er is nog geen besluit vastgelegd. Plan de besluitsessie met de opdrachtgever en zorg dat Learning Cards en Reality Check vooraf klaar zijn.",
+      body: "Er is nog geen besluit vastgelegd. Plan de besluitsessie met de opdrachtgever en zorg dat leerkaarten en realiteitscheck vooraf klaar zijn.",
       href: `${base}/evidence`,
       audience: "consultant",
     };
@@ -557,7 +557,7 @@ export const RULES: Record<string, Rule> = {
       kind: phase.active ? "tip" : "warning",
       title: phase.active ? "De verlengde testfase loopt bijna af" : "De verlengde testfase is voorbij: tijd voor het definitieve besluit",
       body: phase.active
-        ? `De verlengde testfase eindigt op ${phase.end}. Zorg dat de Learning Cards dan klaar zijn en voer de Reality Check opnieuw uit; daarna volgt het definitieve besluit en start de uitkomstklok.`
+        ? `De verlengde testfase eindigt op ${phase.end}. Zorg dat de leerkaarten dan klaar zijn en voer de realiteitscheck opnieuw uit; daarna volgt het definitieve besluit en start de uitkomstklok.`
         : `De verlengde testfase eindigde op ${phase.end}. Neem nu het definitieve besluit (doorgaan, stoppen of pauzeren); daarmee start de uitkomstklok.`,
       href: `${base}/evidence`,
       audience: "consultant",
@@ -642,8 +642,8 @@ export const RULE_LABELS: Record<string, string> = {
   interview_hypothetical: "Hypothetische interviewvragen",
   survey_suggest: "Enquête voorstellen",
   acquaintances_majority: "Vooral bekenden geïnterviewd",
-  learning_card_waiting: "Learning Card wacht",
-  reality_check_stale: "Reality Check verouderd",
+  learning_card_waiting: "Leerkaart wacht",
+  reality_check_stale: "Realiteitscheck verouderd",
   decision_deadline: "Besluitdatum nadert",
   decision_confirm: "Besluit bevestigen",
   outcome_undefined: "Uitkomst niet vastgelegd",
@@ -692,8 +692,8 @@ export const NOT_DONE: Record<string, string> = {
   interview_hypothetical: "We zien nog geen aangepaste gespreksleidraad: er staan nog hypothetische vragen in.",
   survey_suggest: "We zien nog geen enquête of extra datapunten bij deze aanname.",
   acquaintances_majority: "We zien nog geen extra gesprekken buiten je eigen netwerk.",
-  learning_card_waiting: "We zien nog geen goedgekeurde Learning Card.",
-  reality_check_stale: "We zien nog geen nieuwe Reality Check na het laatste bewijs.",
+  learning_card_waiting: "We zien nog geen goedgekeurde leerkaart.",
+  reality_check_stale: "We zien nog geen nieuwe realiteitscheck na het laatste bewijs.",
   decision_deadline: "We zien nog geen vastgelegd besluit.",
   decision_confirm: "We zien nog geen bevestiging van het besluit door de opdrachtgever.",
   outcome_undefined: "We zien nog geen uitkomstdefinitie.",

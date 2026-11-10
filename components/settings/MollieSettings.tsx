@@ -4,7 +4,7 @@ import { ActionForm, Field } from "@/components/ui/ActionForm";
 import { saveMollieKey } from "@/app/app/status/mollie-actions";
 
 // Fase 2 · punt 4: Mollie koppelen per werkruimte (eigenaren). Zonder MOLLIE_ENABLED=1 en een geldige
-// SECRETS_ENCRYPTION_KEY staat de koppeling eerlijk op "niet ingesteld" en is de betaalstap in een Test Card niet te kiezen.
+// SECRETS_ENCRYPTION_KEY staat de koppeling eerlijk op "niet ingesteld" en is de betaalstap in een testkaart niet te kiezen.
 export function MollieSettings({
   ready,
   reason,

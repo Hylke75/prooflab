@@ -84,7 +84,7 @@ describe("telling", () => {
 });
 
 describe("handmatige resultaten → oordeel", () => {
-  // De drempels komen uit de vergrendelde Test Card; het oordeel volgt pas na de eindconditie (geen tussentijdse conclusie).
+  // De drempels komen uit de vergrendelde testkaart; het oordeel volgt pas na de eindconditie (geen tussentijdse conclusie).
   const h = { decision_rule: "probability", success_count: null, success_threshold_pct: 30, fail_threshold_pct: 10, min_sample: 10 };
   const rows = [row(6, 4), row(6, 3)];
 
@@ -103,7 +103,7 @@ describe("handmatige resultaten → oordeel", () => {
     const v = manualOutcome(h, withdrawn, { endConditionReached: true, method: "2026-11-e" });
     expect(v.n).toBe(12);
     expect(v.successes).toBe(4);
-    // Zelfde aantallen, andere (achteraf verlaagde) drempel: dat is een andere hypothese, niet deze Test Card.
+    // Zelfde aantallen, andere (achteraf verlaagde) drempel: dat is een andere hypothese, niet deze testkaart.
     const same = methodOf("2026-11-e").verdict(h, { successes: 4, n: 12, successThresholdPct: 30, failThresholdPct: 10, minSample: 10, endConditionReached: true });
     expect(v.verdict.kind).toBe(same.kind);
   });

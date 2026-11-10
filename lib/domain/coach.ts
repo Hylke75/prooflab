@@ -97,7 +97,7 @@ const CLIENT_COPY: Record<CoachPage, [string, string, string]> = {
   assumptions: ["Wat moet waar zijn?", "De risicokaart zet af hoe belangrijk een aanname is tegen hoeveel bewijs er al voor is.", "Rechtsboven staan de aannames die het meest belangrijk zijn en het minst bewezen. Die worden als eerste getest."],
   model: ["Het businessmodel.", "Het canvas laat zien hoe het idee moet werken: voor wie, wat, via welke kanalen, waar het geld vandaan komt en wat het kost.", "Bij elk onderdeel staat of het getoetst is, onderbouwd met bronnen of nog een aanname. Een gevuld vak is geen bewijs."],
   experiments: ["Hoe wordt er getest?", "Elke test heeft vooraf vastgelegde drempels. Na goedkeuring kunnen die niet meer stil worden aangepast.", "Tijdens een lopende test ziet u voortgang, maar nog geen conclusie. Een uitspraak volgt pas na de afgesproken eindconditie."],
-  evidence: ["Wat zegt het bewijs?", "Hier staan de waargenomen signalen, de Reality Check en het besluitvoorstel van het onderzoeksteam.", "Bent u aangewezen als beslisser, dan bevestigt u hier het besluit. Daarmee wordt het onderdeel van het rapport."],
+  evidence: ["Wat zegt het bewijs?", "Hier staan de waargenomen signalen, de realiteitscheck en het besluitvoorstel van het onderzoeksteam.", "Bent u aangewezen als beslisser, dan bevestigt u hier het besluit. Daarmee wordt het onderdeel van het rapport."],
   report: ["Het rapport.", "Elke gedeelde versie is een vaste momentopname met bronnen, beperkingen en tegenbewijs.", "Het rapport laat zien wat bekend is, wat geschat is en wat nog niet bewezen is."],
   outcome: ["Hoe groot is de kans van slagen?", "Op vaste momenten geeft u een eigen kansinschatting, los van het onderzoeksteam.", "U ziet de andere voorspellingen pas nadat u de uwe hebt gegeven. Zo beïnvloedt niemand elkaar."],
   forecasts: ["Voorspelkwaliteit.", "", ""],
@@ -161,17 +161,17 @@ export function nextAction(p: IdeaProgress): NextAction {
   if (unlearned)
     return {
       title: "Leg vast wat je hebt geleerd",
-      detail: "Rond de Learning Card af: wat verwachtten we, wat zagen we, wat doen we nu?",
+      detail: "Rond de leerkaart af: wat verwachtten we, wat zagen we, wat doen we nu?",
       href: p.learningCardsDraft > 0 ? `${base}/evidence` : exp(unlearned),
       icon: "shield",
     };
   const approved = firstWithState(p, ["approved"]);
   if (approved) return { title: "Publiceer de test", detail: `"${approved.title}" is goedgekeurd en vergrendeld. Zet hem live om te gaan meten.`, href: `${exp(approved)}#publiceren`, icon: "flask" };
   const review = firstWithState(p, ["ready_for_review"]);
-  if (review) return { title: "Keur de Test Card goed", detail: `"${review.title}" wacht op review. Goedkeuren vergrendelt hypothese en drempels.`, href: `${exp(review)}#goedkeuren`, icon: "flask" };
+  if (review) return { title: "Keur de testkaart goed", detail: `"${review.title}" wacht op review. Goedkeuren vergrendelt hypothese en drempels.`, href: `${exp(review)}#goedkeuren`, icon: "flask" };
   const draft = firstWithState(p, ["draft"]);
-  if (draft) return { title: "Rond je Test Card af en zet hem ter review", detail: `"${draft.title}" is nog een concept. Leg vooraf vast wat je meet en wanneer het klopt.`, href: `${exp(draft)}#ter-review`, icon: "flask" };
-  if (realityCheckDue(p)) return { title: "Doe de Reality Check", detail: "Er is nieuw bewijs sinds de laatste check. De check zoekt tegenbewijs en valkuilen vóór het besluit.", href: `${base}/evidence`, icon: "shield" };
+  if (draft) return { title: "Rond je testkaart af en zet hem ter review", detail: `"${draft.title}" is nog een concept. Leg vooraf vast wat je meet en wanneer het klopt.`, href: `${exp(draft)}#ter-review`, icon: "flask" };
+  if (realityCheckDue(p)) return { title: "Doe de realiteitscheck", detail: "Er is nieuw bewijs sinds de laatste check. De check zoekt tegenbewijs en valkuilen vóór het besluit.", href: `${base}/evidence`, icon: "shield" };
   if (decisionDue(p)) {
     const atDecision = decisionMomentAction(p);
     if (atDecision) return atDecision;
@@ -313,8 +313,8 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
       const review = firstWithState(p, ["ready_for_review"]);
       const approved = firstWithState(p, ["approved"]);
       const live = firstWithState(p, ["live", "paused"]);
-      if (draft) add("Rond je Test Card af en zet hem ter review", `${base}/experiments/${draft.id}#ter-review`, "flask");
-      if (review) add("Keur de Test Card goed", `${base}/experiments/${review.id}#goedkeuren`, "check");
+      if (draft) add("Rond je testkaart af en zet hem ter review", `${base}/experiments/${draft.id}#ter-review`, "flask");
+      if (review) add("Keur de testkaart goed", `${base}/experiments/${review.id}#goedkeuren`, "check");
       if (approved) add("Publiceer de test", `${base}/experiments/${approved.id}#publiceren`, "flask");
       if (live) add("Bekijk de tussenstand van de lopende test", `${base}/experiments/${live.id}`, "clock");
       if (p.experiments.length === 0 && p.topAssumption) add("Ontwerp een test voor de grootste onzekerheid", `${base}/experiments?assumption=${p.topAssumption.id}`, "flask");
@@ -324,9 +324,9 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
       break;
     }
     case "evidence": {
-      if (p.learningCardsDraft > 0) add("Keur de Learning Card goed", `${base}/evidence`, "shield");
-      else if (endedWithoutCard(p).length > 0) add("Maak de Learning Card van de afgeronde test", `${base}/experiments/${endedWithoutCard(p)[0].id}`, "shield");
-      if (realityCheckDue(p) || (!p.latestRealityCheckAt && p.experimentsEnded > 0)) add("Doe de Reality Check", `${base}/evidence`, "shield");
+      if (p.learningCardsDraft > 0) add("Keur de leerkaart goed", `${base}/evidence`, "shield");
+      else if (endedWithoutCard(p).length > 0) add("Maak de leerkaart van de afgeronde test", `${base}/experiments/${endedWithoutCard(p)[0].id}`, "shield");
+      if (realityCheckDue(p) || (!p.latestRealityCheckAt && p.experimentsEnded > 0)) add("Doe de realiteitscheck", `${base}/evidence`, "shield");
       else if (decisionDue(p)) {
         if (forecastDue(p) === "decision") {
           if (p.forecast?.baseRateChosen) add("Geef je voorspelling", `${base}/evidence?stap=besluit#voorspelling`, "trend");
@@ -345,7 +345,7 @@ function pageSuggestions(page: CoachPage, p: IdeaProgress): { items: CoachSugges
       if (p.reports === 0) add("Maak het eerste rapport", `${base}/report`, "file");
       else if (reportStale(p)) add("Werk het rapport bij", `${base}/report`, "file");
       else if (!p.latestReportShared) add("Deel de laatste versie met de opdrachtgever", `${base}/report`, "users");
-      if (!p.latestRealityCheckAt) add("Doe eerst de Reality Check", `${base}/evidence`, "shield");
+      if (!p.latestRealityCheckAt) add("Doe eerst de realiteitscheck", `${base}/evidence`, "shield");
       if (p.decisions === 0) add("Leg het besluit vast", `${base}/evidence`, "check");
       if (p.reports === 0) insight = ["Mijn advies", "Een rapport is een vaste momentopname. Maak het als het besluit genomen is, of eerder als tussenstand."];
       else if (reportStale(p)) insight = ["Let hierop", "Het laatste besluit staat nog niet in een rapportversie."];

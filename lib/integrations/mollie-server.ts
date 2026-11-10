@@ -20,7 +20,7 @@ export function mollieEnvironment(): { ready: boolean; reason: string | null; ke
 
 export type DepositAvailability = { available: boolean; reason: string | null; mode: "test" | "live" | null };
 
-// Kan een nieuwe Test Card in deze werkruimte een betaalstap krijgen? Omgeving klaar én een sleutel van de werkruimte.
+// Kan een nieuwe testkaart in deze werkruimte een betaalstap krijgen? Omgeving klaar én een sleutel van de werkruimte.
 export async function depositAvailability(orgId: string | null | undefined): Promise<DepositAvailability> {
   const envState = mollieEnvironment();
   if (!envState.ready) return { available: false, reason: `Mollie niet ingesteld: ${envState.reason}`, mode: null };

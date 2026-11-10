@@ -33,7 +33,6 @@ export const STEPS: readonly StepDef[] = [
       { path: "/assumptions", label: "Aannamekaart" },
       { path: "/model", label: "Businessmodel" },
     ],
-    also: ["/method"],
   },
   { key: "test", number: 3, label: STEP_LABELS.test, icon: "flask", path: "/experiments" },
   {
@@ -50,10 +49,15 @@ export const STEPS: readonly StepDef[] = [
 ];
 
 export const IDEA_OVERVIEW = { label: "Wat nu?", icon: "layout-dashboard", path: "" } as const satisfies { label: string; icon: IconName; path: string };
+// Voorstel "ProofLab eenvoudiger": naslag staat apart van het werk, onder Hulp en methode.
+export const IDEA_HELP = { label: "Hulp en methode", icon: "info", path: "/hulp" } as const satisfies { label: string; icon: IconName; path: string };
+export const HELP_PATHS = ["/hulp", "/method", "/experiments/catalogus"] as const;
 export const IDEA_REPORT = { label: "Rapport", icon: "file", path: "/report" } as const satisfies { label: string; icon: IconName; path: string };
 
 // Het deel van het adres na /app/ideas/[id], bijv. "/research" of "/experiments/…". Leeg voor het overzicht.
 export function stepForPath(sub: string): StepKey | null {
+  // Naslag (Hulp en methode) hoort bij geen enkele stap.
+  if (HELP_PATHS.some((p) => sub === p || sub.startsWith(`${p}/`) || sub.startsWith(`${p}?`))) return null;
   for (const s of STEPS) {
     const paths = [s.path, ...(s.tabs ?? []).map((t) => t.path), ...(s.also ?? [])];
     if (paths.some((p) => sub === p || sub.startsWith(`${p}/`))) return s.key;

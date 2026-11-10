@@ -66,7 +66,7 @@ describe("C4: titel op een woordgrens", () => {
     expect(statement.slice(0, 60)).toMatch(/\(200$/);
     expect(truncateWords(`Klantinterviews: ${statement}`, 70)).toBe("Klantinterviews: Vrijwilligersbesturen van kleine tennis- en…");
   });
-  it("de naam staat in het zichtbare deel van de Test Card", () => {
+  it("de naam staat in het zichtbare deel van de testkaart", () => {
     expect(VISIBLE_FIELDS).toContain("title");
   });
 });

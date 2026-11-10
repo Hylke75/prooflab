@@ -5,9 +5,9 @@ import { log } from "@/lib/log";
 
 type Db = Awaited<ReturnType<typeof supabaseServer>>;
 
-// Gebruikerstest D6: alternatieven die de AI in de Reality Check noemt, opslaan als voorstel (origin 'proposal', type
+// Gebruikerstest D6: alternatieven die de AI in de realiteitscheck noemt, opslaan als voorstel (origin 'proposal', type
 // "huidig alternatief", zonder website, prijs of bron). Bestaande namen worden overgeslagen. Zonder de migratie van
-// groep D weigert de database 'proposal'; dan wordt er niets opgeslagen en loopt de Reality Check gewoon door.
+// groep D weigert de database 'proposal'; dan wordt er niets opgeslagen en loopt de realiteitscheck gewoon door.
 export async function storeAlternativeProposals(supabase: Db, ideaId: string, named: { name: string; why?: string | null }[]): Promise<number> {
   if (!named.length) return 0;
   const { data: existing } = await supabase.from("competitors").select("name").eq("idea_id", ideaId);
@@ -18,7 +18,7 @@ export async function storeAlternativeProposals(supabase: Db, ideaId: string, na
       idea_id: ideaId,
       name: p.name,
       kind: "alternative",
-      positioning: p.why ? `Genoemd door de AI in de Reality Check: ${p.why}` : "Genoemd door de AI in de Reality Check.",
+      positioning: p.why ? `Genoemd door de AI in de realiteitscheck: ${p.why}` : "Genoemd door de AI in de realiteitscheck.",
       origin: PROPOSAL_ORIGIN,
     })),
   );

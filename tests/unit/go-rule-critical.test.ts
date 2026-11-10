@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { excludedCriticalCheck, GO_RULE_NOTE, isCriticalForRule, proposeGoRule } from "@/lib/domain/decision-rule-proposal";
 
-// Gebruikerstest B1: de go-regel neemt standaard alle kritieke aannames mee (gekozen om nu te testen én belang 5), plus
+// Gebruikerstest B1: de beslisregel neemt standaard alle kritieke aannames mee (gekozen om nu te testen én belang 5), plus
 // altijd de aanname van de hoofdtest. Een kritieke aanname weglaten vraagt een motivering van minstens 15 tekens.
 
 const assumptions = [

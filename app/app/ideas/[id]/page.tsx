@@ -123,7 +123,7 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
         <p className="tiny mt-24">
           <Link className="text-link" href={`${base}/evidence?stap=bewijs`} prefetch={false}>Alle bewijs op een rij</Link> ·{" "}
           <Link className="text-link" href={`${base}/outcome`} prefetch={false}>Voorspelling en uitkomst</Link> ·{" "}
-          <Link className="text-link" href={`${base}/method`} prefetch={false}>Methode</Link>
+          <Link className="text-link" href={`${base}/hulp`} prefetch={false}>Hulp en methode</Link>
         </p>
       </div>
     </PageFrame>

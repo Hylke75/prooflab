@@ -4,7 +4,7 @@ import type { CatalogSteps } from "@/lib/domain/experiment-catalog";
 import "./catalog.css";
 
 // Experimentencatalogus: het draaiboek van een handmatig sjabloon (vooraf, tijdens, afronden). Zonder hooks, zodat het
-// in de Test Card (client), op de testpagina en in de catalogus (server) hetzelfde is.
+// in de testkaart (client), op de testpagina en in de catalogus (server) hetzelfde is.
 export function ManualPlaybook({
   name,
   summary,

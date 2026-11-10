@@ -2,7 +2,7 @@ import { chanceOfLuck } from "@/lib/domain/primary-test";
 import { DECISION_RULES, FAIL_PROBABILITY, PASS_PROBABILITY, pct, type DecisionRule, type Interval, type VerdictLabel } from "@/lib/domain/stats";
 
 // Uitkomst van een test volgens de vooraf vastgelegde beslisregel: de regel, de kans of het aantal, het
-// 95%-interval ter informatie en het label. Gebruikt op de experimentpagina en op de Learning Card.
+// 95%-interval ter informatie en het label. Gebruikt op de experimentpagina en op de leerkaart.
 export type RuleOutcome = {
   rule: DecisionRule | "interval";
   label: VerdictLabel | string;
@@ -72,7 +72,7 @@ export function RuleSummary({ o, compact = false }: { o: RuleOutcome; compact?: 
 
 const num = (x: unknown): number | null => (typeof x === "number" && Number.isFinite(x) ? x : null);
 
-// De uitkomst zoals die op een Learning Card staat (learning_cards.metrics). Kaarten van vóór methode
+// De uitkomst zoals die op een leerkaart staat (learning_cards.metrics). Kaarten van vóór methode
 // 2026-11-b hebben geen beslisregel: die tonen de intervalregel met het label van hun oordeel.
 export function outcomeFromCard(
   metrics: unknown,

@@ -4,7 +4,7 @@
 //     telt nergens als bewijs, dus dat verzwakt niets.
 // (b) bekende en wervingsgroep waren twee velden die elkaar konden tegenspreken. Nu is er één veld, de wervingsgroep, met
 //     de optie "Eigen netwerk (bekende: vriend, collega, bestaande klant)". is_acquaintance volgt daaruit. Zonder keuze
-//     volgt de groep uit het wervingskanaal (zoals op de Test Card), en pas daarna uit de test; niet meer "onbekend".
+//     volgt de groep uit het wervingskanaal (zoals op de testkaart), en pas daarna uit de test; niet meer "onbekend".
 // Pure functie: scherm en server (addInterview) gebruiken dezelfde regel.
 
 import { asRecruitmentGroup, type RecruitmentGroup } from "./recruitment";

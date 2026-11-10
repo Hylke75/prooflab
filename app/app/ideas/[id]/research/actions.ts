@@ -336,7 +336,7 @@ export async function saveCompetitor(ideaId: string, competitorId: string | null
     last_checked_at: new Date().toISOString(),
   };
   const supabase = await supabaseServer();
-  // Gebruikerstest D6: een voorstel (door de Reality Check of AI genoemd, zonder bron) wordt pas een echt alternatief met
+  // Gebruikerstest D6: een voorstel (door de realiteitscheck of AI genoemd, zonder bron) wordt pas een echt alternatief met
   // een website of een gekoppelde bevinding. Daarna telt het mee en zien opdrachtgevers het.
   let adopted = false;
   if (competitorId) {

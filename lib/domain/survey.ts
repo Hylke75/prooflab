@@ -1,6 +1,6 @@
 // Surveys: the shape of a survey, validation of answers and the pre-registered key metric.
 // A survey measures what people *say* (also about their own past behaviour); it never counts as observed
-// behaviour. The key question and its "success" options are fixed in the Test Card before publishing.
+// behaviour. The key question and its "success" options are fixed in the testkaart before publishing.
 
 import { z } from "zod";
 import { wilson, type Interval } from "./stats";

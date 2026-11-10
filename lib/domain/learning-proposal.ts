@@ -1,4 +1,4 @@
-// Fase B5: "Analyseer en maak de Learning Card" vult "Daaruit leren we" en "Daarom gaan we" als voorstel. De AI mag
+// Fase B5: "Analyseer en maak de leerkaart" vult "Daaruit leren we" en "Daarom gaan we" als voorstel. De AI mag
 // het voorstel formuleren; zonder AI (of als die faalt) maakt ProofLab het regelgebaseerd uit de berekende uitkomst
 // en de vooraf vastgelegde drempels. Het voorstel wordt in de metrics van de kaart bewaard (die liggen vast), zodat
 // zichtbaar blijft of de consultant het aanpaste. Een voorstel is nooit bewijs: de uitkomst zelf komt uit de metingen.
@@ -47,7 +47,7 @@ export function ruleBasedLearning(i: LearningInput): LearningProposal {
       source: "rules",
       we_learned: `De aanname "${i.assumption}" wordt gesteund volgens de vooraf vastgelegde regel: ${measured}.${chance}${role}`,
       therefore: i.isPrimary
-        ? `We nemen deze uitkomst mee in het besluit volgens de go-regel en toetsen daarna de volgende riskante aanname.${follow}`
+        ? `We nemen deze uitkomst mee in het besluit volgens de beslisregel en toetsen daarna de volgende riskante aanname.${follow}`
         : `We zetten een hoofdtest op voor deze aanname voordat ze als gesteund telt.${follow}`,
     };
   }

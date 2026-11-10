@@ -1426,3 +1426,8 @@ methode en catalogus naar "Hulp en methode"; vaktermen in gewone taal; daarna te
 - ✅ Rapport: taakkop voor het team.
 - Getest: typecheck, lint, unit-tests, alle Playwright-specs (desktop en mobiel) lokaal tegen de productiebuild.
 - Nog open: methode en catalogus naar "Hulp en methode", vaktermen in gewone taal, test met drie gebruikers.
+
+### Ronde 3 (10 november): Hulp en methode, gewone taal, testkit
+- ✅ "Hulp en methode" per idee (`/app/ideas/[id]/hulp`): begrippen in gewone taal, rekenmethode, alle testmethodes; methode en catalogus horen bij geen stap meer.
+- ✅ Vaktermen in gewone taal in alle schermen en meldingen (testkaart, leerkaart, realiteitscheck, beslisregel, pre-mortem, TAM/SAM/SOM); het vakwoord staat in de uitleg.
+- ✅ Testkit voor een gebruikerstest met drie mensen: `docs/GEBRUIKERSTEST_3_GEBRUIKERS.md` (taken, script, observatieformulier, toestemming, analyse). De test zelf moet nog met echte deelnemers worden gedaan; deelnemers die zelf een idee maken, moeten op `signup_allowlist`.

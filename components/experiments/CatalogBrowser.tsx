@@ -182,7 +182,7 @@ export function CatalogBrowser({
             <ManualPlaybook steps={checklistFor(open)} compact />
             {open.card && (
               <div className="note">
-                <strong>Startwaarden voor de Test Card</strong> (aanpasbaar tot de goedkeuring): {open.card.metric_numerator} / {open.card.metric_denominator}; geslaagd bij ≥{" "}
+                <strong>Startwaarden voor de testkaart</strong> (aanpasbaar tot de goedkeuring): {open.card.metric_numerator} / {open.card.metric_denominator}; geslaagd bij ≥{" "}
                 {open.card.success_threshold_pct.toLocaleString("nl-NL")}%, niet geslaagd onder {open.card.fail_threshold_pct.toLocaleString("nl-NL")}%; minimaal {open.card.min_sample}; hooguit{" "}
                 {open.card.max_duration_days} dagen.
               </div>
@@ -216,7 +216,7 @@ export function CatalogBrowser({
                   >
                     Gebruik voor deze aanname <Icon name="arrow" size="sm" />
                   </Link>
-                  <p className="tiny mt-8">Opent de Test Card met dit sjabloon. Niets wordt opgeslagen tot je de Test Card bewaart.</p>
+                  <p className="tiny mt-8">Opent de testkaart met dit sjabloon. Niets wordt opgeslagen tot je de testkaart bewaart.</p>
                 </>
               )}
             </div>

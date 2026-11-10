@@ -301,7 +301,7 @@ describe("Monte Carlo market sizing", () => {
   });
 });
 
-describe("pre-mortem in the Reality Check", () => {
+describe("pre-mortem in the realiteitscheck", () => {
   const facts: DossierFacts = {
     ideaAgeDays: 5,
     ideaRegion: "Nederland",

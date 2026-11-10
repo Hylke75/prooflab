@@ -115,7 +115,7 @@ describe("survey editor helpers", () => {
     expect(setCondition(c, "gezocht", "laatst", ["week"]).questions.find((q) => q.id === "gezocht")?.showIf).toBeUndefined();
   });
 
-  it("fills the Test Card metric from the key question", () => {
+  it("fills the testkaart metric from the key question", () => {
     const m = metricFromKey(base());
     expect(m.metric_numerator).toBe('respondenten die "Ja, en ik heb ervoor betaald" of "Ja, ik heb gezocht maar niets gekocht" kozen');
     expect(m.metric_denominator).toBe("respondenten die de kernvraag beantwoordden");
@@ -370,7 +370,7 @@ describe("survey in the recommender, evidence and checks", () => {
     isB2B: false,
   };
 
-  it("the Reality Check does not let a positive survey pass for behaviour", () => {
+  it("the realiteitscheck does not let a positive survey pass for behaviour", () => {
     const r = runRealityCheck(facts);
     expect(r.findings.map((f) => f.code)).toContain("survey_not_behaviour");
     expect(r.advice).toBe("test_more");

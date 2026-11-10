@@ -62,7 +62,7 @@ describe("woordenboek van vaktermen", () => {
     const required: GlossaryKey[] = [
       "beslissende-vraag", "aanname", "kritieke-aanname", "hoofdtest", "verkennende-test", "test-card", "succesdrempel", "faaldrempel",
       "minimale-steekproef", "kansregel", "aantalregel", "interval-95", "bewijsniveau", "plafond", "informatiewaarde", "basispercentage",
-      "reality-check", "learning-card", "go-regel", "wervingsgroep", "per-persoon", "oefengesprek", "geverifieerde-bron", "letterlijk-citaat",
+      "reality-check", "learning-card", "beslisregel", "wervingsgroep", "per-persoon", "oefengesprek", "geverifieerde-bron", "letterlijk-citaat",
       "tegenbewijs", "tam", "sam", "som", "brier-score", "kalibratie",
     ];
     for (const k of required) expect(isGlossaryKey(k), k).toBe(true);
@@ -81,7 +81,7 @@ describe("woordenboek van vaktermen", () => {
     expect(used.length).toBeGreaterThanOrEqual(30);
     const missing = used.filter((u) => !isGlossaryKey(u.key));
     expect(missing).toEqual([]);
-    // Op de afgesproken plekken: Test Card, risicokaart, bewijs & besluit, rapport en voorspelling.
+    // Op de afgesproken plekken: Testkaart, risicokaart, bewijs & besluit, rapport en voorspelling.
     const files = new Set(used.map((u) => u.file));
     for (const f of [
       "components/experiments/ExperimentBuilder.tsx",

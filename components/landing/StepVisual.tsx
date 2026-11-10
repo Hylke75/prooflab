@@ -97,7 +97,7 @@ function TestVisual() {
   return (
     <div className="lp-v-card">
       <div className="lp-v-head">
-        <span className="lp-v-eyebrow">Test Card · landingpagina</span>
+        <span className="lp-v-eyebrow">Testkaart · landingpagina</span>
         <Tag />
       </div>
       <p className="lp-v-hypo">Minstens 20% van de bezoekers meldt zich aan voor de wachtlijst.</p>

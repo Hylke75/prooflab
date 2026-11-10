@@ -69,7 +69,7 @@ export function successesFor(metric: SuccessMetric, c: ActionCounts, opts: { col
   return opts.collectEmail ? c.submitters : c.clickers;
 }
 
-// Soort waarneming en soort bewijs van de systeemwaarneming bij de Learning Card.
+// Soort waarneming en soort bewijs van de systeemwaarneming bij de leerkaart.
 export function systemObservationKind(type: string, metric: SuccessMetric, collectEmail: boolean): { kind: ObservationKind; evidenceType: EvidenceType | null } {
   if (type === "survey") return { kind: "survey_answer", evidenceType: null };
   if (metric === "payment") return { kind: "deposit", evidenceType: "verified_transaction" };

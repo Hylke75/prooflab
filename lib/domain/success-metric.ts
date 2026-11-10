@@ -1,4 +1,4 @@
-// Fase 2 · punt 4: wat telt als succes bij een landing- of prijstest. Vooraf gekozen op de Test Card en na goedkeuring
+// Fase 2 · punt 4: wat telt als succes bij een landing- of prijstest. Vooraf gekozen op de testkaart en na goedkeuring
 // vergrendeld (hypotheses.success_metric). Puur en zonder imports.
 
 export const SUCCESS_METRICS = {
@@ -10,7 +10,7 @@ export const SUCCESS_METRICS = {
 export type SuccessMetric = keyof typeof SUCCESS_METRICS;
 export const SUCCESS_METRIC_KEYS = Object.keys(SUCCESS_METRICS) as [SuccessMetric, ...SuccessMetric[]];
 
-// De maatstaf op de Test Card bij elke succesmaat: teller per persoon, noemer = unieke bezoekers van de testpagina.
+// De maatstaf op de testkaart bij elke succesmaat: teller per persoon, noemer = unieke bezoekers van de testpagina.
 export const SUCCESS_METRIC_CARD: Record<Exclude<SuccessMetric, "signup">, { metric_label: string; metric_numerator: string; metric_denominator: string }> = {
   payment: {
     metric_label: "Betaalde aanbetaling",

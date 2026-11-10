@@ -52,7 +52,7 @@ async function forceVersion(idea: string, v: string) {
   await db.query("commit");
 }
 
-// Een aanname met een Test Card en een experiment (concept).
+// Een aanname met een testkaart en een experiment (concept).
 async function testFor(owner: U, idea: string, type: string, extra: { assumption?: string; recruitment?: string | null } = {}) {
   return as(owner, async (c) => {
     const a =

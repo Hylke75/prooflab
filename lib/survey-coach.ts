@@ -12,7 +12,7 @@ import type { Json } from "@/lib/database.types";
 
 export type CoachDraft = { draft: DraftResult; draftId: string | null };
 
-// De eerste opzet van een enquête door de coach, voor een Test Card (onderwerp = de aanname) én voor verkennend
+// De eerste opzet van een enquête door de coach, voor een testkaart (onderwerp = de aanname) én voor verkennend
 // klantonderzoek vanuit Markt (onderwerp = de onderzoeksvraag). Zonder AI (niet verbonden, budget op of een fout)
 // het sjabloon, met de reden erbij. Het AI-origineel wordt bewaard (golf A, punt 17); lukt dat niet, dan werkt de
 // opzet gewoon, alleen zonder vergelijking.

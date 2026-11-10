@@ -17,7 +17,7 @@ import { asMethodVersion, METHODS } from "@/lib/domain/method";
 import { loadCalibration, loadIdeaCaps } from "@/lib/method-data";
 import { countsAsEvidence, realInterviewIds, withPracticeFlag } from "@/lib/domain/practice";
 
-// Collects everything about one idea in a single pass. Used by the Reality Check and as the
+// Collects everything about one idea in a single pass. Used by the realiteitscheck and as the
 // immutable snapshot behind every report version.
 export async function loadDossier(idea: Idea) {
   const supabase = await supabaseServer();
@@ -51,7 +51,7 @@ export async function loadDossier(idea: Idea) {
 
   const assumptions = rankAssumptions(await loadAssumptions(id));
   // B0: waarnemingen uit een oefengesprek of een nog niet aangegeven gesprek tellen als synthetisch (is_practice
-  // houdt de reden zichtbaar), zodat ze nergens als bewijs meetellen: niet in de Reality Check, de coach of het rapport.
+  // houdt de reden zichtbaar), zodat ze nergens als bewijs meetellen: niet in de realiteitscheck, de coach of het rapport.
   const realIds = realInterviewIds(interviews.data ?? []);
   const observationList = (observations.data ?? []).map((o) => withPracticeFlag(o, realIds));
   // Which evidence factors those probabilities used (default or learned), for the report.
@@ -202,7 +202,7 @@ export async function loadDossier(idea: Idea) {
     clientName: client.data?.name ?? null,
     questions: questions.data ?? [],
     claims: claims.data ?? [],
-    // Gebruikerstest D6: voorstellen (zonder bron) tellen nergens mee: niet in rapport, Reality Check of AI-samenvatting.
+    // Gebruikerstest D6: voorstellen (zonder bron) tellen nergens mee: niet in rapport, realiteitscheck of AI-samenvatting.
     competitors: withoutProposals(competitors.data ?? []),
     segments: segments.data ?? [],
     sizing,
@@ -280,7 +280,7 @@ export function factsFrom(d: Dossier): DossierFacts {
     })),
     // B0: alleen echte gesprekken tellen mee; oefeningen en niet-aangegeven gesprekken niet.
     interviews: d.interviews.filter((i) => countsAsEvidence(i.is_practice)).map((i) => ({ dmuRole: i.dmu_role, isAcquaintance: i.is_acquaintance, consent: i.consent_recorded })),
-    // Fase B0, punt 1: met interview en dimensies, zodat de Reality Check per persoon telt.
+    // Fase B0, punt 1: met interview en dimensies, zodat de realiteitscheck per persoon telt.
     observations: d.observations.map((o) => ({
       kind: o.kind,
       interviewId: o.interview_id,
@@ -314,7 +314,7 @@ export function dossierSummaryForAi(d: Dossier): string {
       (e) =>
         `- ${e.title} (${stateLabel(e.state)})${e.type === "survey" ? " (enquête: zelfrapportage, geen waargenomen gedrag)" : ""}${e.metrics ? ` ${e.metrics.successes} van ${e.metrics.n}, oordeel: ${verdictLabel(e.metrics.verdict.kind)}` : ""}`,
     ),
-    "Learning Cards:",
+    "Leerkaarten:",
     ...d.learningCards.map((c) => `- (${c.status === "approved" ? "goedgekeurd" : "concept"}, ${verdictLabel(c.verdict)}) ${c.we_learned}`),
     "Schrijf in gewone Nederlandse taal en noem geen interne codes (zoals statuscodes in het Engels); gebruik de namen hierboven.",
   ].join("\n");

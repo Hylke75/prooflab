@@ -1,4 +1,4 @@
-// Test Card (fase B1): één validatie voor scherm en server, en het benodigde aantal deelnemers als bandbreedte.
+// testkaart (fase B1): één validatie voor scherm en server, en het benodigde aantal deelnemers als bandbreedte.
 // De scherm- en servercontrole gebruiken dezelfde regels, zodat een fout altijd bij het juiste veld staat en
 // opslaan nooit stil mislukt.
 
@@ -147,7 +147,7 @@ export function orderedErrors(e: FieldErrors): { field: string; label: string; m
 
 export function errorSummary(e: FieldErrors): string {
   const n = Object.keys(e).length;
-  return n === 1 ? "De Test Card is nog niet opgeslagen: 1 punt moet nog worden aangevuld." : `De Test Card is nog niet opgeslagen: ${n} punten moeten nog worden aangevuld.`;
+  return n === 1 ? "De testkaart is nog niet opgeslagen: 1 punt moet nog worden aangevuld." : `De testkaart is nog niet opgeslagen: ${n} punten moeten nog worden aangevuld.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -233,12 +233,12 @@ export function sampleBand(input: {
 }
 
 // ---------------------------------------------------------------------------
-// Fase B5: een korte Test Card. Zichtbaar zijn alleen wat je test, bij wie, wanneer de test geslaagd is (drempels),
+// Fase B5: een korte testkaart. Zichtbaar zijn alleen wat je test, bij wie, wanneer de test geslaagd is (drempels),
 // hoeveel deelnemers en de deadline. De rest staat vooringevuld onder "Details". Een verplicht detailveld met een
 // fout opent "Details" vanzelf: een verplicht veld zit nooit verborgen in een dichtgeklapt deel.
 // ---------------------------------------------------------------------------
 
-// Velden (sleutels van FieldErrors) die op het zichtbare deel van de Test Card staan.
+// Velden (sleutels van FieldErrors) die op het zichtbare deel van de testkaart staan.
 export const VISIBLE_FIELDS = ["title", "we_believe", "target_group", "success_metric", "success_threshold_pct", "fail_threshold_pct", "success_count", "thresholds", "min_sample", "sample_below_reason", "max_duration_days"] as const;
 
 // Alle andere velden staan onder "Details", behalve wat op een eigen tab staat (testpagina, gespreksleidraad,

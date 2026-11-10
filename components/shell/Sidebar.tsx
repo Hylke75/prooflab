@@ -4,9 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { Drawer } from "@/components/ui/Drawer";
-import { menuItems, stepForPath, stepMark, type MenuItem } from "@/lib/steps";
+import { HELP_PATHS, IDEA_HELP, menuItems, stepForPath, stepMark, type MenuItem } from "@/lib/steps";
 import { IdeaSwitcher } from "./IdeaSwitcher";
 import { useShell } from "./ShellProvider";
+import "@/components/tasks/tasks.css";
 
 type IdeaLink = { id: string; title: string };
 
@@ -87,6 +88,18 @@ export function Sidebar({
         <nav className="side-nav" aria-label="Dit idee">
           {idea.map(link)}
         </nav>
+      )}
+      {currentId && (
+        // Naslag apart van het werk: één kleine link, geen extra stap in het menu.
+        <Link
+          href={`/app/ideas/${currentId}${IDEA_HELP.path}`}
+          prefetch={false}
+          className={`help-link-side${HELP_PATHS.some((p) => sub === p || sub.startsWith(`${p}/`)) ? " active" : ""}`}
+          aria-current={HELP_PATHS.some((p) => sub === p || sub.startsWith(`${p}/`)) ? "page" : undefined}
+          onClick={close}
+        >
+          <Icon name={IDEA_HELP.icon} size="sm" /> {IDEA_HELP.label}
+        </Link>
       )}
       <hr className="nav-divider" />
       <nav className="side-nav" aria-label="Werkruimte">

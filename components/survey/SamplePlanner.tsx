@@ -85,7 +85,7 @@ export function SamplePlanner({ successPct, failPct, minSample, compact = false 
                   </tbody>
                 </table>
               )}
-              <p className="tiny mt-8">Minimaal {nl(minSample)} antwoorden volgens de Test Card. Dit is een planning op basis van aannames, geen resultaat.</p>
+              <p className="tiny mt-8">Minimaal {nl(minSample)} antwoorden volgens de testkaart. Dit is een planning op basis van aannames, geen resultaat.</p>
             </>
           )}
         </>

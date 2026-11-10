@@ -54,7 +54,7 @@ describe("coachcontext (B4/B6)", () => {
     const t = experimentLines(input.experiments, input.learningCards).join("\n");
     expect(t).toMatch(/Prijstest\s+script\s*\[prijs-\/aanbodtest, geanalyseerd\]/);
     expect(t).toMatch(/geslaagd bij ≥ 8%, niet geslaagd bij ≤ 2%, minimaal 150 deelnemers/);
-    expect(t).toMatch(/Uitkomst: 14 van 160, geslaagd; Learning Card goedgekeurd: geslaagd\./);
+    expect(t).toMatch(/Uitkomst: 14 van 160, geslaagd; leerkaart goedgekeurd: geslaagd\./);
     expect(t).toMatch(/Interviews \[klantinterviews, concept\]\. Maatstaf: onbekend; geen drempels vastgelegd\. Uitkomst: nog geen meting\./);
     expect(t).not.toMatch(/</);
     expect(experimentLines([], [])).toEqual(["Experimenten: nog geen."]);

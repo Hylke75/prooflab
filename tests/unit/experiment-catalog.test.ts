@@ -30,7 +30,7 @@ import { EVIDENCE_SCALE } from "@/lib/domain/evidence-scale";
 import { defaultedTestCardFields } from "@/lib/defaulted-test-card";
 
 // Experimentencatalogus: elke methode volledig, unieke ids, bewijssterkte binnen de bestaande ladder, filters en het
-// sjabloon naar de Test Card.
+// sjabloon naar de testkaart.
 
 const LEVEL_RANK = { opinion: 0, problem: 1, small_action: 2, quote: 3, deposit: 4, repeat: 5 } as const;
 
@@ -51,7 +51,7 @@ describe("catalogus: volledig en uniek", () => {
     expect(m.steps.before.length).toBeGreaterThan(0);
     expect(m.steps.during.length).toBeGreaterThan(0);
     expect(m.steps.after.length).toBeGreaterThan(0);
-    // Een test in ProofLab heeft startwaarden voor de Test Card; bureauonderzoek niet.
+    // Een test in ProofLab heeft startwaarden voor de testkaart; bureauonderzoek niet.
     expect(m.card === null).toBe(m.runs.kind === "source");
     // Een handmatig sjabloon noemt de eenheid van invoer.
     expect(!!m.unit).toBe(m.runs.kind === "manual");
@@ -162,9 +162,9 @@ describe("zoeken en filteren", () => {
   });
 });
 
-describe("sjabloon → Test Card", () => {
+describe("sjabloon → testkaart", () => {
   const statement = "Sportclubs plannen hun vrijwilligers elke week opnieuw met de hand.";
-  it.each(CATALOG.filter((m) => m.card).map((m) => [m.id, m] as const))("%s: het sjabloon is een geldige Test Card", (_, m) => {
+  it.each(CATALOG.filter((m) => m.card).map((m) => [m.id, m] as const))("%s: het sjabloon is een geldige testkaart", (_, m) => {
     const type = catalogExperimentType(m)!;
     const card = templateToTestCard(m, statement, "Besturen van amateursportclubs in Nederland")!;
     const e = validateTestCard({
@@ -208,7 +208,7 @@ describe("sjabloon → Test Card", () => {
     expect(out).toEqual(expect.arrayContaining(["test_method", "metric_label", "metric_numerator", "success_threshold_pct", "min_sample", "max_duration_days", "expected_biases"]));
     expect(defaultedTestCardFields({ type: "manual", rule: "probability", values: { ...card, min_sample: 25 }, channels: ["outreach"], recruitmentGroup: "cold", template: m.card })).not.toContain("min_sample");
   });
-  it("bureauonderzoek heeft geen Test Card", () => {
+  it("bureauonderzoek heeft geen testkaart", () => {
     expect(templateToTestCard(catalogMethod("juridische-check")!, statement, "x")).toBeNull();
   });
   it("de opties van de bouwer: de methode eerst, één keuze per testtype, hooguit vier", () => {
@@ -258,7 +258,7 @@ describe("handmatige configuratie", () => {
     expect(experimentTypeLabel("landing", {})).toBe(EXPERIMENT_TYPES.landing.label);
     expect(experimentTypeLabel("landing", { catalog_method_id: "concierge" })).toBe(EXPERIMENT_TYPES.landing.label);
   });
-  it("het draaiboek van bureauonderzoek heeft geen Test Card-stap", () => {
+  it("het draaiboek van bureauonderzoek heeft geen testkaart-stap", () => {
     expect(checklistFor(catalogMethod("juridische-check")!).before[0]).not.toBe(TEST_CARD_STEP);
     expect(checklistFor(catalogMethod("nepdeur-pagina")!).before[0]).toBe(TEST_CARD_STEP);
   });

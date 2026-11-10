@@ -357,7 +357,7 @@ function QuestionBlock({ q, index, config }: { q: QuestionSummary; index: number
             <Bar key={o.id} label={o.label} count={o.count} share={o.share} success={isKey && config.success_options.includes(o.id)} />
           ))}
           {q.type === "multi" && <p className="tiny">Meerdere antwoorden mogelijk: percentages tellen op tot meer dan 100%.</p>}
-          {isKey && <p className="tiny">Groen = telt als succes volgens de Test Card.</p>}
+          {isKey && <p className="tiny">Groen = telt als succes volgens de testkaart.</p>}
         </>
       )}
       {(q.type === "scale" || q.type === "number") && (

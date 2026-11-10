@@ -206,13 +206,13 @@ test("dogfood: ProofLab op ProofLab", async ({ page }) => {
 
   await page.goto(`${ideaUrl}/experiments?nieuw=1`);
   await page.getByRole("radio", { name: /interview/i }).click();
-  const steps = page.getByRole("tablist", { name: "Stappen van het testplan" });
+  const steps = page.getByRole("tablist", { name: "Stappen van de testkaart" });
   await steps.getByRole("tab", { name: /Wat test je/ }).click();
   await page.getByLabel("Bij wie? (verplicht)", { exact: true }).fill("Vijf huidige of recente opdrachtgevers van Link & Lead (directie of eigenaar)");
   await steps.getByRole("tab", { name: /Wanneer geslaagd/ }).click();
   await page.getByRole("button", { name: "Leg drempels vast" }).click();
   await steps.getByRole("tab", { name: /Voorbeeld/ }).click();
-  await page.getByRole("button", { name: /Test Card opslaan als concept/ }).click();
+  await page.getByRole("button", { name: /Testkaart opslaan als concept/ }).click();
   await page.waitForURL(/\/experiments\?opgeslagen=/);
   await page.getByRole("link", { name: "Open het concept →" }).click();
   await page.waitForURL(/\/experiments\/[0-9a-f-]{36}/);

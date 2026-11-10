@@ -7,7 +7,7 @@
 // - Kritieke aanname: belangrijkheid 4 of 5 én gekozen om nu te testen (selectedForTest, fase B4). In de UI heet
 //   dit "gekozen om te testen": "kritiek" alleen betekent in de rest van de app belangrijkheid 4 of 5 (Aannames,
 //   risicokaart, beslisblad), ook zonder de keuze om nu te testen.
-// - Getest: de hoofdtest van de aanname heeft een goedgekeurde Learning Card met uitslag geslaagd of niet geslaagd
+// - Getest: de hoofdtest van de aanname heeft een goedgekeurde leerkaart met uitslag geslaagd of niet geslaagd
 //   (onbeslist telt niet als getest, net als in de beslisregel).
 // - Bewijsniveau van een aanname: de hoogste trede op de bewijsschaal onder het ondersteunende klantbewijs dat volledig
 //   meetelt (register: counted, geen half gewicht). Bureauonderzoek is nooit klantbewijs: dat blijft verkenning.
@@ -140,7 +140,7 @@ export function primaryStatus(a: Pick<StandingAssumptionInput, "primaryExperimen
   const level = asEvidenceLevel(t.evidenceLevel) ?? (t.type ? testEvidenceLevel(t.type) : null);
   if (t.verdict === "pass" || t.verdict === "fail" || t.verdict === "inconclusive") {
     const approved = t.cardStatus !== "draft";
-    const status = outcomeWithLevel(VERDICT_TEXT[t.verdict], level) + (approved ? "" : " (Learning Card nog niet goedgekeurd)");
+    const status = outcomeWithLevel(VERDICT_TEXT[t.verdict], level) + (approved ? "" : " (leerkaart nog niet goedgekeurd)");
     return { title, status, tested: approved && t.verdict !== "inconclusive", href };
   }
   if (["draft", "ready_for_review", "approved"].includes(t.state)) return { title, status: "nog niet gestart", tested: false, href };
@@ -159,7 +159,7 @@ function reasonsOf(items: RegisterItem[]): StandingReason[] {
 }
 
 // Personen achter het sterkste bewijs: per interview één persoon, per losse waarneming één, per test het aantal geslaagde
-// deelnemers van de Learning Card. Onbekend (null) als een test geen aantal heeft.
+// deelnemers van de leerkaart. Onbekend (null) als een test geen aantal heeft.
 function personsAt(items: RegisterItem[], level: EvidenceLevel, tests: StandingTestInput[]): { persons: number | null; sources: number } {
   const keys = new Set(items.filter((i) => fullCustomerSupport(i) && i.level === level).map((i) => i.sourceKey ?? `item:${i.id}`));
   let persons: number | null = 0;

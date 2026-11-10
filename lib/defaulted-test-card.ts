@@ -3,9 +3,9 @@ import { recruitmentFromChannels } from "@/lib/domain/test-card";
 import { RECRUITMENT_REQUIRED_TYPES } from "@/lib/domain/recruitment";
 import type { ExperimentType } from "@/lib/domain/labels";
 
-// Fase 1 · punt 1: welke Test Card-velden bij het opslaan nog precies de standaardwaarde van ProofLab hebben. In Snel
+// Fase 1 · punt 1: welke testkaart-velden bij het opslaan nog precies de standaardwaarde van ProofLab hebben. In Snel
 // staan die velden ingeklapt onder Details; ze mogen niet stil op de standaard blijven staan. De lijst gaat naar
-// hypotheses.defaulted_fields (en daarmee in het auditspoor) en staat zichtbaar op de Test Card. Dezelfde functie op
+// hypotheses.defaulted_fields (en daarmee in het auditspoor) en staat zichtbaar op de testkaart. Dezelfde functie op
 // het scherm (vóór opslaan) en op de server (bij opslaan), los van de stand: een standaardwaarde is een standaardwaarde.
 //
 // Niet in de lijst: de vijf zichtbare vragen (naam, hypothese, doelgroep), wat de gebruiker zelf koos (beslisregel,

@@ -85,7 +85,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
   const { data: exp } = await supabase.from("experiments").select("*, hypotheses(*, assumptions(statement, category, kind))").eq("id", expId).eq("idea_id", id).maybeSingle();
   if (!exp || !exp.hypotheses) notFound();
   // Verkennend klantonderzoek vanuit Markt (geen drempels, geen aanname): een eigen, eenvoudiger weergave zonder
-  // oordeel, Learning Card of hoofdtest. Tests uit stap 3 lopen ongewijzigd verder hieronder.
+  // oordeel, leerkaart of hoofdtest. Tests uit stap 3 lopen ongewijzigd verder hieronder.
   if (isExploratory(exp.hypotheses)) return <StudyView ideaId={id} idea={idea} canWrite={canWrite} exp={exp} h={exp.hypotheses} isNew={typeof sp.nieuw === "string" ? sp.nieuw : undefined} />;
   const h = decisive(exp.hypotheses);
   if (!h) notFound();
@@ -118,9 +118,9 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
     })(),
     // Fase B0, punt 4: telt deze test mee in kans en rangorde? Zelfde regel en gegevens als de risicokaart.
     isStarted(state) ? loadTestExclusions(id) : Promise.resolve(null),
-    // B5: de go-regel van het dossier. Een hoofdtest start pas als die vastligt; zonder regel stelt ProofLab hem voor.
+    // B5: de beslisregel van het dossier. Een hoofdtest start pas als die vastligt; zonder regel stelt ProofLab hem voor.
     loadDecisionRule(id),
-    // Gebruikerstest B1: de kritieke aannames voor het voorstel van de go-regel (select("*"): selected_for_test bestaat
+    // Gebruikerstest B1: de kritieke aannames voor het voorstel van de beslisregel (select("*"): selected_for_test bestaat
     // pas na de B4-migratie; zonder kolom is niets gekozen).
     canWrite && ["draft", "ready_for_review", "approved"].includes(state)
       ? supabase.from("assumptions").select("*").eq("idea_id", id)
@@ -168,7 +168,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
   const publicUrl = exp.public_slug ? `${env.appUrl}/t/${exp.public_slug}` : null;
   const running = state === "live" || state === "paused";
   const v = m.verdict;
-  // B0 punt 3: past de maatstaf bij de soort aanname? Zo niet, dan kan de Test Card niet ter review of goedgekeurd.
+  // B0 punt 3: past de maatstaf bij de soort aanname? Zo niet, dan kan de testkaart niet ter review of goedgekeurd.
   const kind = h.assumptions ? assumptionKind(h.assumptions) : null;
   const fit = kind ? metricFitsAssumption(kind, { type, metric_label: h.metric_label, metric_numerator: h.metric_numerator, decision_rule: h.decision_rule, success_metric: (h as { success_metric?: string | null }).success_metric }) : { ok: true };
   // B0 punt 6: en meldt ProofLab "drempel niet haalbaar", dan evenmin. De server dwingt beide af.
@@ -201,7 +201,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
   const shortTitle = truncateWords(exp.title, TITLE_MAX);
   // Fase 2 · punt 4: zonder verwerkingsverantwoordelijke gaat een nieuwe testpagina niet live (ook in de database).
   const privacyGate = privacyBlock(exp.config, type);
-  // Feedback eigenaar: waar zit je in het testproces, en wat is de volgende stap? Afgeleid uit de status en de Learning Cards.
+  // Feedback eigenaar: waar zit je in het testproces, en wat is de volgende stap? Afgeleid uit de status en de leerkaarten.
   const progress = testProgress({ state, saved: true, learningCards: (cards ?? []).length });
   const nextHref: Partial<Record<Exclude<NextTarget, null>, string>> = {
     review: "#ter-review",
@@ -303,7 +303,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
       <div className="grid-2 mt-18">
         <div className="card">
           <div className="section-title">
-            <h2 className="as-h3"><Term k="test-card">Test Card</Term></h2>
+            <h2 className="as-h3"><Term k="test-card">Testkaart</Term></h2>
             <span className={`pill ${h.locked_at ? "dark" : "gray"}`}>{h.locked_at ? `Vergrendeld ${new Date(h.locked_at).toLocaleDateString("nl-NL")}` : "Concept"}</span>
           </div>
           <div className="data-row">
@@ -352,11 +352,11 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
           <div className="data-row"><span>Steekproef · looptijd</span><strong className="num">≥ {h.min_sample} · max. {h.max_duration_days} dagen</strong></div>
           {role === "primary" && rule !== undefined && (
             <div className="data-row" id="go-rule-row">
-              <span><Term k="go-regel">Go-regel</Term> van het dossier</span>
+              <span><Term k="go-regel">Beslisregel</Term> van het dossier</span>
               <strong style={{ textAlign: "right" }}>
                 {rule
                   ? `${describeRule(rule, rule.primaryExperimentId === expId ? exp.title : null)}${rule.recordedLate ? " (achteraf vastgelegd)" : rule.lockedAt ? " (vergrendeld)" : ""}`
-                  : "Nog niet vastgelegd: deze hoofdtest start pas als de go-regel vastligt."}
+                  : "Nog niet vastgelegd: deze hoofdtest start pas als de beslisregel vastligt."}
               </strong>
             </div>
           )}
@@ -415,8 +415,8 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
           {goProposal && <GoRuleProposalCard ideaId={id} proposal={goProposal} />}
           {canWrite && state === "draft" && (
             <div id="ter-review" className="coach-target">
-              <p className="sub">Controleer de Test Card. Daarna bied je het experiment aan voor review.</p>
-              {blockNote("Ter review aanbieden kan niet: deze Test Card kan zo niet worden goedgekeurd. Maak een nieuwe Test Card.")}
+              <p className="sub">Controleer de testkaart. Daarna bied je het experiment aan voor review.</p>
+              {blockNote("Ter review aanbieden kan niet: deze testkaart kan zo niet worden goedgekeurd. Maak een nieuwe testkaart.")}
               <ActionForm action={transitionExperiment.bind(null, id, expId, "ready_for_review")} submitLabel="Ter review aanbieden" disabled={blocked} describedBy={blocked ? "approval-block" : undefined} footer={<button formAction={deleteDraft.bind(null, id, expId)} className="text-link" style={{ color: "var(--color-risk-text)" }}>Concept verwijderen</button>}>
                 <span />
               </ActionForm>
@@ -428,7 +428,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
               {blockNote("Goedkeuren kan niet:")}
               {self.self && (
                 <div className="note" role="note" id="zelf-goedkeuren" style={{ marginTop: 0 }}>
-                  <strong>{selfApprovalText(self)}</strong> Liefst keurt iemand anders de Test Card goed; kan dat niet, bevestig het dan hieronder. In het rapport
+                  <strong>{selfApprovalText(self)}</strong> Liefst keurt iemand anders de testkaart goed; kan dat niet, bevestig het dan hieronder. In het rapport
                   staat deze test als &ldquo;zelf goedgekeurd&rdquo;.
                   <label className="check-row mt-8"><input type="checkbox" name="confirm_self_approval" required /> {SELF_APPROVAL_CONFIRM}</label>
                 </div>
@@ -499,7 +499,7 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
               <div className="form-line">
                 <label htmlFor="end-reason">Waarom rond je nu af?</label>
                 <textarea className="field" id="end-reason" name="end_reason" rows={3} required minLength={END_REASON_MIN} maxLength={END_REASON_MAX} aria-describedby="end-reason-hint" />
-                <p className="field-hint" id="end-reason-hint">Minstens {END_REASON_MIN} tekens. De reden wordt bewaard bij het experiment en komt op de <Term k="learning-card">Learning Card</Term>.</p>
+                <p className="field-hint" id="end-reason-hint">Minstens {END_REASON_MIN} tekens. De reden wordt bewaard bij het experiment en komt op de <Term k="learning-card">leerkaart</Term>.</p>
               </div>
               <label className="check-row"><input type="checkbox" name="confirm_below_sample" required /> {END_BELOW_SAMPLE_CONFIRM}</label>
             </ActionForm>
@@ -511,8 +511,8 @@ export default async function ExperimentPage({ params, searchParams }: PageProps
           )}
           {canWrite && state === "ended" && (cards ?? []).length === 0 && (
             <div id="learning-card" className="coach-target">
-              <ActionForm action={createLearningCard.bind(null, id, expId)} submitLabel="Analyseer en maak de Learning Card" pendingLabel="Analyseren…">
-                <p className="sub">ProofLab berekent het resultaat uit de ruwe, ontdubbelde metingen en maakt een concept-<Term k="learning-card">Learning Card</Term>.</p>
+              <ActionForm action={createLearningCard.bind(null, id, expId)} submitLabel="Analyseer en maak de leerkaart" pendingLabel="Analyseren…">
+                <p className="sub">ProofLab berekent het resultaat uit de ruwe, ontdubbelde metingen en maakt een concept-<Term k="learning-card">leerkaart</Term>.</p>
               </ActionForm>
             </div>
           )}

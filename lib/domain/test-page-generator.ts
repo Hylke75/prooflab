@@ -1,4 +1,4 @@
-// Fase 2 · punt 4: "Maak testpagina uit de Test Card". Een voorstel voor de landing- of prijspagina, afgeleid uit wat
+// Fase 2 · punt 4: "Maak testpagina uit de testkaart". Een voorstel voor de landing- of prijspagina, afgeleid uit wat
 // de consultant al vastlegde (hypothese, doelgroep, aanbod uit de intake, prijs uit de intake en de succesmaat). Puur en
 // deterministisch, zonder AI: niets wordt verzonnen. Alles blijft aanpasbaar en de eerlijkheidscontrole
 // (copy-honesty) geldt onverminderd: de waarschuwingen komen mee in het resultaat.
@@ -85,7 +85,7 @@ export function pageFromTestCard(i: GeneratorInput): GeneratedPage {
   }
   const target = i.targetGroup.trim();
   const subline = target ? (reason ? `Voor ${target}: ${reason}.` : `Speciaal voor ${target}.`) : reason ? `${cap(reason)}.` : "";
-  if (subline) notes.push(reason ? "Ondertitel: doelgroep en de reden uit de hypothese." : "Ondertitel: de doelgroep uit de Test Card.");
+  if (subline) notes.push(reason ? "Ondertitel: doelgroep en de reden uit de hypothese." : "Ondertitel: de doelgroep uit de testkaart.");
   const offer = (i.description.trim() || (main ? `${cap(main)}.` : "")).slice(0, 600);
   notes.push(i.description.trim() ? "Aanbod: de beschrijving uit de intake." : "Aanbod: de hypothese (de intake heeft geen beschrijving).");
   const price_points = i.type === "pricing" ? pricePointsFrom(i.intakePrice) : [];

@@ -53,14 +53,14 @@ import { TaskFooter, TaskHeader } from "@/components/tasks/TaskHeader";
 import { aiConfigured } from "@/lib/env";
 
 // Voorstel "ProofLab eenvoudiger": Besluit is drie taken, elk op een eigen scherm, in deze volgorde: Wat heb je geleerd
-// (Learning Cards) → Klopt het echt? (Reality Check en pre-mortem) → Neem je besluit. "Alle bewijs" is naslag zonder invoer.
+// (leerkaarten) → Klopt het echt? (realiteitscheck en pre-mortem) → Neem je besluit. "Alle bewijs" is naslag zonder invoer.
 const STAPPEN = ["geleerd", "check", "besluit", "bewijs"] as const;
 type Stap = (typeof STAPPEN)[number];
 const STAP_LABELS: Record<Stap, string> = { geleerd: "Wat heb je geleerd?", check: "Klopt het echt?", besluit: "Besluit", bewijs: "Alle bewijs" };
 
 export const metadata: Metadata = { title: "Bewijs & besluit" };
 
-// Het bewijsniveau op een Learning Card: zoals vastgelegd, of (oudere kaarten) afgeleid uit het testtype.
+// Het bewijsniveau op een leerkaart: zoals vastgelegd, of (oudere kaarten) afgeleid uit het testtype.
 function cardLevel(metrics: unknown, exp: { type: string; config?: unknown; hypotheses: { decision_rule?: string | null } | null } | undefined): EvidenceLevel | null {
   const stored = asEvidenceLevel((metrics as { evidence_level?: unknown } | null)?.evidence_level);
   return stored ?? (exp ? testEvidenceLevel(exp.type, { decisionRule: exp.hypotheses?.decision_rule, successMetric: (exp.hypotheses as { success_metric?: string | null } | null)?.success_metric, config: exp.config }) : null);
@@ -82,8 +82,8 @@ export default async function EvidencePage({ params, searchParams }: PageProps<"
   const { id } = await params;
   const sp = await searchParams;
   const { idea, canWrite, isClientDecider } = await getIdea(id);
-  // Fase 1 · punt 1: in Snel geen ladderpillen, geen pre-mortem-invoer en goedgekeurde Learning Cards ingeklapt. Stand
-  // van het bewijs, Reality Check, beslisregel, besluit en bevestiging blijven; de berekening is gelijk.
+  // Fase 1 · punt 1: in Snel geen ladderpillen, geen pre-mortem-invoer en goedgekeurde leerkaarten ingeklapt. Stand
+  // van het bewijs, realiteitscheck, beslisregel, besluit en bevestiging blijven; de berekening is gelijk.
   const quick = (await getViewMode(id)) === "quick";
   // Gebruikerstest D11: voorbeelden met de korte doelgroep van dit dossier, anders neutraal.
   const who = audienceExample(idea);
@@ -114,9 +114,9 @@ export default async function EvidencePage({ params, searchParams }: PageProps<"
     return (
       <PageFrame crumbs={["Werkruimte", idea.title, "Eerst je voorspelling"]} coach="evidence" ideaId={id} section="/evidence">
         <div className="task-page">
-          <TaskHeader ideaId={id} list={list} taskKey={key} title="Eerst je eigen voorspelling" why="Geef eerst je eigen kans dat het doel wordt gehaald. Daarna zie je het bewijs, de berekende kansen en de Reality Check." aiConnected={aiOn} />
+          <TaskHeader ideaId={id} list={list} taskKey={key} title="Eerst je eigen voorspelling" why="Geef eerst je eigen kans dat het doel wordt gehaald. Daarna zie je het bewijs, de berekende kansen en de realiteitscheck." aiConnected={aiOn} />
           <div className="stack">
-            <ForecastFirstLock ideaId={id} moment={lock} what="de bewijspagina met de sterkte van het bewijs, de kansen per aanname en de Reality Check" client={!canWrite} formHere={lock === "decision"} />
+            <ForecastFirstLock ideaId={id} moment={lock} what="de bewijspagina met de sterkte van het bewijs, de kansen per aanname en de realiteitscheck" client={!canWrite} formHere={lock === "decision"} />
             {lock === "decision" && <DecisionForecast ideaId={id} />}
           </div>
         </div>
@@ -257,12 +257,12 @@ export default async function EvidencePage({ params, searchParams }: PageProps<"
             {header("decide-learned", "Wat heb je geleerd?", "Controleer per afgeronde test wat er gemeten is en wat je ervan leert. Met goedkeuren werkt ProofLab de aanname bij.")}
             {drafts.length === 0 && approved.length === 0 && (
               <div className="empty-state">
-                <h2 className="as-h3">Nog geen Learning Card</h2>
+                <h2 className="as-h3">Nog geen leerkaart</h2>
                 <p>Die maak je bij een afgeronde test: daar staat de knop om de metingen te analyseren.</p>
                 <Link className="btn primary" href={`/app/ideas/${id}/experiments`}>Naar je tests →</Link>
               </div>
             )}
-      {(drafts.length > 0 || approved.length > 0) && <div className="section-title"><h2 className="as-h3"><Term k="learning-card">Learning Cards</Term></h2></div>}
+      {(drafts.length > 0 || approved.length > 0) && <div className="section-title"><h2 className="as-h3"><Term k="learning-card">Leerkaarten</Term></h2></div>}
       <div className="stack">
         {drafts.map((c) => {
           const exp = d.experiments.find((e) => e.id === c.experiment_id);
@@ -276,7 +276,7 @@ export default async function EvidencePage({ params, searchParams }: PageProps<"
               {canWrite ? (
                 <>
                   <LearningProposalNote card={c} />
-                  <ActionForm action={updateLearningCard.bind(null, id, c.id)} submitLabel="Learning Card opslaan" pendingLabel="Learning Card opslaan…" submitClass="btn white sm" noValidate>
+                  <ActionForm action={updateLearningCard.bind(null, id, c.id)} submitLabel="Leerkaart opslaan" pendingLabel="Leerkaart opslaan…" submitClass="btn white sm" noValidate>
                     <Field className="" labelClassName="field-label" name="we_learned" id={`lc-l-${c.id}`} label="Daaruit leren we" required>
                       <textarea className="field" rows={3} defaultValue={c.we_learned} minLength={10} maxLength={1500} />
                     </Field>
@@ -332,7 +332,7 @@ export default async function EvidencePage({ params, searchParams }: PageProps<"
                 // Snel: de goedgekeurde kaart als samenvatting (wat we leerden en wat we gaan doen); de rest ingeklapt.
                 return quick ? (
                   <details className="mt-8">
-                    <summary className="text-link">Hele Learning Card (meting en regel)</summary>
+                    <summary className="text-link">Hele leerkaart (meting en regel)</summary>
                     {full}
                   </details>
                 ) : (
@@ -353,9 +353,9 @@ export default async function EvidencePage({ params, searchParams }: PageProps<"
 
         {stap === "check" && (
           <>
-            {header("decide-check", "Klopt het echt?", "De Reality Check zoekt naar valkuilen, zwakke data en conclusies die het bewijs niet draagt. Verplicht vóór elk besluit.")}
+            {header("decide-check", "Klopt het echt?", "De realiteitscheck zoekt naar valkuilen, zwakke data en conclusies die het bewijs niet draagt. Verplicht vóór elk besluit.")}
           <div className="card">
-            <div className="section-title"><h3><Term k="reality-check">Reality Check</Term></h3><span className="pill coral">Verplicht vóór elk besluit</span></div>
+            <div className="section-title"><h3><Term k="reality-check">Realiteitscheck</Term></h3><span className="pill coral">Verplicht vóór elk besluit</span></div>
             {!check ? (
               <p className="sub">Nog niet uitgevoerd. De check zoekt naar valkuilen, zwakke data en conclusies die het bewijs niet draagt.</p>
             ) : (
@@ -381,7 +381,7 @@ export default async function EvidencePage({ params, searchParams }: PageProps<"
               </>
             )}
             <div className="divider" />
-            <h4 id="premortem" style={{ fontSize: 13 }}>Pre-mortem</h4>
+            <h4 id="premortem" style={{ fontSize: 13 }}>Waarom zou het mislukken? <span className="tiny">(pre-mortem)</span></h4>
             <p className="sub" style={{ fontSize: 13 }}>
               Het is zes maanden na het besluit en dit is mislukt. Wat is de meest waarschijnlijke reden?
             </p>
@@ -397,12 +397,12 @@ export default async function EvidencePage({ params, searchParams }: PageProps<"
                 ))}
               </ul>
             ) : (
-              <p className="tiny mt-8">Nog niet gedaan. De Reality Check waarschuwt tot er minstens één reden is vastgelegd.</p>
+              <p className="tiny mt-8">Nog niet gedaan. De realiteitscheck waarschuwt tot er minstens één reden is vastgelegd.</p>
             )}
             {canWrite && quick && <MoreInThorough />}
             {canWrite && !quick && (
               <details className="mt-8" open={premortem.length === 0}>
-                <summary className="text-link">{premortem.length ? "Nog een reden toevoegen" : "Doe de pre-mortem (1 tot 3 redenen)"}</summary>
+                <summary className="text-link">{premortem.length ? "Nog een reden toevoegen" : "Schrijf 1 tot 3 redenen op waarom het zou mislukken"}</summary>
                 <ActionForm action={addPremortem.bind(null, id)} submitLabel="Zet op de risicokaart" submitClass="btn white sm" resetOnSuccess>
                   <p className="explain">
                     Schrijf elke reden op als wat waar moet zijn om die mislukking te voorkomen. Reden &quot;overstappen was te veel gedoe&quot; wordt bijvoorbeeld: &quot;{who ? `${who} stappen zonder veel moeite over van hun huidige werkwijze.` : "De doelgroep stapt zonder veel moeite over van de huidige werkwijze."}&quot;
@@ -426,7 +426,7 @@ export default async function EvidencePage({ params, searchParams }: PageProps<"
               </details>
             )}
             {canWrite && (
-              <ActionForm action={runCheck.bind(null, id)} submitLabel={check ? "Voer de check opnieuw uit" : "Voer de Reality Check uit"} submitClass="btn white sm" pendingLabel="Controleren…"><span /></ActionForm>
+              <ActionForm action={runCheck.bind(null, id)} submitLabel={check ? "Voer de check opnieuw uit" : "Voer de realiteitscheck uit"} submitClass="btn white sm" pendingLabel="Controleren…"><span /></ActionForm>
             )}
           </div>
 
@@ -466,7 +466,7 @@ export default async function EvidencePage({ params, searchParams }: PageProps<"
                 // Gebruikerstest D12: stap 1 (voorspelling) met wat nog ontbreekt en waar het kan, de invoer in deze kaart.
                 forecastStep={decisionSteps(progress)}
                 forecast={<DecisionForecast ideaId={id} />}
-                disabledReason={!check ? "Voer eerst de Reality Check uit." : stale ? "Voer de Reality Check opnieuw uit; er is nieuw bewijs." : (decisionBlocker(progress)?.text ?? null)}
+                disabledReason={!check ? "Voer eerst de realiteitscheck uit." : stale ? "Voer de realiteitscheck opnieuw uit; er is nieuw bewijs." : (decisionBlocker(progress)?.text ?? null)}
                 ruleMet={ruleCheck ? ruleCheck.evaluation.met : null}
                 blocked={blocked}
               />

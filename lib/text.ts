@@ -1,4 +1,4 @@
-// Kleine teksthelpers voor rapport, PDF en Reality Check (gebruikerstest D3 en D13). Puur, zonder afhankelijkheden.
+// Kleine teksthelpers voor rapport, PDF en realiteitscheck (gebruikerstest D3 en D13). Puur, zonder afhankelijkheden.
 
 // Sluit een zin af met een punt, behalve als hij al op een leesteken eindigt (. ! ? …), ook als daarna nog een
 // afsluitend aanhalingsteken of haakje staat ("…ja." of (zie bijlage).). Zo komt er nooit ".." of "?." in een rapport.

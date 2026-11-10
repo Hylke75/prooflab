@@ -20,7 +20,7 @@ export const MOMENT_LABELS: Record<ForecastMoment, { label: string; when: string
   intake: { label: "Na de intake", when: "Voordat er onderzoek is gedaan" },
   research: { label: "Na het marktonderzoek", when: "De marktverkenning heeft bronnen en alternatieven" },
   experiment: { label: "Na het eerste experiment", when: "De eerste test is afgerond" },
-  decision: { label: "Bij het besluit", when: "Na de Reality Check, vóór het besluit" },
+  decision: { label: "Bij het besluit", when: "Na de realiteitscheck, vóór het besluit" },
 };
 
 export const FORECASTER_LABELS: Record<ForecasterKind, string> = { consultant: "Consultant", client: "Opdrachtgever", ai: "AI" };

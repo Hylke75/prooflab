@@ -1,15 +1,15 @@
 // Voortgang van één test (feedback eigenaar: "heel duidelijk aangeven waar je in het proces zit"). Zes stappen over
 // het hele testproces, afgeleid uit de experimentstatus (EXPERIMENT_STATES in labels.ts) en of er al een Learning
-// Card is. Dezelfde balk staat bovenaan de nieuwe Test Card (nog niet opgeslagen) en op de pagina van een test.
+// Card is. Dezelfde balk staat bovenaan de nieuwe testkaart (nog niet opgeslagen) en op de pagina van een test.
 // Puur, zonder database of React.
 
 export const TEST_PROGRESS_STEPS = [
-  { key: "card", label: "Test Card invullen" },
+  { key: "card", label: "Testkaart invullen" },
   { key: "review", label: "Ter review" },
   { key: "approved", label: "Goedgekeurd" },
   { key: "live", label: "Loopt (meten)" },
   { key: "ended", label: "Afgerond" },
-  { key: "learning", label: "Learning Card" },
+  { key: "learning", label: "Leerkaart" },
 ] as const;
 
 export type ProgressStepKey = (typeof TEST_PROGRESS_STEPS)[number]["key"];
@@ -37,7 +37,7 @@ export type TestProgress = {
 export type ProgressInput = {
   state: string; // experiments.state
   saved?: boolean; // false: de builder (nog geen experiment in de database)
-  learningCards?: number; // aantal Learning Cards (concept of goedgekeurd) van deze test
+  learningCards?: number; // aantal leerkaarten (concept of goedgekeurd) van deze test
 };
 
 type At = { index: number; allDone?: boolean; next: TestProgress["next"]; note?: string };
@@ -46,10 +46,10 @@ function position({ state, saved = true, learningCards = 0 }: ProgressInput): At
   switch (state) {
     case "draft":
       return saved
-        ? { index: 0, next: { text: "controleer de Test Card en bied hem ter review aan.", target: "review", cta: "Naar ter review aanbieden" } }
-        : { index: 0, next: { text: "vul de Test Card in en sla hem op als concept. Daarna bied je hem ter review aan.", target: "save", cta: "Naar opslaan" } };
+        ? { index: 0, next: { text: "controleer de testkaart en bied hem ter review aan.", target: "review", cta: "Naar ter review aanbieden" } }
+        : { index: 0, next: { text: "vul de testkaart in en sla hem op als concept. Daarna bied je hem ter review aan.", target: "save", cta: "Naar opslaan" } };
     case "ready_for_review":
-      return { index: 1, next: { text: "laat de Test Card goedkeuren. Goedkeuren vergrendelt hypothese en drempels.", target: "approve", cta: "Naar goedkeuren" } };
+      return { index: 1, next: { text: "laat de testkaart goedkeuren. Goedkeuren vergrendelt hypothese en drempels.", target: "approve", cta: "Naar goedkeuren" } };
     case "approved":
       return { index: 2, next: { text: "start de test om te gaan meten.", target: "start", cta: "Naar starten" } };
     case "live":
@@ -62,8 +62,8 @@ function position({ state, saved = true, learningCards = 0 }: ProgressInput): At
       };
     case "ended":
       return learningCards > 0
-        ? { index: 5, next: { text: "beoordeel de concept-Learning Card bij Bewijs & besluit en keur hem goed.", target: "evidence", cta: "Naar bewijs & besluit" } }
-        : { index: 4, next: { text: "analyseer de metingen en maak de Learning Card.", target: "learning", cta: "Naar de Learning Card" } };
+        ? { index: 5, next: { text: "beoordeel de concept-leerkaart bij Bewijs & besluit en keur hem goed.", target: "evidence", cta: "Naar bewijs & besluit" } }
+        : { index: 4, next: { text: "analyseer de metingen en maak de leerkaart.", target: "learning", cta: "Naar de leerkaart" } };
     case "analyzed":
       return { index: 6, allDone: true, next: { text: "neem het besluit over het idee bij Bewijs & besluit.", target: "evidence", cta: "Naar bewijs & besluit" } };
     case "decided":

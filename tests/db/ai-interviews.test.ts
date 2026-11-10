@@ -150,12 +150,12 @@ d("AI-gemodereerde interviews", () => {
     }
   });
 
-  it("opzet: alleen bij een interviewtest, goedkeuren na de Test Card met precies haar leidraad, daarna vergrendeld", async () => {
+  it("opzet: alleen bij een interviewtest, goedkeuren na de testkaart met precies haar leidraad, daarna vergrendeld", async () => {
     const t = await interviewTest(alice);
-    // Test Card nog concept: goedkeuren kan niet.
+    // testkaart nog concept: goedkeuren kan niet.
     await expect(approve(alice, t.cfg)).rejects.toThrow(/AI_CONFIG_TEST/);
     await setState(alice, t.e, "ready_for_review", "approved");
-    // Een leidraad die afwijkt van de Test Card wordt niet goedgekeurd.
+    // Een leidraad die afwijkt van de testkaart wordt niet goedgekeurd.
     await as(alice, (c) => c.query("update public.ai_interview_configs set guide = $2 where id = $1", [t.cfg, JSON.stringify([...GUIDE.slice(0, 2), "Iets anders?"])]));
     await expect(approve(alice, t.cfg)).rejects.toThrow(/AI_CONFIG_GUIDE/);
     await as(alice, (c) => c.query("update public.ai_interview_configs set guide = $2 where id = $1", [t.cfg, JSON.stringify(GUIDE)]));

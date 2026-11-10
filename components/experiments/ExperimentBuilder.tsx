@@ -56,7 +56,7 @@ type Assumption = { id: string; statement: string; kind?: AssumptionKind; primar
 type SaveState = FormState & { fieldErrors?: Record<string, string> };
 type Action = (s: SaveState, f: FormData) => Promise<SaveState>;
 
-// B1: verplichte velden van de Test Card (zie validateTestCard); ze tonen "(verplicht)" en dragen aria-required.
+// B1: verplichte velden van de testkaart (zie validateTestCard); ze tonen "(verplicht)" en dragen aria-required.
 const REQUIRED_FIELDS = new Set(["title", "we_believe", "target_group", "test_method", "metric_label", "metric_numerator", "success_threshold_pct", "fail_threshold_pct", "success_count", "min_sample", "max_duration_days", "channels", "headline", "price_points"]);
 const CTA_DEFAULT: Record<ExperimentType, string> = { interview: "Plan een gesprek", pricing: "Kies dit aanbod", landing: "Vraag een demo aan", survey: "Vraag een demo aan", manual: "Vraag een demo aan" };
 
@@ -117,14 +117,14 @@ export function ExperimentBuilder({
   catalogHref,
 }: {
   // Experimentencatalogus: de gekozen methode ("Gebruik voor deze aanname"). Bij het bijbehorende testtype vult haar
-  // sjabloon de Test Card voor; bij een handmatig sjabloon staat het draaiboek in de preview.
+  // sjabloon de testkaart voor; bij een handmatig sjabloon staat het draaiboek in de preview.
   catalog?: CatalogMethod | null;
   catalogHref?: string;
   // Fase 2 · punt 4: kan deze werkruimte een betaalstap aanbieden (Mollie ingesteld)? Zo niet: niet te kiezen, met reden.
   deposit?: { available: boolean; reason: string | null; mode: "test" | "live" | null };
-  // B5: wat de intake al weet (prijs, beschrijving), om de Test Card vooraf in te vullen.
+  // B5: wat de intake al weet (prijs, beschrijving), om de testkaart vooraf in te vullen.
   intake?: { description: string; texts: (string | null | undefined)[]; price_eur?: number | null; price_period?: string | null };
-  // B5: het dossier heeft nog geen go-regel; na opslaan van een hoofdtest stelt ProofLab die voor.
+  // B5: het dossier heeft nog geen beslisregel; na opslaan van een hoofdtest stelt ProofLab die voor.
   goRuleMissing?: boolean;
   priors?: Partial<Record<ExperimentType, BetaPrior>>;
   method?: MethodVersion;
@@ -151,7 +151,7 @@ export function ExperimentBuilder({
   const type: ExperimentType = options[tier].type;
   const kind = kindOf(assumption);
   const [guide, setGuide] = useState(() => defaultGuide(kind));
-  // The survey is kept while switching assumption or test type; the Test Card metric follows its key question.
+  // The survey is kept while switching assumption or test type; the testkaart metric follows its key question.
   const [survey, setSurvey] = useState<SurveyConfig>(() =>
     templateSurvey({ assumption: assumption.statement, audience: audience || "de doelgroep", researcher: researcher || "de onderzoeker", product: ideaTitle, screen: true }),
   );
@@ -196,7 +196,7 @@ export function ExperimentBuilder({
   // B5: vandaag (lokale datum) voor de deadline; de looptijd in dagen gaat naar de database.
   const [today] = useState(() => isoDay(new Date()));
   const [detailsOpen, setDetailsOpen] = useState(false);
-  // Voorstel "ProofLab eenvoudiger": het testplan in genummerde stappen, één tegelijk, beginnend bij het testtype.
+  // Voorstel "ProofLab eenvoudiger": de testkaart in genummerde stappen, één tegelijk, beginnend bij het testtype.
   // Bestaat de gekozen stap niet bij dit testtype, dan "Wat test je".
   const [tab, setTab] = useState<TestCardTabKey>("type");
   const activeTab: TestCardTabKey = tabs.some((t) => t.key === tab) ? tab : "card";
@@ -288,7 +288,7 @@ export function ExperimentBuilder({
   const audit = useMemo(() => auditGuide(guide.split("\n"), { productNames: [ideaTitle, page.product_name] }), [guide, ideaTitle, page.product_name]);
   const auditSum = guideSummary(audit);
   const [variants, setVariants] = useState<VariantsResult | null>(null);
-  // Fase 2 · punt 4: "Maak testpagina uit de Test Card" (deterministisch, zonder AI). Overschrijft de paginavelden met
+  // Fase 2 · punt 4: "Maak testpagina uit de testkaart" (deterministisch, zonder AI). Overschrijft de paginavelden met
   // een voorstel; alles blijft daarna aanpasbaar en de eerlijkheidscontrole kijkt mee.
   const [generated, setGenerated] = useState<GeneratedPage | null>(null);
   const generatePage = () => {
@@ -353,7 +353,7 @@ export function ExperimentBuilder({
     const err = thresholdErrors();
     if (err) return setLockError(err);
     if (changing && lockedAt !== null && lockedAt !== thresholdKey() && changeReason.trim().length < 10) {
-      return setLockError("Leg in een zin uit waarom je de drempels wijzigt (minstens 10 tekens). De motivering wordt bewaard bij de Test Card.");
+      return setLockError("Leg in een zin uit waarom je de drempels wijzigt (minstens 10 tekens). De motivering wordt bewaard bij de testkaart.");
     }
     setLockError(null);
     if (lockedAt === null) setLockedAt(thresholdKey());
@@ -490,12 +490,12 @@ export function ExperimentBuilder({
 
   return (
     <>
-      {/* Voorstel "ProofLab eenvoudiger": waar je bent in het testplan, als genummerde stappen. Panelen blijven gemount
+      {/* Voorstel "ProofLab eenvoudiger": waar je bent in de testkaart, als genummerde stappen. Panelen blijven gemount
           (hidden), zodat niets verloren gaat als je terug- of vooruitgaat. */}
       <p className="tc-step-count" id="tc-steps" aria-live="polite">
         Stap {stepIndex + 1} van {tabs.length}: <strong>{tabs[stepIndex].label}</strong>
       </p>
-      <TabList tabs={tabItems} active={activeTab} onSelect={(k) => setTab(k as TestCardTabKey)} idPrefix="tc" label="Stappen van het testplan" className="tc-tabs" />
+      <TabList tabs={tabItems} active={activeTab} onSelect={(k) => setTab(k as TestCardTabKey)} idPrefix="tc" label="Stappen van de testkaart" className="tc-tabs" />
       <TabPanel idPrefix="tc" tabKey="type" active={activeTab === "type"}>
       <div className="card">
         <div className="section-title">
@@ -514,7 +514,7 @@ export function ExperimentBuilder({
         {catalog && (
           <p className="field-hint" id="tc-catalog">
             Methode uit de {catalogHref ? <a className="text-link" href={catalogHref}>experimentencatalogus</a> : "experimentencatalogus"}: <strong>{catalog.name}</strong> · {runsText(catalog)}.{" "}
-            {cat ? "Het sjabloon vult de Test Card voor; alles blijft aanpasbaar tot de goedkeuring." : "Kies de optie “Uit de catalogus” om het sjabloon te gebruiken."}
+            {cat ? "Het sjabloon vult de testkaart voor; alles blijft aanpasbaar tot de goedkeuring." : "Kies de optie “Uit de catalogus” om het sjabloon te gebruiken."}
           </p>
         )}
         <div className={`exp-options${options.length === 4 ? " four" : ""}`} role="radiogroup" aria-label="Experimenttype">
@@ -550,7 +550,7 @@ export function ExperimentBuilder({
       </div>
       </TabPanel>
 
-      <form ref={formRef} className="card tc-builder" style={{ marginTop: 18, display: activeTab === "type" ? "none" : undefined }} noValidate onSubmit={submit} aria-label="Testplan">
+      <form ref={formRef} className="card tc-builder" style={{ marginTop: 18, display: activeTab === "type" ? "none" : undefined }} noValidate onSubmit={submit} aria-label="Testkaart">
         <input type="hidden" name="assumption_id" value={assumption.id} />
         <input type="hidden" name="type" value={type} />
         {cat && <input type="hidden" name="catalog_method_id" value={cat.id} />}
@@ -559,7 +559,7 @@ export function ExperimentBuilder({
         <div className="section-title">
           <div>
             <h2 className="as-h3">{tabs[stepIndex].label}</h2>
-            <p className="sub" style={{ marginTop: 5 }}>Je testplan (<Term k="test-card">Test Card</Term>) is nog niet opgeslagen. Dat doe je bij de laatste stap; daarna bied je het ter review aan.</p>
+            <p className="sub" style={{ marginTop: 5 }}>Je <Term k="test-card">testkaart</Term> is nog niet opgeslagen. Dat doe je bij de laatste stap; daarna bied je het ter review aan.</p>
           </div>
         </div>
         <TabPanel idPrefix="tc" tabKey="card" active={activeTab === "card"}>
@@ -676,7 +676,7 @@ export function ExperimentBuilder({
                     <div className="form-line">
                       <label htmlFor="tc-reason">Waarom wijzig je de drempels?</label>
                       <textarea className="field" id="tc-reason" rows={2} value={changeReason} onChange={(e) => setChangeReason(e.target.value)} placeholder="Bijv. de opdrachtgever legde een hogere minimale omzet vast." />
-                      <p className="field-hint">De motivering wordt bewaard bij de Test Card. Een lagere lat om de test te laten slagen ondermijnt het besluit.</p>
+                      <p className="field-hint">De motivering wordt bewaard bij de testkaart. Een lagere lat om de test te laten slagen ondermijnt het besluit.</p>
                     </div>
                   )}
                   <button type="button" className="btn white" id="tc-lock" onClick={lockThresholds} {...aria("thresholds")}>
@@ -754,7 +754,7 @@ export function ExperimentBuilder({
                 {band?.requiredN != null && band.requiredN !== n && (
                   <button type="button" className="text-link mt-8" onClick={() => set("min_sample", String(band.requiredN))}>Neem {band.requiredN} over</button>
                 )}
-                {/* Gebruikerstest C3: lager dan berekend kan, maar alleen met een motivering (bewaard bij de Test Card). */}
+                {/* Gebruikerstest C3: lager dan berekend kan, maar alleen met een motivering (bewaard bij de testkaart). */}
                 {band?.requiredN != null && n > 0 && n < band.requiredN && (
                   <div className="form-line mt-8">
                     <label htmlFor="tc-n-reason">Waarom minder {unit.many} dan berekend ({band.requiredN})?<RequiredMark /></label>
@@ -769,7 +769,7 @@ export function ExperimentBuilder({
                       {...aria("sample_below_reason")}
                     />
                     {fieldError("sample_below_reason")}
-                    <p className="field-hint">Minstens 10 tekens. Komt bij de Test Card als &ldquo;Steekproef onder berekend aantal&rdquo;.</p>
+                    <p className="field-hint">Minstens 10 tekens. Komt bij de testkaart als &ldquo;Steekproef onder berekend aantal&rdquo;.</p>
                   </div>
                 )}
               </div>
@@ -811,8 +811,8 @@ export function ExperimentBuilder({
           )}
           {goRuleMissing && isPrimary && (
             <p className="field-hint" id="tc-go-rule">
-              Dit dossier heeft nog geen <Term k="go-regel">go-regel</Term>. Na opslaan stelt ProofLab hem voor: doorgaan als deze hoofdtest slaagt en de aanname minstens{" "}
-              {Math.round(GO_RULE_DEFAULT_PROBABILITY * 100)}% kans haalt. Een hoofdtest start pas als de go-regel vastligt.
+              Dit dossier heeft nog geen <Term k="go-regel">beslisregel</Term>. Na opslaan stelt ProofLab hem voor: doorgaan als deze hoofdtest slaagt en de aanname minstens{" "}
+              {Math.round(GO_RULE_DEFAULT_PROBABILITY * 100)}% kans haalt. Een hoofdtest start pas als de beslisregel vastligt.
             </p>
           )}
           {/* B5: alles hieronder staat vooringevuld. Een verplicht veld met een fout opent dit deel vanzelf. */}
@@ -1015,7 +1015,7 @@ export function ExperimentBuilder({
             <div className="form-line">
               <label htmlFor="tc-extra">Eigen aanvullingen op het draaiboek (optioneel, één stap per regel)</label>
               <textarea className="field" id="tc-extra" name="extra_steps" rows={3} maxLength={3000} value={extraSteps} onChange={(e) => setExtraSteps(e.target.value)} aria-describedby="tc-extra-hint" />
-              <p className="field-hint" id="tc-extra-hint">Het draaiboek uit de catalogus staat hierboven. Je aanvullingen komen erbij en liggen na goedkeuring vast, net als de Test Card.</p>
+              <p className="field-hint" id="tc-extra-hint">Het draaiboek uit de catalogus staat hierboven. Je aanvullingen komen erbij en liggen na goedkeuring vast, net als de testkaart.</p>
             </div>
           </TabPanel>
         )}
@@ -1077,7 +1077,7 @@ export function ExperimentBuilder({
                 </div>
                 <div className="mt-12">
                   <button type="button" className="btn white sm" id="tc-generate" onClick={generatePage} aria-describedby="tc-generate-hint">
-                    Maak testpagina uit de Test Card
+                    Maak testpagina uit de testkaart
                   </button>
                   <p className="field-hint" id="tc-generate-hint">
                     Vult kop, ondertitel, aanbod, knoptekst{type === "pricing" ? " en prijspunten" : ""} in uit de hypothese, de doelgroep en de intake. Je past alles daarna zelf aan in de tab Testpagina.
@@ -1155,14 +1155,14 @@ export function ExperimentBuilder({
               <div className="tc-step-nav" key="save-nav">
                 {stepIndex > 0 ? <button type="button" className="btn white" onClick={() => goStep(stepIndex - 1)}>← Vorige</button> : <span />}
                 <button key="submit" type="submit" id="tc-submit" className="btn primary" disabled={saving}>
-                  {saving ? "Opslaan…" : "Test Card opslaan als concept"} <Icon name="arrow" size="sm" />
+                  {saving ? "Opslaan…" : "Testkaart opslaan als concept"} <Icon name="arrow" size="sm" />
                 </button>
               </div>
             ) : (
               stepNav
             )}
           </div>
-        <SavingOverlay active={saving} label="Test Card opslaan…" />
+        <SavingOverlay active={saving} label="Testkaart opslaan…" />
       </form>
     </>
   );

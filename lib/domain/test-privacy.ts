@@ -34,7 +34,7 @@ export function privacyBlock(config: unknown, type: string): string | null {
   const p = privacyOf(config);
   if (!p) return null;
   if (p.controller_name.trim().length < 2 || contactProblem(p.controller_contact)) {
-    return "Naam en contact van de verwerkingsverantwoordelijke ontbreken. Een nieuwe testpagina gaat pas live als die op de pagina staan. Maak een nieuwe Test Card met deze gegevens.";
+    return "Naam en contact van de verwerkingsverantwoordelijke ontbreken. Een nieuwe testpagina gaat pas live als die op de pagina staan. Maak een nieuwe testkaart met deze gegevens.";
   }
   return null;
 }

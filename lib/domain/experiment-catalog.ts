@@ -33,7 +33,7 @@ export type CatalogRuns =
   | { kind: "manual" }
   | { kind: "source" };
 
-// Startwaarden voor de Test Card. Altijd aanpasbaar; ze liggen pas vast na goedkeuring.
+// Startwaarden voor de testkaart. Altijd aanpasbaar; ze liggen pas vast na goedkeuring.
 export type CardTemplate = {
   test_method: string;
   metric_label: string;
@@ -96,9 +96,9 @@ export const RUNS_LABELS: Record<RunsKind, { label: string; explain: string }> =
   source: { label: "Bureauonderzoek", explain: "Geen klanttest: je legt de uitkomst vast als bron met citaat onder Marktverkenning." },
 };
 
-// Vaste eerste stap van elk sjabloon met een Test Card: eerst de lat, dan de test.
+// Vaste eerste stap van elk sjabloon met een testkaart: eerst de lat, dan de test.
 export const TEST_CARD_STEP =
-  "Leg in de Test Card vast: de hypothese, wat je telt (teller) en waarvan (noemer), de succes- en faaldrempel, de minimale steekproef en de deadline. Na goedkeuring liggen ze vast.";
+  "Leg in de testkaart vast: de hypothese, wat je telt (teller) en waarvan (noemer), de succes- en faaldrempel, de minimale steekproef en de deadline. Na goedkeuring liggen ze vast.";
 // Vaste laatste stap van een handmatig sjabloon: invoer en oordeel.
 export const MANUAL_RESULT_STEP =
   "Voer elke waarneming of telling in zodra je hem hebt, met een korte notitie zonder namen. Een oordeel volgt pas na de deadline of als je de test afrondt, met de drempels van vóór de start.";
@@ -128,7 +128,7 @@ export const CATALOG: readonly CatalogMethod[] = [
     steps: {
       before: ["Kies één segment en schrijf een selectievraag op die bekenden en niet-doelgroep uitsluit.", "Gebruik de neutrale leidraad: alleen vragen over gedrag in het verleden."],
       during: ["Vraag per gesprek om toestemming en leg vast of het een bekende is.", "Noteer letterlijke uitspraken; codeer daarna wat iemand echt deed."],
-      after: ["Codeer per gesprek of het probleem met een recent voorbeeld werd beschreven.", "Rond af en maak de Learning Card."],
+      after: ["Codeer per gesprek of het probleem met een recent voorbeeld werd beschreven.", "Rond af en maak de leerkaart."],
     },
     card: {
       test_method: "Probleeminterviews over de laatste keer (geen pitch)",
@@ -161,7 +161,7 @@ export const CATALOG: readonly CatalogMethod[] = [
     steps: {
       before: ["Spreek af met wie je praat: de gebruiker én wie het budget beheert.", "Voeg de vragen over huidige uitgaven en budget aan de leidraad toe."],
       during: ["Vraag naar bedragen en facturen van de afgelopen periode, niet naar schattingen voor later.", "Noteer wie heeft beslist over de laatste uitgave."],
-      after: ["Codeer per gesprek of er een concrete huidige uitgave werd genoemd.", "Rond af en maak de Learning Card."],
+      after: ["Codeer per gesprek of er een concrete huidige uitgave werd genoemd.", "Rond af en maak de leerkaart."],
     },
     card: {
       test_method: "Interviews over huidige uitgaven en budget (geen prijsvraag over de toekomst)",
@@ -194,7 +194,7 @@ export const CATALOG: readonly CatalogMethod[] = [
     steps: {
       before: ["Maak een lijst van wat er technisch en operationeel waar moet zijn.", "Kies experts die het zelf doen, niet alleen erover adviseren."],
       during: ["Vraag naar de laatste keer dat ze iets vergelijkbaars leverden: doorlooptijd, kosten, problemen."],
-      after: ["Codeer per gesprek of de aanpak met een concreet eigen voorbeeld uitvoerbaar bleek.", "Rond af en maak de Learning Card."],
+      after: ["Codeer per gesprek of de aanpak met een concreet eigen voorbeeld uitvoerbaar bleek.", "Rond af en maak de leerkaart."],
     },
     card: {
       test_method: "Gesprekken met leveranciers en uitvoerende experts over hun recente praktijk",
@@ -227,7 +227,7 @@ export const CATALOG: readonly CatalogMethod[] = [
     steps: {
       before: ["Bepaal welke rollen je per organisatie wilt spreken (gebruiker, inkoper, betaler, beslisser)."],
       during: ["Vraag naar de laatste vergelijkbare aankoop: wie zette hem in gang, wie tekende, hoe lang duurde het?"],
-      after: ["Codeer per organisatie of het koopproces concreet beschreven werd.", "Rond af en maak de Learning Card."],
+      after: ["Codeer per organisatie of het koopproces concreet beschreven werd.", "Rond af en maak de leerkaart."],
     },
     card: {
       test_method: "Interviews over de laatste vergelijkbare aankoop, per rol in het koopproces",
@@ -261,7 +261,7 @@ export const CATALOG: readonly CatalogMethod[] = [
     steps: {
       before: ["Doe eerst een paar interviews, zodat vragen en antwoordopties kloppen.", "Leg één kernvraag en de succesantwoorden vast.", "Leg de vragen voor aan 3–5 mensen uit de doelgroep."],
       during: ["Nodig bij voorkeur persoonlijk uit; houd open-linkantwoorden apart."],
-      after: ["Rond af en maak de Learning Card; bevestig de uitkomst daarna met een gedragstest."],
+      after: ["Rond af en maak de leerkaart; bevestig de uitkomst daarna met een gedragstest."],
     },
     card: {
       test_method: "Enquête over recent gedrag met één vooraf vastgelegde kernvraag",
@@ -817,9 +817,9 @@ export const CATALOG: readonly CatalogMethod[] = [
     pitfalls: ["Verkeer alleen uit het eigen netwerk.", "Iets beloven wat niet waar is; de eerlijke uitleg na de klik is verplicht."],
     runs: { kind: "builtin", type: "landing", successMetric: "signup" },
     steps: {
-      before: ["Schrijf één belofte voor één doelgroep; maak de testpagina uit de Test Card.", "Kies minstens twee wervingskanalen en gebruik per kanaal een eigen link."],
+      before: ["Schrijf één belofte voor één doelgroep; maak de testpagina uit de testkaart.", "Kies minstens twee wervingskanalen en gebruik per kanaal een eigen link."],
       during: ["Houd per kanaal bezoekers en aanmeldingen in de gaten, maar concludeer niets voor de deadline."],
-      after: ["Rond af en maak de Learning Card."],
+      after: ["Rond af en maak de leerkaart."],
     },
     card: {
       test_method: "Testpagina met één concrete belofte en één actie",
@@ -853,7 +853,7 @@ export const CATALOG: readonly CatalogMethod[] = [
     steps: {
       before: ["Koppel Calendly of Cal.com bij de test.", "Leg vast wat een relevante bezoeker is."],
       during: ["Volg geboekte en geannuleerde afspraken; alleen niet-geannuleerde tellen."],
-      after: ["Rond af en maak de Learning Card."],
+      after: ["Rond af en maak de leerkaart."],
     },
     card: {
       test_method: "Testpagina met een agendalink voor een kennismaking",
@@ -887,7 +887,7 @@ export const CATALOG: readonly CatalogMethod[] = [
     steps: {
       before: ["Formuleer het aanbod en 1–3 prijspunten; de prijs uit de intake staat al klaar."],
       during: ["Bezoekers zien steeds één prijspunt; vergelijk pas na de deadline."],
-      after: ["Rond af en maak de Learning Card."],
+      after: ["Rond af en maak de leerkaart."],
     },
     card: {
       test_method: "Aanbod met prijspunten op een testpagina (zonder afrekenen)",
@@ -921,7 +921,7 @@ export const CATALOG: readonly CatalogMethod[] = [
     steps: {
       before: ["Kies 2–3 prijspunten die echt verschillen; reken uit hoeveel verkeer per prijspunt nodig is."],
       during: ["Houd per prijspunt bezoekers en keuzes bij; trek geen tussentijdse conclusies."],
-      after: ["Rond af; vergelijk de prijspunten op de Learning Card met hun intervallen."],
+      after: ["Rond af; vergelijk de prijspunten op de leerkaart met hun intervallen."],
     },
     card: {
       test_method: "Dezelfde testpagina met per bezoeker één van meerdere prijspunten",
@@ -953,9 +953,9 @@ export const CATALOG: readonly CatalogMethod[] = [
     pitfalls: ["Testbetalingen meetellen.", "Niet duidelijk maken dat het product nog niet bestaat en het bedrag terugkomt."],
     runs: { kind: "builtin", type: "pricing", successMetric: "payment" },
     steps: {
-      before: ["Stel Mollie in voor de werkruimte en zet de betaalstap aan in de Test Card.", "Laat de tekst over terugbetaling controleren."],
+      before: ["Stel Mollie in voor de werkruimte en zet de betaalstap aan in de testkaart.", "Laat de tekst over terugbetaling controleren."],
       during: ["Alleen live, betaalde en niet-terugbetaalde aanbetalingen tellen."],
-      after: ["Rond af, maak de Learning Card en betaal alles terug na het besluit."],
+      after: ["Rond af, maak de leerkaart en betaal alles terug na het besluit."],
     },
     card: {
       test_method: "Aanbod met prijs en een terugbetaalbare aanbetaling via de betaalstap",
@@ -989,7 +989,7 @@ export const CATALOG: readonly CatalogMethod[] = [
     steps: {
       before: ["Schrijf een korte verklaring met aanbod, prijsindicatie en looptijd.", "Kies of je met een getekend document of met een digitaal akkoord werkt."],
       during: ["Alleen een getekend document of digitaal akkoord telt; intrekken blijft mogelijk."],
-      after: ["Rond af en maak de Learning Card."],
+      after: ["Rond af en maak de leerkaart."],
     },
     card: {
       test_method: "Aanbod met een niet-bindende intentieverklaring (getekend document of digitaal akkoord)",
@@ -1023,7 +1023,7 @@ export const CATALOG: readonly CatalogMethod[] = [
     steps: {
       before: ["Leg budget en doelgroepinstelling vast; laat de uitgave goedkeuren.", "Gebruik de kanaallink van de advertentie zodat bezoekers per kanaal tellen."],
       during: ["Houd uitgaven en aanmeldingen per kanaal bij."],
-      after: ["Rond af, maak de Learning Card en noteer de kosten per aanmelding."],
+      after: ["Rond af, maak de leerkaart en noteer de kosten per aanmelding."],
     },
     card: {
       test_method: "Testpagina met betaald verkeer van onbekenden via advertenties",
@@ -1057,7 +1057,7 @@ export const CATALOG: readonly CatalogMethod[] = [
     steps: {
       before: ["Maak een video van hooguit twee minuten die eerlijk zegt dat het een concept is.", "Zet de video in het aanbod van de testpagina."],
       during: ["Werf via minstens twee kanalen met eigen links."],
-      after: ["Rond af en maak de Learning Card."],
+      after: ["Rond af en maak de leerkaart."],
     },
     card: {
       test_method: "Testpagina met een korte uitlegvideo en één aanmeldknop",
@@ -1091,7 +1091,7 @@ export const CATALOG: readonly CatalogMethod[] = [
     steps: {
       before: ["Controleer dat de ontvangers toestemming gaven voor dit soort berichten.", "Gebruik de kanaallink voor nieuwsbrief of e-mail."],
       during: ["Verstuur één keer; tel bezoekers en aanmeldingen via de testpagina."],
-      after: ["Rond af en maak de Learning Card; houd rekening met warm verkeer."],
+      after: ["Rond af en maak de leerkaart; houd rekening met warm verkeer."],
     },
     card: {
       test_method: "Aanbod via een bestaande mailinglijst naar een testpagina",
@@ -1516,7 +1516,7 @@ export function runsText(m: Pick<CatalogMethod, "runs">): string {
   return "Bureauonderzoek: vastleggen als bron";
 }
 
-// Het draaiboek: de vaste stap van de Test Card, de stappen van de methode en (handmatig) de vaste invoerstap.
+// Het draaiboek: de vaste stap van de testkaart, de stappen van de methode en (handmatig) de vaste invoerstap.
 export function checklistFor(m: Pick<CatalogMethod, "steps" | "runs" | "card">): CatalogSteps {
   const before = m.card ? [TEST_CARD_STEP, ...m.steps.before] : [...m.steps.before];
   const after = m.runs.kind === "manual" ? [MANUAL_RESULT_STEP, ...m.steps.after] : [...m.steps.after];
@@ -1580,7 +1580,7 @@ export function filterFromParams(sp: Record<string, string | string[] | undefine
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Sjabloon → Test Card
+// Sjabloon → testkaart
 // ---------------------------------------------------------------------------------------------------------------
 
 export type TestCardPrefill = CardTemplate & { we_believe: string; target_group: string };
@@ -1666,7 +1666,7 @@ export function catalogMethodForTest(type: VoiTestType, kind?: AssumptionKind | 
   return catalogMethod(RECOMMENDED[type]);
 }
 
-// De methode als keuze in de Test Card-bouwer ("Uit de catalogus"), met dezelfde velden als een aanbeveling. De
+// De methode als keuze in de testkaart-bouwer ("Uit de catalogus"), met dezelfde velden als een aanbeveling. De
 // sterkte volgt de trede op de bewijsschaal. Null voor bureauonderzoek (geen test in ProofLab).
 const STRENGTH: Record<ScaleStep, Option["strength"]> = { exploration: "Zwak", opinion: "Zwak", behaviour: "Middel", payment: "Sterk", repeat: "Sterk" };
 export function catalogOption(m: CatalogMethod): Option | null {
@@ -1701,7 +1701,7 @@ export const KIND_LENS: Record<AssumptionKind, Lens> = {
   regulation: "feasibility",
 };
 
-// De opties van de Test Card-bouwer met een gekozen catalogusmethode: de methode eerst, daarna de aanbevelingen van een
+// De opties van de testkaart-bouwer met een gekozen catalogusmethode: de methode eerst, daarna de aanbevelingen van een
 // ander testtype (zo is er per testtype één keuze en geldt het sjabloon eenduidig), hooguit vier.
 export function optionsWithCatalog(options: Option[], m: CatalogMethod | null): Option[] {
   const own = m ? catalogOption(m) : null;

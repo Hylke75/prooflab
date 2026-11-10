@@ -30,7 +30,7 @@ export type RuleEvaluation = {
   primary: { experimentId: string; title: string; verdict: RuleExperiment["verdict"]; met: boolean } | null;
 };
 
-// Toetst de regel aan de kansen en Learning Cards van nu. Een verdwenen aanname of hoofdtest telt als niet gehaald.
+// Toetst de regel aan de kansen en leerkaarten van nu. Een verdwenen aanname of hoofdtest telt als niet gehaald.
 export function evaluateRule(rule: DecisionRule, assumptions: RuleAssumption[], experiments: RuleExperiment[]): RuleEvaluation {
   const conditions = rule.conditions.map((c) => {
     const a = assumptions.find((x) => x.id === c.assumptionId);

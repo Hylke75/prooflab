@@ -31,7 +31,7 @@ describe("testExclusion: wanneer een test niet meetelt", () => {
     expect(experimentFromSourceKey("experiment:abc")).toBe("abc");
     expect(experimentFromSourceKey("source:abc")).toBeNull();
   });
-  it("leest uitkomst en n van de Learning Card, of bij een lopende interviewtest de gecodeerde interviews", () => {
+  it("leest uitkomst en n van de leerkaart, of bij een lopende interviewtest de gecodeerde interviews", () => {
     const exps = [
       { id: "iv", title: "Interviews", type: "interview", state: "live", hypotheses: { assumption_id: "a1", min_sample: 8 } },
       { id: "lp", title: "Landingpage", type: "landing", state: "live", hypotheses: { assumption_id: "a1", min_sample: 150 } },
@@ -128,7 +128,7 @@ describe("fase B0, punt 4: kans en rangorde veranderen niet door een test die ni
 
     it(`${v}: een test met n onder de minimale steekproef laat kans en rangorde gelijk`, () => {
       expect(summary(inputs({ card: { verdict: "pass", n: 2 } }), v)).toEqual(baseline);
-      // Lopende interviewtest zonder Learning Card, met 2 van de minimaal 3 gecodeerde interviews.
+      // Lopende interviewtest zonder leerkaart, met 2 van de minimaal 3 gecodeerde interviews.
       expect(summary(inputs({ card: null, coded: 2 }), v)).toEqual(baseline);
     });
 

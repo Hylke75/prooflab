@@ -109,7 +109,7 @@ describe("punt 4: wervingsgroep", () => {
   });
 });
 
-describe("punt 13: wervingsgroep verplicht op de Test Card", () => {
+describe("punt 13: wervingsgroep verplicht op de testkaart", () => {
   it("bij enquête-, landing- en prijstests; niet bij interviews (per gesprek)", () => {
     for (const t of ["survey", "landing", "pricing"]) {
       expect(recruitmentMissing(t, "")).toBe(true);

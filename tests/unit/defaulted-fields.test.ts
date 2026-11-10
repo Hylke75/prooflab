@@ -3,9 +3,9 @@ import { testCardDefaults } from "@/lib/domain/recommend";
 import { defaultedTestCardFields, DEFAULT_CHANNELS } from "@/lib/defaulted-test-card";
 import { assumptionDefaults, withDefaultedFallback, withFields } from "@/lib/defaulted-fields";
 
-// Fase 1 · punt 1: standaardwaarden die ProofLab invult, blijven zichtbaar (defaulted_fields → auditspoor en Test Card).
+// Fase 1 · punt 1: standaardwaarden die ProofLab invult, blijven zichtbaar (defaulted_fields → auditspoor en testkaart).
 
-describe("Test Card: welke velden staan nog op de standaard", () => {
+describe("Testkaart: welke velden staan nog op de standaard", () => {
   const d = testCardDefaults("landing", "Clubs vragen een demo aan", "Sportclubs");
   const base = {
     type: "landing" as const,
@@ -57,7 +57,7 @@ describe("Test Card: welke velden staan nog op de standaard", () => {
     const abs = defaultedTestCardFields({ ...base, type: "interview", rule: "absolute", values: { ...i }, recruitmentGroup: null });
     expect(abs).not.toContain("metric_label");
     expect(abs).not.toContain("success_threshold_pct");
-    // Bij interviews is de wervingsgroep per gesprek; geen standaard op de Test Card.
+    // Bij interviews is de wervingsgroep per gesprek; geen standaard op de testkaart.
     expect(abs).not.toContain("recruitment_group");
   });
 });
