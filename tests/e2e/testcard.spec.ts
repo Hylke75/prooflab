@@ -108,6 +108,13 @@ test("B1/B5: korte testkaart van een prijstest opslaan, goedkeuren en met beslis
   // Stap 5: het voorbeeld beweegt live mee; terug- en vooruitgaan verliest niets.
   await card.getByRole("button", { name: /Volgende: Voorbeeld/ }).click();
   await expect(card.locator(".preview-mini")).toContainText("Minder typewerk, meer bezichtigingen.");
+  // GOV.UK-patroon: vóór opslaan de antwoorden op een rij, met "Wijzigen" naar de juiste stap.
+  const check = card.locator(".check-answers");
+  await expect(check.getByRole("heading", { name: "Controleer je antwoorden" })).toBeVisible();
+  await expect(check.locator(".check-row-item", { hasText: "Wij denken dat" })).toContainText("€ 249 per maand");
+  await check.getByRole("button", { name: "Wijzigen: Bij wie" }).click();
+  await expect(steps.getByRole("tab", { name: /Wat test je/ })).toHaveAttribute("aria-selected", "true");
+  await steps.getByRole("tab", { name: /Voorbeeld/ }).click();
   await card.getByRole("button", { name: "← Vorige" }).click();
   await expect(card.getByLabel("Ondertitel", { exact: true })).toHaveValue("Minder typewerk, meer bezichtigingen.");
   await card.getByRole("button", { name: /Volgende: Voorbeeld/ }).click();

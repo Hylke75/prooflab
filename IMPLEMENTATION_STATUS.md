@@ -1434,3 +1434,11 @@ methode en catalogus naar "Hulp en methode"; vaktermen in gewone taal; daarna te
 - ✅ "Hulp en methode" per idee (`/app/ideas/[id]/hulp`): begrippen in gewone taal, rekenmethode, alle testmethodes; methode en catalogus horen bij geen stap meer.
 - ✅ Vaktermen in gewone taal in alle schermen en meldingen (testkaart, leerkaart, realiteitscheck, beslisregel, pre-mortem, TAM/SAM/SOM); het vakwoord staat in de uitleg.
 - ✅ Testkit voor een gebruikerstest met drie mensen: `docs/GEBRUIKERSTEST_3_GEBRUIKERS.md` (taken, script, observatieformulier, toestemming, analyse). De test zelf moet nog met echte deelnemers worden gedaan; deelnemers die zelf een idee maken, moeten op `signup_allowlist`.
+
+### Ronde 4 (10 november): onderzoek naar zeer gebruiksvriendelijke software
+- ✅ Onderzoek en meting: `docs/ONDERZOEK_GEBRUIKSVRIENDELIJKHEID.md` (15 principes met bronnen, meting per scherm).
+- ✅ Overzicht leest de takenlijst: fase, balk van vijf fasen en "Volgende taak" per idee; sprintplanning ingeklapt.
+- ✅ Tijdsindicatie per taak; compacter rolblok; Markt zonder dubbele navigatie en dubbele koppen.
+- ✅ Bronnen in één kolom en vaste volgorde; Marktpotentieel met optionele velden ingeklapt.
+- ✅ Testkaart: "Controleer je antwoorden" vóór opslaan.
+- ⬜ Voorstel volgende ronde: AI-voorstel per veld (overnemen/aanpassen/weggooien), automatisch opslaan met ongedaan maken, "Waarom vragen we dit?" per veld, foutoverzicht op alle formulieren.

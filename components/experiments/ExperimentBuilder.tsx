@@ -1137,6 +1137,46 @@ export function ExperimentBuilder({
             )}
           </TabPanel>
         )}
+          {lastStep && (
+            // GOV.UK-patroon "Antwoorden controleren": de belangrijkste antwoorden op een rij vóór opslaan, elk met
+            // "Wijzigen" naar de stap waar het staat. Lege antwoorden staan er als "Nog niet ingevuld".
+            <section className="check-answers" aria-labelledby="tc-check-title">
+              <h3 id="tc-check-title" className="as-h3">Controleer je antwoorden</h3>
+              <dl>
+                {(
+                  [
+                    ["Testtype", cat ? cat.name : EXPERIMENT_TYPES[type].label, "type"],
+                    ["Aanname", assumption.statement, "type"],
+                    ["Naam", title, "card"],
+                    ["Wij denken dat", card.we_believe, "card"],
+                    ["Bij wie", card.target_group, "card"],
+                    [
+                      "Geslaagd als",
+                      (activeRule === "absolute" ? `minstens ${countN} ${unit.many}` : `${card.success_threshold_pct || "?"}% of meer (niet geslaagd onder ${card.fail_threshold_pct || "?"}%)`) +
+                        (locked ? "" : " · drempels nog niet vastgelegd"),
+                      "criteria",
+                    ],
+                    ["Aantal " + unit.many, card.min_sample, "criteria"],
+                    ["Deadline", card.max_duration_days ? new Date(deadlineFromDays(Number(card.max_duration_days), today)).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" }) : "", "criteria"],
+                  ] as [string, unknown, TestCardTabKey][]
+                ).map(([label, raw, step]) => {
+                  // Sommige antwoorden zijn getallen (aantal deelnemers): altijd als tekst tonen.
+                  const value = raw == null ? "" : String(raw).trim();
+                  return (
+                  <div key={label} className="check-row-item">
+                    <dt>{label}</dt>
+                    <dd>{value ? value : <span className="muted-text">Nog niet ingevuld</span>}</dd>
+                    <dd>
+                      <button type="button" className="text-link" onClick={() => goStep(tabs.findIndex((t) => t.key === step))} aria-label={`Wijzigen: ${label}`}>
+                        Wijzigen
+                      </button>
+                    </dd>
+                  </div>
+                  );
+                })}
+              </dl>
+            </section>
+          )}
           <div className="tc-save" id="tc-save">
             {errs.length > 0 && (
               <div className="form-error" role="alert" aria-labelledby="tc-err-title">

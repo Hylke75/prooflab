@@ -45,7 +45,9 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
           {next ? (
             <>
               <h2 className="as-h3" id="volgende-taak">Volgende taak: {next.label}</h2>
-              <p>{next.why}</p>
+              <p>
+                {next.why} <span className="tiny" style={{ whiteSpace: "nowrap" }}>Tijd: {next.time}.</span>
+              </p>
               <Link className="btn primary" href={`${base}${next.path}`} prefetch={false}>
                 {next.key === "forecast" ? "Geef je voorspelling" : "Ga naar de volgende taak"} <Icon name="arrow" size="sm" />
               </Link>
@@ -84,7 +86,7 @@ export default async function IdeaOverview({ params }: PageProps<"/app/ideas/[id
                         <div>
                           <Link href={`${base}${t.path}`} prefetch={false}>{t.label}</Link>
                           {t.optional && <span className="tiny" style={{ display: "inline", marginLeft: 6 }}>(aanbevolen)</span>}
-                          <span className="tiny">{t.why}</span>
+                          <span className="tiny">{t.why}{t.status !== "done" && t.status !== "locked" ? ` · ${t.time}` : ""}</span>
                         </div>
                         <span className={`pill ${PILL[t.status]}`}>{TASK_STATUS_LABELS[t.status]}</span>
                       </li>

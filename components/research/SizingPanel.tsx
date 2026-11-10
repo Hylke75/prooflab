@@ -191,8 +191,8 @@ export function SizingPanel({
     <>
       <div className="section-title">
         <div>
-          <h2>Hoe groot kan de markt zijn?</h2>
-          <p className="sub">Geen willekeurig AI-getal. Een berekening van onderaf, met per factor een bron of het label &quot;nog te toetsen&quot;.</p>
+          {/* De titel staat in de taakkop ("Hoe groot is de markt?"); hier alleen de uitleg. */}
+          <p className="sub" style={{ marginTop: 0 }}>Geen willekeurig AI-getal. Een berekening van onderaf, met per factor een bron of het label &quot;nog te toetsen&quot;.</p>
         </div>
         <span className={`pill ${result.established ? "blue" : "orange"}`}>{result.label}</span>
       </div>
@@ -275,8 +275,15 @@ export function SizingPanel({
                     <span id={`u-${def.key}`} className="sr-only">{unitWord(def.unit)}</span>
                     <input type="hidden" name={`note_${def.key}`} value={noteFor(def.key)} />
                     {noteFor(def.key) && <small className="tiny" style={{ gridColumn: "1 / -1" }}>{noteFor(def.key)}</small>}
-                    <RangeInputs def={def} f={f} canWrite={canWrite} onChange={(patch) => set(def.key, patch)} />
-                    <OriginInputs def={def} f={f} canWrite={canWrite} onChange={(patch) => set(def.key, patch)} />
+                    {/* Voorstel "ProofLab eenvoudiger": bandbreedte, jaar en regio zijn optioneel en staan ingeklapt. Ze openen
+                        vanzelf als er al iets staat; ingeklapte velden gaan gewoon mee met opslaan. */}
+                    <details className="factor-more" open={!!(f.low || f.high || f.year || f.region)} style={{ gridColumn: "1 / -1" }}>
+                      <summary className="text-link" style={{ cursor: "pointer", fontSize: 13, minHeight: 44, display: "flex", alignItems: "center" }}>
+                        Meer over deze factor (optioneel): bandbreedte, jaar en regio
+                      </summary>
+                      <RangeInputs def={def} f={f} canWrite={canWrite} onChange={(patch) => set(def.key, patch)} />
+                      <OriginInputs def={def} f={f} canWrite={canWrite} onChange={(patch) => set(def.key, patch)} />
+                    </details>
                   </div>
                 );
               })}
